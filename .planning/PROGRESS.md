@@ -233,3 +233,5 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   này đóng, vòng chờ chết → chủ nhân đóng app + các phiên Claude/Codex rồi chạy
   `powershell -ExecutionPolicy Bypass -File L:\AI\AI-Asset-Studio\.planning\update-portable.ps1`.
   Thay đổi phiên này CHƯA commit (QuickPrompts, NewRunView, mock server, assets/quickPrompts.ts, update-portable.ps1).
+- [x] Commit `b0d277b`. Chủ nhân tắt studio-core MCP → Portable đã chép bản mới 02:37 (core + app, gồm mesh.checked,
+  dịch VI→EN, theme, art D, mẫu nhanh lô, ETA). MCP asset-studio các phiên cần khởi động lại phiên.
