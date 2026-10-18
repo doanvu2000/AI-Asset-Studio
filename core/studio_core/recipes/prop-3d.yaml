@@ -18,7 +18,7 @@ steps:
   - id: mesh
     kind: comfy.img2mesh_trellis2_textured
     in: {image: pick.images}
-    params: {"186.target_face_count": "${inputs.faces}", "288.value": "${inputs.texture}"}
+    params: {"186.target_face_count": "${inputs.faces}", "288.value": "${inputs.texture}", _free_before: true}
   - id: cleanup
     kind: blender.cleanup
     in: {mesh: mesh.meshes}

@@ -290,3 +290,12 @@ async def test_executor_end_to_end_with_fake_server(tmp_path):
     labels = [c[2] for c in ctx.progress_calls]
     assert "KSampler" in labels and ctx.progress_calls[-1][0] == 1.0
     await client.close()
+
+
+def test_execution_error_marks_cuda_failures_retryable():
+    from studio_core.adapters.comfy.client import execution_error
+    cuda = execution_error({"node_type": "RemeshMesh", "exception_type": "torch.AcceleratorError",
+                            "exception_message": "CUDA error: unknown error"})
+    assert cuda.retryable
+    assert not execution_error({"node_type": "VAEDecode", "exception_type": "ValueError",
+                                "exception_message": "bad shape"}).retryable

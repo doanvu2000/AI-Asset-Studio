@@ -68,6 +68,7 @@ def build_prompt(workflow: dict[str, Any], entry: dict[str, Any], params: dict[s
 class ComfyExecutor:
     lane = Lane.GPU
     version = "1"
+    auto_retry = 1
 
     def __init__(self, kind: str, settings: Settings, resource: ComfyResource):
         self.kind = kind
@@ -119,6 +120,8 @@ class ComfyExecutor:
         client = self.resource.client
         if client is None:
             raise StepError("comfy_unavailable", "ComfyUI is not running", retryable=True)
+        if params.get("_free_before"):
+            await self.resource.free()
         tracker = _Progress(ctx, prompt)
         prompt_id = str(uuid.uuid4())
         ctx.log(f"comfy {self.workflow} prompt_id={prompt_id}")

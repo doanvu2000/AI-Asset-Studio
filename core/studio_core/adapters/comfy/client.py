@@ -66,9 +66,12 @@ def history_error(entry: dict[str, Any]) -> dict[str, Any] | None:
 
 def execution_error(data: dict[str, Any]) -> StepError:
     exc_type = str(data.get("exception_type") or "")
+    exc_msg = str(data.get("exception_message") or "").strip()
+    # TRELLIS remesh near the VRAM ceiling fails with "CUDA error: unknown error"; a rerun after /free succeeds.
+    transient = "OutOfMemory" in exc_type or "CUDA error" in exc_msg or "out of memory" in exc_msg
     return StepError("comfy_execution_error",
-                     f"{data.get('node_type') or data.get('node_id')}: {data.get('exception_message', '').strip()}",
-                     retryable="OutOfMemory" in exc_type,
+                     f"{data.get('node_type') or data.get('node_id')}: {exc_msg}",
+                     retryable=transient,
                      detail={k: data.get(k) for k in ("node_id", "node_type", "exception_type", "exception_message")}
                      | {"traceback": "".join(data.get("traceback") or [])[-4000:]})
 

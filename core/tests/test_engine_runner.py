@@ -540,3 +540,36 @@ steps:
     run_id = await env.run("img", {"src": ref.hash})
     assert env.status(run_id) == RunStatus.SUCCEEDED
     assert op.calls[0]["images"] == [ref]
+
+
+FLAKY = """
+id: flaky
+steps:
+  - {id: g, kind: t.flaky, params: {count: 1}}
+"""
+
+
+async def test_auto_retry_reruns_retryable_failure_once(tmp_path: Path) -> None:
+    flaky = FakeExec("t.flaky", Lane.GPU, fail=lambda n: StepError("cuda", "CUDA error", retryable=True)
+                     if n == 1 else None)
+    flaky.auto_retry = 1  # type: ignore[attr-defined]
+    env = Env(tmp_path, [flaky], {"flaky": FLAKY})
+    run_id = await env.run("flaky")
+    assert env.status(run_id) == RunStatus.SUCCEEDED
+    step = env.steps(run_id)["g"]
+    assert len(flaky.calls) == 2 and step.meta["auto_retries"] == 1 and step.attempt == 1
+
+
+async def test_auto_retry_gives_up_on_non_retryable_and_after_limit(tmp_path: Path) -> None:
+    hard = FakeExec("t.flaky", Lane.GPU, fail=lambda n: StepError("bad", "nope"))
+    hard.auto_retry = 1  # type: ignore[attr-defined]
+    env = Env(tmp_path, [hard], {"flaky": FLAKY})
+    assert env.status(await env.run("flaky")) == RunStatus.FAILED
+    assert len(hard.calls) == 1
+
+    always = FakeExec("t.flaky", Lane.GPU, fail=lambda n: StepError("cuda", "CUDA error", retryable=True))
+    always.auto_retry = 1  # type: ignore[attr-defined]
+    (tmp_path / "b").mkdir()
+    env2 = Env(tmp_path / "b", [always], {"flaky": FLAKY})
+    assert env2.status(await env2.run("flaky")) == RunStatus.FAILED
+    assert len(always.calls) == 2

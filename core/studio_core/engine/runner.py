@@ -426,7 +426,7 @@ class StudioEngine:
                 st.ctxs[step.key] = ctx
                 meta = {k: v for k, v in step.meta.items() if k != "waiting_for"}
                 await self._set_step(step, status=StepStatus.RUNNING, started_at=_now(), progress=0.0, meta=meta)
-                result = await self._run_executor(ex, ctx, step, inputs)
+                result = await self._run_with_auto_retry(ex, ctx, step, inputs)
             finally:
                 self.scheduler.release(lane)
             await self._set_step(step, status=StepStatus.SUCCEEDED, outputs=result.outputs, progress=1.0,
@@ -450,6 +450,27 @@ class StudioEngine:
             return
         await self._set_step(step, status=StepStatus.WAITING_RESOURCE, meta={**step.meta, "waiting_for": res.name})
         await res.ensure_started()
+
+    async def _run_with_auto_retry(self, ex: Executor, ctx: _Ctx, step: StepRow, inputs: Outputs) -> StepResult:
+        """GPU/Blender crashes near the VRAM ceiling are usually transient; one in-place rerun saves a manual retry."""
+        retries = int(step.params.get("_auto_retry", getattr(ex, "auto_retry", 0)))
+        for n in range(retries + 1):
+            try:
+                result = await self._run_executor(ex, ctx, step, inputs)
+            except StepError as e:
+                if not e.retryable or n == retries or ctx.cancelled.is_set():
+                    raise
+                log.warning("step %s (%s) failed with %s, auto-retry %d/%d", step.key, step.kind, e.code, n + 1,
+                            retries)
+                ctx.log(f"auto-retry {n + 1}/{retries} after {e.code}: {e.message[:200]}")
+                free = getattr(getattr(ex, "required_resource", None), "free", None)
+                if free is not None:
+                    await free()
+                continue
+            if n:
+                result.meta["auto_retries"] = n
+            return result
+        raise AssertionError("unreachable")
 
     async def _run_executor(self, ex: Executor, ctx: _Ctx, step: StepRow, inputs: Outputs) -> StepResult:
         spec = step.meta.get("spec", {})
