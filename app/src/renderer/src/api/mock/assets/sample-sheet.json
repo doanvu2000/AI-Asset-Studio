@@ -1,0 +1,130 @@
+{
+  "frame_w": 64,
+  "frame_h": 64,
+  "cols": 8,
+  "rows": 1,
+  "count": 8,
+  "padding": 0,
+  "order": [
+    270,
+    315,
+    0,
+    45,
+    90,
+    135,
+    180,
+    225
+  ],
+  "width": 512,
+  "height": 64,
+  "pivot": [
+    32,
+    52
+  ],
+  "preset": "godot",
+  "dirs": [
+    "right",
+    "down_right",
+    "down",
+    "down_left",
+    "left",
+    "up_left",
+    "up",
+    "up_right"
+  ],
+  "frames_named": [
+    {
+      "name": "knight_right",
+      "dir": "E",
+      "label": "right",
+      "angle": 270,
+      "index": 0,
+      "x": 0,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    {
+      "name": "knight_down_right",
+      "dir": "SE",
+      "label": "down_right",
+      "angle": 315,
+      "index": 1,
+      "x": 64,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    {
+      "name": "knight_down",
+      "dir": "S",
+      "label": "down",
+      "angle": 0,
+      "index": 2,
+      "x": 128,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    {
+      "name": "knight_down_left",
+      "dir": "SW",
+      "label": "down_left",
+      "angle": 45,
+      "index": 3,
+      "x": 192,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    {
+      "name": "knight_left",
+      "dir": "W",
+      "label": "left",
+      "angle": 90,
+      "index": 4,
+      "x": 256,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    {
+      "name": "knight_up_left",
+      "dir": "NW",
+      "label": "up_left",
+      "angle": 135,
+      "index": 5,
+      "x": 320,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    {
+      "name": "knight_up",
+      "dir": "N",
+      "label": "up",
+      "angle": 180,
+      "index": 6,
+      "x": 384,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    {
+      "name": "knight_up_right",
+      "dir": "NE",
+      "label": "up_right",
+      "angle": 225,
+      "index": 7,
+      "x": 448,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    }
+  ],
+  "pivot_origin": "top_left",
+  "pivot_norm": [
+    0.5,
+    0.8125
+  ]
+}

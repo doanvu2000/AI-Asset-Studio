@@ -27,6 +27,34 @@ import {
 } from '../types'
 import { renderArt, renderPreviewB64 } from './art'
 import { MOCK_KINDS, MOCK_PRESETS, mockValidate, stepDeps } from './catalog'
+import sampleGlbUrl from './assets/sample-prop.glb?url'
+import sheetPngUrl from './assets/sample-sheet.png?url'
+import sheetJsonUrl from './assets/sample-sheet.json?url'
+import heroJsonUrl from './assets/hero.json?url'
+import heroAtlasUrl from './assets/hero.atlas?url'
+import heroPngUrl from './assets/hero.png?url'
+import heroSetupUrl from './assets/hero-setup.webp?url'
+
+interface Samples {
+  glb: BlobRef
+  sheet: BlobRef
+  sheetMeta: BlobRef
+  skeleton: BlobRef
+  atlas: BlobRef
+  texture: BlobRef
+  setup: BlobRef
+}
+
+function mergeOutputs(list: Outputs[]): Outputs {
+  const out: Outputs = {}
+  for (const o of list) for (const [k, v] of Object.entries(o)) out[k] = [...(out[k] ?? []), ...v]
+  return out
+}
+
+function uniqueBlobs(list: BlobRef[]): BlobRef[] {
+  const seen = new Set<string>()
+  return list.filter((b) => !seen.has(b.hash) && !!seen.add(b.hash))
+}
 
 interface MockStepDef {
   id: string
@@ -107,6 +135,63 @@ const RECIPES: MockRecipe[] = [
       { id: 'mirror', kind: 'op.mirror_dirs', lane: 'cpu', deps: ['render'], params: () => ({ count: 8 }) },
       { id: 'approve', kind: 'gate.approve', lane: 'none', deps: ['mirror'] },
       { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['approve'], params: (i) => ({ cols: 8, cell: 256, preset: i.preset }), raw: { cols: 8, cell: 256, preset: '${inputs.preset}' } }
+    ]
+  },
+  {
+    info: {
+      id: 'prop-3d',
+      name: 'Prop 3D (TRELLIS → GLB)',
+      description: 'Text → concept → chọn → TRELLIS mesh có texture → Blender dọn mesh → kiểm GLB → turntable → duyệt',
+      hash: 'b3c0pr0p3d',
+      inputs: { prompt: { type: 'text', label: 'Prompt', required: true }, faces: { type: 'int', default: 30000, min: 2000, max: 200000, label: 'Số mặt' } },
+      steps: []
+    },
+    defs: [
+      { id: 'concept', kind: 'comfy.t2i_zimage_turbo', lane: 'gpu', deps: [] },
+      { id: 'pick', kind: 'gate.pick', lane: 'none', deps: ['concept'], params: () => ({ k: 1 }) },
+      { id: 'mesh', kind: 'comfy.img2mesh_trellis2_textured', lane: 'gpu', deps: ['pick'], in: { image: 'pick.images' } },
+      { id: 'cleanup', kind: 'blender.cleanup', lane: 'blender', deps: ['mesh'], in: { mesh: 'mesh.meshes' }, params: (i) => ({ target_faces: i.faces, origin: 'feet' }) },
+      { id: 'validate', kind: 'op.glb_validate', lane: 'cpu', deps: ['cleanup'], in: { mesh: 'cleanup.meshes' }, params: () => ({ require_textures: true }) },
+      { id: 'turntable', kind: 'blender.render_dirs', lane: 'blender', deps: ['validate'], in: { mesh: 'validate.meshes' }, params: () => ({ count: 16, res: 256, elevation: 20 }) },
+      { id: 'approve', kind: 'gate.approve', lane: 'none', deps: ['validate', 'turntable'], in: { meshes: 'validate.meshes', preview: 'turntable.images' } }
+    ]
+  },
+  {
+    info: {
+      id: 'sprite-8dir-3d',
+      name: 'Sprite 8 hướng (3D)',
+      description: 'Text → concept → chọn → TRELLIS mesh → Blender dọn mesh → render 8 hướng ortho → thu nhỏ 2× → sprite sheet + JSON',
+      hash: 'b3c08d3d05',
+      inputs: { prompt: { type: 'text', label: 'Prompt', required: true }, preset: { type: 'preset', default: 'godot', label: 'Preset xuất' } },
+      steps: []
+    },
+    defs: [
+      { id: 'concept', kind: 'comfy.t2i_zimage_turbo', lane: 'gpu', deps: [] },
+      { id: 'pick', kind: 'gate.pick', lane: 'none', deps: ['concept'], params: () => ({ k: 1 }) },
+      { id: 'mesh', kind: 'comfy.img2mesh_trellis2_textured', lane: 'gpu', deps: ['pick'], in: { image: 'pick.images' } },
+      { id: 'cleanup', kind: 'blender.cleanup', lane: 'blender', deps: ['mesh'], in: { mesh: 'mesh.meshes' } },
+      { id: 'render', kind: 'blender.render_dirs', lane: 'blender', deps: ['cleanup'], in: { mesh: 'cleanup.meshes' }, params: () => ({ count: 8, elevation: 30, res: 256 }) },
+      { id: 'down', kind: 'op.downscale', lane: 'cpu', deps: ['render'], params: () => ({ factor: 2, resample: 'box' }) },
+      { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['down'], in: { images: 'down.images', pivot: 'render.meta' }, params: (i) => ({ cols: 8, preset: i.preset }), raw: { cols: 8, preset: '${inputs.preset}' } }
+    ]
+  },
+  {
+    info: {
+      id: 'spine-character',
+      name: 'Nhân vật Spine (R&D)',
+      description: 'Prompt → concept T-pose → chọn → tách nền → tách part → layers → Spine 4.2 (JSON + atlas + png) → duyệt',
+      hash: 'b3c0sp1ne6',
+      inputs: { prompt: { type: 'text', label: 'Nhân vật', required: true }, name: { type: 'text', default: 'character', label: 'Tên skeleton' } },
+      steps: []
+    },
+    defs: [
+      { id: 'concept', kind: 'comfy.t2i_zimage_turbo', lane: 'gpu', deps: [] },
+      { id: 'pick', kind: 'gate.pick', lane: 'none', deps: ['concept'], params: () => ({ k: 1 }) },
+      { id: 'rmbg', kind: 'comfy.remove_bg_birefnet', lane: 'gpu', deps: ['pick'], in: { image: 'pick.images' } },
+      { id: 'parts', kind: 'op.parts', lane: 'cpu', deps: ['rmbg'], in: { image: 'rmbg.images' } },
+      { id: 'layers', kind: 'op.layers', lane: 'cpu', deps: ['parts'], in: { image: 'rmbg.images', labels: 'parts.labels', parts: 'parts.meta' }, params: () => ({ rig: 'auto', fill: true }) },
+      { id: 'export', kind: 'op.spine_export', lane: 'cpu', deps: ['layers'], in: { layers: 'layers.layers', meta: 'layers.meta' }, params: (i) => ({ name: i.name, animations: true }) },
+      { id: 'approve', kind: 'gate.approve', lane: 'none', deps: ['export'], in: { skeleton: 'export.skeleton', atlas: 'export.atlas', texture: 'export.texture', preview: 'export.preview' } }
     ]
   }
 ]
@@ -209,6 +294,7 @@ export class MockCore implements StudioApi, EventStream {
   private userRecipes = new Map<string, MockRecipe>()
   private userPresets = new Map<string, ExportPreset>()
   private ready: Promise<void>
+  private samples: Samples | null = null
 
   constructor() {
     this.ready = this.seed()
@@ -243,6 +329,65 @@ export class MockCore implements StudioApi, EventStream {
     const ref: BlobRef = { hash: hex(), mime: blob.type, size: blob.size, width: size, height: size, name: opts.name ?? `${seed}.${blob.type.split('/')[1]}` }
     this.blobs.set(ref.hash, { url: URL.createObjectURL(blob), seed, ref })
     return ref
+  }
+
+  private async sampleBlob(url: string, name: string, mime: string, w?: number, h?: number): Promise<BlobRef> {
+    const size = (await (await fetch(url)).blob()).size
+    const ref: BlobRef = { hash: hex(), mime, size, width: w ?? null, height: h ?? null, name }
+    this.blobs.set(ref.hash, { url, seed: 7, ref })
+    return ref
+  }
+
+  private async loadSamples(): Promise<Samples> {
+    const [glb, sheet, sheetMeta, skeleton, atlas, texture, setup] = await Promise.all([
+      this.sampleBlob(sampleGlbUrl, 'crystal_pedestal_clean.glb', 'model/gltf-binary'),
+      this.sampleBlob(sheetPngUrl, 'knight_sheet.png', 'image/png', 512, 64),
+      this.sampleBlob(sheetJsonUrl, 'sheet.json', 'application/json'),
+      this.sampleBlob(heroJsonUrl, 'hero.json', 'application/json'),
+      this.sampleBlob(heroAtlasUrl, 'hero.atlas', 'text/plain'),
+      this.sampleBlob(heroPngUrl, 'hero.png', 'image/png', 512, 512),
+      this.sampleBlob(heroSetupUrl, 'setup_pose.webp', 'image/webp', 384, 384)
+    ])
+    return { glb, sheet, sheetMeta, skeleton, atlas, texture, setup }
+  }
+
+  private sampleOutputs(kind: string): Outputs | null {
+    const x = this.samples
+    if (!x) return null
+    if (kind === 'comfy.img2mesh_trellis2_textured' || kind === 'blender.cleanup' || kind === 'op.glb_validate') return { meshes: [x.glb] }
+    if (kind === 'op.sheet') return { sheet: [x.sheet], meta: [x.sheetMeta] }
+    if (kind === 'op.spine_export') return { skeleton: [x.skeleton], atlas: [x.atlas], texture: [x.texture], preview: [x.setup] }
+    return null
+  }
+
+  // Finished (or gate-paused) runs of the 3D / sprite / Spine recipes so every viewer has something to open.
+  private seedShowcase(recipeId: string, title: string, created: number, outs: Record<string, Outputs>, publish: BlobRef[], awaitAt?: string): void {
+    const recipe = this.builtins.get(recipeId)!
+    const run = this.newRun(recipe, { prompt: title }, title, created)
+    const steps = this.createSteps(run, recipe)
+    const byKey = new Map(steps.map((s) => [s.key, s]))
+    let t = created
+    for (const s of steps) {
+      s.inputs = mergeOutputs(s.deps.map((d) => byKey.get(d)?.outputs ?? {}))
+      s.started_at = t
+      if (s.key === awaitAt) {
+        s.status = 'awaiting_human'
+        s.meta = { gate: 'approve' }
+        run.status = 'awaiting_human'
+        return
+      }
+      t += 3 + Math.random() * 40
+      s.status = 'succeeded'
+      s.ended_at = t
+      s.progress = 1
+      s.outputs = outs[s.key] ?? (s.kind === 'gate.approve' ? s.inputs : {})
+    }
+    run.status = 'succeeded'
+    run.ended_at = t
+    for (const b of publish) {
+      const v: VersionRow = { id: uid('ver'), project_id: 'default', asset_name: title, run_id: run.id, step_id: steps[steps.length - 1]!.id, blob: b, status: 'draft', created_at: t }
+      this.versionMap.set(v.id, v)
+    }
   }
 
   private seedOf(hash: string): number {
@@ -325,6 +470,15 @@ export class MockCore implements StudioApi, EventStream {
       }
     }
 
+    const x = (this.samples = await this.loadSamples())
+    const propOuts: Record<string, Outputs> = { concept: { images: pool.slice(6, 10) }, pick: { images: [pool[6]!] }, mesh: { meshes: [x.glb] }, cleanup: { meshes: [x.glb] }, validate: { meshes: [x.glb] }, turntable: { images: pool.slice(0, 6) } }
+    this.seedShowcase('prop-3d', 'Bệ pha lê', t0 - 900, propOuts, [x.glb])
+    this.seedShowcase('sprite-8dir-3d', 'Hiệp sĩ 8 hướng', t0 - 1500, { concept: { images: pool.slice(10, 14) }, pick: { images: [pool[10]!] }, mesh: { meshes: [x.glb] }, cleanup: { meshes: [x.glb] }, render: { images: pool.slice(0, 8) }, down: { images: pool.slice(0, 8) }, sheet: { sheet: [x.sheet], meta: [x.sheetMeta] } }, [x.sheet, x.sheetMeta])
+    const spineOuts: Record<string, Outputs> = { concept: { images: pool.slice(2, 6) }, pick: { images: [pool[2]!] }, rmbg: { images: [pool[2]!] }, parts: { preview: [pool[3]!] }, layers: { preview: [pool[4]!] }, export: { skeleton: [x.skeleton], atlas: [x.atlas], texture: [x.texture], preview: [x.setup] } }
+    this.seedShowcase('spine-character', 'Hiệp sĩ Spine', t0 - 2100, spineOuts, [x.skeleton, x.atlas, x.texture, x.setup])
+    this.seedShowcase('spine-character', 'Hiệp sĩ Spine (chờ duyệt)', t0 - 300, spineOuts, [], 'approve')
+    this.seedShowcase('prop-3d', 'Bệ pha lê (chờ duyệt)', t0 - 240, propOuts, [], 'approve')
+
     // A live run occupying the GPU so a new run visibly waits for the lane, plus one gate waiting for a pick.
     void this.startRun({ recipe_id: 'concept-2d', inputs: { prompt: 'Kiếm pha lê xanh, low-poly', count: 4, size: 512, seed: -1 }, title: 'Kiếm pha lê xanh' })
     const gateRun = await this.startRun({ recipe_id: 'concept-2d-codex', inputs: { prompt: 'Bình thuốc tím phát sáng', count: 4, transparent: true }, title: 'Bình thuốc tím' })
@@ -399,7 +553,7 @@ export class MockCore implements StudioApi, EventStream {
     for (const s of steps) {
       if (s.status !== 'pending') continue
       if (s.deps.every((d) => STEP_DONE_OK.has(byKey.get(d)?.status ?? 'pending'))) {
-        s.inputs = { images: s.deps.flatMap((d) => byKey.get(d)?.outputs.images ?? []) }
+        s.inputs = mergeOutputs(s.deps.map((d) => byKey.get(d)?.outputs ?? {}))
         void this.execStep(s)
       }
     }
@@ -409,7 +563,7 @@ export class MockCore implements StudioApi, EventStream {
     if (steps.every((s) => STEP_DONE_OK.has(s.status))) {
       this.patchRun(run, { status: 'succeeded', ended_at: now() })
       const last = steps[steps.length - 1]!
-      for (const b of last.outputs.images ?? last.outputs.sheet ?? []) {
+      for (const b of uniqueBlobs(Object.values(last.outputs).flat())) {
         const v: VersionRow = { id: uid('ver'), project_id: 'default', asset_name: run.title || run.recipe_id, run_id: run.id, step_id: last.id, blob: b, status: 'draft', created_at: now() }
         this.versionMap.set(v.id, v)
         this.emit('version.updated', v, run.id)
@@ -446,7 +600,7 @@ export class MockCore implements StudioApi, EventStream {
     }
 
     if (s.lane === 'none') {
-      const candidates = s.inputs.images ?? []
+      const candidates = s.kind === 'gate.pick' ? (s.inputs.images ?? []) : uniqueBlobs(Object.values(s.inputs).flat())
       const kind = s.kind === 'gate.pick' ? 'pick' : 'approve'
       this.patchStep(s, { status: 'awaiting_human', started_at: now(), meta: { gate: kind } })
       this.emit('gate.awaiting', { kind, k: kind === 'pick' ? Number(s.params.k ?? 0) : 0, candidates }, s.run_id, s.id)
@@ -559,9 +713,11 @@ export class MockCore implements StudioApi, EventStream {
       this.checkCancel(s)
       this.progress(s, i, steps, s.kind.split('.')[1] ?? s.kind)
     }
+    const sample = this.sampleOutputs(s.kind)
+    if (sample) return sample
     const out: BlobRef[] = []
     for (let i = 0; i < n; i++) out.push(await this.makeBlob(Math.floor(Math.random() * 1e6), { size, transparent: true }))
-    return s.kind === 'op.sheet' ? { sheet: out } : { images: out }
+    return { images: out }
   }
 
   private tickResources(): void {

@@ -1,0 +1,160 @@
+.vw {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  isolation: isolate;
+}
+.vw-backdrop {
+  background:
+    radial-gradient(120% 90% at 50% 30%, var(--bg-elevated) 0%, transparent 70%),
+    var(--bg-sunken);
+}
+.vw-fade {
+  opacity: 0;
+  transition: opacity var(--t-slow) var(--ease-out);
+}
+.vw-fade.in {
+  opacity: 1;
+}
+.vw-state {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-2);
+}
+.vw-state .spin {
+  color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+.vw-state.err {
+  color: var(--st-fail);
+}
+.vw-state .msg {
+  max-width: 360px;
+  color: var(--text-2);
+  font-size: var(--fs-callout);
+  user-select: text;
+}
+.vw-glass {
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+  backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: var(--shadow-1), var(--hairline);
+}
+.vw-bar {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 24px);
+}
+.vw-bar .sep {
+  width: 0.5px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--separator-strong);
+}
+.vw-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-callout);
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color var(--t-fast) var(--ease-out),
+    color var(--t-fast),
+    transform var(--t-fast) var(--ease-spring);
+}
+.vw-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.vw-btn:active {
+  transform: scale(0.94);
+}
+.vw-btn[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.vw-btn svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.vw-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.vw-chip {
+  position: absolute;
+  z-index: 3;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  max-width: calc(100% - 24px);
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: var(--fs-caption);
+  color: var(--text-2);
+}
+.vw-chip b {
+  color: var(--text);
+  font-weight: 650;
+}
+.vw-range {
+  width: 92px;
+  accent-color: var(--accent);
+}
+.vw-swap-enter-active,
+.vw-swap-leave-active {
+  transition: opacity var(--t-base) var(--ease-out);
+}
+.vw-swap-enter-from,
+.vw-swap-leave-to {
+  opacity: 0;
+}
+.vw-rise-enter-active {
+  transition:
+    opacity var(--t-base) var(--ease-out),
+    transform var(--t-slow) var(--ease-spring);
+}
+.vw-rise-leave-active {
+  transition: opacity var(--t-fast) var(--ease-in);
+}
+.vw-rise-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.vw-bar.vw-rise-enter-from {
+  transform: translate(-50%, 6px);
+}
+.vw-rise-leave-to {
+  opacity: 0;
+}

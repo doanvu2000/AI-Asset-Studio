@@ -5,7 +5,11 @@ import { useElementSize, onKeyStroke } from '@vueuse/core'
 import { ART } from '@/assets/art'
 import { Check, ExternalLink, LoaderCircle, ThumbsDown, ThumbsUp } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
-import BlobImage from '@/components/BlobImage.vue'
+import BlobThumb from '@/components/BlobThumb.vue'
+import Lightbox from '@/components/Lightbox.vue'
+import AssetViewer from '@/components/viewers/AssetViewer.vue'
+import { featuredAsset } from '@/components/viewers/detect'
+import type { BlobRef } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import { useGates, type GateItem } from '@/stores/gates'
 import { useRuns } from '@/stores/runs'
@@ -53,8 +57,16 @@ function runTitle(g: GateItem): string {
   return runs.runs.get(g.runId)?.title || 'Run'
 }
 
+const featured = computed(() => (current.value?.kind === 'approve' ? featuredAsset(candidates.value) : null))
+const lightbox = ref<BlobRef | null>(null)
+
 function toggle(i: number): void {
   const b = candidates.value[i]
+  if (b && current.value?.kind === 'approve') {
+    focus.value = i
+    lightbox.value = b
+    return
+  }
   if (!b || current.value?.kind !== 'pick') return
   focus.value = i
   const next = new Set(picked.value)
@@ -97,7 +109,7 @@ function inField(e: KeyboardEvent): boolean {
 }
 
 onKeyStroke(true, (e) => {
-  if (!current.value || inField(e) || e.ctrlKey || e.metaKey || e.altKey) return
+  if (!current.value || lightbox.value || inField(e) || e.ctrlKey || e.metaKey || e.altKey) return
   const n = candidates.value.length
   if (/^[1-9]$/.test(e.key)) {
     const i = Number(e.key) - 1
@@ -164,7 +176,11 @@ onKeyStroke(true, (e) => {
               <RouterLink :to="`/runs/${current.runId}`" class="btn btn-plain"><ExternalLink /> Xem run</RouterLink>
             </header>
 
-            <div ref="grid" class="sheet" role="listbox" :aria-multiselectable="need !== 1" :aria-label="instruction">
+            <div v-if="featured" class="feature card">
+              <AssetViewer :key="featured.blob.hash" :view="featured" />
+            </div>
+
+            <div ref="grid" class="sheet" :class="{ strip: featured }" role="listbox" :aria-multiselectable="need !== 1" :aria-label="instruction">
               <button
                 v-for="(b, i) in candidates"
                 :key="b.hash"
@@ -176,7 +192,7 @@ onKeyStroke(true, (e) => {
                 @click="toggle(i)"
                 @dblclick="need === 1 && (toggle(i), resolve())"
               >
-                <BlobImage :hash="b.hash" :size="384" />
+                <BlobThumb :blob="b" :size="featured ? 192 : 384" />
                 <span v-if="i < 9" class="kbd idx">{{ i + 1 }}</span>
                 <Transition name="pop">
                   <span v-if="picked.has(b.hash)" class="tick"><Check :size="14" :stroke-width="3" /></span>
@@ -207,6 +223,7 @@ onKeyStroke(true, (e) => {
         </Transition>
       </section>
     </div>
+    <Lightbox :blob="lightbox" :siblings="candidates" @close="lightbox = null" />
   </div>
 </template>
 
@@ -285,6 +302,19 @@ onKeyStroke(true, (e) => {
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 14px;
   align-content: start;
+}
+.feature {
+  flex: 1 1 auto;
+  min-height: 300px;
+  margin: 4px 24px 0;
+  overflow: hidden;
+  animation: fade-up var(--t-slow) var(--ease-out) backwards;
+}
+.sheet.strip {
+  flex: 0 0 auto;
+  max-height: 200px;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 10px;
 }
 .tile {
   position: relative;

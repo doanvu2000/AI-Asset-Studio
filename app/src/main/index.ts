@@ -36,7 +36,8 @@ function csp(): string {
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' data: blob: http://127.0.0.1:*`,
     "font-src 'self' data:",
-    `connect-src 'self' ${local}${devExtra}`,
+    // three.js GLTFLoader fetches embedded textures through blob: URLs.
+    `connect-src 'self' blob: data: ${local}${devExtra}`,
     "base-uri 'none'",
     "form-action 'none'",
     "frame-ancestors 'none'",

@@ -42,6 +42,19 @@ export const MOCK_KINDS: KindInfo[] = [
     asset: text('Tên asset (đặt tên khung)')
   }),
   k('op.glb_validate', 'cpu', 'Kiểm tra GLB', { mesh: 'mesh' }, { meshes: 'mesh' }, { require_textures: bool(true, 'Bắt buộc texture') }),
+  k('op.parts', 'cpu', 'Tách part (rig 2D)', { image: 'image', masks: 'image[]' }, { meta: 'json', labels: 'image', preview: 'image' }, {
+    roles: { type: 'list', default: ['head', 'torso', 'arm', 'hand', 'leg', 'cape'], label: 'Vai trò của từng mask' }
+  }),
+  k('op.layers', 'cpu', 'Tách layer & khớp', { image: 'image', labels: 'image', parts: 'json', bones: 'json' }, { layers: 'image[]', meta: 'json', preview: 'image', holes: 'image[]' }, {
+    rig: choice(['claude', 'auto'], 'claude', 'Đặt khớp'),
+    fill: bool(true, 'Tạo vùng cần vá ở khớp'),
+    overlap: float(0.6, 'Độ chồng ở khớp', { min: 0.2, max: 1.5 })
+  }),
+  k('op.spine_export', 'cpu', 'Xuất Spine 4.2', { layers: 'image[]', meta: 'json', holes: 'image[]', fills: 'image[]', image: 'image' }, { skeleton: 'json', atlas: 'text', texture: 'image', preview: 'image', html: 'text', report: 'json', frames: 'image' }, {
+    name: text('Tên skeleton', { default: 'character' }),
+    animations: bool(true, 'Thêm anim idle/relax'),
+    padding: int(2, 'Khoảng cách atlas', { min: 0, max: 32 })
+  }),
   k('codex.image', 'cloud', 'Sinh ảnh (Codex)', { refs: 'image[]' }, { images: 'image[]' }, {
     prompt: text('Prompt', { multiline: true }),
     count: int(1, 'Số ảnh', { min: 1, max: 4 }),

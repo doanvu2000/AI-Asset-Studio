@@ -101,6 +101,15 @@ const KIND_NAMES: Record<string, string> = {
   'op.trim_pad_resize': 'Cắt viền & căn cỡ',
   'op.sheet': 'Ghép sprite sheet',
   'op.mirror_dirs': 'Lật thành 8 hướng',
+  'comfy.img2mesh_trellis2_textured': 'Dựng mesh (TRELLIS)',
+  'comfy.segment_sam3': 'Tách part (SAM 3.1)',
+  'comfy.inpaint_flux2_klein4b': 'Vá ảnh (Flux2 Klein)',
+  'blender.cleanup': 'Dọn mesh (Blender)',
+  'op.glb_validate': 'Kiểm tra GLB',
+  'op.downscale': 'Thu nhỏ',
+  'op.parts': 'Tách part (rig 2D)',
+  'op.layers': 'Tách layer & khớp',
+  'op.spine_export': 'Xuất Spine 4.2',
   'gate.pick': 'Chọn ảnh',
   'gate.approve': 'Duyệt kết quả'
 }

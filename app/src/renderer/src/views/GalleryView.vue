@@ -6,7 +6,7 @@ import { Check, X } from '@lucide/vue'
 import { ART } from '@/assets/art'
 import type { BlobRef, VersionRow, VersionStatus } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
-import BlobImage from '@/components/BlobImage.vue'
+import BlobThumb from '@/components/BlobThumb.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import Lightbox from '@/components/Lightbox.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
@@ -73,6 +73,13 @@ async function set(v: VersionRow, action: 'approve' | 'reject'): Promise<void> {
 }
 
 const lightbox = ref<BlobRef | null>(null)
+const lightboxRun = ref('')
+// Sibling versions of the same run let the viewer pair a sheet with its JSON or a Spine skeleton with its atlas.
+const siblings = computed(() => (lightboxRun.value ? versions.list.filter((v) => v.run_id === lightboxRun.value).map((v) => v.blob) : []))
+function open(v: VersionRow): void {
+  lightboxRun.value = v.run_id
+  lightbox.value = v.blob
+}
 </script>
 
 <template>
@@ -113,8 +120,8 @@ const lightbox = ref<BlobRef | null>(null)
           }"
         >
           <article v-for="v in rowItems(r.index)" :key="v.id" class="tile" :class="`vs-${v.status}`">
-            <button class="img-btn" :aria-label="`Xem ${v.asset_name}`" @click="lightbox = v.blob">
-              <BlobImage :hash="v.blob.hash" :size="256" />
+            <button class="img-btn" :aria-label="`Xem ${v.asset_name}`" @click="open(v)">
+              <BlobThumb :blob="v.blob" :size="256" />
             </button>
             <div class="meta">
               <div class="m1">
@@ -151,7 +158,7 @@ const lightbox = ref<BlobRef | null>(null)
         </div>
       </div>
     </div>
-    <Lightbox :blob="lightbox" @close="lightbox = null" />
+    <Lightbox :blob="lightbox" :siblings="siblings" @close="lightbox = null" />
   </div>
 </template>
 

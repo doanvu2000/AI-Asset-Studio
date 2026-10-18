@@ -7,7 +7,9 @@ import PageHeader from '@/components/PageHeader.vue'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
 import StepChip from '@/components/StepChip.vue'
 import ElapsedTimer from '@/components/ElapsedTimer.vue'
-import BlobImage from '@/components/BlobImage.vue'
+import BlobThumb from '@/components/BlobThumb.vue'
+import AssetViewer from '@/components/viewers/AssetViewer.vue'
+import { featuredAsset } from '@/components/viewers/detect'
 import Lightbox from '@/components/Lightbox.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -145,7 +147,13 @@ function selectByKey(key: string): void {
 }
 
 const lightbox = ref<BlobRef | null>(null)
-const isImage = (b: BlobRef): boolean => b.mime.startsWith('image/')
+const selBlobs = computed(() => (sel.value ? [...Object.values(sel.value.outputs), ...Object.values(sel.value.inputs)].flat() : []))
+const selFeatured = computed(() => {
+  const s = sel.value
+  if (!s) return null
+  if (STEP_DONE_OK.has(s.status)) return featuredAsset(Object.values(s.outputs).flat())
+  return s.status === 'awaiting_human' ? featuredAsset(Object.values(s.inputs).flat()) : null
+})
 </script>
 
 <template>
@@ -276,12 +284,15 @@ const isImage = (b: BlobRef): boolean => b.mime.startsWith('image/')
 
             <p v-else class="caption">{{ STEP_LABEL[sel.status] }}</p>
 
+            <div v-if="selFeatured" class="feature card">
+              <AssetViewer :key="selFeatured.blob.hash" :view="selFeatured" compact />
+            </div>
+
             <div v-for="[name, list] in selOutputs" :key="`o-${name}`" class="group">
               <h3 class="section-label">Đầu ra · {{ name }} <span class="num">({{ list.length }})</span></h3>
               <div v-auto-animate class="thumbs">
                 <button v-for="b in list" :key="b.hash" class="thumb" :title="b.name ?? b.hash" @click="lightbox = b">
-                  <BlobImage v-if="isImage(b)" :hash="b.hash" :size="256" />
-                  <span v-else class="file caption">{{ b.name ?? b.mime }}</span>
+                  <BlobThumb :blob="b" :size="256" />
                 </button>
               </div>
             </div>
@@ -290,8 +301,7 @@ const isImage = (b: BlobRef): boolean => b.mime.startsWith('image/')
               <h3 class="section-label">Đầu vào · {{ name }}</h3>
               <div class="thumbs small">
                 <button v-for="b in list" :key="b.hash" class="thumb" @click="lightbox = b">
-                  <BlobImage v-if="isImage(b)" :hash="b.hash" :size="128" />
-                  <span v-else class="file caption">{{ b.name ?? b.mime }}</span>
+                  <BlobThumb :blob="b" :size="128" />
                 </button>
               </div>
             </div>
@@ -312,7 +322,7 @@ const isImage = (b: BlobRef): boolean => b.mime.startsWith('image/')
       </section>
     </div>
 
-    <Lightbox :blob="lightbox" @close="lightbox = null" />
+    <Lightbox :blob="lightbox" :siblings="selBlobs" @close="lightbox = null" />
   </div>
 </template>
 
@@ -554,12 +564,10 @@ const isImage = (b: BlobRef): boolean => b.mime.startsWith('image/')
 .thumb:hover {
   transform: scale(1.02);
 }
-.file {
-  display: grid;
-  place-items: center;
-  aspect-ratio: 1;
-  padding: 8px;
-  background: var(--bg-sunken);
+.feature {
+  height: 360px;
+  overflow: hidden;
+  animation: fade-up var(--t-slow) var(--ease-out) backwards;
 }
 .logs {
   list-style: none;
