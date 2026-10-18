@@ -69,4 +69,13 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   + workflow `img2mesh_trellis2_mv_textured` (ngoài repo). Qwen đôi khi vẽ góc 90° nằm ngang → gate `check` duyệt góc.
   RAM: multi-view ăn ~24GB host → `_restart_before` khởi động lại ComfyUI trước bước mesh. Live r5mv5 OK 325s
   (mesh 201s), không MemoryError; Qwen lại vẽ góc trái nằm ngang nhưng mesh vẫn tốt hơn single-view.
-- Tiếp: agent làm auto-check góc Qwen (view nằm ngang → sinh lại seed khác) thay cho duyệt tay.
+- Auto-check góc Qwen (`15b35fb`): op.view_check + views.qwen_checked (sinh lại tối đa 3, rồi bỏ góc), gate `enabled`,
+  R5-mv `review_views` mặc định tắt. Live 3/3 succeeded, 2 lần sinh lại 1 góc. pytest 212.
+  Mở: wizard ra mesh hỏng dù góc qua check (các góc lệch nhau: gậy đổi tay) → cần check nhất quán (màu/part hoặc VLM).
+
+## Việc còn mở (ưu tiên)
+1. Chủ nhân build thử `cd app && npm run dist` (P7 chưa build).
+2. Check nhất quán giữa các góc Qwen (VLM Claude haiku so 4 góc) cho R5-mv.
+3. Sprite + Spine viewer mới kiểm mock, chưa kiểm với core thật.
+4. R7 reviewer khắt khe (thường đủ 3 vòng); procedural_3d không giữ lane BLENDER.
+5. Push lên remote khi chủ nhân bảo.
