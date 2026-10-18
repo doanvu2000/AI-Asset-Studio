@@ -1,6 +1,6 @@
 # PROGRESS — nhật ký làm việc (resume sau crash)
 
-Session mới: đọc file này TRƯỚC, rồi `git log --oneline -10` + `git status`. Cập nhật mỗi khi xong 1 bước / commit.
+Session mới: đọc `.planning/HANDOFF-2026-10-18-1810.md` rồi file này TRƯỚC, rồi `git log --oneline -10` + `git status`. Cập nhật mỗi khi xong 1 bước / commit.
 Lộ trình đầy đủ: `PLAN-architecture-v2.md` §5. Chủ nhân cho phép commit dần (không push, không trailer Co-Authored-By).
 
 ## Trạng thái phase
