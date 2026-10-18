@@ -1,0 +1,65 @@
+id: sprite-8dir-3d-mv
+name: Sprite 8 hướng (3D, multi-view)
+description: >-
+  Text → concept → chọn → Qwen dựng thêm 3 góc (trái 90°, sau 180°, phải 270°) → duyệt góc → TRELLIS multi-view
+  (Pixal3D multiview 4 góc, mặt sau theo ảnh Qwen thay vì đoán) → Blender dọn mesh → render 8 hướng ortho → thu nhỏ 2×
+  → sprite sheet + JSON. Góc Qwen hay hỏng (nhân vật nằm ngang) — từ chối rồi chạy lại bước views. Tốn RAM (~28 GB đỉnh).
+inputs:
+  prompt: {type: text, label: Prompt}
+  elevation: {type: int, default: 30, options: [30, 45, 60, 90], label: Góc nghiêng}
+  res: {type: int, default: 256, options: [64, 128, 256, 512], label: Kích thước frame}
+  mirror: {type: bool, default: false, label: Lật gương (5 hướng → 8)}
+  faces: {type: int, default: 30000, min: 2000, max: 200000, label: Số mặt}
+  preset: {type: preset, default: studio, label: Preset xuất}
+steps:
+  - id: concept
+    kind: comfy.t2i_zimage_turbo
+    params: {"57:27.text": "${inputs.prompt}, single full-body character, front view facing the camera, standing upright, whole figure visible head to feet, isolated on plain white background, centered, game asset",
+             "57:13.batch_size": 4}
+  - id: pick
+    kind: gate.pick
+    in: {images: concept.images}
+    params: {k: 1}
+  - id: views
+    kind: comfy.multi_angles_qwen2511
+    in: {image: pick.images}
+    # Kept outputs in index order: 376 (branch 271), 379 (296), 381 (371) → left, back, right of the Pixal3D rig.
+    # "Camera 90° to the right" shows the character's left side (faces image-left), matching rig azimuth 90.
+    params:
+      "_drop_outputs": ["373", "374", "377", "380", "424"]
+      "427:271:253.prompt": "Rotate the camera 90 degrees to the right."
+      "427:296:278.prompt": "Rotate the camera 180 degrees to show the back view."
+      "427:371:353.prompt": "Rotate the camera 90 degrees to the left."
+  # Qwen sometimes returns a side view as the character lying down (2 of 3 live runs); a bad view wrecks the mesh, so
+  # review here and retry `views` on reject.
+  - id: check
+    kind: gate.approve
+    in: {images: views.images}
+  - id: mesh
+    kind: comfy.img2mesh_trellis2_mv_textured
+    in: {image: [pick.images, check.images]}
+    params: {"186.target_face_count": "${inputs.faces}", "288.value": 2048, "94.target_resolution": 1024, "241.resolution": 512, _free_before: true, _timeout_s: 900}
+  - id: cleanup
+    kind: blender.cleanup
+    in: {mesh: mesh.meshes}
+    params: {target_faces: "${inputs.faces}", height: 1.0, origin: feet, upright: none}
+  - id: render
+    kind: blender.render_dirs
+    in: {mesh: cleanup.meshes}
+    params: {count: 8, elevation: "${inputs.elevation}", res: "${inputs.res}", supersample: 2, mirror: "${inputs.mirror}"}
+  - id: dirs
+    kind: op.mirror_dirs
+    in: {images: render.images}
+    params: {count: 8}
+  - id: down
+    kind: op.downscale
+    in: {images: dirs.images}
+    params: {factor: 2, resample: box}
+  - id: sheet
+    kind: op.sheet
+    in: {images: down.images, pivot: render.meta}
+    params: {cols: 8, order: [0, 45, 90, 135, 180, 225, 270, 315], preset: "${inputs.preset}"}
+outputs:
+  final: sheet.sheet
+  meta: sheet.meta
+  frames: down.images
