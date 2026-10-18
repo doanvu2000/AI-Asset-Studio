@@ -328,6 +328,23 @@ export class CoreSupervisor extends EventEmitter {
     }
   }
 
+  /** User-requested restart: skips any pending backoff and starts over with a fresh failure count. */
+  restart(): Promise<void> {
+    if (this.opts.mock) return Promise.resolve()
+    this.restarting ??= (async () => {
+      this.emit('log', 'info', 'restart requested by user')
+      await this.stop()
+      this.stopping = false
+      this.failures = 0
+      this.lastMessage = undefined
+      this.setStatus({ state: 'starting', attempt: this.status.attempt })
+      await this.connect()
+    })().finally(() => (this.restarting = null))
+    return this.restarting
+  }
+
+  private restarting: Promise<void> | null = null
+
   async hasActiveRuns(): Promise<boolean> {
     const c = this.connection
     if (!c || this.opts.mock) return false

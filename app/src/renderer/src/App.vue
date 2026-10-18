@@ -1,25 +1,32 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { MotionConfig } from 'motion-v'
 import { onKeyStroke } from '@vueuse/core'
 import AppSidebar from './components/AppSidebar.vue'
 import CoreBanner from './components/CoreBanner.vue'
 import CoreOffline from './components/CoreOffline.vue'
+import CommandPalette from './components/CommandPalette.vue'
 import ToastHost from './components/ToastHost.vue'
 import ResizeHandle from './components/ResizeHandle.vue'
 import { usePaneWidth } from './composables/paneSize'
+import { useShellIntegration } from './composables/shellIntegration'
 import { useConnection } from './stores/connection'
 
 const conn = useConnection()
 const router = useRouter()
+const route = useRoute()
 const SIDEBAR = { default: 232, min: 184, max: 320, rail: 60 }
 const sidebarW = usePaneWidth('sidebar', SIDEBAR.default)
 
 onMounted(() => void conn.init())
+useShellIntegration()
 
 // Before the first connection there is nothing to show, so a dead core gets the full screen instead of a banner.
-const offline = computed(() => !conn.core.mock && !conn.transport && ['error', 'restarting', 'stopped'].includes(conn.core.state))
+// Settings stays reachable though: it is where a broken tool path gets fixed.
+const offline = computed(
+  () => !conn.core.mock && !conn.transport && ['error', 'restarting', 'stopped'].includes(conn.core.state) && route.name !== 'settings'
+)
 
 const NAV = ['/', '/new', '/runs', '/gates', '/gallery', '/recipes', '/batch']
 onKeyStroke(
@@ -61,6 +68,7 @@ onKeyStroke(
       </main>
     </div>
     <ToastHost />
+    <CommandPalette />
   </MotionConfig>
 </template>
 

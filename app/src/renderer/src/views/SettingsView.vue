@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ArrowDown, ArrowUp, Copy, FolderCog, Lock, LoaderCircle, Plus, Save, ScrollText, Trash2 } from '@lucide/vue'
 import type { Compass, ExportPreset } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
@@ -29,8 +30,21 @@ const BEARING: Record<Compass, number> = { N: 0, NE: 45, E: 90, SE: 135, S: 180,
 const ANGLE: Record<Compass, number> = { S: 0, SW: 45, W: 90, NW: 135, N: 180, NE: 225, E: 270, SE: 315 }
 const COMPASS_VI: Record<Compass, string> = { N: 'Bắc', NE: 'Đông Bắc', E: 'Đông', SE: 'Đông Nam', S: 'Nam', SW: 'Tây Nam', W: 'Tây', NW: 'Tây Bắc' }
 
+const LAYOUT_VI = { row: '1 hàng', column: '1 cột', grid: 'lưới' } as const
+const presetSummary = (p: ExportPreset): string =>
+  [`${p.dir_order.length} hướng`, LAYOUT_VI[p.layout] ?? p.layout, p.pivot_origin === 'bottom_left' ? 'pivot dưới-trái' : 'pivot trên-trái'].join(' · ')
+
+const route = useRoute()
 const selectedId = ref<string>('studio')
 const pane = ref<'tools' | 'diag' | null>(null)
+// Deep links such as the offline screen's "Mở Cài đặt → Đường dẫn" (/settings?pane=tools).
+watch(
+  () => route.query.pane,
+  (q) => {
+    if (q === 'tools' || q === 'diag') pane.value = q
+  },
+  { immediate: true }
+)
 const draft = ref<ExportPreset | null>(null)
 const isNew = ref(false)
 const saving = ref(false)
@@ -170,11 +184,14 @@ async function remove(): Promise<void> {
           <ScrollText :size="13" class="lock" aria-hidden="true" />
           <span class="i-sub caption">Copy · xuất log khi báo lỗi</span>
         </button>
-        <p class="section-label pad sep">Preset xuất</p>
+        <div class="group-head">
+          <p class="section-label">Preset xuất sprite sheet</p>
+          <p class="caption">Thứ tự hướng, tên khung và pivot theo engine (Unity, Godot…). Chọn preset khi tạo sprite.</p>
+        </div>
         <button v-for="p in presets.list" :key="p.id" class="item" :class="{ on: !pane && !isNew && selectedId === p.id }" @click="pick(p.id)">
           <span class="i-name">{{ p.name }}</span>
           <Lock v-if="p.builtin" :size="12" class="lock" aria-label="Có sẵn" />
-          <span class="i-sub caption">{{ p.dir_order.slice(0, 4).join(' · ') }} …</span>
+          <span class="i-sub caption">{{ presetSummary(p) }}</span>
         </button>
         <div v-if="isNew && draft" class="item new" :class="{ on: !pane }">
           <span class="i-name">{{ draft.name }}</span>
@@ -194,7 +211,8 @@ async function remove(): Promise<void> {
         <div class="form">
           <header class="f-head">
             <div>
-              <h2 class="large-title">{{ draft.name }}</h2>
+              <p class="section-label eyebrow">Preset xuất sprite sheet</p>
+              <h2 class="content-title">{{ draft.name }}</h2>
               <p class="secondary">{{ readonly ? 'Preset có sẵn — nhân bản để chỉnh.' : draft.description || 'Preset của bạn' }}</p>
             </div>
             <div class="actions">
@@ -332,7 +350,25 @@ async function remove(): Promise<void> {
 }
 .i-sub {
   grid-column: 1 / -1;
-  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.group-head {
+  display: grid;
+  gap: 2px;
+  margin-top: 18px;
+  padding: 10px 8px 6px;
+  border-top: 0.5px solid var(--separator);
+}
+.eyebrow {
+  margin-bottom: 2px;
+}
+.content-title {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 28px;
+  letter-spacing: -0.015em;
 }
 .add {
   justify-self: start;

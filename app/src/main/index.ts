@@ -1,16 +1,17 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, session, shell, Tray, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, session, shell, Tray, type IpcMainInvokeEvent } from 'electron'
 import { existsSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, join, normalize, relative, resolve, sep } from 'node:path'
+import { copyFile, cp, mkdir, writeFile } from 'node:fs/promises'
+import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path'
 import { release } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import trayIconPath from '../../resources/tray.png?asset'
 import appIconPath from '../../resources/icon.png?asset'
 import winIconPath from '../../resources/icon.ico?asset'
 import { CoreSupervisor } from './core'
+import { AssetExporter, checkHash, checkName, checkPreset, checkStep } from './assets'
 import { Devlog, listLogs, RateLimiter, type LogLevel } from './devlog'
 import { buildBundle, buildReport, parsePayload, REPORT_MAX_CHARS } from './diagnostics'
-import type { DiagInfo } from '../preload/types'
+import type { AppNotification, DiagInfo, PickPathOptions, ProgressMode } from '../preload/types'
 
 const isDev = !app.isPackaged && !!process.env.ELECTRON_RENDERER_URL
 
@@ -50,6 +51,7 @@ core.on('output', (stream: 'out' | 'err', line: string) => devlog.core(stream, l
 core.on('log', (level: LogLevel, msg: string) => devlog.app(level, msg))
 process.on('uncaughtExceptionMonitor', (err, origin) => devlog.app('error', `${origin}: ${err.stack ?? err.message}`))
 const rendererLimit = new RateLimiter(60, 10_000)
+const assets = new AssetExporter(core)
 
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -296,6 +298,19 @@ function registerIpc(): void {
     if (dropped > 0) devlog.renderer('warn', `… bỏ qua ${dropped} dòng (quá giới hạn tốc độ)`)
     devlog.renderer(level as LogLevel, message.length > RENDERER_LINE_MAX ? `${message.slice(0, RENDERER_LINE_MAX)}…` : message)
   })
+  handle('studio:openSettingsFile', async () => {
+    const file = join(core.dataDir, 'settings.json')
+    if (!existsSync(file)) {
+      await mkdir(core.dataDir, { recursive: true })
+      await writeFile(file, '{}\n', 'utf8')
+    }
+    const err = await shell.openPath(file)
+    if (err) throw new Error(err)
+  })
+  handle('studio:restartCore', () => core.restart())
+  handle('studio:pickPath', (e, raw) => pickPath(e, raw))
+  registerAssetIpc()
+  registerShellIpc()
   core.on('status', (s) => {
     if (isDev) console.log(`[core] ${s.state}${s.baseUrl ? ` ${s.baseUrl}` : ''}${s.message ? ` — ${s.message}` : ''}`)
     devlog.app(
@@ -303,6 +318,141 @@ function registerIpc(): void {
       `core ${s.state} attempt=${s.attempt}${s.pid ? ` pid=${s.pid}` : ''}${s.attached ? ' attached' : ''}${s.baseUrl ? ` ${s.baseUrl}` : ''}${s.message ? ` — ${s.message}` : ''}${s.detail ? `\n${s.detail}` : ''}`
     )
     for (const w of BrowserWindow.getAllWindows()) w.webContents.send('studio:coreStatus', s)
+  })
+}
+
+function ownerOf(e: { sender: Electron.WebContents }): BrowserWindow | null {
+  return BrowserWindow.fromWebContents(e.sender)
+}
+
+async function pickPath(e: IpcMainInvokeEvent, raw: unknown): Promise<string | null> {
+  const o = (raw ?? {}) as Partial<PickPathOptions>
+  if (o.kind !== 'file' && o.kind !== 'dir') throw new Error('invalid kind')
+  const str = (v: unknown, max: number): string | undefined => (typeof v === 'string' && v.length <= max ? v : undefined)
+  const exts = Array.isArray(o.extensions) ? o.extensions.filter((x): x is string => typeof x === 'string' && /^\w{1,10}$/.test(x)).slice(0, 8) : []
+  const defaultPath = str(o.defaultPath, 1024)
+  const opts: Electron.OpenDialogOptions = {
+    title: str(o.title, 120),
+    defaultPath: defaultPath && isAbsolute(defaultPath) ? defaultPath : undefined,
+    properties: o.kind === 'dir' ? ['openDirectory', 'createDirectory'] : ['openFile'],
+    filters: o.kind === 'file' && exts.length ? [{ name: exts.join(', ').toUpperCase(), extensions: exts }, { name: 'Tất cả', extensions: ['*'] }] : undefined
+  }
+  const owner = ownerOf(e)
+  const res = owner ? await dialog.showOpenDialog(owner, opts) : await dialog.showOpenDialog(opts)
+  return res.canceled ? null : (res.filePaths[0] ?? null)
+}
+
+function dragIcon(file: string, mime: string): Electron.NativeImage {
+  if (mime.startsWith('image/')) {
+    const img = nativeImage.createFromPath(file)
+    if (!img.isEmpty()) {
+      const { width, height } = img.getSize()
+      return img.resize(width >= height ? { width: 64 } : { height: 64 })
+    }
+  }
+  return nativeImage.createFromPath(appIconPath).resize({ width: 48 })
+}
+
+function registerAssetIpc(): void {
+  handle('studio:asset:prepare', (_e, hash, name) => assets.export(checkHash(hash), checkName(name)))
+  handle('studio:asset:saveAs', async (e, hash, name) => {
+    const a = await assets.export(checkHash(hash), checkName(name))
+    const ext = extname(a.name).slice(1)
+    const opts: Electron.SaveDialogOptions = {
+      title: 'Xuất tệp',
+      defaultPath: join(app.getPath('downloads'), a.name),
+      filters: ext ? [{ name: ext.toUpperCase(), extensions: [ext] }, { name: 'Tất cả', extensions: ['*'] }] : undefined
+    }
+    const owner = ownerOf(e)
+    const res = owner ? await dialog.showSaveDialog(owner, opts) : await dialog.showSaveDialog(opts)
+    if (res.canceled || !res.filePath) return null
+    await copyFile(a.path, res.filePath)
+    devlog.app('info', `exported ${a.hash} → ${res.filePath}`)
+    return res.filePath
+  })
+  handle('studio:asset:reveal', async (_e, hash, name) => {
+    shell.showItemInFolder((await assets.export(checkHash(hash), checkName(name))).path)
+  })
+  handle('studio:asset:copyPath', async (_e, hash, name) => {
+    const a = await assets.export(checkHash(hash), checkName(name))
+    clipboard.writeText(a.path)
+    return a.path
+  })
+  handle('studio:asset:bundleOptions', (_e, stepId) => assets.bundleOptions(checkStep(stepId)))
+  handle('studio:asset:saveBundle', async (e, stepId, preset, name) => {
+    const b = await assets.exportBundle(checkStep(stepId), checkPreset(preset), checkName(name))
+    const opts: Electron.OpenDialogOptions = {
+      title: `Chọn nơi lưu thư mục “${b.name}”`,
+      defaultPath: app.getPath('downloads'),
+      properties: ['openDirectory', 'createDirectory']
+    }
+    const owner = ownerOf(e)
+    const res = owner ? await dialog.showOpenDialog(owner, opts) : await dialog.showOpenDialog(opts)
+    const parent = res.canceled ? undefined : res.filePaths[0]
+    if (!parent) return null
+    const dest = join(parent, basename(b.dir))
+    await cp(b.dir, dest, { recursive: true, force: true })
+    devlog.app('info', `exported step ${stepId} (${b.preset ?? 'raw'}, ${b.files} files) → ${dest}`)
+    return dest
+  })
+  handle('studio:asset:revealBundle', async (_e, stepId, preset, name) => {
+    const b = await assets.exportBundle(checkStep(stepId), checkPreset(preset), checkName(name))
+    await shell.openPath(b.dir)
+  })
+  // startDrag must run while the OS drag gesture is live, so the renderer pre-warms the copy via prepare on hover.
+  ipcMain.on('studio:asset:drag', (e, rawHash: unknown, rawName: unknown) => {
+    if (!isTrustedSender(e.senderFrame?.url)) return
+    let hash: string
+    let name: string | undefined
+    try {
+      hash = checkHash(rawHash)
+      name = checkName(rawName)
+    } catch {
+      return
+    }
+    const start = (a: { path: string; mime: string }): void => {
+      if (!e.sender.isDestroyed()) e.sender.startDrag({ file: a.path, icon: dragIcon(a.path, a.mime) })
+    }
+    const hit = assets.cached(hash, name)
+    if (hit) return start(hit)
+    assets.export(hash, name).then(start, (err: Error) => devlog.app('warn', `drag ${hash}: ${err.message}`))
+  })
+}
+
+const PROGRESS_MODES = new Set<ProgressMode>(['normal', 'paused', 'error', 'indeterminate'])
+// Windows drops a toast's click handler once its Notification object is garbage-collected.
+const liveNotifications = new Set<Notification>()
+const ROUTE_RE = /^\/[\w\-/?=&%.]{0,200}$/
+
+function registerShellIpc(): void {
+  ipcMain.on('studio:setProgress', (e, value: unknown, mode: unknown) => {
+    if (!isTrustedSender(e.senderFrame?.url)) return
+    const w = ownerOf(e)
+    if (!w) return
+    const m = typeof mode === 'string' && PROGRESS_MODES.has(mode as ProgressMode) ? (mode as ProgressMode) : 'normal'
+    if (value === null) return w.setProgressBar(-1)
+    if (m === 'indeterminate') return w.setProgressBar(2, { mode: 'indeterminate' })
+    if (typeof value !== 'number' || !Number.isFinite(value)) return
+    w.setProgressBar(Math.min(1, Math.max(0, value)), { mode: m })
+  })
+  ipcMain.on('studio:notify', (e, raw: unknown) => {
+    if (!isTrustedSender(e.senderFrame?.url) || !Notification.isSupported()) return
+    const n = (raw ?? {}) as Partial<AppNotification>
+    if (typeof n.title !== 'string' || typeof n.body !== 'string') return
+    const w = ownerOf(e)
+    if (w && w.isVisible() && w.isFocused()) return
+    const route = typeof n.route === 'string' && ROUTE_RE.test(n.route) ? n.route : null
+    const note = new Notification({ title: n.title.slice(0, 120), body: n.body.slice(0, 300), icon: appIconPath })
+    liveNotifications.add(note)
+    const drop = (): void => void liveNotifications.delete(note)
+    note.on('click', () => {
+      drop()
+      showWindow()
+      if (route) win?.webContents.send('studio:navigate', route)
+    })
+    note.on('close', drop)
+    note.on('failed', drop)
+    note.show()
   })
 }
 

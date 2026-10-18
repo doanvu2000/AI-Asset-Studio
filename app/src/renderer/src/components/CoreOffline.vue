@@ -1,21 +1,29 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ClipboardCopy, LoaderCircle } from '@lucide/vue'
+import { useRouter } from 'vue-router'
+import { ClipboardCopy, FolderCog, LoaderCircle, RotateCw } from '@lucide/vue'
 import { ART } from '@/assets/art'
 import { useConnection } from '@/stores/connection'
 import { useDiagnosticsActions } from '@/composables/diagnostics'
+import { useCoreRestart } from '@/composables/coreRestart'
 
 const conn = useConnection()
 const diag = useDiagnosticsActions()
+const restart = useCoreRestart()
+const router = useRouter()
 
 const info = computed(() => {
   const c = conn.core
   if (c.state === 'restarting') {
     const secs = c.retryInMs ? Math.ceil(c.retryInMs / 1000) : 0
-    return { title: c.message ?? 'Core đã dừng', text: `Đang tự khởi động lại sau ${secs} giây.`, waiting: true }
+    return { title: c.message ?? 'Core đã dừng', text: `Tự khởi động lại sau ${secs} giây, hoặc thử ngay.`, waiting: true }
   }
-  if (c.state === 'stopped') return { title: 'Core chưa chạy', text: 'Khởi động lại app để bật core.', waiting: false }
-  return { title: 'Không kết nối được core', text: c.message ?? 'Core không phản hồi.', waiting: false }
+  if (c.state === 'stopped') return { title: 'Core chưa chạy', text: 'Bấm Khởi động lại core để bật lại.', waiting: false }
+  return {
+    title: 'Không kết nối được core',
+    text: c.message ?? 'Core không phản hồi. Kiểm tra đường dẫn Python / công cụ rồi khởi động lại.',
+    waiting: false
+  }
 })
 </script>
 
@@ -28,11 +36,22 @@ const info = computed(() => {
       {{ info.text }}
     </p>
     <pre v-if="conn.core.detail" class="detail selectable">{{ conn.core.detail }}</pre>
-    <button v-if="diag.available" class="btn logs" :disabled="!!diag.busy.value" @click="diag.copyLogs">
-      <LoaderCircle v-if="diag.busy.value === 'copy'" class="spin" />
-      <ClipboardCopy v-else />
-      Copy nhật ký
-    </button>
+    <div class="acts">
+      <button v-if="restart.available" class="btn btn-primary" :disabled="restart.busy.value" @click="restart.run">
+        <LoaderCircle v-if="restart.busy.value" class="spin" />
+        <RotateCw v-else />
+        Khởi động lại core
+      </button>
+      <button class="btn" @click="router.push({ path: '/settings', query: { pane: 'tools' } })">
+        <FolderCog />
+        Mở Cài đặt → Đường dẫn
+      </button>
+      <button v-if="diag.available" class="btn btn-plain" :disabled="!!diag.busy.value" @click="diag.copyLogs">
+        <LoaderCircle v-if="diag.busy.value === 'copy'" class="spin" />
+        <ClipboardCopy v-else />
+        Copy nhật ký
+      </button>
+    </div>
   </div>
 </template>
 
@@ -47,6 +66,11 @@ const info = computed(() => {
   padding: 32px 24px 72px;
   text-align: center;
   animation: fade-up var(--t-slow) var(--ease-out);
+  -webkit-app-region: drag;
+}
+.offline button,
+.offline pre {
+  -webkit-app-region: no-drag;
 }
 .art {
   margin-bottom: 8px;
@@ -79,10 +103,19 @@ const info = computed(() => {
   background: var(--bg-sunken);
   box-shadow: var(--hairline);
 }
-.logs {
-  margin-top: 12px;
+.acts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
 }
 .spin {
   animation: spin 1s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .offline {
+    animation: none;
+  }
 }
 </style>
