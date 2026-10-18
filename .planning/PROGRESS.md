@@ -26,7 +26,7 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 2. [x] Review + commit P3 (`d1655d8`).
 3. [x] Ổn định TRELLIS (`ad51647`): CUDA error → retryable; engine auto-retry (`auto_retry`, Comfy=1, `/free` giữa 2 lần);
    `_free_before: true` ở bước mesh R4/R5. pytest 132 pass.
-4. [~] R4a cũ tự fail 13:41 (timeout ×2). R4b chạy lại bằng code mới 13:45: log `scratchpad(5172a7e0)/r4b.log`.
+4. [x] R4b live OK 356s (concept 51s, TRELLIS 259s @1024/512, cleanup 1.6s, turntable 2.5s), GLB 29k tris 3 tex — đẹp.
    Thêm `_timeout_s: 900` cho bước TRELLIS (`d732799`).
 5. [x] P4 Claude (`490ddff`): `${steps.x.out.field}` refs, claude.brief, blender.script, R7 procedural-3d
    (live 228s/$0.19, rương gỗ — đạt blockout), blender.agent (chỉ probe read-only live). pytest 153 pass.
