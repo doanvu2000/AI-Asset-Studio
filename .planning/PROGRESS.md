@@ -67,4 +67,6 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 - 16:55 — R5-mv (`73e8808`, `bc8e8e6`): Qwen trái/sau/phải + Pixal3D multi-view → lưng + gậy đúng ở 8 hướng, tốt hơn R5.
   Cần model `pixal3d_multiview_int8_convrot.safetensors` (đã tải về F:\work\AI\comfyUI_models\diffusion_models, 5.3GB)
   + workflow `img2mesh_trellis2_mv_textured` (ngoài repo). Qwen đôi khi vẽ góc 90° nằm ngang → gate `check` duyệt góc.
-  RAM: multi-view ăn ~24GB host → `_restart_before` khởi động lại ComfyUI trước bước mesh. Đang chạy xác nhận live r5mv5.
+  RAM: multi-view ăn ~24GB host → `_restart_before` khởi động lại ComfyUI trước bước mesh. Live r5mv5 OK 325s
+  (mesh 201s), không MemoryError; Qwen lại vẽ góc trái nằm ngang nhưng mesh vẫn tốt hơn single-view.
+- Tiếp: agent làm auto-check góc Qwen (view nằm ngang → sinh lại seed khác) thay cho duyệt tay.
