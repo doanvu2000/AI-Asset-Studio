@@ -1,0 +1,17 @@
+id: sprite-8dir-glb
+name: Sprite 8 hướng (GLB → Blender)
+description: Mesh GLB → render 8 hướng ortho (Blender) → sprite sheet
+inputs:
+  mesh: {type: mesh, label: Mesh GLB}
+  elevation: {type: float, default: 30, min: 0, max: 90, label: Góc nghiêng}
+steps:
+  - id: render
+    kind: blender.render_dirs
+    in: {mesh: inputs.mesh}
+    params: {elevation: "${inputs.elevation}", count: 8, res: 512, mirror: false}
+  - id: sheet
+    kind: op.sheet
+    in: {images: render.images}
+    params: {cols: 8}
+outputs:
+  final: sheet.sheet

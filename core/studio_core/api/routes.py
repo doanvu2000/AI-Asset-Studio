@@ -69,7 +69,7 @@ def _resource(request: Request, name: str) -> Resource:
 async def _engine_call[T](aw: Awaitable[T]) -> T:
     try:
         return await aw
-    except KeyError as e:
+    except LookupError as e:
         raise ApiError(404, "not_found", str(e.args[0]) if e.args else "not found") from e
     except ValueError as e:
         raise ApiError(400, "invalid", str(e)) from e

@@ -1,0 +1,26 @@
+id: concept-2d
+name: Concept 2D (Z-Image)
+description: Text → N ảnh → chọn → tách nền → căn chỉnh
+inputs:
+  prompt: {type: text, label: Prompt}
+  count: {type: int, default: 4, min: 1, max: 8, label: Số biến thể}
+  size: {type: int, default: 512, options: [128, 256, 512, 1024]}
+steps:
+  - id: gen
+    kind: comfy.t2i_zimage_turbo
+    params: {"57:27.text": "${inputs.prompt}, isolated on plain white background, centered, game asset",
+             "57:13.batch_size": "${inputs.count}"}
+  - id: pick
+    kind: gate.pick
+    in: {images: gen.images}
+    params: {k: 1}
+  - id: rmbg
+    kind: comfy.remove_bg_birefnet
+    in: {image: pick.images}
+    map: image
+  - id: fit
+    kind: op.trim_pad_resize
+    in: {images: rmbg.images}
+    params: {size: "${inputs.size}", pad: 0.06}
+outputs:
+  final: fit.images

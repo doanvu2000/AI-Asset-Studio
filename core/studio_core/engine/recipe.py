@@ -1,0 +1,290 @@
+from __future__ import annotations
+
+import logging
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import yaml
+from blake3 import blake3
+
+from ..contracts import ExecutorRegistry, RecipeInfo
+
+log = logging.getLogger(__name__)
+
+BLOB_TYPES = {"image", "mesh"}
+INPUT_TYPES = {"text", "int", "float", "bool", "enum"} | BLOB_TYPES
+_PLACEHOLDER = re.compile(r"\$\{inputs\.([A-Za-z_][\w-]*)\}")
+_WHOLE = re.compile(r"^\$\{inputs\.([A-Za-z_][\w-]*)\}$")
+_ID = re.compile(r"^[A-Za-z_][\w-]*$")
+
+
+class RecipeError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class Binding:
+    source: str  # step key, or "inputs"
+    name: str  # output name, or input name when source == "inputs"
+
+    @classmethod
+    def parse(cls, raw: Any, where: str) -> Binding:
+        if not isinstance(raw, str) or raw.count(".") != 1:
+            raise RecipeError(f"{where}: binding must be '<step>.<output>' or 'inputs.<name>', got {raw!r}")
+        src, name = raw.split(".")
+        if not src or not name:
+            raise RecipeError(f"{where}: bad binding {raw!r}")
+        return cls(src, name)
+
+    def __str__(self) -> str:
+        return f"{self.source}.{self.name}"
+
+
+@dataclass
+class StepSpec:
+    id: str
+    kind: str
+    params: dict[str, Any] = field(default_factory=dict)
+    bindings: dict[str, Binding] = field(default_factory=dict)
+    map: str | None = None
+
+    @property
+    def deps(self) -> list[str]:
+        out: list[str] = []
+        for b in self.bindings.values():
+            if b.source != "inputs" and b.source not in out:
+                out.append(b.source)
+        return out
+
+
+@dataclass
+class Recipe:
+    id: str
+    name: str
+    description: str
+    inputs: dict[str, dict[str, Any]]
+    steps: list[StepSpec]  # topological order
+    outputs: dict[str, Binding]
+    hash: str
+    path: Path | None = None
+
+    def step(self, key: str) -> StepSpec:
+        for s in self.steps:
+            if s.id == key:
+                return s
+        raise KeyError(key)
+
+    def coerce_inputs(self, given: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for name, spec in self.inputs.items():
+            if name in given and given[name] is not None and given[name] != "":
+                out[name] = coerce_value(name, spec, given[name])
+            elif "default" in spec:
+                out[name] = spec["default"]
+            elif spec.get("required", True):
+                raise RecipeError(f"input '{name}' is required")
+            else:
+                out[name] = None
+        return out
+
+    def resolve_params(self, step: StepSpec, inputs: dict[str, Any]) -> dict[str, Any]:
+        return substitute(step.params, inputs)
+
+    def info(self, registry: ExecutorRegistry | None = None) -> RecipeInfo:
+        steps = []
+        for s in self.steps:
+            lane = None
+            if registry is not None:
+                try:
+                    lane = registry.resolve(s.kind).lane.value
+                except KeyError:
+                    pass
+            steps.append({"id": s.id, "kind": s.kind, "lane": lane, "deps": s.deps, "map": s.map})
+        return RecipeInfo(id=self.id, name=self.name, description=self.description, inputs=self.inputs,
+                          steps=steps, hash=self.hash)
+
+
+def coerce_value(name: str, spec: dict[str, Any], v: Any) -> Any:
+    t = spec.get("type", "text")
+    try:
+        match t:
+            case "text":
+                if not isinstance(v, (str, int, float)):
+                    raise TypeError
+                v = str(v)
+            case "int":
+                if isinstance(v, bool) or (isinstance(v, float) and not v.is_integer()):
+                    raise TypeError
+                v = int(v)
+            case "float":
+                if isinstance(v, bool):
+                    raise TypeError
+                v = float(v)
+            case "bool":
+                if isinstance(v, str):
+                    low = v.strip().lower()
+                    if low not in ("true", "false", "1", "0", "yes", "no"):
+                        raise TypeError
+                    v = low in ("true", "1", "yes")
+                elif isinstance(v, (bool, int)):
+                    v = bool(v)
+                else:
+                    raise TypeError
+            case "image" | "mesh":
+                if isinstance(v, dict) and "hash" in v:
+                    v = v["hash"]
+                if isinstance(v, list):
+                    v = [x["hash"] if isinstance(x, dict) else x for x in v]
+                    if not v or not all(isinstance(x, str) and x for x in v):
+                        raise TypeError
+                elif not isinstance(v, str) or not v:
+                    raise TypeError
+            case "enum":
+                pass
+    except (TypeError, ValueError):
+        raise RecipeError(f"input '{name}': expected {t}, got {v!r}") from None
+    if "min" in spec and isinstance(v, (int, float)) and v < spec["min"]:
+        raise RecipeError(f"input '{name}': {v} < min {spec['min']}")
+    if "max" in spec and isinstance(v, (int, float)) and v > spec["max"]:
+        raise RecipeError(f"input '{name}': {v} > max {spec['max']}")
+    if "options" in spec and v not in spec["options"]:
+        raise RecipeError(f"input '{name}': {v!r} not in {spec['options']}")
+    return v
+
+
+def substitute(value: Any, inputs: dict[str, Any]) -> Any:
+    if isinstance(value, str):
+        m = _WHOLE.match(value)
+        if m:
+            return inputs.get(m.group(1))
+        return _PLACEHOLDER.sub(lambda mm: "" if inputs.get(mm.group(1)) is None else str(inputs[mm.group(1)]),
+                                value)
+    if isinstance(value, dict):
+        return {k: substitute(v, inputs) for k, v in value.items()}
+    if isinstance(value, list):
+        return [substitute(v, inputs) for v in value]
+    return value
+
+
+def _placeholders(value: Any) -> set[str]:
+    if isinstance(value, str):
+        return set(_PLACEHOLDER.findall(value))
+    if isinstance(value, dict):
+        return set().union(*(_placeholders(v) for v in value.values())) if value else set()
+    if isinstance(value, list):
+        return set().union(*(_placeholders(v) for v in value)) if value else set()
+    return set()
+
+
+def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
+    where = path.name if path else "<recipe>"
+    try:
+        doc = yaml.safe_load(raw_bytes)
+    except yaml.YAMLError as e:
+        raise RecipeError(f"{where}: invalid YAML: {e}") from None
+    if not isinstance(doc, dict):
+        raise RecipeError(f"{where}: top level must be a mapping")
+    rid = doc.get("id")
+    if not isinstance(rid, str) or not _ID.match(rid):
+        raise RecipeError(f"{where}: missing/invalid id")
+
+    inputs: dict[str, dict[str, Any]] = {}
+    for name, spec in (doc.get("inputs") or {}).items():
+        if not _ID.match(str(name)):
+            raise RecipeError(f"{where}: bad input name {name!r}")
+        spec = dict(spec or {})
+        spec.setdefault("type", "text")
+        if spec["type"] not in INPUT_TYPES:
+            raise RecipeError(f"{where}: input '{name}' has unknown type {spec['type']!r}")
+        if spec["type"] == "enum" and not spec.get("options"):
+            raise RecipeError(f"{where}: enum input '{name}' needs options")
+        if "default" in spec and spec["default"] is not None:
+            spec["default"] = coerce_value(name, spec, spec["default"])
+        inputs[str(name)] = spec
+
+    raw_steps = doc.get("steps")
+    if not isinstance(raw_steps, list) or not raw_steps:
+        raise RecipeError(f"{where}: steps must be a non-empty list")
+    specs: list[StepSpec] = []
+    seen: set[str] = set()
+    for i, rs in enumerate(raw_steps):
+        if not isinstance(rs, dict):
+            raise RecipeError(f"{where}: step #{i} must be a mapping")
+        sid, kind = rs.get("id"), rs.get("kind")
+        if not isinstance(sid, str) or not _ID.match(sid) or sid == "inputs":
+            raise RecipeError(f"{where}: step #{i} has invalid id {sid!r}")
+        if sid in seen:
+            raise RecipeError(f"{where}: duplicate step id {sid!r}")
+        seen.add(sid)
+        if not isinstance(kind, str) or not kind:
+            raise RecipeError(f"{where}: step {sid} missing kind")
+        params = rs.get("params") or {}
+        if not isinstance(params, dict):
+            raise RecipeError(f"{where}: step {sid} params must be a mapping")
+        unknown = _placeholders(params) - inputs.keys()
+        if unknown:
+            raise RecipeError(f"{where}: step {sid} references unknown inputs {sorted(unknown)}")
+        bindings = {str(k): Binding.parse(v, f"{where}: step {sid} in.{k}") for k, v in (rs.get("in") or {}).items()}
+        mp = rs.get("map")
+        if mp is not None and mp not in bindings:
+            raise RecipeError(f"{where}: step {sid} map '{mp}' is not one of its inputs")
+        specs.append(StepSpec(sid, kind, params, bindings, mp))
+
+    for s in specs:
+        for name, b in s.bindings.items():
+            if b.source == "inputs":
+                if b.name not in inputs or inputs[b.name]["type"] not in BLOB_TYPES:
+                    raise RecipeError(f"{where}: step {s.id} in.{name} must bind an image/mesh input, got {b}")
+            elif b.source not in seen:
+                raise RecipeError(f"{where}: step {s.id} in.{name} references unknown step {b.source!r}")
+
+    outputs = {str(k): Binding.parse(v, f"{where}: outputs.{k}") for k, v in (doc.get("outputs") or {}).items()}
+    for k, b in outputs.items():
+        if b.source not in seen:
+            raise RecipeError(f"{where}: outputs.{k} references unknown step {b.source!r}")
+
+    return Recipe(id=rid, name=str(doc.get("name") or rid), description=str(doc.get("description") or ""),
+                  inputs=inputs, steps=_toposort(specs, where), outputs=outputs,
+                  hash=blake3(raw_bytes).hexdigest(), path=path)
+
+
+def _toposort(specs: list[StepSpec], where: str) -> list[StepSpec]:
+    by_id = {s.id: s for s in specs}
+    indeg = {s.id: len(s.deps) for s in specs}
+    order: list[StepSpec] = []
+    queue = [s.id for s in specs if indeg[s.id] == 0]
+    while queue:
+        sid = queue.pop(0)
+        order.append(by_id[sid])
+        for s in specs:
+            if sid in s.deps:
+                indeg[s.id] -= 1
+                if indeg[s.id] == 0:
+                    queue.append(s.id)
+    if len(order) != len(specs):
+        stuck = sorted(k for k, v in indeg.items() if v > 0)
+        raise RecipeError(f"{where}: dependency cycle among steps {stuck}")
+    return order
+
+
+def load_recipe_file(path: Path) -> Recipe:
+    return parse_recipe(path.read_bytes(), path)
+
+
+def load_recipes(recipes_dir: Path) -> dict[str, Recipe]:
+    out: dict[str, Recipe] = {}
+    if not recipes_dir.is_dir():
+        return out
+    for p in sorted(recipes_dir.glob("*.y*ml")):
+        try:
+            r = load_recipe_file(p)
+        except RecipeError as e:
+            log.error("skipping recipe: %s", e)
+            continue
+        if r.id in out:
+            log.error("skipping recipe %s: duplicate id %s", p.name, r.id)
+            continue
+        out[r.id] = r
+    return out

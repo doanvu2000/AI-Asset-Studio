@@ -1,0 +1,21 @@
+id: concept-2d-codex
+name: Concept 2D (Codex)
+description: Text → N ảnh nền trong suốt (Codex) → chọn → căn chỉnh
+inputs:
+  prompt: {type: text, label: Prompt}
+  count: {type: int, default: 2, min: 1, max: 4, label: Số biến thể}
+  size: {type: int, default: 512, options: [128, 256, 512, 1024]}
+steps:
+  - id: gen
+    kind: codex.image
+    params: {prompt: "${inputs.prompt}, centered, game asset", transparent: true, count: "${inputs.count}"}
+  - id: pick
+    kind: gate.pick
+    in: {images: gen.images}
+    params: {k: 1}
+  - id: fit
+    kind: op.trim_pad_resize
+    in: {images: pick.images}
+    params: {size: "${inputs.size}", pad: 0.06}
+outputs:
+  final: fit.images
