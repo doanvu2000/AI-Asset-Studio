@@ -1,0 +1,141 @@
+:root {
+  color-scheme: light dark;
+
+  --font: 'Inter Variable', 'Segoe UI Variable Text', system-ui, sans-serif;
+  --mono: 'Cascadia Mono', 'JetBrains Mono', ui-monospace, monospace;
+
+  --fs-large: 26px;
+  --fs-title: 17px;
+  --fs-headline: 13px;
+  --fs-body: 13px;
+  --fs-callout: 12px;
+  --fs-caption: 11px;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 18px;
+
+  --sidebar-w: 232px;
+  --toolbar-h: 52px;
+  /* Windows caption buttons painted by titleBarOverlay live in this strip. */
+  --caption-w: 140px;
+
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --t-fast: 160ms;
+  --t-base: 240ms;
+  --t-slow: 320ms;
+
+  --bg-window: #ececf0;
+  --bg-sidebar: rgba(232, 232, 237, 0.92);
+  --bg-content: #fbfbfd;
+  --bg-elevated: #ffffff;
+  --bg-sunken: #f2f2f6;
+  --bg-hover: rgba(0, 0, 0, 0.045);
+  --bg-active: rgba(0, 0, 0, 0.08);
+  --bg-selected: rgba(110, 86, 207, 0.12);
+
+  --text: #1d1d1f;
+  --text-2: #5e5e66;
+  --text-3: #8a8a93;
+  --text-on-accent: #ffffff;
+
+  --separator: rgba(0, 0, 0, 0.09);
+  --separator-strong: rgba(0, 0, 0, 0.16);
+
+  --accent: #6e56cf;
+  --accent-hover: #5f47c2;
+  --accent-soft: rgba(110, 86, 207, 0.12);
+  --focus-ring: rgba(110, 86, 207, 0.55);
+
+  --st-pending: #8e8e93;
+  --st-waiting: #b25e00;
+  --st-waiting-soft: rgba(255, 159, 10, 0.16);
+  --st-running: var(--accent);
+  --st-running-soft: var(--accent-soft);
+  --st-human: #c93400;
+  --st-human-soft: rgba(255, 105, 40, 0.14);
+  --st-ok: #1f7a35;
+  --st-ok-soft: rgba(52, 199, 89, 0.15);
+  --st-fail: #c4001a;
+  --st-fail-soft: rgba(255, 59, 48, 0.12);
+  --st-cached: #0b6f7a;
+  --st-cached-soft: rgba(48, 176, 199, 0.15);
+
+  --shadow-1: 0 0.5px 1px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.06), 0 6px 20px rgba(0, 0, 0, 0.08);
+  --shadow-3: 0 2px 6px rgba(0, 0, 0, 0.08), 0 18px 48px rgba(0, 0, 0, 0.16);
+  --hairline: inset 0 0 0 0.5px rgba(0, 0, 0, 0.1);
+
+  --checker-a: #ffffff;
+  --checker-b: #ececf0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-window: #1c1c1e;
+    --bg-sidebar: rgba(36, 36, 40, 0.9);
+    --bg-content: #1e1e21;
+    --bg-elevated: #2a2a2e;
+    --bg-sunken: #18181a;
+    --bg-hover: rgba(255, 255, 255, 0.06);
+    --bg-active: rgba(255, 255, 255, 0.1);
+    --bg-selected: rgba(158, 140, 252, 0.2);
+
+    --text: #f5f5f7;
+    --text-2: #a8a8b0;
+    --text-3: #7c7c85;
+
+    --separator: rgba(255, 255, 255, 0.08);
+    --separator-strong: rgba(255, 255, 255, 0.16);
+
+    --accent: #9e8cfc;
+    --accent-hover: #b0a1ff;
+    --accent-soft: rgba(158, 140, 252, 0.16);
+    --focus-ring: rgba(158, 140, 252, 0.6);
+    --text-on-accent: #16112e;
+
+    --st-pending: #8e8e93;
+    --st-waiting: #ffb340;
+    --st-waiting-soft: rgba(255, 179, 64, 0.14);
+    --st-human: #ff8a4c;
+    --st-human-soft: rgba(255, 138, 76, 0.16);
+    --st-ok: #32d74b;
+    --st-ok-soft: rgba(50, 215, 75, 0.14);
+    --st-fail: #ff6961;
+    --st-fail-soft: rgba(255, 105, 97, 0.14);
+    --st-cached: #5ad6e8;
+    --st-cached-soft: rgba(90, 214, 232, 0.14);
+
+    --shadow-1: 0 0.5px 1px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-3: 0 2px 8px rgba(0, 0, 0, 0.5), 0 20px 56px rgba(0, 0, 0, 0.55);
+    --hairline: inset 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+
+    --checker-a: #2a2a2e;
+    --checker-b: #232326;
+  }
+}
+
+/* With Mica the OS paints the material; the sidebar only adds a light tint over it. */
+:root[data-vibrancy='1'] {
+  --bg-window: transparent;
+  /* Strong enough tint that text stays legible even if Mica resolves to the other theme. */
+  --bg-sidebar: rgba(244, 244, 247, 0.72);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-vibrancy='1'] {
+    --bg-sidebar: rgba(30, 30, 33, 0.8);
+  }
+}
