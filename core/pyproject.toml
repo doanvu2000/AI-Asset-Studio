@@ -1,0 +1,34 @@
+[project]
+name = "studio-core"
+version = "0.1.0"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.8",
+    "aiosqlite>=0.20",
+    "blake3>=1.0",
+    "orjson>=3.10",
+    "httpx>=0.27",
+    "websockets>=13",
+    "pywin32>=306; sys_platform == 'win32'",
+    "pillow>=11",
+    "numpy>=2",
+    "pyyaml>=6",
+    "claude-agent-sdk>=0.2",
+    "python-multipart>=0.0.32",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["studio_core"]
