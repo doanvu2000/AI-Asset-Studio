@@ -13,11 +13,14 @@ import { useRecipes } from '@/stores/recipes'
 import { api, useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { kindName } from '@/composables/format'
+import ResizeHandle from '@/components/ResizeHandle.vue'
+import { usePaneWidth } from '@/composables/paneSize'
 
 const recipes = useRecipes()
 const conn = useConnection()
 const toasts = useToasts()
 const router = useRouter()
+const listW = usePaneWidth('new-recipes', 260)
 
 const LAST_KEY = 'studio.newrun.recipe'
 function readLast(): string | null {
@@ -137,7 +140,7 @@ function onKey(e: KeyboardEvent): void {
   <div class="view" @keydown="onKey">
     <PageHeader title="Tạo mới" subtitle="Chọn recipe, điền đầu vào, bấm chạy" />
     <div class="split">
-      <aside class="recipes" aria-label="Recipe">
+      <aside class="recipes" aria-label="Recipe" :style="{ '--pane-w': `${listW}px` }">
         <p class="section-label pad">Recipe</p>
         <div v-if="!recipes.loaded" class="pad caption">Đang tải…</div>
         <p v-else-if="recipes.error" class="pad err">{{ recipes.error }}</p>
@@ -156,6 +159,7 @@ function onKey(e: KeyboardEvent): void {
           </span>
         </button>
       </aside>
+      <ResizeHandle v-model="listW" label="Danh sách recipe" :default-size="260" :min="200" :max="420" />
 
       <section class="form-pane scroll">
         <EmptyState v-if="recipes.loaded && !selected" :icon="BookOpen" title="Chưa có recipe" text="Core chưa nạp recipe nào. Thêm file YAML vào core/studio_core/recipes rồi khởi động lại." />
@@ -286,7 +290,8 @@ function onKey(e: KeyboardEvent): void {
   display: flex;
 }
 .recipes {
-  width: 260px;
+  width: var(--pane-w, 260px);
+  max-width: 45%;
   flex: none;
   overflow: auto;
   padding: 16px 10px;
@@ -328,6 +333,9 @@ function onKey(e: KeyboardEvent): void {
 }
 .r-name {
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .f-title {
   display: flex;
@@ -403,6 +411,7 @@ function onKey(e: KeyboardEvent): void {
 .fields {
   display: grid;
   padding: 4px 18px;
+  container-type: inline-size;
 }
 .f {
   display: grid;
@@ -421,6 +430,15 @@ function onKey(e: KeyboardEvent): void {
 }
 .req {
   color: var(--st-fail);
+}
+@container (max-width: 460px) {
+  .f {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .f-label {
+    padding-top: 0;
+  }
 }
 .f-control {
   min-width: 0;
@@ -441,6 +459,8 @@ function onKey(e: KeyboardEvent): void {
 }
 .segmented {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   padding: 2px;
   border-radius: 8px;
   background: var(--bg-sunken);

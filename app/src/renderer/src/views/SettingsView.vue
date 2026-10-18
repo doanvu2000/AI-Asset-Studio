@@ -5,9 +5,13 @@ import type { Compass, ExportPreset } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import DiagnosticsPanel from '@/components/DiagnosticsPanel.vue'
 import ToolPathsPanel from '@/components/ToolPathsPanel.vue'
+import ResizeHandle from '@/components/ResizeHandle.vue'
+import { usePaneWidth } from '@/composables/paneSize'
 import { usePresets } from '@/stores/catalog'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
+
+const listW = usePaneWidth('settings-list', 250)
 
 const presets = usePresets()
 const copy = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T
@@ -154,7 +158,7 @@ async function remove(): Promise<void> {
   <div class="view">
     <PageHeader title="Cài đặt" subtitle="Đường dẫn công cụ, nhật ký chẩn đoán và preset xuất sprite sheet" />
     <div class="split">
-      <aside class="list" aria-label="Cài đặt">
+      <aside class="list" aria-label="Cài đặt" :style="{ '--pane-w': `${listW}px` }">
         <p class="section-label pad">Hệ thống</p>
         <button class="item" :class="{ on: pane === 'tools' }" @click="pane = 'tools'">
           <span class="i-name">Đường dẫn công cụ</span>
@@ -178,6 +182,7 @@ async function remove(): Promise<void> {
         </div>
         <button class="btn btn-plain add" @click="blank"><Plus /> Preset mới</button>
       </aside>
+      <ResizeHandle v-model="listW" label="Danh mục cài đặt" :default-size="250" :min="200" :max="400" />
 
       <section v-if="pane === 'tools'" class="scroll pane">
         <ToolPathsPanel />
@@ -284,7 +289,8 @@ async function remove(): Promise<void> {
   display: flex;
 }
 .list {
-  width: 250px;
+  width: var(--pane-w, 250px);
+  max-width: 40%;
   flex: none;
   overflow: auto;
   padding: 16px 10px;

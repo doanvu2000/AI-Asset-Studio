@@ -15,11 +15,14 @@ import { useGates, type GateItem } from '@/stores/gates'
 import { useRuns } from '@/stores/runs'
 import { useToasts } from '@/stores/toasts'
 import RelTime from '@/components/RelTime.vue'
+import ResizeHandle from '@/components/ResizeHandle.vue'
+import { usePaneWidth } from '@/composables/paneSize'
 
 const gates = useGates()
 const runs = useRuns()
 const toasts = useToasts()
 const route = useRoute()
+const queueW = usePaneWidth('gates-queue', 260)
 const router = useRouter()
 
 const currentId = ref<string | null>((route.query.step as string | undefined) ?? null)
@@ -147,7 +150,7 @@ onKeyStroke(true, (e) => {
     <PageHeader title="Cần duyệt" :subtitle="gates.count ? `${gates.count} bước đang chờ` : 'Không có gì đang chờ'" />
     <EmptyState v-if="!current" class="gates-empty" :art="ART.emptyGates" :art-size="176" title="Hộp duyệt trống" text="Khi một run cần bạn chọn ảnh hoặc duyệt, nó sẽ xuất hiện ở đây." />
     <div v-else class="split">
-      <aside class="queue" aria-label="Danh sách chờ duyệt">
+      <aside class="queue" aria-label="Danh sách chờ duyệt" :style="{ '--pane-w': `${queueW}px` }">
         <TransitionGroup name="q" tag="div" class="q-list">
           <button
             v-for="g in gates.list"
@@ -158,12 +161,13 @@ onKeyStroke(true, (e) => {
             @click="currentId = g.stepId"
           >
             <span class="q-title">{{ runTitle(g) }}</span>
-            <span class="caption">
+            <span class="caption q-meta">
               {{ g.kind === 'pick' ? 'Chọn ảnh' : 'Duyệt' }} · {{ g.candidates.length }} ảnh · <RelTime :ts="g.since" />
             </span>
           </button>
         </TransitionGroup>
       </aside>
+      <ResizeHandle v-model="queueW" label="Danh sách chờ duyệt" :default-size="260" :min="200" :max="440" />
 
       <section class="stage">
         <Transition name="swap" mode="out-in">
@@ -239,7 +243,8 @@ onKeyStroke(true, (e) => {
   display: flex;
 }
 .queue {
-  width: 260px;
+  width: var(--pane-w, 260px);
+  max-width: 45%;
   flex: none;
   overflow: auto;
   padding: 12px 10px;
@@ -267,6 +272,11 @@ onKeyStroke(true, (e) => {
 }
 .q-item.on {
   background: var(--bg-selected);
+}
+.q-meta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .q-title {
   font-weight: 600;

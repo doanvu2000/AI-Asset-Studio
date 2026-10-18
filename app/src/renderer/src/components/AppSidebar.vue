@@ -11,6 +11,8 @@ import { useConnection } from '@/stores/connection'
 import { useBatches } from '@/stores/batches'
 import TweenNumber from './TweenNumber.vue'
 
+defineProps<{ compact?: boolean }>()
+
 const route = useRoute()
 const runs = useRuns()
 const gates = useGates()
@@ -46,7 +48,7 @@ const status = computed(() => {
 </script>
 
 <template>
-  <aside class="sidebar">
+  <aside class="sidebar" :class="{ compact }">
     <div class="brand">
       <img class="logo" :src="ART.appIcon" alt="" width="22" height="22" draggable="false" />
       <span class="brand-name">Asset Studio</span>
@@ -60,6 +62,7 @@ const status = computed(() => {
         class="item"
         :class="{ active: isActive(it.name) }"
         :aria-current="isActive(it.name) ? 'page' : undefined"
+        :title="compact ? (it.badge ? `${it.label} (${it.badge})` : it.label) : undefined"
       >
         <motion.span
           v-if="isActive(it.name)"
@@ -78,7 +81,13 @@ const status = computed(() => {
     </nav>
 
     <nav class="nav-foot" aria-label="Cài đặt">
-      <RouterLink to="/settings" class="item" :class="{ active: isActive('settings') }" :aria-current="isActive('settings') ? 'page' : undefined">
+      <RouterLink
+        to="/settings"
+        class="item"
+        :class="{ active: isActive('settings') }"
+        :aria-current="isActive('settings') ? 'page' : undefined"
+        :title="compact ? 'Cài đặt' : undefined"
+      >
         <motion.span v-if="isActive('settings')" layout-id="nav-pill" class="pill" :transition="{ type: 'spring', stiffness: 520, damping: 40 }" />
         <Settings class="ic" :size="16" :stroke-width="2" />
         <span class="label">Cài đặt</span>
@@ -86,9 +95,9 @@ const status = computed(() => {
     </nav>
 
     <div class="foot">
-      <span class="conn" :class="status.tone">
+      <span class="conn" :class="status.tone" :title="compact ? status.text : undefined" role="status">
         <span class="dot" />
-        {{ status.text }}
+        <span class="conn-text">{{ status.text }}</span>
       </span>
     </div>
   </aside>
@@ -99,8 +108,9 @@ const status = computed(() => {
   -webkit-app-region: drag;
   display: flex;
   flex-direction: column;
-  width: var(--sidebar-w);
+  width: var(--pane-w, var(--sidebar-w));
   flex: none;
+  overflow: hidden;
   padding: 0 10px 12px;
   background: var(--bg-sidebar);
   border-right: 0.5px solid var(--separator);
@@ -110,7 +120,7 @@ const status = computed(() => {
   align-items: center;
   gap: 9px;
   height: var(--toolbar-h);
-  padding: 0 8px;
+  padding: 0 9px;
 }
 .logo {
   width: 22px;
@@ -121,6 +131,7 @@ const status = computed(() => {
 .brand-name {
   font-weight: 650;
   letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 nav {
   -webkit-app-region: no-drag;
@@ -134,7 +145,7 @@ nav {
   align-items: center;
   gap: 10px;
   height: 32px;
-  padding: 0 10px;
+  padding: 0 12px;
   border-radius: 7px;
   color: var(--text);
   text-decoration: none;
@@ -163,6 +174,10 @@ nav {
 }
 .label {
   flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .count {
   min-width: 20px;
@@ -197,8 +212,44 @@ nav {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  max-width: 100%;
   font-size: var(--fs-caption);
   color: var(--text-2);
+}
+.conn-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.compact .brand-name,
+.compact .label,
+.compact .conn-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.compact .count {
+  position: absolute;
+  top: 6px;
+  right: 7px;
+  min-width: 0;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  font-size: 0;
+  background: var(--text-3);
+  box-shadow: 0 0 0 2px var(--bg-sidebar);
+}
+.compact .count.run {
+  background: var(--st-running);
+}
+.compact .count.human {
+  background: var(--st-human);
+}
+.compact .foot {
+  padding: 0 0 0 16px;
 }
 .dot {
   width: 7px;

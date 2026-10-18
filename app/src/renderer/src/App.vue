@@ -7,10 +7,14 @@ import AppSidebar from './components/AppSidebar.vue'
 import CoreBanner from './components/CoreBanner.vue'
 import CoreOffline from './components/CoreOffline.vue'
 import ToastHost from './components/ToastHost.vue'
+import ResizeHandle from './components/ResizeHandle.vue'
+import { usePaneWidth } from './composables/paneSize'
 import { useConnection } from './stores/connection'
 
 const conn = useConnection()
 const router = useRouter()
+const SIDEBAR = { default: 232, min: 184, max: 320, rail: 60 }
+const sidebarW = usePaneWidth('sidebar', SIDEBAR.default)
 
 onMounted(() => void conn.init())
 
@@ -36,7 +40,16 @@ onKeyStroke(
 <template>
   <MotionConfig reduced-motion="user">
     <div class="shell">
-      <AppSidebar />
+      <AppSidebar :style="{ '--pane-w': `${sidebarW}px` }" :compact="sidebarW <= SIDEBAR.rail" />
+      <ResizeHandle
+        v-model="sidebarW"
+        label="Thanh bên"
+        :default-size="SIDEBAR.default"
+        :min="SIDEBAR.min"
+        :max="SIDEBAR.max"
+        :collapsed-size="SIDEBAR.rail"
+        :collapse-below="140"
+      />
       <main class="content">
         <CoreBanner v-if="!offline" />
         <CoreOffline v-if="offline" />

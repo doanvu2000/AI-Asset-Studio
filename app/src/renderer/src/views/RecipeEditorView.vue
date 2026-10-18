@@ -3,7 +3,7 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { onKeyStroke, useDebounceFn } from '@vueuse/core'
 import type { Connection } from '@vue-flow/core'
-import { ArrowLeft, CircleAlert, CircleCheck, LoaderCircle, RotateCcw, Save, ShieldCheck, Trash2, TriangleAlert } from '@lucide/vue'
+import { ArrowLeft, CircleAlert, CircleCheck, LoaderCircle, LayoutGrid, RotateCcw, Save, Trash2, TriangleAlert } from '@lucide/vue'
 import type { RecipeDoc, RecipeIssue, RecipeSource, RecipeStepDoc } from '@/api/types'
 import { ApiError } from '@/api/client'
 import PageHeader from '@/components/PageHeader.vue'
@@ -27,9 +27,12 @@ import { api, useConnection } from '@/stores/connection'
 import { useKinds } from '@/stores/catalog'
 import { useRecipes } from '@/stores/recipes'
 import { useToasts } from '@/stores/toasts'
+import ResizeHandle from '@/components/ResizeHandle.vue'
+import { usePaneWidth } from '@/composables/paneSize'
 
 const props = defineProps<{ id: string }>()
 const route = useRoute()
+const sideW = usePaneWidth('recipe-inspector', 360)
 const router = useRouter()
 const conn = useConnection()
 const kinds = useKinds()
@@ -398,7 +401,7 @@ const subtitle = computed(() => (doc.value ? `${doc.value.id} · ${sourceLabel[s
           @drag-stop="onDragStop"
         />
         <div v-if="doc" class="hud">
-          <button class="btn btn-plain hud-btn" @click="autoLayout"><ShieldCheck :size="14" /> Sắp xếp lại</button>
+          <button class="btn btn-plain hud-btn" @click="autoLayout"><LayoutGrid :size="14" /> Sắp xếp lại</button>
           <span class="caption">Kéo chấm để nối · Delete để xoá · Ctrl+S để lưu</span>
         </div>
         <Transition name="fade">
@@ -408,8 +411,9 @@ const subtitle = computed(() => (doc.value ? `${doc.value.id} · ${sourceLabel[s
           </div>
         </Transition>
       </section>
+      <ResizeHandle v-model="sideW" side="start" label="Bảng thuộc tính" :default-size="360" :min="300" :max="640" />
 
-      <aside class="side scroll" aria-label="Thuộc tính">
+      <aside class="side scroll" aria-label="Thuộc tính" :style="{ '--pane-w': `${sideW}px` }">
         <Transition name="swap" mode="out-in">
           <StepInspector
             v-if="doc && selStep"
@@ -439,9 +443,11 @@ const subtitle = computed(() => (doc.value ? `${doc.value.id} · ${sourceLabel[s
   position: relative;
   flex: 1;
   min-width: 0;
+  container-type: inline-size;
 }
 .side {
-  width: 360px;
+  width: var(--pane-w, 360px);
+  max-width: calc(100% - 280px);
   flex: none;
   border-left: 0.5px solid var(--separator);
   background: var(--bg-content);
@@ -450,15 +456,28 @@ const subtitle = computed(() => (doc.value ? `${doc.value.id} · ${sourceLabel[s
 .hud {
   position: absolute;
   left: 14px;
+  right: 64px;
   bottom: 12px;
   display: flex;
   align-items: center;
   gap: 10px;
   pointer-events: none;
 }
+.hud .caption {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@container (max-width: 520px) {
+  .hud .caption {
+    display: none;
+  }
+}
 .hud-btn {
+  flex: none;
   pointer-events: auto;
-  height: 26px;
+  height: 28px;
   font-size: var(--fs-callout);
   background: var(--bg-elevated);
   box-shadow: var(--shadow-1), var(--hairline);

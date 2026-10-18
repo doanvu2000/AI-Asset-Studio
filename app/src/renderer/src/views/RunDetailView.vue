@@ -20,6 +20,8 @@ import { useRuns } from '@/stores/runs'
 import { useRecipes } from '@/stores/recipes'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
+import ResizeHandle from '@/components/ResizeHandle.vue'
+import { usePaneWidth } from '@/composables/paneSize'
 import { absoluteTime, humanDuration, kindName, STEP_LABEL, waitingHint, waitingLabel } from '@/composables/format'
 
 const props = defineProps<{ id: string }>()
@@ -28,6 +30,8 @@ const recipes = useRecipes()
 const conn = useConnection()
 const toasts = useToasts()
 const kinds = useKinds()
+const listW = usePaneWidth('run-steps', 420)
+const graphW = usePaneWidth('run-graph', 620)
 
 const MODE_KEY = 'studio.run.view'
 function readMode(): 'list' | 'graph' {
@@ -183,7 +187,7 @@ const selFeatured = computed(() => {
     </EmptyState>
 
     <div v-else class="detail">
-      <section v-if="viewMode === 'graph'" class="rail graph" aria-label="Sơ đồ các bước">
+      <section v-if="viewMode === 'graph'" class="rail graph" aria-label="Sơ đồ các bước" :style="{ '--pane-w': `${graphW}px` }">
         <FlowCanvas
           v-if="steps.length"
           :id="`run-${id}`"
@@ -194,7 +198,7 @@ const selFeatured = computed(() => {
           @node-click="selectByKey"
         />
       </section>
-      <section v-else class="rail scroll" aria-label="Các bước">
+      <section v-else class="rail scroll" aria-label="Các bước" :style="{ '--pane-w': `${listW}px` }">
         <Transition name="fade">
           <div v-if="run?.status === 'failed' || run?.status === 'interrupted'" class="run-err">
             <CircleAlert :size="16" />
@@ -226,6 +230,8 @@ const selFeatured = computed(() => {
         </div>
       </section>
 
+      <ResizeHandle v-if="sel && viewMode === 'graph'" v-model="graphW" label="Sơ đồ các bước" :default-size="620" :min="360" :max="1200" />
+      <ResizeHandle v-else-if="sel" v-model="listW" label="Danh sách bước" :default-size="420" :min="300" :max="680" />
       <section v-if="sel" class="inspector scroll" aria-live="polite">
         <Transition name="swap" mode="out-in">
           <div :key="sel.id" class="insp">
@@ -333,16 +339,18 @@ const selFeatured = computed(() => {
   display: flex;
 }
 .rail {
-  width: min(460px, 46%);
+  width: var(--pane-w, 420px);
+  max-width: 60%;
   flex: none;
   border-right: 0.5px solid var(--separator);
 }
 .rail.graph {
-  width: 58%;
+  max-width: calc(100% - 320px);
   position: relative;
 }
 .seg {
   display: inline-flex;
+  flex: none;
   padding: 2px;
   border-radius: 8px;
   background: var(--bg-sunken);
@@ -352,8 +360,9 @@ const selFeatured = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 26px;
+  height: 28px;
   padding: 0 10px;
+  white-space: nowrap;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -508,8 +517,12 @@ const selFeatured = computed(() => {
   color: var(--st-waiting);
 }
 .note.human {
+  flex-wrap: wrap;
   align-items: center;
   background: var(--st-human-soft);
+}
+.note.human > span {
+  flex: 1 1 180px;
 }
 .note.human > svg {
   color: var(--st-human);
