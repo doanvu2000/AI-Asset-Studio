@@ -80,3 +80,4 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 3. Sprite + Spine viewer mới kiểm mock, chưa kiểm với core thật.
 4. R7 reviewer khắt khe (thường đủ 3 vòng); procedural_3d không giữ lane BLENDER.
 5. Push lên remote khi chủ nhân bảo.
+- 17:30 — Bản portable (`5617ec4`): cài ở L:\AI\AI Asset Studio Portable (465MB), file marker `portable` → data/ + userdata/ cạnh exe. Đã mở thử: core lên, không ghi %APPDATA%. Build lại: `cd app && npm run dist:portable` rồi chép win-unpacked.
