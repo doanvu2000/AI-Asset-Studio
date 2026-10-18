@@ -1,0 +1,29 @@
+id: procedural-3d
+name: Procedural 3D (Claude → Blender)
+description: >-
+  Ý tưởng → Claude viết code bpy theo contract → Blender headless dựng + render nhiều góc → Claude soát ảnh
+  (JSON ok/issues/fix_hint) → sửa tối đa 3 vòng → kiểm GLB → duyệt. Không dùng GPU ComfyUI.
+inputs:
+  idea: {type: text, label: Ý tưởng, placeholder: "low-poly wooden barrel with iron hoops"}
+  style: {type: text, required: false, default: "stylized low-poly game asset", label: Phong cách}
+  height: {type: float, default: 1.0, min: 0.05, max: 100, label: Chiều cao (m)}
+  rounds: {type: int, default: 3, min: 1, max: 3, label: Số vòng sửa tối đa}
+  views: {type: int, default: 6, options: [4, 6, 8], label: Số góc render để soát}
+steps:
+  - id: build
+    kind: claude.procedural_3d
+    params: {idea: "${inputs.idea}", style: "${inputs.style}", height: "${inputs.height}", rounds: "${inputs.rounds}",
+             views: "${inputs.views}", res: 256, elevation: 20, code_model: sonnet, qa_model: sonnet, accept_score: 7}
+  - id: validate
+    kind: op.glb_validate
+    in: {mesh: build.meshes}
+    params: {require_textures: false, max_triangles: 150000}
+  - id: turntable
+    kind: blender.render_dirs
+    in: {mesh: validate.meshes}
+    params: {count: 8, res: 256, elevation: 20}
+  - id: approve
+    kind: gate.approve
+    in: {meshes: validate.meshes, preview: turntable.images}
+outputs:
+  final: approve.meshes

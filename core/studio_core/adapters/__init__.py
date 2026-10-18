@@ -5,8 +5,9 @@ from typing import Any
 
 from ..config import Settings
 from ..contracts import ExecutorRegistry, Resource
-from .blender import BlenderCleanupExecutor, BlenderRenderDirsExecutor, BlenderResource
-from .claude import ClaudeResource, ClaudeTaskExecutor
+from .blender import (BlenderAgentExecutor, BlenderCleanupExecutor, BlenderRenderDirsExecutor, BlenderResource,
+                      BlenderScriptExecutor, Procedural3DExecutor)
+from .claude import ClaudeBriefExecutor, ClaudeResource, ClaudeTaskExecutor
 from .codex import CodexImageExecutor, CodexResource
 from .comfy import ComfyExecutor, ComfyResource
 
@@ -21,4 +22,8 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     registry.register(ClaudeTaskExecutor(settings))
     registry.register(BlenderRenderDirsExecutor(settings, blender, comfy))
     registry.register(BlenderCleanupExecutor(settings, blender))
+    registry.register(ClaudeBriefExecutor(settings))
+    registry.register(BlenderScriptExecutor(settings, blender))
+    registry.register(Procedural3DExecutor(settings, blender))
+    registry.register(BlenderAgentExecutor(settings))
     return [comfy, blender, codex, claude]

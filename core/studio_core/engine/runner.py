@@ -33,7 +33,7 @@ from ..contracts import (
 )
 from .cache import executor_cache_key
 from .gates import GATES, register_gates
-from .recipe import BLOB_TYPES, Recipe, RecipeError, load_recipes
+from .recipe import BLOB_TYPES, Recipe, RecipeError, find_step_refs, load_recipes, ref_value, substitute_refs
 from .scheduler import LaneScheduler
 
 log = logging.getLogger(__name__)
@@ -397,12 +397,34 @@ class StudioEngine:
             out[name] = refs
         return out
 
+    async def _resolve_refs(self, st: _RunState, step: StepRow) -> tuple[dict[str, Any], dict[str, Any]]:
+        """step.params keeps the `${steps.…}` placeholders so a retry re-reads the upstream's newest output."""
+        found = find_step_refs(step.params)
+        if not found:
+            return step.params, {}
+        values: dict[str, Any] = {}
+        for text, sid, oname, path in found:
+            src = st.steps.get(sid)
+            refs = src.outputs.get(oname, []) if src else []
+            if not refs:
+                raise StepError("ref_unresolved", f"{text}: step {sid} has no '{oname}' output")
+            raw = await asyncio.to_thread(self.blobs.path(refs[0].hash).read_bytes)
+            try:
+                values[text] = ref_value(raw, path)
+            except (UnicodeDecodeError, ValueError, KeyError, IndexError, TypeError) as e:
+                raise StepError("ref_unresolved", f"{text}: {type(e).__name__}: {e}") from e
+        return substitute_refs(step.params, values), values
+
     async def _exec_step(self, st: _RunState, step: StepRow) -> None:
         try:
             ex = self.registry.resolve(step.kind)
             inputs = await self._resolve_inputs(st, step)
-            key = executor_cache_key(ex, step.kind, step.params, inputs)
-            await self._set_step(step, inputs=inputs, cache_key=key)
+            params, ref_values = await self._resolve_refs(st, step)
+            key = executor_cache_key(ex, step.kind, params, inputs)
+            extra: dict[str, Any] = {}
+            if ref_values:
+                extra["meta"] = {**step.meta, "refs": {k: str(v)[:500] for k, v in ref_values.items()}}
+            await self._set_step(step, inputs=inputs, cache_key=key, **extra)
             if key is not None:
                 hit = await self.repo.cache_get(key)
                 if hit is not None:
@@ -426,7 +448,7 @@ class StudioEngine:
                 st.ctxs[step.key] = ctx
                 meta = {k: v for k, v in step.meta.items() if k != "waiting_for"}
                 await self._set_step(step, status=StepStatus.RUNNING, started_at=_now(), progress=0.0, meta=meta)
-                result = await self._run_with_auto_retry(ex, ctx, step, inputs)
+                result = await self._run_with_auto_retry(ex, ctx, step, inputs, params)
             finally:
                 self.scheduler.release(lane)
             await self._set_step(step, status=StepStatus.SUCCEEDED, outputs=result.outputs, progress=1.0,
@@ -451,12 +473,13 @@ class StudioEngine:
         await self._set_step(step, status=StepStatus.WAITING_RESOURCE, meta={**step.meta, "waiting_for": res.name})
         await res.ensure_started()
 
-    async def _run_with_auto_retry(self, ex: Executor, ctx: _Ctx, step: StepRow, inputs: Outputs) -> StepResult:
+    async def _run_with_auto_retry(self, ex: Executor, ctx: _Ctx, step: StepRow, inputs: Outputs,
+                                   params: dict[str, Any]) -> StepResult:
         """GPU/Blender crashes near the VRAM ceiling are usually transient; one in-place rerun saves a manual retry."""
-        retries = int(step.params.get("_auto_retry", getattr(ex, "auto_retry", 0)))
+        retries = int(params.get("_auto_retry", getattr(ex, "auto_retry", 0)))
         for n in range(retries + 1):
             try:
-                result = await self._run_executor(ex, ctx, step, inputs)
+                result = await self._run_executor(ex, ctx, step, inputs, params)
             except StepError as e:
                 if not e.retryable or n == retries or ctx.cancelled.is_set():
                     raise
@@ -472,17 +495,18 @@ class StudioEngine:
             return result
         raise AssertionError("unreachable")
 
-    async def _run_executor(self, ex: Executor, ctx: _Ctx, step: StepRow, inputs: Outputs) -> StepResult:
+    async def _run_executor(self, ex: Executor, ctx: _Ctx, step: StepRow, inputs: Outputs,
+                            step_params: dict[str, Any]) -> StepResult:
         spec = step.meta.get("spec", {})
         mp, mpp = spec.get("map"), spec.get("map_param")
         calls: list[tuple[dict[str, Any], Outputs]]
         if mp:
-            calls = [(step.params, {**inputs, mp: [item]}) for item in inputs.get(mp, [])]
+            calls = [(step_params, {**inputs, mp: [item]}) for item in inputs.get(mp, [])]
         elif mpp:
-            values = step.params.get(mpp)
-            calls = [({**step.params, mpp: v}, inputs) for v in (values if isinstance(values, list) else [values])]
+            values = step_params.get(mpp)
+            calls = [({**step_params, mpp: v}, inputs) for v in (values if isinstance(values, list) else [values])]
         else:
-            return await ex.run(ctx, step.params, inputs)
+            return await ex.run(ctx, step_params, inputs)
         outputs: Outputs = {}
         metas: list[dict[str, Any]] = []
         for i, (params, item_inputs) in enumerate(calls):

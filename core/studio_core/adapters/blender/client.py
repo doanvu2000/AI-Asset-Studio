@@ -164,7 +164,7 @@ class BlenderResource:
                         on_event(msg)
                     continue
                 if not msg.get("ok"):
-                    raise StepError("blender_error", msg.get("error", "worker error"),
+                    raise StepError(msg.get("code") or "blender_error", msg.get("error", "worker error"),
                                     detail={"trace": msg.get("trace")})
                 return msg.get("result")
 

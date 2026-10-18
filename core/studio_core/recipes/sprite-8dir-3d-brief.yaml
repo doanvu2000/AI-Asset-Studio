@@ -1,0 +1,50 @@
+id: sprite-8dir-3d-brief
+name: Sprite 8 hướng (3D, ý tưởng → brief)
+description: Ý tưởng ngắn → Claude (haiku) viết brief → concept → chọn → TRELLIS mesh → Blender dọn mesh → render 8 hướng ortho → thu nhỏ 2× → sprite sheet + JSON
+inputs:
+  idea: {type: text, label: Ý tưởng, placeholder: "goblin merchant with a huge backpack"}
+  style: {type: text, required: false, default: "", label: Phong cách (tuỳ chọn)}
+  elevation: {type: int, default: 30, options: [30, 45, 60, 90], label: Góc nghiêng}
+  res: {type: int, default: 256, options: [64, 128, 256, 512], label: Kích thước frame}
+  mirror: {type: bool, default: false, label: Lật gương (5 hướng → 8)}
+  faces: {type: int, default: 30000, min: 2000, max: 200000, label: Số mặt}
+steps:
+  - id: brief
+    kind: claude.brief
+    params: {idea: "${inputs.idea}", style: "${inputs.style}", target: character-3d, model: haiku}
+  - id: concept
+    kind: comfy.t2i_zimage_turbo
+    params: {"57:27.text": "${steps.brief.text}, single full-body character, front view facing the camera, standing upright, whole figure visible head to feet, isolated on plain white background, centered, game asset",
+             "57:13.batch_size": 4}
+  - id: pick
+    kind: gate.pick
+    in: {images: concept.images}
+    params: {k: 1}
+  - id: mesh
+    kind: comfy.img2mesh_trellis2_textured
+    in: {image: pick.images}
+    params: {"186.target_face_count": "${inputs.faces}", "288.value": 2048, "94.target_resolution": 1024, "241.resolution": 512, _free_before: true}
+  - id: cleanup
+    kind: blender.cleanup
+    in: {mesh: mesh.meshes}
+    params: {target_faces: "${inputs.faces}", height: 1.0, origin: feet, upright: none}
+  - id: render
+    kind: blender.render_dirs
+    in: {mesh: cleanup.meshes}
+    params: {count: 8, elevation: "${inputs.elevation}", res: "${inputs.res}", supersample: 2, mirror: "${inputs.mirror}"}
+  - id: dirs
+    kind: op.mirror_dirs
+    in: {images: render.images}
+    params: {count: 8}
+  - id: down
+    kind: op.downscale
+    in: {images: dirs.images}
+    params: {factor: 2, resample: box}
+  - id: sheet
+    kind: op.sheet
+    in: {images: down.images, pivot: render.meta}
+    params: {cols: 8, order: [0, 45, 90, 135, 180, 225, 270, 315]}
+outputs:
+  final: sheet.sheet
+  meta: sheet.meta
+  frames: down.images

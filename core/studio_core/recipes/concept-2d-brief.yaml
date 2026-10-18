@@ -1,0 +1,30 @@
+id: concept-2d-brief
+name: Concept 2D (ý tưởng → brief → Z-Image)
+description: Ý tưởng ngắn → Claude (haiku) viết brief + prompt → N ảnh Z-Image → chọn → tách nền → căn chỉnh
+inputs:
+  idea: {type: text, label: Ý tưởng, placeholder: "potion that heals the undead"}
+  style: {type: text, required: false, default: "", label: Phong cách (tuỳ chọn)}
+  count: {type: int, default: 4, min: 1, max: 8, label: Số biến thể}
+  size: {type: int, default: 512, options: [128, 256, 512, 1024]}
+steps:
+  - id: brief
+    kind: claude.brief
+    params: {idea: "${inputs.idea}", style: "${inputs.style}", target: concept-2d, model: haiku}
+  - id: gen
+    kind: comfy.t2i_zimage_turbo
+    params: {"57:27.text": "${steps.brief.text}, isolated on plain white background, centered, game asset",
+             "57:13.batch_size": "${inputs.count}"}
+  - id: pick
+    kind: gate.pick
+    in: {images: gen.images}
+    params: {k: 1}
+  - id: rmbg
+    kind: comfy.remove_bg_birefnet
+    in: {image: pick.images}
+    map: image
+  - id: fit
+    kind: op.trim_pad_resize
+    in: {images: rmbg.images}
+    params: {size: "${inputs.size}", pad: 0.06}
+outputs:
+  final: fit.images

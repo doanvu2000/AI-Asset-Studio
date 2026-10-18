@@ -3,6 +3,9 @@
 Run: blender.exe -b --factory-startup -noaudio -P worker.py -- <port|0>
 Request {"id", "cmd", "params"}; zero or more {"id", "event": "progress", ...}; then {"id", "ok", "result"|"error"}.
 """
+import builtins
+import contextlib
+import io
 import json
 import math
 import os
@@ -332,11 +335,177 @@ def warmup(p, emit):
     return {"s": round(time.perf_counter() - t0, 2), "engine": scene.render.engine}
 
 
+SCRIPT_FILE = "<studio_script>"
+SCRIPT_IMPORTS = {"bpy", "bmesh", "math", "mathutils", "random", "colorsys", "itertools", "functools", "bpy_extras",
+                  "numpy"}
+# Guards generated code against accidental file/process access; bpy itself can still touch disk, so not a sandbox.
+BLOCKED_BUILTINS = {"open", "exec", "eval", "compile", "input", "breakpoint", "exit", "quit", "__import__"}
+CONVERTIBLE = ("CURVE", "SURFACE", "META", "FONT")
+
+
+class ScriptError(Exception):
+    def __init__(self, code, message, trace=""):
+        super().__init__(message)
+        self.code = code
+        self.trace = trace
+
+
+def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+    if level or name.split(".")[0] not in SCRIPT_IMPORTS:
+        raise ImportError(f"import of {name!r} is not allowed in studio scripts")
+    return builtins.__import__(name, globals, locals, fromlist, level)
+
+
+def script_builtins(unrestricted):
+    if unrestricted:
+        return builtins.__dict__
+    b = {k: v for k, v in builtins.__dict__.items() if k not in BLOCKED_BUILTINS}
+    b["__import__"] = guarded_import
+    return b
+
+
+def deadline_tracer(deadline):
+    """Line-level tracing only inside script frames, so bpy/stdlib calls run untraced at full speed."""
+    def local(frame, event, arg):
+        if time.monotonic() > deadline:
+            raise TimeoutError("script exceeded its time limit")
+        return local
+
+    def call(frame, event, arg):
+        return local if frame.f_code.co_filename == SCRIPT_FILE else None
+
+    return call
+
+
+def script_trace(exc):
+    te = traceback.TracebackException.from_exception(exc)
+    te.stack = traceback.StackSummary.from_list([f for f in te.stack if f.filename == SCRIPT_FILE])
+    return "".join(te.format())[-3000:]
+
+
+def srgb_to_linear(color):
+    if isinstance(color, str):
+        h = color.lstrip("#")
+        color = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    c = [float(x) for x in color]
+    rgb = [x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c[:3]]
+    return (*rgb, c[3] if len(c) > 3 else 1.0)
+
+
+def principled(mat):
+    if mat.node_tree is None:
+        mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    bsdf = next((n for n in nodes if n.type == "BSDF_PRINCIPLED"), None)
+    if bsdf is None:
+        bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+        out = next((n for n in nodes if n.type == "OUTPUT_MATERIAL"), None) or nodes.new("ShaderNodeOutputMaterial")
+        mat.node_tree.links.new(bsdf.outputs[0], out.inputs[0])
+    return bsdf
+
+
+def set_input(node, names, value):
+    for n in names:
+        sock = node.inputs.get(n)
+        if sock is not None:
+            sock.default_value = value
+            return True
+    return False
+
+
+def new_material(name, color, metallic=0.0, roughness=0.5, emission=None, emission_strength=0.0):
+    """color/emission: sRGB like a color picker, (r, g, b[, a]) in 0..1 or '#rrggbb'."""
+    mat = bpy.data.materials.new(name)
+    bsdf = principled(mat)
+    rgba = srgb_to_linear(color)
+    set_input(bsdf, ("Base Color",), rgba)
+    set_input(bsdf, ("Metallic",), float(metallic))
+    set_input(bsdf, ("Roughness",), float(roughness))
+    if emission is not None:
+        set_input(bsdf, ("Emission Color", "Emission"), srgb_to_linear(emission))
+        set_input(bsdf, ("Emission Strength",), float(emission_strength or 1.0))
+    mat.diffuse_color = rgba
+    return mat
+
+
+def convert_to_mesh(objs):
+    for o in objs:
+        with bpy.context.temp_override(object=o, active_object=o, selected_objects=[o],
+                                       selected_editable_objects=[o]):
+            bpy.ops.object.convert(target="MESH")
+
+
+def exec_script(code, p):
+    import linecache
+    linecache.cache[SCRIPT_FILE] = (len(code), None, code.splitlines(True), SCRIPT_FILE)
+    try:
+        compiled = compile(code, SCRIPT_FILE, "exec")
+    except SyntaxError as e:
+        raise ScriptError("blender_script_error", f"SyntaxError: {e.msg} (line {e.lineno})",
+                          "".join(traceback.format_exception_only(e)))
+    import bmesh
+    from mathutils import Euler, Quaternion
+    ns = {"__name__": "__studio_script__", "__builtins__": script_builtins(bool(p.get("unrestricted"))),
+          "bpy": bpy, "bmesh": bmesh, "math": math, "Vector": Vector, "Matrix": Matrix, "Euler": Euler,
+          "Quaternion": Quaternion, "params": dict(p.get("params") or {}), "new_material": new_material,
+          "principled": principled}
+    out = io.StringIO()
+    prev = sys.gettrace()
+    sys.settrace(deadline_tracer(time.monotonic() + float(p.get("timeout_s", 120))))
+    try:
+        with contextlib.redirect_stdout(out):
+            exec(compiled, ns)
+    except KeyboardInterrupt:
+        raise
+    except TimeoutError as e:
+        raise ScriptError("blender_script_timeout", str(e), script_trace(e))
+    except BaseException as e:
+        raise ScriptError("blender_script_error", f"{type(e).__name__}: {e}", script_trace(e))
+    finally:
+        sys.settrace(prev)
+    return out.getvalue()
+
+
+def run_script(p, emit):
+    t0 = time.perf_counter()
+    reset()
+    if p.get("glb_in"):
+        import_glb(p["glb_in"])
+    emit({"event": "progress", "value": 0, "max": 3, "label": "script"})
+    stdout = exec_script(p.get("code") or "", p)
+    script_s = time.perf_counter() - t0
+    scene = bpy.context.scene
+    convert_to_mesh([o for o in scene.objects if o.type in CONVERTIBLE])
+    meshes = [o for o in scene.objects if o.type == "MESH"]
+    if not meshes:
+        raise ScriptError("blender_script_error", "script left no mesh objects in the scene")
+    deps = bpy.context.evaluated_depsgraph_get()
+    tris = verts = 0
+    for o in meshes:
+        me = o.evaluated_get(deps).data
+        me.calc_loop_triangles()
+        tris += len(me.loop_triangles)
+        verts += len(me.vertices)
+    lo, hi = bbox(meshes)
+    mats = {m.name for o in meshes for m in o.data.materials if m}
+    emit({"event": "progress", "value": 1, "max": 3, "label": "export"})
+    bpy.ops.export_scene.gltf(filepath=p["out"], export_format="GLB", export_apply=True, use_selection=False)
+    result = {"objects": [o.name for o in meshes][:64], "mesh_objects": len(meshes), "tris": tris, "verts": verts,
+              "materials": sorted(mats), "no_material": [o.name for o in meshes if not any(o.data.materials)][:64],
+              "bbox_min": [round(float(x), 4) for x in lo], "bbox_max": [round(float(x), 4) for x in hi],
+              "stdout": stdout[-2000:], "script_s": round(script_s, 2), "out": p["out"]}
+    if p.get("render"):
+        result["render"] = render_dirs({**p["render"], "glb": p["out"], "out_dir": p["render_dir"]}, emit)
+    result["total_s"] = round(time.perf_counter() - t0, 2)
+    return result
+
+
 HANDLERS = {
     "ping": lambda p, emit: {"blender": bpy.app.version_string, "pid": os.getpid(), "engines": engine_ids()},
     "warmup": warmup,
     "render_dirs": render_dirs,
     "cleanup": cleanup,
+    "script": run_script,
 }
 
 
@@ -360,6 +529,8 @@ def serve(port):
         try:
             result = HANDLERS[req["cmd"]](req.get("params") or {}, lambda ev: send({"id": rid, **ev}))
             resp = {"id": rid, "ok": True, "result": result}
+        except ScriptError as e:
+            resp = {"id": rid, "ok": False, "code": e.code, "error": str(e), "trace": e.trace}
         except Exception as e:
             resp = {"id": rid, "ok": False, "error": repr(e), "trace": traceback.format_exc()}
         send(resp)

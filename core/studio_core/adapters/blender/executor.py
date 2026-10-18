@@ -146,3 +146,104 @@ class BlenderCleanupExecutor:
         return StepResult(outputs={"meshes": [ref]}, meta={
             **meta, "params": p, "bytes": ref.size, "seconds": round(time.perf_counter() - t0, 2),
             "blender_version": self.blender.version})
+
+
+SCRIPT_ERRORS = {"blender_script_error", "blender_script_timeout"}
+
+
+async def put_frames(ctx: StepContext, frames: list[dict[str, Any]]) -> list[BlobRef]:
+    out = []
+    for f in sorted(frames, key=lambda f: f["angle"]):
+        out.append(await ctx.blobs.put_file(Path(f["file"]), name=f"dir_{round(f['angle']):03d}.png",
+                                            mime="image/png"))
+    return out
+
+
+async def call_script(blender: BlenderResource, ctx: StepContext, code: str, *, mesh: Path | None = None,
+                      script_params: dict[str, Any] | None = None, render: dict[str, Any] | None = None,
+                      timeout_s: float = 120, tag: str = "script", unrestricted: bool = False) -> dict[str, Any]:
+    """Runs `code` in the worker; the result's `out` is the exported GLB, `render.frames` the optional views."""
+    work = ctx.job_dir / tag
+    out = work / "model.glb"
+    await asyncio.to_thread(work.mkdir, parents=True, exist_ok=True)
+    req: dict[str, Any] = {"code": code, "params": script_params or {}, "out": str(out), "timeout_s": timeout_s,
+                           "unrestricted": unrestricted}
+    if mesh is not None:
+        req["glb_in"] = str(mesh)
+    if render is not None:
+        req["render"] = render_params(render)
+        req["render_dir"] = str(work / "frames")
+
+    def on_event(ev: dict[str, Any]) -> None:
+        ctx.progress(ev.get("value", 0), ev.get("max", 1), ev.get("label"))
+
+    try:
+        res = await blender.call("script", req, on_event=on_event, timeout=timeout_s + 300)
+    except StepError as e:
+        if e.code in SCRIPT_ERRORS:
+            trace = (e.detail or {}).get("trace") or ""
+            raise StepError(e.code, f"{e.message}\n{trace}".strip()[-4000:], retryable=False,
+                            detail={"trace": trace}) from e
+        raise
+    if not out.exists():
+        raise StepError("blender_no_output", "script finished without writing a GLB")
+    return res
+
+
+class BlenderScriptExecutor:
+    """bpy code from `params.code` (or a text blob on input `code`) runs in a fresh empty scene of the resident
+    worker, optionally after importing input `mesh`; the scene is exported as GLB and optionally rendered."""
+
+    kind = "blender.script"
+    lane = Lane.BLENDER
+    version = "1"
+
+    def __init__(self, settings: Settings, blender: BlenderResource):
+        self.settings = settings
+        self.blender = blender
+        self.required_resource = blender
+
+    def cacheable(self, params: dict[str, Any]) -> bool:
+        return True
+
+    def cache_material(self, params: dict[str, Any]) -> str:
+        return worker_hash()
+
+    async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        code = str(params.get("code") or "")
+        if not code.strip() and inputs.get("code"):
+            code = await asyncio.to_thread(ctx.blobs.path(inputs["code"][0].hash).read_text, encoding="utf-8")
+        if not code.strip():
+            raise StepError("blender_bad_params", "params.code or input 'code' is required")
+        meshes = inputs.get("mesh", [])
+        if len(meshes) > 1:
+            raise StepError("blender_bad_input", f"expected at most 1 mesh, got {len(meshes)}")
+        t0 = time.perf_counter()
+        src = None
+        if meshes:
+            src = ctx.job_dir / "in.glb"
+
+            def stage() -> None:
+                ctx.job_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(ctx.blobs.path(meshes[0].hash), src)
+
+            await asyncio.to_thread(stage)
+        render = params.get("render")
+        res = await call_script(self.blender, ctx, code, mesh=src, script_params=params.get("params") or {},
+                                render=render if isinstance(render, dict) else None,
+                                timeout_s=float(params.get("timeout_s", 120)),
+                                unrestricted=bool(params.get("unrestricted")))
+        name = str(params.get("name") or "script")
+        outputs: Outputs = {"meshes": [await ctx.blobs.put_file(Path(res["out"]), name=f"{name}.glb",
+                                                                mime="model/gltf-binary")]}
+        rinfo = res.get("render")
+        if rinfo:
+            outputs["images"] = await put_frames(ctx, rinfo["frames"])
+        report = {k: v for k, v in res.items() if k not in ("out", "render")}
+        if rinfo:
+            report["render"] = {k: v for k, v in rinfo.items() if k != "frames"}
+        outputs["report"] = [await ctx.blobs.put_bytes(json.dumps(report, indent=1).encode(), name="report.json",
+                                                       mime="application/json")]
+        return StepResult(outputs=outputs, meta={**{k: v for k, v in report.items() if k != "stdout"},
+                                                 "seconds": round(time.perf_counter() - t0, 2),
+                                                 "blender_version": self.blender.version})

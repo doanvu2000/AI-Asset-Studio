@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -19,6 +20,8 @@ _PLACEHOLDER = re.compile(r"\$\{inputs\.([A-Za-z_][\w-]*)\s*(?:\|\s*([A-Za-z_]\w
 _WHOLE = re.compile(r"^\$\{inputs\.([A-Za-z_][\w-]*)\}$")
 LIST_FILTERS = {"lines"}
 _ID = re.compile(r"^[A-Za-z_][\w-]*$")
+# `${steps.<step>.<output>[.<field>...]}`: text of the step's first output blob, or a field of it when it is JSON.
+STEP_REF = re.compile(r"\$\{steps\.([A-Za-z_][\w-]*)\.([A-Za-z_][\w-]*)((?:\.[\w-]+)*)\}")
 
 
 class RecipeError(ValueError):
@@ -76,6 +79,7 @@ class StepSpec:
     bindings: dict[str, Binding | ConcatBinding] = field(default_factory=dict)
     map: str | None = None
     map_param: str | None = None
+    refs: tuple[str, ...] = ()
 
     @property
     def deps(self) -> list[str]:
@@ -83,6 +87,7 @@ class StepSpec:
         for b in (p for bb in self.bindings.values() for p in bb.parts):
             if b.source != "inputs" and b.source not in out:
                 out.append(b.source)
+        out += [r for r in self.refs if r not in out]
         return out
 
 
@@ -210,6 +215,51 @@ def substitute(value: Any, inputs: dict[str, Any]) -> Any:
     return value
 
 
+def find_step_refs(value: Any) -> list[tuple[str, str, str, tuple[str, ...]]]:
+    """(placeholder text, step, output, field path) for every `${steps.…}` in a params tree."""
+    if isinstance(value, str):
+        return [(m.group(0), m.group(1), m.group(2), tuple(f for f in m.group(3).split(".") if f))
+                for m in STEP_REF.finditer(value)]
+    if isinstance(value, dict):
+        return [r for v in value.values() for r in find_step_refs(v)]
+    if isinstance(value, list):
+        return [r for v in value for r in find_step_refs(v)]
+    return []
+
+
+def ref_value(raw: bytes, path: tuple[str, ...]) -> Any:
+    text = raw.decode("utf-8")
+    if not path:
+        return text
+    cur: Any = json.loads(text)
+    for f in path:
+        if isinstance(cur, list):
+            cur = cur[int(f)]
+        elif isinstance(cur, dict):
+            cur = cur[f]
+        else:
+            raise KeyError(f)
+    return cur
+
+
+def substitute_refs(value: Any, values: dict[str, Any]) -> Any:
+    """A placeholder that is the whole string keeps the value's JSON type; embedded ones become text."""
+    if isinstance(value, str):
+        if value in values:
+            return values[value]
+
+        def text(m: re.Match[str]) -> str:
+            v = values.get(m.group(0), m.group(0))
+            return v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+
+        return STEP_REF.sub(text, value)
+    if isinstance(value, dict):
+        return {k: substitute_refs(v, values) for k, v in value.items()}
+    if isinstance(value, list):
+        return [substitute_refs(v, values) for v in value]
+    return value
+
+
 def _placeholders(value: Any) -> set[str]:
     if isinstance(value, str):
         return {m.group(1) for m in _PLACEHOLDER.finditer(value)}
@@ -310,7 +360,8 @@ def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
         _check_list_params(where, sid, params, mpp, inputs)
         if mp is not None and mpp is not None:
             raise RecipeError(f"{where}: step {sid} cannot use both map and map_param")
-        specs.append(StepSpec(sid, kind, params, bindings, mp, mpp))
+        refs = tuple(dict.fromkeys(r[1] for r in find_step_refs(params)))
+        specs.append(StepSpec(sid, kind, params, bindings, mp, mpp, refs))
 
     for s in specs:
         for name, b in ((n, p) for n, bb in s.bindings.items() for p in bb.parts):
@@ -319,6 +370,9 @@ def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
                     raise RecipeError(f"{where}: step {s.id} in.{name} must bind an image/mesh input, got {b}")
             elif b.source not in seen:
                 raise RecipeError(f"{where}: step {s.id} in.{name} references unknown step {b.source!r}")
+        for r in s.refs:
+            if r not in seen or r == s.id:
+                raise RecipeError(f"{where}: step {s.id} params reference unknown step {r!r}")
 
     outputs = {str(k): Binding.parse(v, f"{where}: outputs.{k}") for k, v in (doc.get("outputs") or {}).items()}
     for k, b in outputs.items():
