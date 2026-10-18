@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { RotateCcw } from '@lucide/vue'
 import type { ProgressData, StepRow } from '@/api/types'
-import { humanDuration, kindName, STEP_LABEL, waitingLabel } from '@/composables/format'
+import { humanDuration, kindName, STEP_LABEL, stepName, waitingLabel } from '@/composables/format'
+import { errorAdvice } from '@/composables/errorAdvice'
 import StatusGlyph from './StatusGlyph.vue'
 import LaneTag from './LaneTag.vue'
 import ElapsedTimer from './ElapsedTimer.vue'
 import TweenNumber from './TweenNumber.vue'
 
-const props = defineProps<{ step: StepRow; progress?: ProgressData; selected?: boolean; retrying?: boolean }>()
-const emit = defineEmits<{ select: []; retry: [] }>()
+const props = defineProps<{ step: StepRow; progress?: ProgressData; selected?: boolean }>()
+const emit = defineEmits<{ select: [] }>()
 
 const fraction = computed(() => {
   const p = props.progress
@@ -36,7 +36,7 @@ const detail = computed(() => {
     case 'cached':
       return 'Kết quả cũ, không chạy lại'
     case 'failed':
-      return st.error?.message ?? 'Lỗi không rõ'
+      return errorAdvice(st.error).title
     case 'running':
       return nodeLabel.value ?? 'Đang chạy'
     default:
@@ -64,7 +64,8 @@ watch(
     role="button"
     tabindex="0"
     :aria-pressed="selected"
-    :aria-label="`${kindName(step.kind)}: ${STEP_LABEL[step.status]}`"
+    :aria-label="`${stepName(step)}: ${STEP_LABEL[step.status]}`"
+    :title="`${kindName(step.kind)} · ${step.key}`"
     @click="emit('select')"
     @keydown.enter.prevent="emit('select')"
     @keydown.space.prevent="emit('select')"
@@ -74,8 +75,7 @@ watch(
     <StatusGlyph :status="step.status" :progress="fraction" :size="26" />
     <div class="body">
       <div class="row1">
-        <span class="name">{{ kindName(step.kind) }}</span>
-        <span class="key">{{ step.key }}</span>
+        <span class="name">{{ stepName(step) }}</span>
         <span v-if="step.attempt > 1" class="attempt">lần {{ step.attempt }}</span>
         <Transition name="pop">
           <span v-if="step.status === 'cached'" class="reuse">Dùng lại</span>
@@ -92,18 +92,6 @@ watch(
           <span v-if="fraction !== null" class="pct"><TweenNumber :value="fraction * 100" />%</span>
           <ElapsedTimer v-if="step.started_at" :from="step.started_at" class="elapsed" />
         </span>
-      </div>
-      <div v-if="step.status === 'failed'" class="fail-actions">
-        <span class="code">{{ step.error?.code }}</span>
-        <button
-          class="btn"
-          :class="{ 'btn-primary': step.error?.retryable }"
-          :disabled="retrying"
-          @click.stop="emit('retry')"
-        >
-          <RotateCcw />
-          Thử lại
-        </button>
       </div>
     </div>
   </div>
@@ -174,18 +162,13 @@ watch(
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.key {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-3);
-}
 .attempt {
   font-size: 11px;
   font-weight: 600;
   color: var(--st-waiting);
 }
 .reuse {
-  font-size: 10.5px;
+  font-size: var(--fs-caption);
   font-weight: 700;
   padding: 1px 7px;
   border-radius: 999px;
@@ -223,8 +206,7 @@ watch(
 }
 .detail.err {
   color: var(--st-fail);
-  white-space: normal;
-  user-select: text;
+  font-weight: 600;
 }
 .metrics {
   display: flex;
@@ -239,17 +221,6 @@ watch(
 .elapsed {
   min-width: 4ch;
   text-align: right;
-}
-.fail-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 8px;
-}
-.code {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--text-3);
 }
 .swap-enter-active {
   transition:

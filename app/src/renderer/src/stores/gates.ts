@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, shallowRef, triggerRef } from 'vue'
 import type { BlobRef, GateAwaitingData, GateResolution, StepRow } from '@/api/types'
 import { api } from './connection'
+import { useRuns } from './runs'
 
 export interface GateItem {
   stepId: string
@@ -21,7 +22,7 @@ function uniqueBlobs(inputs: StepRow['inputs']): BlobRef[] {
 }
 
 // GET /api/gates returns bare StepRows: kind/k live in meta.gate, candidates are the step's inputs.
-function fromStep(step: StepRow, prev?: GateItem): GateItem {
+export function gateFromStep(step: StepRow, prev?: GateItem): GateItem {
   const gate = (step.meta.gate ?? {}) as { kind?: 'pick' | 'approve'; k?: number }
   const kind = prev?.kind ?? gate.kind ?? (step.kind === 'gate.pick' ? 'pick' : 'approve')
   const fallback = uniqueBlobs(step.inputs)
@@ -44,7 +45,7 @@ export const useGates = defineStore('gates', () => {
   const count = computed(() => items.value.size)
 
   function onStep(step: StepRow): void {
-    if (step.status === 'awaiting_human') items.value.set(step.id, fromStep(step, items.value.get(step.id)))
+    if (step.status === 'awaiting_human') items.value.set(step.id, gateFromStep(step, items.value.get(step.id)))
     else if (!items.value.delete(step.id)) return
     dirty = true
   }
@@ -71,7 +72,7 @@ export const useGates = defineStore('gates', () => {
   async function load(): Promise<void> {
     const rows = await api().gates()
     const next = new Map<string, GateItem>()
-    for (const s of rows) next.set(s.id, fromStep(s, items.value.get(s.id)))
+    for (const s of rows) next.set(s.id, gateFromStep(s, items.value.get(s.id)))
     items.value = next
   }
 
@@ -90,5 +91,21 @@ export const useGates = defineStore('gates', () => {
     }
   }
 
-  return { items, list, count, onStep, onAwaiting, commit, load, resolve }
+  /** The step that produced the gate's candidates; retrying it yields a fresh set (new seed). */
+  function sourceStep(g: GateItem): StepRow | undefined {
+    const step = g.step ?? useRuns().steps.get(g.stepId)
+    const deps = step?.deps ?? []
+    return useRuns()
+      .stepsOf(g.runId)
+      .filter((s) => deps.includes(s.key) && !s.kind.startsWith('gate.'))
+      .pop()
+  }
+
+  async function regenerate(g: GateItem): Promise<void> {
+    const src = sourceStep(g)
+    if (!src) throw new Error('Không tìm thấy bước sinh ảnh của lượt chạy này')
+    await api().retryStep(src.id)
+  }
+
+  return { items, list, count, onStep, onAwaiting, commit, load, resolve, sourceStep, regenerate }
 })

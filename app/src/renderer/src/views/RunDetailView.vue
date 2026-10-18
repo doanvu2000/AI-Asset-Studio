@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowLeft, CircleAlert, CircleStop, Hand, Hourglass, Inbox, List, RotateCcw, Workflow } from '@lucide/vue'
+import { onClickOutside, onKeyStroke } from '@vueuse/core'
+import { AnimatePresence, motion } from 'motion-v'
+import { ArrowLeft, CircleAlert, CircleCheck, CircleStop, Copy, Ellipsis, Hourglass, Inbox, List, LoaderCircle, Library, RotateCcw, Workflow } from '@lucide/vue'
 import type { BlobRef, StepRow } from '@/api/types'
 import { RUN_ACTIVE, STEP_DONE_OK } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
@@ -9,20 +11,26 @@ import StepChip from '@/components/StepChip.vue'
 import ElapsedTimer from '@/components/ElapsedTimer.vue'
 import BlobThumb from '@/components/BlobThumb.vue'
 import AssetViewer from '@/components/viewers/AssetViewer.vue'
-import { featuredAsset } from '@/components/viewers/detect'
+import AssetActions from '@/components/AssetActions.vue'
+import { featuredAsset, isImage, viewsFor } from '@/components/viewers/detect'
 import Lightbox from '@/components/Lightbox.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FlowCanvas from '@/components/flow/FlowCanvas.vue'
+import GatePicker from '@/components/gate/GatePicker.vue'
+import GateApprove from '@/components/gate/GateApprove.vue'
 import { buildRunGraph } from '@/composables/graph'
+import { errorAdvice } from '@/composables/errorAdvice'
 import { useKinds } from '@/stores/catalog'
 import { useRuns } from '@/stores/runs'
 import { useRecipes } from '@/stores/recipes'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
+import { gateFromStep, useGates } from '@/stores/gates'
+import { exportName, useVersions } from '@/stores/versions'
 import ResizeHandle from '@/components/ResizeHandle.vue'
 import { usePaneWidth } from '@/composables/paneSize'
-import { absoluteTime, humanDuration, kindName, STEP_LABEL, waitingHint, waitingLabel } from '@/composables/format'
+import { absoluteTime, humanDuration, kindName, STEP_LABEL, stepName, waitingHint, waitingLabel } from '@/composables/format'
 
 const props = defineProps<{ id: string }>()
 const runs = useRuns()
@@ -30,11 +38,16 @@ const recipes = useRecipes()
 const conn = useConnection()
 const toasts = useToasts()
 const kinds = useKinds()
+const gates = useGates()
+const versions = useVersions()
 const listW = usePaneWidth('run-steps', 420)
 const graphW = usePaneWidth('run-graph', 620)
 
+// The graph needs room next to the inspector; below this width it opens as a list unless chosen per visit.
+const GRAPH_MIN_WIDTH = 1440
 const MODE_KEY = 'studio.run.view'
 function readMode(): 'list' | 'graph' {
+  if (window.innerWidth < GRAPH_MIN_WIDTH) return 'list'
   try {
     return localStorage.getItem(MODE_KEY) === 'graph' ? 'graph' : 'list'
   } catch {
@@ -42,13 +55,14 @@ function readMode(): 'list' | 'graph' {
   }
 }
 const viewMode = ref<'list' | 'graph'>(readMode())
-watch(viewMode, (m) => {
+function setMode(m: 'list' | 'graph'): void {
+  viewMode.value = m
   try {
     localStorage.setItem(MODE_KEY, m)
   } catch {
     /* storage unavailable */
   }
-})
+}
 
 const loading = ref(true)
 const loadError = ref<string | null>(null)
@@ -82,6 +96,15 @@ const steps = computed(() => {
 const active = computed(() => !!run.value && RUN_ACTIVE.has(run.value.status))
 const recipeName = computed(() => (run.value ? (recipes.byId(run.value.recipe_id)?.name ?? run.value.recipe_id) : ''))
 
+const doneCount = computed(() => steps.value.filter((s) => s.status === 'succeeded' || s.status === 'cached').length)
+const progressLabel = computed(() => {
+  const n = steps.value.length
+  if (!n) return ''
+  if (!active.value) return `${doneCount.value}/${n} bước`
+  const cur = steps.value.findIndex((s) => !STEP_DONE_OK.has(s.status))
+  return `Bước ${cur < 0 ? n : cur + 1}/${n}`
+})
+
 const manualId = ref<string | null>(null)
 const focusStep = computed<StepRow | undefined>(() => {
   const s = steps.value
@@ -113,22 +136,37 @@ async function retry(s: StepRow): Promise<void> {
   }
 }
 
+const menuOpen = ref(false)
 const confirmCancel = ref(false)
-let confirmTimer: number | undefined
-async function cancel(): Promise<void> {
-  if (!confirmCancel.value) {
-    confirmCancel.value = true
-    confirmTimer = window.setTimeout(() => (confirmCancel.value = false), 3000)
-    return
-  }
-  window.clearTimeout(confirmTimer)
+const cancelling = ref(false)
+const menuRoot = ref<HTMLElement | null>(null)
+function closeMenu(): void {
+  menuOpen.value = false
   confirmCancel.value = false
+}
+onClickOutside(menuRoot, closeMenu)
+onKeyStroke('Escape', () => menuOpen.value && closeMenu())
+
+async function cancel(): Promise<void> {
+  cancelling.value = true
   try {
     await runs.cancel(props.id)
-    toasts.push('Đã huỷ run', 'info')
+    toasts.push('Đã huỷ lượt chạy', 'info')
+    closeMenu()
   } catch (e) {
-    toasts.error(e, 'Không huỷ được')
+    toasts.error(e, 'Không huỷ được lượt chạy')
+  } finally {
+    cancelling.value = false
   }
+}
+async function copyId(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(props.id)
+    toasts.push('Đã copy mã lượt chạy', 'success', 2000)
+  } catch (e) {
+    toasts.error(e, 'Không copy được')
+  }
+  closeMenu()
 }
 
 const sel = computed(() => selected.value)
@@ -139,9 +177,47 @@ const selFraction = computed(() => {
 })
 const selPreview = computed(() => (sel.value ? runs.previews.get(sel.value.id) : undefined))
 const selLogs = computed(() => (sel.value ? (runs.logs.get(sel.value.id) ?? []).slice(-120) : []))
+const selMeta = computed(() => {
+  const s = sel.value
+  if (!s) return ''
+  const tool = kindName(s.kind)
+  return [
+    tool !== stepName(s) ? tool : '',
+    s.attempt > 1 ? `lần ${s.attempt}` : '',
+    s.started_at && s.ended_at ? humanDuration(s.ended_at - s.started_at) : ''
+  ]
+    .filter(Boolean)
+    .join(' · ')
+})
+const selAwaiting = computed(() => sel.value?.status === 'awaiting_human')
 const selOutputs = computed(() => (sel.value ? Object.entries(sel.value.outputs).filter(([, v]) => v.length) : []))
-const selInputs = computed(() => (sel.value ? Object.entries(sel.value.inputs).filter(([, v]) => v.length) : []))
+const selInputs = computed(() => (sel.value && !selAwaiting.value ? Object.entries(sel.value.inputs).filter(([, v]) => v.length) : []))
 const selParams = computed(() => (sel.value && Object.keys(sel.value.params).length ? JSON.stringify(sel.value.params, null, 2) : ''))
+const selAdvice = computed(() => (sel.value?.status === 'failed' ? errorAdvice(sel.value.error) : null))
+const selErrorDetail = computed(() => {
+  const d = sel.value?.error?.detail
+  if (d === undefined || d === null || d === '') return ''
+  return typeof d === 'string' ? d : JSON.stringify(d, null, 2)
+})
+const selGate = computed(() => (sel.value && selAwaiting.value ? (gates.items.get(sel.value.id) ?? gateFromStep(sel.value)) : null))
+
+const PORT_NAMES: Record<string, string> = {
+  images: 'Ảnh',
+  image: 'Ảnh',
+  meshes: 'Mesh',
+  mesh: 'Mesh',
+  glb: 'Mesh',
+  sheet: 'Sprite sheet',
+  sheets: 'Sprite sheet',
+  views: 'Các góc',
+  files: 'Tệp',
+  json: 'Dữ liệu',
+  text: 'Văn bản',
+  spine: 'Spine'
+}
+function portName(name: string): string {
+  return PORT_NAMES[name] ?? name
+}
 
 const graph = computed(() => buildRunGraph(steps.value, kinds.byKind, selected.value?.id ?? null))
 const graphFit = computed(() => `${props.id}:${steps.value.length}:${viewMode.value}`)
@@ -154,17 +230,68 @@ const lightbox = ref<BlobRef | null>(null)
 const selBlobs = computed(() => (sel.value ? [...Object.values(sel.value.outputs), ...Object.values(sel.value.inputs)].flat() : []))
 const selFeatured = computed(() => {
   const s = sel.value
-  if (!s) return null
-  if (STEP_DONE_OK.has(s.status)) return featuredAsset(Object.values(s.outputs).flat())
-  return s.status === 'awaiting_human' ? featuredAsset(Object.values(s.inputs).flat()) : null
+  if (!s || selAwaiting.value || hero.value?.step.id === s.id) return null
+  return STEP_DONE_OK.has(s.status) ? featuredAsset(Object.values(s.outputs).flat()) : null
 })
+
+const finalStep = computed(() =>
+  run.value?.status === 'succeeded'
+    ? [...steps.value].reverse().find((s) => (s.status === 'succeeded' || s.status === 'cached') && Object.values(s.outputs).some((v) => v.length))
+    : undefined
+)
+const BUNDLE_KINDS = ['op.sheet', 'op.spine_export']
+const bundleStepId = computed(() => {
+  if (!finalStep.value) return undefined
+  const ok = steps.value.filter((s) => s.status === 'succeeded' || s.status === 'cached')
+  return (BUNDLE_KINDS.map((k) => ok.find((s) => s.kind === k)).find(Boolean) ?? finalStep.value).id
+})
+const hero = computed(() => {
+  const s = finalStep.value
+  if (!s) return null
+  const blobs = Object.values(s.outputs).flat()
+  const lead = blobs.find(isImage) ?? blobs[0]
+  const view = featuredAsset(blobs) ?? (lead ? viewsFor(lead, blobs)[0] : undefined)
+  return view ? { view, step: s } : null
+})
+
+const runVersions = computed(() => versions.list.filter((v) => v.run_id === props.id))
+const heroVersion = computed(() => {
+  const h = hero.value
+  return h ? (runVersions.value.find((v) => v.blob.hash === h.view.blob.hash) ?? runVersions.value[0]) : undefined
+})
+const draftIds = computed(() => runVersions.value.filter((v) => v.status === 'draft').map((v) => v.id))
+const inLibrary = computed(() => runVersions.value.length > 0 && runVersions.value.every((v) => v.status === 'approved'))
+watch(
+  () => [!!hero.value, conn.transport] as const,
+  ([has, t]) => {
+    if (has && t && !versions.loaded) void versions.load().catch(() => undefined)
+  },
+  { immediate: true }
+)
+const approving = ref(false)
+async function addToLibrary(): Promise<void> {
+  if (!draftIds.value.length) return
+  approving.value = true
+  try {
+    await versions.setStatusMany(draftIds.value, 'approve')
+    toasts.push('Đã đưa vào thư viện', 'success', 2500)
+  } catch (e) {
+    toasts.error(e, 'Không đưa vào thư viện được')
+  } finally {
+    approving.value = false
+  }
+}
+
+function segTitle(s: StepRow): string {
+  return `${stepName(s)}: ${STEP_LABEL[s.status]}`
+}
 </script>
 
 <template>
   <div class="view">
-    <PageHeader :title="run?.title || recipeName || 'Run'">
+    <PageHeader :title="run?.title || recipeName || 'Lượt chạy'">
       <template #leading>
-        <RouterLink to="/runs" class="btn btn-plain btn-icon" aria-label="Về danh sách run"><ArrowLeft /></RouterLink>
+        <RouterLink to="/runs" class="btn btn-plain btn-icon" aria-label="Về danh sách lượt chạy"><ArrowLeft /></RouterLink>
       </template>
       <template v-if="run" #subtitle>
         {{ recipeName }} · {{ absoluteTime(run.created_at) }} ·
@@ -172,17 +299,71 @@ const selFeatured = computed(() => {
         <span v-else-if="run.ended_at" class="num">{{ humanDuration(run.ended_at - run.created_at) }}</span>
       </template>
       <div class="seg" role="radiogroup" aria-label="Kiểu xem">
-        <button type="button" role="radio" :aria-checked="viewMode === 'list'" :class="{ on: viewMode === 'list' }" title="Danh sách bước" @click="viewMode = 'list'"><List :size="14" /> Danh sách</button>
-        <button type="button" role="radio" :aria-checked="viewMode === 'graph'" :class="{ on: viewMode === 'graph' }" title="Sơ đồ bước" @click="viewMode = 'graph'"><Workflow :size="14" /> Sơ đồ</button>
+        <button type="button" role="radio" :aria-checked="viewMode === 'list'" :class="{ on: viewMode === 'list' }" title="Danh sách bước" @click="setMode('list')"><List :size="14" /> Danh sách</button>
+        <button type="button" role="radio" :aria-checked="viewMode === 'graph'" :class="{ on: viewMode === 'graph' }" title="Sơ đồ bước" @click="setMode('graph')"><Workflow :size="14" /> Sơ đồ</button>
       </div>
       <RunStatusBadge v-if="run" :status="run.status" />
-      <button v-if="active" class="btn" :class="{ 'btn-danger': confirmCancel }" @click="cancel">
-        <CircleStop />
-        {{ confirmCancel ? 'Bấm lần nữa để huỷ' : 'Huỷ run' }}
-      </button>
+      <div ref="menuRoot" class="more">
+        <button
+          type="button"
+          class="btn btn-plain btn-icon"
+          aria-haspopup="menu"
+          :aria-expanded="menuOpen"
+          aria-label="Thao tác khác"
+          title="Thao tác khác"
+          @click="menuOpen ? closeMenu() : (menuOpen = true)"
+        >
+          <Ellipsis />
+        </button>
+        <AnimatePresence>
+          <motion.div
+            v-if="menuOpen"
+            class="menu"
+            role="menu"
+            :initial="{ opacity: 0, scale: 0.96, y: -4 }"
+            :animate="{ opacity: 1, scale: 1, y: 0 }"
+            :exit="{ opacity: 0, scale: 0.98, transition: { duration: 0.1 } }"
+            :transition="{ type: 'spring', stiffness: 520, damping: 38 }"
+          >
+            <div v-if="!confirmCancel" class="menu-list">
+              <button type="button" role="menuitem" class="mi" @click="copyId"><Copy :size="15" /> Copy mã lượt chạy</button>
+              <template v-if="active">
+                <div class="menu-sep" role="separator" />
+                <button type="button" role="menuitem" class="mi danger" @click="confirmCancel = true"><CircleStop :size="15" /> Huỷ lượt chạy…</button>
+              </template>
+            </div>
+            <div v-else class="confirm" role="alertdialog" aria-labelledby="cancel-q">
+              <strong id="cancel-q">Huỷ lượt chạy này?</strong>
+              <p class="caption">Bước đang chạy sẽ dừng ngay. Không hoàn tác được.</p>
+              <div class="confirm-row">
+                <button type="button" class="btn" @click="confirmCancel = false">Không</button>
+                <button type="button" class="btn btn-danger" :disabled="cancelling" @click="cancel">
+                  <LoaderCircle v-if="cancelling" class="spin" />
+                  Huỷ lượt chạy
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </PageHeader>
 
-    <EmptyState v-if="loadError && !run" :icon="CircleAlert" title="Không mở được run" :text="loadError">
+    <div
+      v-if="steps.length"
+      class="runbar"
+      role="progressbar"
+      :aria-valuemin="0"
+      :aria-valuemax="steps.length"
+      :aria-valuenow="doneCount"
+      :aria-valuetext="progressLabel"
+    >
+      <div class="segs">
+        <span v-for="s in steps" :key="s.id" class="sg" :class="`sg-${s.status}`" :title="segTitle(s)" />
+      </div>
+      <span class="runbar-label caption num">{{ progressLabel }}</span>
+    </div>
+
+    <EmptyState v-if="loadError && !run" :icon="CircleAlert" title="Không mở được lượt chạy" :text="loadError">
       <button class="btn" @click="load">Thử lại</button>
     </EmptyState>
 
@@ -199,30 +380,9 @@ const selFeatured = computed(() => {
         />
       </section>
       <section v-else class="rail scroll" aria-label="Các bước" :style="{ '--pane-w': `${listW}px` }">
-        <Transition name="fade">
-          <div v-if="run?.status === 'failed' || run?.status === 'interrupted'" class="run-err">
-            <CircleAlert :size="16" />
-            <span>
-              {{ run.status === 'interrupted' ? 'Run bị gián đoạn khi core khởi động lại.' : 'Run dừng vì một bước lỗi.' }}
-              Bấm <strong>Thử lại</strong> ở bước đó để chạy tiếp.
-            </span>
-          </div>
-        </Transition>
         <ol v-if="steps.length" class="steps">
-          <li
-            v-for="s in steps"
-            :key="s.id"
-            class="rail-item"
-            :class="{ done: STEP_DONE_OK.has(s.status) }"
-          >
-            <StepChip
-              :step="s"
-              :progress="runs.progress.get(s.id)"
-              :selected="selected?.id === s.id"
-              :retrying="retrying === s.id"
-              @select="select(s)"
-              @retry="retry(s)"
-            />
+          <li v-for="s in steps" :key="s.id" class="rail-item" :class="`c-${s.status}`">
+            <StepChip :step="s" :progress="runs.progress.get(s.id)" :selected="selected?.id === s.id" @select="select(s)" />
           </li>
         </ol>
         <div v-else-if="loading" class="skel-list">
@@ -232,16 +392,49 @@ const selFeatured = computed(() => {
 
       <ResizeHandle v-if="sel && viewMode === 'graph'" v-model="graphW" label="Sơ đồ các bước" :default-size="620" :min="360" :max="1200" />
       <ResizeHandle v-else-if="sel" v-model="listW" label="Danh sách bước" :default-size="420" :min="300" :max="680" />
-      <section v-if="sel" class="inspector scroll" aria-live="polite">
+      <section v-if="sel" class="inspector scroll">
+        <motion.section
+          v-if="hero"
+          :key="hero.view.blob.hash"
+          class="hero"
+          aria-label="Kết quả"
+          :initial="{ opacity: 0, y: 10 }"
+          :animate="{ opacity: 1, y: 0 }"
+          :transition="{ type: 'spring', stiffness: 380, damping: 34 }"
+        >
+          <div class="hero-head">
+            <h2 class="section-label">Kết quả</h2>
+            <span class="caption">{{ stepName(hero.step) }}</span>
+          </div>
+          <div class="hero-stage card">
+            <AssetViewer :key="hero.view.blob.hash" :view="hero.view" />
+          </div>
+          <div class="hero-actions">
+            <AssetActions
+              :hash="hero.view.blob.hash"
+              :filename="heroVersion ? exportName(heroVersion) : (hero.view.blob.name ?? undefined)"
+              :run-id="id"
+              :version-id="heroVersion?.id"
+              :step-id="bundleStepId"
+            />
+            <span class="spacer" />
+            <Transition name="fade" mode="out-in">
+              <span v-if="inLibrary" key="in" class="in-lib"><CircleCheck :size="16" /> Đã có trong thư viện</span>
+              <button v-else-if="draftIds.length" key="add" class="btn btn-primary" :disabled="approving" @click="addToLibrary">
+                <LoaderCircle v-if="approving" class="spin" />
+                <Library v-else />
+                Đưa vào thư viện
+              </button>
+            </Transition>
+          </div>
+        </motion.section>
+
         <Transition name="swap" mode="out-in">
-          <div :key="sel.id" class="insp">
+          <div :key="sel.id" class="insp" :class="{ 'after-hero': hero }" aria-live="polite">
             <header class="insp-head">
-              <h2 class="title">{{ kindName(sel.kind) }}</h2>
-              <p class="caption">
-                <span class="mono">{{ sel.key }} · {{ sel.kind }}</span>
-                <template v-if="sel.attempt > 1"> · lần {{ sel.attempt }}</template>
-                <template v-if="sel.started_at && sel.ended_at"> · {{ humanDuration(sel.ended_at - sel.started_at) }}</template>
-              </p>
+              <p v-if="hero" class="section-label">Bước đang chọn</p>
+              <h2 class="title">{{ stepName(sel) }}</h2>
+              <p v-if="selMeta" class="caption num">{{ selMeta }}</p>
             </header>
 
             <div v-if="sel.status === 'running'" class="live card">
@@ -272,20 +465,29 @@ const selFeatured = computed(() => {
               </span>
             </div>
 
-            <div v-else-if="sel.status === 'awaiting_human'" class="note human">
-              <Hand :size="16" />
-              <span>Run đang dừng chờ bạn {{ sel.kind === 'gate.pick' ? 'chọn ảnh' : 'duyệt' }}.</span>
-              <RouterLink :to="{ path: '/gates', query: { step: sel.id } }" class="btn btn-primary"><Inbox /> Mở hộp duyệt</RouterLink>
+            <div v-else-if="selGate" class="gate-inline">
+              <div class="gate-inline-head">
+                <span class="human-tag">{{ selGate.kind === 'pick' ? 'Chờ bạn chọn ảnh' : 'Chờ bạn duyệt' }}</span>
+                <RouterLink :to="{ path: '/gates', query: { step: sel.id } }" class="btn btn-plain"><Inbox /> Mở hộp duyệt</RouterLink>
+              </div>
+              <GatePicker v-if="selGate.kind === 'pick'" :gate="selGate" inline :keyboard="false" />
+              <GateApprove v-else :gate="selGate" inline :keyboard="false" />
             </div>
 
-            <div v-else-if="sel.status === 'failed'" class="note fail">
-              <CircleAlert :size="16" />
-              <div class="fail-body">
-                <strong class="selectable">{{ sel.error?.message ?? 'Lỗi không rõ' }}</strong>
-                <span class="caption mono">{{ sel.error?.code }}</span>
-                <pre v-if="sel.error?.detail" class="mono pre selectable">{{ typeof sel.error.detail === 'string' ? sel.error.detail : JSON.stringify(sel.error.detail, null, 2) }}</pre>
+            <div v-else-if="selAdvice" class="callout" role="alert">
+              <CircleAlert :size="18" class="callout-ic" />
+              <div class="callout-body">
+                <strong class="callout-title">{{ selAdvice.title }}</strong>
+                <p class="callout-hint">{{ selAdvice.hint }}</p>
+                <div class="callout-actions">
+                  <button class="btn btn-primary" :disabled="retrying === sel.id" @click="retry(sel)">
+                    <LoaderCircle v-if="retrying === sel.id" class="spin" />
+                    <RotateCcw v-else />
+                    {{ selAdvice.retryLabel }}
+                  </button>
+                  <RouterLink v-for="l in selAdvice.links" :key="l.to" :to="l.to" class="btn">{{ l.label }}</RouterLink>
+                </div>
               </div>
-              <button class="btn btn-primary" :disabled="retrying === sel.id" @click="retry(sel)"><RotateCcw /> Thử lại</button>
             </div>
 
             <p v-else class="caption">{{ STEP_LABEL[sel.status] }}</p>
@@ -295,7 +497,7 @@ const selFeatured = computed(() => {
             </div>
 
             <div v-for="[name, list] in selOutputs" :key="`o-${name}`" class="group">
-              <h3 class="section-label">Đầu ra · {{ name }} <span class="num">({{ list.length }})</span></h3>
+              <h3 class="section-label">{{ portName(name) }} đầu ra <span class="num">({{ list.length }})</span></h3>
               <div v-auto-animate class="thumbs">
                 <button v-for="b in list" :key="b.hash" class="thumb" :title="b.name ?? b.hash" @click="lightbox = b">
                   <BlobThumb :blob="b" :size="256" />
@@ -304,7 +506,7 @@ const selFeatured = computed(() => {
             </div>
 
             <div v-for="[name, list] in selInputs" :key="`i-${name}`" class="group">
-              <h3 class="section-label">Đầu vào · {{ name }}</h3>
+              <h3 class="section-label">{{ portName(name) }} đầu vào</h3>
               <div class="thumbs small">
                 <button v-for="b in list" :key="b.hash" class="thumb" @click="lightbox = b">
                   <BlobThumb :blob="b" :size="128" />
@@ -319,16 +521,32 @@ const selFeatured = computed(() => {
               </ol>
             </div>
 
-            <details v-if="selParams" class="group params">
-              <summary class="section-label">Tham số</summary>
-              <pre class="mono pre selectable">{{ selParams }}</pre>
+            <details class="group tech">
+              <summary class="section-label">Chi tiết kỹ thuật</summary>
+              <dl class="tech-list">
+                <dt>Mã bước</dt>
+                <dd class="mono selectable">{{ sel.key }}</dd>
+                <dt>Loại</dt>
+                <dd class="mono selectable">{{ sel.kind }}</dd>
+                <template v-if="sel.error">
+                  <dt>Mã lỗi</dt>
+                  <dd class="mono selectable">{{ sel.error.code }}</dd>
+                  <dt>Thông báo</dt>
+                  <dd class="selectable">{{ sel.error.message }}</dd>
+                </template>
+              </dl>
+              <pre v-if="selErrorDetail" class="mono pre selectable">{{ selErrorDetail }}</pre>
+              <template v-if="selParams">
+                <h4 class="caption">Tham số</h4>
+                <pre class="mono pre selectable">{{ selParams }}</pre>
+              </template>
             </details>
           </div>
         </Transition>
       </section>
     </div>
 
-    <Lightbox :blob="lightbox" :siblings="selBlobs" @close="lightbox = null" />
+    <Lightbox :blob="lightbox" :siblings="selBlobs" :run-id="id" @close="lightbox = null" />
   </div>
 </template>
 
@@ -380,6 +598,117 @@ const selFeatured = computed(() => {
   color: var(--text);
   font-weight: 600;
 }
+
+.more {
+  position: relative;
+  margin-left: var(--sp-2);
+}
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 220px;
+  padding: 5px;
+  border-radius: var(--r-md);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-2), var(--hairline);
+  transform-origin: top right;
+}
+.menu-list {
+  display: grid;
+}
+.mi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mi:hover,
+.mi:focus-visible {
+  background: var(--bg-hover);
+}
+.mi.danger {
+  color: var(--danger);
+}
+.menu-sep {
+  height: 0.5px;
+  margin: 4px 6px;
+  background: var(--separator);
+}
+.confirm {
+  display: grid;
+  gap: 6px;
+  padding: 8px 8px 6px;
+  width: 260px;
+}
+.confirm p {
+  margin: 0;
+}
+.confirm-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.runbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px var(--sp-6) 6px;
+  border-bottom: 0.5px solid var(--separator);
+}
+.segs {
+  flex: 1;
+  display: flex;
+  gap: 3px;
+  min-width: 0;
+}
+.sg {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--separator-strong);
+  transition: background-color var(--t-base) var(--ease-out);
+}
+.sg-succeeded,
+.sg-cached {
+  background: var(--st-ok);
+}
+.sg-running {
+  background: var(--st-running);
+  animation: soft-pulse 1.6s var(--ease-out) infinite;
+}
+.sg-ready,
+.sg-waiting_resource {
+  background: var(--st-waiting);
+}
+.sg-awaiting_human {
+  background: var(--st-human);
+}
+.sg-failed {
+  background: var(--st-fail);
+}
+.sg-skipped,
+.sg-cancelled {
+  background: repeating-linear-gradient(90deg, var(--separator-strong) 0 4px, transparent 4px 7px);
+}
+.runbar-label {
+  flex: none;
+  min-width: 7ch;
+  text-align: right;
+}
+
 .steps {
   list-style: none;
   margin: 0;
@@ -399,22 +728,24 @@ const selFeatured = computed(() => {
   height: 14px;
   background: var(--separator-strong);
   border-radius: 1px;
+  transition: background-color var(--t-base) var(--ease-out);
 }
-.rail-item.done + .rail-item::before {
+.rail-item.c-succeeded::before,
+.rail-item.c-cached::before {
   background: var(--st-ok);
 }
-.run-err {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
-  padding: 10px 12px;
-  border-radius: var(--r-md);
-  background: var(--st-fail-soft);
-  color: var(--st-fail);
-  font-size: var(--fs-callout);
+.rail-item.c-running::before {
+  background: var(--st-running);
 }
-.run-err span {
-  color: var(--text);
+.rail-item.c-awaiting_human::before {
+  background: var(--st-human);
+}
+.rail-item.c-failed::before {
+  background: var(--st-fail);
+}
+.rail-item.c-skipped::before,
+.rail-item.c-cancelled::before {
+  background: repeating-linear-gradient(180deg, var(--separator-strong) 0 3px, transparent 3px 6px);
 }
 .skel-list {
   display: grid;
@@ -425,17 +756,59 @@ const selFeatured = computed(() => {
   border-radius: var(--r-md);
   background: var(--bg-sunken);
 }
+
 .inspector {
   flex: 1;
+  min-width: 0;
 }
+.hero {
+  display: grid;
+  gap: 10px;
+  max-width: 900px;
+  margin-bottom: 24px;
+}
+.hero-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.hero-stage {
+  height: clamp(320px, 52vh, 560px);
+  overflow: hidden;
+  background: var(--bg-stage);
+}
+.hero-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.spacer {
+  flex: 1;
+}
+.in-lib {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--st-ok);
+}
+
 .insp {
   display: grid;
   gap: 18px;
   max-width: 760px;
 }
+.insp.after-hero {
+  padding-top: 20px;
+  border-top: 0.5px solid var(--separator);
+}
 .insp-head {
   display: grid;
   gap: 2px;
+}
+.insp-head .section-label {
+  margin: 0 0 4px;
 }
 .mono {
   font-family: var(--mono);
@@ -516,30 +889,63 @@ const selFeatured = computed(() => {
 .note.wait strong {
   color: var(--st-waiting);
 }
-.note.human {
-  flex-wrap: wrap;
+
+.gate-inline {
+  display: grid;
+  gap: 10px;
+}
+.gate-inline-head {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.human-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: var(--fs-callout);
+  font-weight: 600;
+  color: var(--st-human);
   background: var(--st-human-soft);
 }
-.note.human > span {
-  flex: 1 1 180px;
+
+.callout {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: var(--r-md);
+  background: var(--danger-soft, var(--st-fail-soft));
+  box-shadow: var(--hairline);
 }
-.note.human > svg {
-  color: var(--st-human);
+.callout-ic {
+  flex: none;
+  margin-top: 1px;
+  color: var(--danger, var(--st-fail));
 }
-.note.fail {
-  background: var(--st-fail-soft);
-}
-.note.fail > svg {
-  color: var(--st-fail);
-  margin-top: 2px;
-}
-.fail-body {
+.callout-body {
   flex: 1;
+  min-width: 0;
   display: grid;
   gap: 4px;
-  min-width: 0;
 }
+.callout-title {
+  font-weight: 600;
+}
+.callout-hint {
+  margin: 0;
+  color: var(--text-2);
+}
+.callout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .pre {
   margin: 4px 0 0;
   padding: 10px;
@@ -601,8 +1007,29 @@ const selFeatured = computed(() => {
 .lv-error {
   color: var(--st-fail);
 }
-.params summary {
+.tech summary {
   cursor: pointer;
+}
+.tech-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 14px;
+  margin: 4px 0 0;
+  font-size: var(--fs-callout);
+}
+.tech-list dt {
+  color: var(--text-3);
+}
+.tech-list dd {
+  margin: 0;
+  min-width: 0;
+  word-break: break-word;
+}
+.tech h4 {
+  margin: 8px 0 0;
+}
+.spin {
+  animation: spin 1s linear infinite;
 }
 .swap-enter-active {
   transition:
