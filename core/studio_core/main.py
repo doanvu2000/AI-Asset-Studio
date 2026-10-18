@@ -50,6 +50,28 @@ async def _announce_when_started(server: uvicorn.Server, port: int) -> None:
     sys.stdout.flush()
 
 
+async def _watch_parent(app, pid: int, request_shutdown) -> None:
+    """Exit once the launching app is gone and nothing is running, so a crashed shell leaves no orphan core."""
+    import win32api
+    import win32con
+    import win32event
+
+    from studio_core.contracts import StepStatus
+
+    handle = win32api.OpenProcess(win32con.SYNCHRONIZE, False, pid)
+    while win32event.WaitForSingleObject(handle, 0) != win32event.WAIT_OBJECT_0:
+        await asyncio.sleep(2)
+    logging.getLogger(__name__).warning("parent %s exited; shutting down when idle", pid)
+    while True:
+        repo = getattr(app.state, "repo", None)
+        active = await repo.list_steps_by_status(
+            [StepStatus.RUNNING, StepStatus.WAITING_RESOURCE, StepStatus.READY]) if repo else []
+        if not active:
+            request_shutdown()
+            return
+        await asyncio.sleep(5)
+
+
 async def _serve(args: argparse.Namespace) -> None:
     settings = load_settings(args.data_dir)
     token = os.environ.get("STUDIO_TOKEN")
@@ -69,10 +91,16 @@ async def _serve(args: argparse.Namespace) -> None:
 
     app.state.request_shutdown = request_shutdown
     announcer = asyncio.create_task(_announce_when_started(server, port))
+    parent = os.environ.get("STUDIO_PARENT_PID")
+    watcher = None
+    if parent and sys.platform == "win32":
+        watcher = asyncio.create_task(_watch_parent(app, int(parent), request_shutdown))
     try:
         await server.serve(sockets=[sock])
     finally:
         announcer.cancel()
+        if watcher:
+            watcher.cancel()
         sock.close()
 
 

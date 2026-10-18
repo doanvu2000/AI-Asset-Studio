@@ -407,6 +407,7 @@ class StudioEngine:
 
             await self.scheduler.acquire(lane, step.meta.get("ready_at", _now()), on_wait)
             try:
+                await self._ensure_resource(ex, step)
                 job_dir = self.settings.jobs_dir / step.run_id / f"{step.key}-{step.attempt}"
                 await asyncio.to_thread(job_dir.mkdir, parents=True, exist_ok=True)
                 ctx = _Ctx(self, step, job_dir)
@@ -429,6 +430,14 @@ class StudioEngine:
             log.exception("step %s (%s) crashed", step.key, step.kind)
             await self._set_step(step, status=StepStatus.FAILED, ended_at=_now(),
                                  error=_err("internal", f"{type(e).__name__}: {e}"))
+
+    async def _ensure_resource(self, ex: Executor, step: StepRow) -> None:
+        # Booting ComfyUI/Blender takes 3–30s; showing that as "running" would misreport the step.
+        res = getattr(ex, "required_resource", None)
+        if res is None or (await res.health()).status in ("up", "busy"):
+            return
+        await self._set_step(step, status=StepStatus.WAITING_RESOURCE, meta={**step.meta, "waiting_for": res.name})
+        await res.ensure_started()
 
     async def _run_executor(self, ex: Executor, ctx: _Ctx, step: StepRow, inputs: Outputs) -> StepResult:
         mp = step.meta.get("spec", {}).get("map")

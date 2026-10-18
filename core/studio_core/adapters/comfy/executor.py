@@ -69,6 +69,7 @@ class ComfyExecutor:
         self.workflow = kind.removeprefix("comfy.")
         self.settings = settings
         self.resource = resource
+        self.required_resource = resource
         index = load_index(settings.comfy_workflows_dir)
         if self.workflow not in index:
             raise KeyError(f"unknown comfy workflow: {self.workflow}")

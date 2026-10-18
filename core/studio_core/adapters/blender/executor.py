@@ -35,6 +35,7 @@ class BlenderRenderDirsExecutor:
     def __init__(self, settings: Settings, blender: BlenderResource, comfy: ComfyResource | None = None):
         self.settings = settings
         self.blender = blender
+        self.required_resource = blender
         self.comfy = comfy
 
     def cacheable(self, params: dict[str, Any]) -> bool:
