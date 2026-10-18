@@ -10,7 +10,10 @@
     "dev:mock": "electron-vite dev --mode mock",
     "typecheck": "vue-tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
     "build": "electron-vite build",
-    "preview": "electron-vite preview"
+    "preview": "electron-vite preview",
+    "dist:core": "uv --directory ../core run pyinstaller packaging/studio-core.spec --noconfirm --clean",
+    "dist:app": "node -e \"require('fs').statSync('../core/dist/studio-core/studio-core.exe')\" && electron-vite build && electron-builder --win --x64",
+    "dist": "npm run dist:core && npm run dist:app"
   },
   "dependencies": {
     "@esotericsoftware/spine-player": "4.2.43",
@@ -34,6 +37,7 @@
     "@types/three": "0.186.0",
     "@vitejs/plugin-vue": "^6.0.10",
     "electron": "^44.9.0",
+    "electron-builder": "26.15.3",
     "electron-vite": "^6.0.0",
     "typescript": "~5.9.3",
     "vite": "^8.3.4",

@@ -23,15 +23,16 @@ onMounted(async () => {
 const quote = (p: string): string => (/\s/.test(p) ? `"${p}"` : p)
 
 const snippets = computed<Record<Target, string>>(() => {
-  const py = info.value?.python ?? ''
+  const cmd = info.value?.command ?? ''
+  const args = info.value?.args ?? []
   return {
-    claude: `claude mcp add -s user asset-studio -- ${quote(py)} -m studio_core mcp`,
+    claude: `claude mcp add -s user asset-studio -- ${[cmd, ...args].map(quote).join(' ')}`,
     // TOML literal strings keep Windows backslashes as-is; Codex cuts tool calls at 60s unless raised and
     // asks approval for every non-read-only tool (codex exec cannot answer) unless approved here.
     codex: [
       '[mcp_servers.asset-studio]',
-      `command = '${py}'`,
-      'args = ["-m", "studio_core", "mcp"]',
+      `command = '${cmd}'`,
+      `args = ${JSON.stringify(args).replace(/,/g, ', ')}`,
       'tool_timeout_sec = 900',
       'default_tools_approval_mode = "approve"'
     ].join('\n')

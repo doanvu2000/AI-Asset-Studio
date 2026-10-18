@@ -319,3 +319,21 @@ export interface RunMeta {
   batch_title?: string
   [k: string]: unknown
 }
+
+export type ToolKey = 'comfy_dir' | 'comfy_python' | 'comfy_models_dir' | 'comfy_workflows_dir' | 'blender_exe' | 'codex_exe'
+
+export interface ToolPath {
+  key: ToolKey
+  label: string
+  kind: 'dir' | 'file'
+  path: string
+  exists: boolean
+  ok: boolean
+  version: string | null
+  detail: string | null
+}
+
+export interface ToolPaths {
+  tools: ToolPath[]
+  settings_file: string
+}

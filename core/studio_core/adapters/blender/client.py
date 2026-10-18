@@ -9,10 +9,11 @@ from typing import Any, Callable
 
 from ...config import Settings
 from ...contracts import ResourceHealth, StepError
+from ...paths import blender_scripts_dir
 from .._util import log, publish_health
 from .._winproc import JobObject, spawn_in_job
 
-WORKER_SCRIPT = Path(__file__).with_name("worker.py")
+WORKER_SCRIPT = blender_scripts_dir() / "worker.py"
 BOOT_TIMEOUT_S = 90.0
 ProgressCallback = Callable[[dict[str, Any]], None]
 

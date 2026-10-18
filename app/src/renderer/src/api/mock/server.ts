@@ -6,6 +6,9 @@ import {
   type Binding,
   type BlobRef,
   type ExportPreset,
+  type ToolKey,
+  type ToolPath,
+  type ToolPaths,
   type KindInfo,
   type RecipeDetail,
   type RecipeDoc,
@@ -26,7 +29,7 @@ import {
   type VersionStatus
 } from '../types'
 import { renderArt, renderPreviewB64 } from './art'
-import { MOCK_KINDS, MOCK_PRESETS, mockValidate, stepDeps } from './catalog'
+import { MOCK_KINDS, MOCK_PRESETS, MOCK_TOOLS, mockValidate, stepDeps } from './catalog'
 import sampleGlbUrl from './assets/sample-prop.glb?url'
 import sheetPngUrl from './assets/sample-sheet.png?url'
 import sheetJsonUrl from './assets/sample-sheet.json?url'
@@ -293,6 +296,7 @@ export class MockCore implements StudioApi, EventStream {
   private builtins = new Map(RECIPES.map((r) => [r.info.id, r]))
   private userRecipes = new Map<string, MockRecipe>()
   private userPresets = new Map<string, ExportPreset>()
+  private tools: ToolPath[] = MOCK_TOOLS.map((t) => ({ ...t }))
   private ready: Promise<void>
   private samples: Samples | null = null
 
@@ -853,6 +857,25 @@ export class MockCore implements StudioApi, EventStream {
   async deletePreset(id: string): Promise<void> {
     await sleep(80)
     if (!this.userPresets.delete(id)) throw new ApiError('not_found', `no user preset '${id}'`, 404)
+  }
+
+  async toolPaths(): Promise<ToolPaths> {
+    await sleep(140)
+    return { tools: clone(this.tools), settings_file: 'C:\\Users\\mock\\AppData\\Roaming\\AI Asset Studio\\data\\settings.json' }
+  }
+
+  async saveToolPaths(paths: Partial<Record<ToolKey, string>>): Promise<ToolPaths> {
+    await sleep(200)
+    for (const [key, raw] of Object.entries(paths)) {
+      const t = this.tools.find((x) => x.key === key)
+      if (!t) throw new ApiError('invalid', `unknown tool keys: ${key}`, 400)
+      const path = (raw ?? '').trim()
+      if (!path) throw new ApiError('invalid', `empty path: ${key}`, 400)
+      // Mock "exists": any absolute drive path counts, so the not-found state stays reachable by typing junk.
+      const exists = /^[a-z]:[\\/]/i.test(path)
+      Object.assign(t, { path, exists, ok: exists, detail: exists ? t.detail : t.kind === 'dir' ? 'Không tìm thấy thư mục' : 'Không tìm thấy file' })
+    }
+    return this.toolPaths()
   }
 
   async startRun(body: StartRunBody): Promise<{ run_id: string }> {

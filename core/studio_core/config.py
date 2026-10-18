@@ -4,7 +4,10 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from studio_core.paths import default_data_dir, recipes_dir
+
 ROOT = Path(__file__).resolve().parents[2]
+TOOL_KEYS = ("comfy_dir", "comfy_python", "comfy_models_dir", "comfy_workflows_dir", "blender_exe", "codex_exe")
 
 
 def _default_codex_exe() -> str:
@@ -14,8 +17,8 @@ def _default_codex_exe() -> str:
 
 
 class Settings(BaseModel):
-    data_dir: Path = ROOT / "data"
-    recipes_dir: Path = Path(__file__).parent / "recipes"
+    data_dir: Path = Field(default_factory=default_data_dir)
+    recipes_dir: Path = recipes_dir()
 
     comfy_dir: Path = Path(r"L:\AI\setup\comfyUI")
     comfy_python: Path = Path(r"L:\AI\setup\comfyUI\.venv\Scripts\python.exe")
@@ -56,6 +59,10 @@ class Settings(BaseModel):
     def presets_path(self) -> Path:
         return self.data_dir / "presets.json"
 
+    @property
+    def settings_path(self) -> Path:
+        return self.data_dir / "settings.json"
+
 
 def load_settings(data_dir: Path | None = None) -> Settings:
     """Defaults < data_dir/settings.json < STUDIO_* env (data dir only)."""
@@ -69,3 +76,18 @@ def load_settings(data_dir: Path | None = None) -> Settings:
     for d in (s.data_dir, s.blobs_dir, s.thumbs_dir, s.jobs_dir):
         d.mkdir(parents=True, exist_ok=True)
     return s
+
+
+def save_overrides(settings: Settings, updates: dict[str, str]) -> dict[str, object]:
+    """Merges `updates` into data_dir/settings.json (other keys kept) and applies them to the live object."""
+    f = settings.settings_path
+    current = json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
+    current.update(updates)
+    checked = Settings(**{**current, "data_dir": settings.data_dir})
+    f.parent.mkdir(parents=True, exist_ok=True)
+    tmp = f.with_name(f.name + ".tmp")
+    tmp.write_text(json.dumps(current, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, f)
+    for k in updates:
+        setattr(settings, k, getattr(checked, k))
+    return current

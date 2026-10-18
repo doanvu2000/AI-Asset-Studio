@@ -20,7 +20,13 @@ protocol.registerSchemesAsPrivileged([
 
 if (!app.requestSingleInstanceLock()) app.quit()
 
-const core = new CoreSupervisor({ repoRoot: process.env.STUDIO_REPO ?? resolve(app.getAppPath(), '..'), mock: isMock })
+const core = new CoreSupervisor({
+  repoRoot: process.env.STUDIO_REPO ?? resolve(app.getAppPath(), '..'),
+  mock: isMock,
+  packaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+  appDataPath: app.getPath('appData')
+})
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
@@ -171,7 +177,7 @@ function registerIpc(): void {
   })
   ipcMain.handle('studio:mcpInfo', (e) => {
     if (!isTrustedSender(e.senderFrame?.url)) throw new Error('untrusted sender')
-    return { python: core.pythonPath(), coreDir: core.coreDir }
+    return { ...core.launch('mcp'), coreDir: core.coreDir, packaged: app.isPackaged }
   })
   ipcMain.handle('studio:copyText', (e, text: unknown) => {
     if (!isTrustedSender(e.senderFrame?.url)) throw new Error('untrusted sender')

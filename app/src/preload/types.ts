@@ -18,8 +18,10 @@ export interface CoreConnection {
 }
 
 export interface McpInfo {
-  python: string
+  command: string
+  args: string[]
   coreDir: string
+  packaged: boolean
 }
 
 export interface StudioBridge {

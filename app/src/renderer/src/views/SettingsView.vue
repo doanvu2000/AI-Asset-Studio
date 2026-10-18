@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ArrowDown, ArrowUp, Copy, Lock, LoaderCircle, Plus, Save, Trash2 } from '@lucide/vue'
+import { ArrowDown, ArrowUp, Copy, FolderCog, Lock, LoaderCircle, Plus, Save, Trash2 } from '@lucide/vue'
 import type { Compass, ExportPreset } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
+import ToolPathsPanel from '@/components/ToolPathsPanel.vue'
 import { usePresets } from '@/stores/catalog'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
@@ -24,6 +25,7 @@ const ANGLE: Record<Compass, number> = { S: 0, SW: 45, W: 90, NW: 135, N: 180, N
 const COMPASS_VI: Record<Compass, string> = { N: 'Bắc', NE: 'Đông Bắc', E: 'Đông', SE: 'Đông Nam', S: 'Nam', SW: 'Tây Nam', W: 'Tây', NW: 'Tây Bắc' }
 
 const selectedId = ref<string>('studio')
+const showTools = ref(false)
 const draft = ref<ExportPreset | null>(null)
 const isNew = ref(false)
 const saving = ref(false)
@@ -41,6 +43,7 @@ const readonly = computed(() => !!draft.value?.builtin)
 const dirty = computed(() => isNew.value || (!!draft.value && !!selected.value && JSON.stringify(draft.value) !== JSON.stringify(selected.value)))
 
 function pick(id: string): void {
+  showTools.value = false
   isNew.value = false
   error.value = null
   selectedId.value = id
@@ -54,6 +57,7 @@ function duplicate(): void {
   for (let i = 2; presets.list.some((p) => p.id === id); i++) id = `${base}-copy${i}`
   draft.value = { ...copy(draft.value), id, name: `${draft.value.name} (bản sao)`, builtin: false }
   isNew.value = true
+  showTools.value = false
   error.value = null
 }
 
@@ -72,6 +76,7 @@ function blank(): void {
     builtin: false
   }
   isNew.value = true
+  showTools.value = false
   error.value = null
 }
 
@@ -146,23 +151,32 @@ async function remove(): Promise<void> {
 
 <template>
   <div class="view">
-    <PageHeader title="Cài đặt" subtitle="Preset xuất sprite sheet cho từng engine / dự án" />
+    <PageHeader title="Cài đặt" subtitle="Đường dẫn công cụ và preset xuất sprite sheet" />
     <div class="split">
-      <aside class="list" aria-label="Preset">
-        <p class="section-label pad">Preset xuất</p>
-        <button v-for="p in presets.list" :key="p.id" class="item" :class="{ on: !isNew && selectedId === p.id }" @click="pick(p.id)">
+      <aside class="list" aria-label="Cài đặt">
+        <p class="section-label pad">Hệ thống</p>
+        <button class="item" :class="{ on: showTools }" @click="showTools = true">
+          <span class="i-name">Đường dẫn công cụ</span>
+          <FolderCog :size="13" class="lock" aria-hidden="true" />
+          <span class="i-sub caption">ComfyUI · Blender · Codex</span>
+        </button>
+        <p class="section-label pad sep">Preset xuất</p>
+        <button v-for="p in presets.list" :key="p.id" class="item" :class="{ on: !showTools && !isNew && selectedId === p.id }" @click="pick(p.id)">
           <span class="i-name">{{ p.name }}</span>
           <Lock v-if="p.builtin" :size="12" class="lock" aria-label="Có sẵn" />
           <span class="i-sub caption">{{ p.dir_order.slice(0, 4).join(' · ') }} …</span>
         </button>
-        <div v-if="isNew && draft" class="item on new">
+        <div v-if="isNew && draft" class="item new" :class="{ on: !showTools }">
           <span class="i-name">{{ draft.name }}</span>
           <span class="i-sub caption">Chưa lưu</span>
         </div>
         <button class="btn btn-plain add" @click="blank"><Plus /> Preset mới</button>
       </aside>
 
-      <section v-if="draft" class="scroll pane">
+      <section v-if="showTools" class="scroll pane">
+        <ToolPathsPanel />
+      </section>
+      <section v-else-if="draft" class="scroll pane">
         <div class="form">
           <header class="f-head">
             <div>
@@ -272,6 +286,9 @@ async function remove(): Promise<void> {
 }
 .pad {
   padding: 0 8px 6px;
+}
+.sep {
+  margin-top: 14px;
 }
 .item {
   display: grid;

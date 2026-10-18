@@ -3,6 +3,8 @@ import type {
   BatchCreateBody,
   BlobRef,
   ExportPreset,
+  ToolKey,
+  ToolPaths,
   KindInfo,
   RecipeDetail,
   RecipeDoc,
@@ -65,6 +67,8 @@ export interface StudioApi {
   presets(): Promise<ExportPreset[]>
   savePreset(p: ExportPreset): Promise<ExportPreset>
   deletePreset(id: string): Promise<void>
+  toolPaths(versions?: boolean): Promise<ToolPaths>
+  saveToolPaths(paths: Partial<Record<ToolKey, string>>): Promise<ToolPaths>
 }
 
 export type RecipeBody = { yaml: string } | { doc: RecipeDoc }
@@ -139,6 +143,8 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     startBatch: (body) => call('POST', '/api/batches', body),
     presets: () => call('GET', '/api/presets'),
     savePreset: (p) => call('PUT', `/api/presets/${enc(p.id)}`, p),
-    deletePreset: (id) => call('DELETE', `/api/presets/${enc(id)}`)
+    deletePreset: (id) => call('DELETE', `/api/presets/${enc(id)}`),
+    toolPaths: (versions = true) => call('GET', `/api/settings/tools${query({ versions: versions ? undefined : 'false' })}`),
+    saveToolPaths: (paths) => call('PUT', '/api/settings/tools', { paths })
   }
 }

@@ -15,8 +15,8 @@ import uvicorn
 from studio_core import __version__
 from studio_core.app import build_app
 from studio_core.config import load_settings
-from studio_core.mcp.lockfile import (BUSY_PREFIX, EXIT_ALREADY_RUNNING, SpawnLock, live_core, remove_lock,
-                                      write_lock)
+from studio_core.mcp.link import LAUNCH_CMD
+from studio_core.mcp.lockfile import BUSY_PREFIX, EXIT_ALREADY_RUNNING, SpawnLock, live_core, remove_lock, write_lock
 
 READY_PREFIX = "STUDIO_CORE_READY"
 
@@ -38,6 +38,9 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     mcp = sub.add_parser("mcp", help="stdio MCP server proxying to a running (or auto-spawned) core")
     mcp.add_argument("--data-dir", type=Path, default=None)
     mcp.add_argument("--log-level", default="warning")
+    launch = sub.add_parser(LAUNCH_CMD, help="internal: start a detached core (frozen build)")
+    launch.add_argument("argv_json")
+    launch.set_defaults(log_level="warning")
     return p.parse_args(argv)
 
 
@@ -152,4 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         from studio_core.mcp.server import run_stdio
 
         run_stdio(args.data_dir)
+    elif args.cmd == LAUNCH_CMD:
+        from studio_core.mcp.link import launch_detached
+
+        launch_detached(json.loads(args.argv_json))
     return 0

@@ -8,6 +8,8 @@ import type { CoreConnection, CoreStatus } from '../preload/types'
 
 const READY_PREFIX = 'STUDIO_CORE_READY '
 const READY_TIMEOUT_MS = 20_000
+// First launch of the frozen core is slowed by Defender scanning the freshly installed _internal/ DLLs.
+const READY_TIMEOUT_PACKAGED_MS = 60_000
 const BACKOFF_MAX_MS = 30_000
 const STABLE_AFTER_MS = 60_000
 const ATTACH_WATCH_MS = 3_000
@@ -17,7 +19,18 @@ const EXIT_ALREADY_RUNNING = 3
 export interface CoreOptions {
   repoRoot: string
   mock: boolean
+  packaged: boolean
+  resourcesPath: string
+  appDataPath: string
 }
+
+export interface CoreLaunch {
+  command: string
+  args: string[]
+}
+
+// Must match APP_NAME in core/studio_core/paths.py (frozen default data dir).
+const APP_DATA_NAME = 'AI Asset Studio'
 
 interface CoreLock {
   pid: number
@@ -91,13 +104,20 @@ export class CoreSupervisor extends EventEmitter {
   }
 
   get coreDir(): string {
-    return join(this.opts.repoRoot, 'core')
+    return this.opts.packaged ? join(this.opts.resourcesPath, 'core') : join(this.opts.repoRoot, 'core')
   }
 
-  // Mirrors core/studio_core/config.py: default <repo>/data, STUDIO_DATA_DIR relative to the core's cwd.
+  // Mirrors core/studio_core/paths.py: STUDIO_DATA_DIR relative to the core's cwd, else %APPDATA% when frozen, else <repo>/data.
   get dataDir(): string {
     const env = process.env.STUDIO_DATA_DIR
-    return env ? resolve(this.coreDir, env) : join(this.opts.repoRoot, 'data')
+    if (env) return resolve(this.coreDir, env)
+    return this.opts.packaged ? join(this.opts.appDataPath, APP_DATA_NAME, 'data') : join(this.opts.repoRoot, 'data')
+  }
+
+  /** How to start the core CLI: the frozen exe when packaged, `python -m studio_core` in dev. */
+  launch(...args: string[]): CoreLaunch {
+    if (this.opts.packaged) return { command: join(this.coreDir, 'studio-core.exe'), args }
+    return { command: this.pythonPath(), args: ['-m', 'studio_core', ...args] }
   }
 
   private async connect(): Promise<void> {
@@ -154,29 +174,31 @@ export class CoreSupervisor extends EventEmitter {
   }
 
   private spawnOnce(): void {
-    const python = this.pythonPath()
+    const { command, args } = this.launch('serve', '--port', '0')
     const attempt = this.status.attempt + 1
-    if (!existsSync(python)) {
-      this.setStatus({ state: 'error', attempt, message: `Không tìm thấy Python của core: ${python}` })
+    if (!existsSync(command)) {
+      const what = this.opts.packaged ? 'file chạy core' : 'Python của core'
+      this.setStatus({ state: 'error', attempt, message: `Không tìm thấy ${what}: ${command}` })
       return
     }
     this.setStatus({ state: 'starting', attempt })
     this.stderrTail = []
 
-    const child = spawn(python, ['-m', 'studio_core', 'serve', '--port', '0'], {
-      cwd: join(this.opts.repoRoot, 'core'),
+    const child = spawn(command, args, {
+      cwd: this.coreDir,
       env: { ...process.env, STUDIO_TOKEN: this.token, STUDIO_PARENT_PID: String(process.pid), PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe']
     })
     this.child = child
 
+    const readyTimeout = this.opts.packaged ? READY_TIMEOUT_PACKAGED_MS : READY_TIMEOUT_MS
     const timeout = setTimeout(() => {
       if (this.child === child && this.status.state === 'starting') {
-        this.lastMessage = 'Core không báo sẵn sàng sau 20 giây'
+        this.lastMessage = `Core không báo sẵn sàng sau ${readyTimeout / 1000} giây`
         killTree(child.pid)
       }
-    }, READY_TIMEOUT_MS)
+    }, readyTimeout)
 
     let buf = ''
     child.stdout?.setEncoding('utf8')

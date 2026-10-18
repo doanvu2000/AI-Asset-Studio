@@ -1,0 +1,39 @@
+appId: studio.ai-asset
+productName: AI Asset Studio
+copyright: Copyright © 2026 Doan Vu
+directories:
+  output: release/${version}
+  buildResources: resources
+files:
+  - out/**/*
+  - package.json
+  # Main/preload use only electron + node builtins and the renderer is fully bundled by Vite.
+  - "!node_modules/**/*"
+asar: true
+extraResources:
+  - from: ../core/dist/studio-core
+    to: core
+    filter:
+      - "**/*"
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: resources/icon.ico
+  executableName: AI Asset Studio
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: AI Asset Studio
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
+  installerHeaderIcon: resources/icon.ico
+  artifactName: AI-Asset-Studio-Setup-${version}-x64.${ext}
+  # User data (%APPDATA%\AI Asset Studio\data) holds runs and blobs; never wipe it on uninstall.
+  deleteAppDataOnUninstall: false
+npmRebuild: false

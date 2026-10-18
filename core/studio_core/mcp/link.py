@@ -15,13 +15,14 @@ from typing import Any, BinaryIO
 
 import httpx
 
-import studio_core
 from studio_core.mcp.lockfile import BUSY_PREFIX, lock_host, pid_alive, read_lock
+from studio_core.paths import core_command, core_cwd, is_frozen
 
 log = logging.getLogger(__name__)
 
 READY_PREFIX = "STUDIO_CORE_READY"
-CORE_DIR = Path(studio_core.__file__).resolve().parents[1]
+LAUNCH_CMD = "launch-detached"
+CORE_DIR = core_cwd()
 
 
 class CoreError(RuntimeError):
@@ -36,7 +37,7 @@ class CoreLink:
     def __init__(self, data_dir: Path, *, boot_timeout_s: float = 60.0, python: str | None = None) -> None:
         self.data_dir = Path(data_dir).resolve()
         self.boot_timeout_s = boot_timeout_s
-        self.python = python or sys.executable
+        self.python = python
         self.base_url: str | None = None
         self.token: str | None = None
         self.spawned_pid: int | None = None
@@ -85,7 +86,7 @@ class CoreLink:
         logs.mkdir(parents=True, exist_ok=True)
         env = {**os.environ, "STUDIO_TOKEN": token, "STUDIO_PARENT_PID": str(os.getpid()),
                "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
-        cmd = [self.python, "-m", "studio_core", "serve", "--port", "0", "--data-dir", str(self.data_dir)]
+        cmd = [*core_command(self.python), "serve", "--port", "0", "--data-dir", str(self.data_dir)]
         with (logs / "mcp-core.log").open("ab") as err:
             proc = _popen_detached(cmd, env, err)
         try:
@@ -174,7 +175,7 @@ class CoreLink:
 
 
 def _popen_detached(cmd: list[str], env: dict[str, str], err: BinaryIO) -> subprocess.Popen[bytes]:
-    kw: dict[str, Any] = {"cwd": CORE_DIR, "env": env, "stdin": subprocess.DEVNULL, "stdout": subprocess.PIPE,
+    kw: dict[str, Any] = {"cwd": core_cwd(), "env": env, "stdin": subprocess.DEVNULL, "stdout": subprocess.PIPE,
                           "stderr": err}
     if sys.platform != "win32":
         return subprocess.Popen(cmd, start_new_session=True, **kw)
@@ -183,8 +184,11 @@ def _popen_detached(cmd: list[str], env: dict[str, str], err: BinaryIO) -> subpr
     # (Codex's kill-on-close job does not, so there the core still dies with the CLI).
     # The core inherits the intermediate's stdout pipe, so READY still reaches us.
     flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-    launcher = _LAUNCHER.format(flags=flags, breakaway=subprocess.CREATE_BREAKAWAY_FROM_JOB)
-    args = [cmd[0], "-c", launcher, json.dumps(cmd)]
+    if is_frozen():
+        args = [cmd[0], LAUNCH_CMD, json.dumps(cmd)]
+    else:
+        launcher = _LAUNCHER.format(flags=flags, breakaway=subprocess.CREATE_BREAKAWAY_FROM_JOB)
+        args = [cmd[0], "-c", launcher, json.dumps(cmd)]
     try:
         return subprocess.Popen(args, creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kw)
     except OSError:
@@ -199,6 +203,16 @@ try:
 except OSError:
     subprocess.Popen(cmd, creationflags={flags}, **kw)
 """
+
+
+def launch_detached(cmd: list[str]) -> None:
+    """Frozen-build twin of _LAUNCHER: a PyInstaller exe has no `-c`."""
+    flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+    kw: dict[str, Any] = {"stdin": sys.stdin, "stdout": sys.stdout, "stderr": sys.stderr}
+    try:
+        subprocess.Popen(cmd, creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kw)
+    except OSError:
+        subprocess.Popen(cmd, creationflags=flags, **kw)
 
 
 def _await_ready(proc: subprocess.Popen[bytes], timeout_s: float) -> tuple[int, int]:
