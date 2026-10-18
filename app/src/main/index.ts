@@ -1,5 +1,6 @@
 import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, session, shell, Tray } from 'electron'
-import { join, normalize, relative, resolve, sep } from 'node:path'
+import { existsSync } from 'node:fs'
+import { dirname, join, normalize, relative, resolve, sep } from 'node:path'
 import { release } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import trayIconPath from '../../resources/tray.png?asset'
@@ -8,6 +9,14 @@ import winIconPath from '../../resources/icon.ico?asset'
 import { CoreSupervisor } from './core'
 
 const isDev = !app.isPackaged && !!process.env.ELECTRON_RENDERER_URL
+
+// Portable build: a `portable` marker file next to the exe keeps runs, blobs and Electron state beside the app.
+const portableDir = app.isPackaged ? dirname(process.execPath) : null
+const isPortable = !!portableDir && existsSync(join(portableDir, 'portable'))
+if (isPortable && portableDir) {
+  process.env.STUDIO_DATA_DIR ??= join(portableDir, 'data')
+  app.setPath('userData', join(portableDir, 'userdata'))
+}
 const isMock = import.meta.env.VITE_MOCK === '1' || process.env.VITE_MOCK === '1'
 const RENDERER_ORIGIN = isDev ? new URL(process.env.ELECTRON_RENDERER_URL!).origin : 'app://studio'
 const rendererRoot = join(__dirname, '../renderer')
@@ -177,7 +186,8 @@ function registerIpc(): void {
   })
   ipcMain.handle('studio:mcpInfo', (e) => {
     if (!isTrustedSender(e.senderFrame?.url)) throw new Error('untrusted sender')
-    return { ...core.launch('mcp'), coreDir: core.coreDir, packaged: app.isPackaged }
+    const launch = core.launch(...(isPortable ? ['mcp', '--data-dir', core.dataDir] : ['mcp']))
+    return { ...launch, coreDir: core.coreDir, packaged: app.isPackaged }
   })
   ipcMain.handle('studio:copyText', (e, text: unknown) => {
     if (!isTrustedSender(e.senderFrame?.url)) throw new Error('untrusted sender')

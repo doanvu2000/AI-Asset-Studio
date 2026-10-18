@@ -72,3 +72,14 @@ Chưa ký số nên SmartScreen sẽ báo "Windows protected your PC" → **More
 - **ComfyUI / Blender "down"**: mở Cài đặt → Đường dẫn công cụ, sửa đến khi hết dấu đỏ.
 - **Log**: core spawn bởi MCP ghi `data\logs\mcp-core.log`, MCP server ghi `data\logs\mcp.log`.
 - **PyInstaller báo file bị khoá khi `--clean`**: tắt app / `studio-core.exe` đang chạy từ `core/dist` rồi build lại.
+
+## Bản portable (không cần cài)
+
+```
+cd app
+npm run dist:portable
+```
+
+Chép `app/release/<version>/win-unpacked/` ra thư mục bất kỳ và tạo file rỗng tên `portable` cạnh `AI Asset Studio.exe`.
+Khi có file này, app lưu data ở `<thư mục>\data` và trạng thái Electron ở `<thư mục>\userdata` thay cho `%APPDATA%`;
+lệnh kết nối MCP trong app tự thêm `--data-dir` trỏ vào đó. Bản đang dùng: `L:\AI\AI Asset Studio Portable`.

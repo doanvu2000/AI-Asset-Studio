@@ -13,7 +13,8 @@
     "preview": "electron-vite preview",
     "dist:core": "uv --directory ../core run pyinstaller packaging/studio-core.spec --noconfirm --clean",
     "dist:app": "node -e \"require('fs').statSync('../core/dist/studio-core/studio-core.exe')\" && electron-vite build && electron-builder --win --x64",
-    "dist": "npm run dist:core && npm run dist:app"
+    "dist": "npm run dist:core && npm run dist:app",
+    "dist:portable": "electron-vite build && electron-builder --win dir --x64"
   },
   "dependencies": {
     "@esotericsoftware/spine-player": "4.2.43",
