@@ -9,7 +9,7 @@ from .blender import (BlenderAgentExecutor, BlenderCleanupExecutor, BlenderRende
                       BlenderScriptExecutor, Procedural3DExecutor)
 from .claude import ClaudeBriefExecutor, ClaudeResource, ClaudeTaskExecutor
 from .codex import CodexImageExecutor, CodexResource
-from .comfy import ComfyExecutor, ComfyResource
+from .comfy import CheckedViewsExecutor, ComfyExecutor, ComfyResource
 
 
 def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: Any = None) -> list[Resource]:
@@ -18,6 +18,7 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     codex = CodexResource(settings, bus)
     claude = ClaudeResource(settings, bus)
     registry.register_prefix("comfy.", lambda kind: ComfyExecutor(kind, settings, comfy))
+    registry.register(CheckedViewsExecutor(registry.resolve, comfy))
     registry.register(CodexImageExecutor(settings, codex))
     registry.register(ClaudeTaskExecutor(settings))
     registry.register(BlenderRenderDirsExecutor(settings, blender, comfy))

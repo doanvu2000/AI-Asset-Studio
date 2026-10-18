@@ -38,6 +38,8 @@ def build_prompt(workflow: dict[str, Any], entry: dict[str, Any], params: dict[s
     prompt = copy.deepcopy(workflow)
     values: dict[str, Any] = {}
     image_keys = [i["key"] for i in entry.get("images", [])]
+    if params.get("_drop_inputs"):
+        image_keys = _drop_inputs(prompt, entry, params["_drop_inputs"], image_keys)
     if len(image_names) > len(image_keys):
         raise StepError("comfy_too_many_images", f"workflow takes {len(image_keys)} image(s), got {len(image_names)}")
     values.update(zip(image_keys, image_names))
@@ -63,6 +65,28 @@ def build_prompt(workflow: dict[str, Any], entry: dict[str, Any], params: dict[s
             raise StepError("comfy_bad_param", f"_drop_outputs: {node_id!r} is not an output node")
         prompt.pop(node_id, None)
     return prompt, values
+
+
+def _drop_inputs(prompt: dict[str, Any], entry: dict[str, Any], targets: list[str], image_keys: list[str]) -> list[str]:
+    """Unlinks optional '<node>.<input>' links; image slots no longer reachable from an output take no image, so
+    the remaining images bind to the remaining slots in order."""
+    if not isinstance(targets, list):
+        raise StepError("comfy_bad_param", f"_drop_inputs must be a list of '<node>.<input>', got {targets!r}")
+    for target in targets:
+        node, _, name = str(target).rpartition(".")
+        if node not in prompt or name not in prompt[node]["inputs"]:
+            raise StepError("comfy_bad_param", f"_drop_inputs: {target!r} is not a node input of this workflow")
+        del prompt[node]["inputs"][name]
+    live: set[str] = set()
+    todo = [o["node"] for o in entry.get("outputs", []) if o["node"] in prompt]
+    while todo:
+        nid = todo.pop()
+        if nid in live or nid not in prompt:
+            continue
+        live.add(nid)
+        todo.extend(v[0] for v in prompt[nid]["inputs"].values() if isinstance(v, list) and len(v) == 2
+                    and isinstance(v[0], str))
+    return [k for k in image_keys if k.rpartition(".")[0] in live]
 
 
 class ComfyExecutor:

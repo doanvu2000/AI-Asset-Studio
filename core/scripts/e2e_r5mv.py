@@ -3,7 +3,11 @@
 Scratch user recipes derived from both recipes (concept/pick replaced by an image input) let both meshes start from
 the exact same front image. Without --image the real sprite-8dir-3d-mv recipe runs first and its pick is reused.
 
-Usage: python scripts/e2e_r5mv.py <data_dir> [prompt] [--image front.png [--views l.png,b.png,r.png] [--only sv|mv]]
+The views step checks Qwen views itself and regenerates bad ones; the `check` gate only opens with --review
+(review_views input), and is then approved here.
+
+Usage: python scripts/e2e_r5mv.py <data_dir> [prompt] [--image front.png [--views l.png,b.png,r.png]] [--only sv|mv]
+       [--review]
 """
 import asyncio
 import copy
@@ -118,13 +122,40 @@ async def steps_of(c: httpx.AsyncClient, run_id: str) -> dict[str, Any]:
     return {s["key"]: s for s in (await c.get(f"/api/runs/{run_id}")).json()["steps"]}
 
 
+async def views_report(c: httpx.AsyncClient, steps: dict[str, Any], out: Path) -> None:
+    """Prints the views step's regeneration stats and saves every Qwen attempt, labelled ok / failure reasons."""
+    views = steps.get("views") or {}
+    if not (views.get("outputs") or {}).get("report"):
+        return
+    rep = json.loads((await c.get(f"/api/blobs/{views['outputs']['report'][0]['hash']}")).content)
+    print(f"views: regenerated {rep['regenerated']}, failed {rep['failed']}, dropped {rep['dropped']}, "
+          f"step {views['ended_at'] - views['started_at']:.1f}s", flush=True)
+    rows: list[tuple[str, Image.Image]] = []
+    for v in rep["views"]:
+        tiles = []
+        for a in v["attempts"]:
+            print(f"  {v['name']:5} #{a['attempt']} {'ok ' if a['ok'] else 'BAD'} {a['reasons']} {a['scores']} "
+                  f"{a.get('seconds')}s", flush=True)
+            tiles.append(fit(await blob_img(c, {"hash": a["hash"]}), 192))
+        strip = Image.new("RGBA", (sum(t.width for t in tiles), 192), MAGENTA)
+        x = 0
+        for t in tiles:
+            strip.paste(t, (x, 0))
+            x += t.width
+        verdicts = ", ".join("ok" if a["ok"] else "/".join(a["reasons"]) for a in v["attempts"])
+        rows.append((f"{v['name']}: {verdicts}", strip))
+    stack(rows).save(out)
+    print("saved", out, flush=True)
+
+
 async def main(data_dir: Path, prompt: str, image: Path | None, only: str | None,
-               views_in: list[Path] | None = None) -> None:
+               views_in: list[Path] | None = None, review: bool = False) -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
     token = secrets.token_hex(16)
     proc, port = spawn(data_dir, token)
     h = {"Authorization": f"Bearer {token}"}
     common = {"elevation": 30, "res": 256, "mirror": False}
+    mv_extra = {"review_views": review}
     tag = image.stem if image else "prompt"
     try:
         async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}", headers=h, timeout=120) as c, \
@@ -133,10 +164,13 @@ async def main(data_dir: Path, prompt: str, image: Path | None, only: str | None
                 r = await c.put(f"/api/recipes/{rid}", json={"doc": from_image_recipe(src, rid)})
                 assert r.is_success, r.text
             if image is None:
-                mv_id, mv_status, mv_t = await run_recipe(c, ws, "sprite-8dir-3d-mv", {"prompt": prompt} | common)
+                mv_id, mv_status, mv_t = await run_recipe(c, ws, "sprite-8dir-3d-mv",
+                                                          {"prompt": prompt} | common | mv_extra)
                 mv_steps = await steps_of(c, mv_id)
                 picked = mv_steps["pick"]["outputs"]["images"][0]
-                sv_id, sv_status, sv_t = await run_recipe(c, ws, AB_SINGLE, {"image": picked["hash"]} | common)
+                sv_id, sv_status, sv_t = None, "skipped", 0.0
+                if only != "mv":
+                    sv_id, sv_status, sv_t = await run_recipe(c, ws, AB_SINGLE, {"image": picked["hash"]} | common)
             else:
                 async def upload(p: Path) -> dict[str, Any]:
                     up = await c.post("/api/blobs", files={"file": (p.name, p.read_bytes(), "image/png")})
@@ -144,7 +178,7 @@ async def main(data_dir: Path, prompt: str, image: Path | None, only: str | None
                     return up.json()
 
                 picked = await upload(image)
-                mv_inputs = {"image": picked["hash"]}
+                mv_inputs = {"image": picked["hash"]} | mv_extra
                 mv_recipe = AB_MULTI
                 if views_in:
                     # Fixed Qwen views (e.g. a good earlier set) so a bad Qwen sample can't decide the A/B.
@@ -152,8 +186,9 @@ async def main(data_dir: Path, prompt: str, image: Path | None, only: str | None
                     doc = from_image_recipe("sprite-8dir-3d-mv", AB_VIEWS)
                     doc["inputs"] |= {n: {"type": "image", "label": n} for n in ("left", "back", "right")}
                     doc["steps"] = [s for s in doc["steps"] if s["id"] not in ("views", "check")]
-                    next(s for s in doc["steps"] if s["id"] == "mesh")["in"] = {
-                        "image": ["inputs.image", "inputs.left", "inputs.back", "inputs.right"]}
+                    mesh = next(s for s in doc["steps"] if s["id"] == "mesh")
+                    mesh["in"] = {"image": ["inputs.image", "inputs.left", "inputs.back", "inputs.right"]}
+                    mesh["params"].pop("_drop_inputs", None)
                     r = await c.put(f"/api/recipes/{AB_VIEWS}", json={"doc": doc})
                     assert r.is_success, r.text
                     mv_inputs |= {n: ref["hash"] for n, ref in zip(("left", "back", "right"), refs)}
@@ -171,6 +206,7 @@ async def main(data_dir: Path, prompt: str, image: Path | None, only: str | None
                 if views_in:
                     mv_steps["views"] = {"outputs": {"images": refs}}
             sv_steps = await steps_of(c, sv_id) if sv_id else {}
+            await views_report(c, mv_steps, data_dir / f"mv_attempts_{tag}.png")
 
             views = [picked] + ((mv_steps.get("views") or {}).get("outputs") or {}).get("images", [])
             view_imgs = [fit(await blob_img(c, v), 256) for v in views]
@@ -203,8 +239,10 @@ async def main(data_dir: Path, prompt: str, image: Path | None, only: str | None
 
 if __name__ == "__main__":
     args = sys.argv[1:]
+    review = "--review" in args
+    args = [a for a in args if a != "--review"]
     opts = {k: args[args.index(k) + 1] for k in ("--image", "--only", "--views") if k in args}
     rest = [a for i, a in enumerate(args) if a not in opts and (i == 0 or args[i - 1] not in opts)]
     asyncio.run(main(Path(rest[0]), rest[1] if len(rest) > 1 else PROMPT,
                      Path(opts["--image"]) if "--image" in opts else None, opts.get("--only"),
-                     [Path(p) for p in opts["--views"].split(",")] if "--views" in opts else None))
+                     [Path(p) for p in opts["--views"].split(",")] if "--views" in opts else None, review))

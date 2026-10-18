@@ -1,9 +1,10 @@
 id: sprite-8dir-3d-mv
 name: Sprite 8 hướng (3D, multi-view)
 description: >-
-  Text → concept → chọn → Qwen dựng thêm 3 góc (trái 90°, sau 180°, phải 270°) → duyệt góc → TRELLIS multi-view
+  Text → concept → chọn → Qwen dựng thêm 3 góc (trái 90°, sau 180°, phải 270°) → kiểm tra góc → TRELLIS multi-view
   (Pixal3D multiview 4 góc, mặt sau theo ảnh Qwen thay vì đoán) → Blender dọn mesh → render 8 hướng ortho → thu nhỏ 2×
-  → sprite sheet + JSON. Góc Qwen hay hỏng (nhân vật nằm ngang) — từ chối rồi chạy lại bước views. Tốn RAM (~28 GB đỉnh).
+  → sprite sheet + JSON. Góc Qwen hỏng (nhân vật nằm ngang) được tự phát hiện và sinh lại, vẫn hỏng
+  thì bỏ góc đó. Tốn RAM (~28 GB đỉnh).
 inputs:
   prompt: {type: text, label: Prompt}
   elevation: {type: int, default: 30, options: [30, 45, 60, 90], label: Góc nghiêng}
@@ -11,6 +12,7 @@ inputs:
   mirror: {type: bool, default: false, label: Lật gương (5 hướng → 8)}
   faces: {type: int, default: 30000, min: 2000, max: 200000, label: Số mặt}
   preset: {type: preset, default: studio, label: Preset xuất}
+  review_views: {type: bool, default: false, label: Duyệt tay 3 góc Qwen}
 steps:
   - id: concept
     kind: comfy.t2i_zimage_turbo
@@ -21,24 +23,30 @@ steps:
     in: {images: concept.images}
     params: {k: 1}
   - id: views
-    kind: comfy.multi_angles_qwen2511
+    kind: views.qwen_checked
     in: {image: pick.images}
-    # Kept outputs in index order: 376 (branch 271), 379 (296), 381 (371) → left, back, right of the Pixal3D rig.
     # "Camera 90° to the right" shows the character's left side (faces image-left), matching rig azimuth 90.
+    # Qwen sometimes returns a side view as the front lying down; such views are regenerated, then dropped
+    # (their Pixal3D slot unlinked) rather than allowed to wreck the mesh.
     params:
-      "_drop_outputs": ["373", "374", "377", "380", "424"]
-      "427:271:253.prompt": "Rotate the camera 90 degrees to the right."
-      "427:296:278.prompt": "Rotate the camera 180 degrees to show the back view."
-      "427:371:353.prompt": "Rotate the camera 90 degrees to the left."
-  # Qwen sometimes returns a side view as the character lying down (2 of 3 live runs); a bad view wrecks the mesh, so
-  # review here and retry `views` on reject.
+      views:
+        - {name: left, output: "376", prompt_key: "427:271:253.prompt", slot: "330.left",
+           prompt: "Rotate the camera 90 degrees to the right."}
+        - {name: back, output: "379", prompt_key: "427:296:278.prompt", slot: "330.back",
+           prompt: "Rotate the camera 180 degrees to show the back view."}
+        - {name: right, output: "381", prompt_key: "427:371:353.prompt", slot: "330.right",
+           prompt: "Rotate the camera 90 degrees to the left."}
+      attempts: 3
+      on_fail: drop
   - id: check
     kind: gate.approve
     in: {images: views.images}
+    params: {enabled: "${inputs.review_views}"}
   - id: mesh
     kind: comfy.img2mesh_trellis2_mv_textured
     in: {image: [pick.images, check.images]}
-    params: {"186.target_face_count": "${inputs.faces}", "288.value": 2048, "94.target_resolution": 1024, "241.resolution": 512, _restart_before: true, _timeout_s: 900}
+    params: {"186.target_face_count": "${inputs.faces}", "288.value": 2048, "94.target_resolution": 1024, "241.resolution": 512,
+             _drop_inputs: "${steps.views.report.drop_inputs}", _restart_before: true, _timeout_s: 900}
   - id: cleanup
     kind: blender.cleanup
     in: {mesh: mesh.meshes}

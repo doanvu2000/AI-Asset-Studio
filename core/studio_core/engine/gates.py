@@ -11,6 +11,14 @@ def is_gate(kind: str) -> bool:
     return kind.startswith(GATE_PREFIX)
 
 
+def gate_enabled(params: dict[str, Any]) -> bool:
+    """`enabled: "${inputs.review}"` makes a gate optional; a disabled gate resolves itself without a human."""
+    v = params.get("enabled", True)
+    if isinstance(v, str):
+        return v.strip().lower() not in ("false", "0", "no", "off", "")
+    return v is None or bool(v)
+
+
 class _Gate:
     lane = Lane.NONE
     version = "1"
@@ -30,6 +38,9 @@ class _Gate:
         raise NotImplementedError
 
     def resolve(self, params: dict[str, Any], inputs: Outputs, res: GateResolution) -> Outputs:
+        raise NotImplementedError
+
+    def auto_resolution(self, params: dict[str, Any], inputs: Outputs) -> GateResolution:
         raise NotImplementedError
 
 
@@ -66,6 +77,10 @@ class PickGate(_Gate):
             raise ValueError(f"expected exactly {k} picks, got {len(picked)}")
         return {"images": [by_hash[h] for h in picked]}
 
+    def auto_resolution(self, params: dict[str, Any], inputs: Outputs) -> GateResolution:
+        k = int(params.get("k", 1)) or 1
+        return GateResolution(picked=[b.hash for b in self.candidates(inputs)[:k]])
+
 
 class ApproveGate(_Gate):
     kind = "gate.approve"
@@ -79,6 +94,9 @@ class ApproveGate(_Gate):
         if not res.approved:
             raise StepError("rejected", "rejected by reviewer")
         return {k: list(v) for k, v in inputs.items()}
+
+    def auto_resolution(self, params: dict[str, Any], inputs: Outputs) -> GateResolution:
+        return GateResolution(approved=True)
 
 
 GATES: dict[str, _Gate] = {g.kind: g for g in (PickGate(), ApproveGate())}

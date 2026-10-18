@@ -32,7 +32,7 @@ from ..contracts import (
     VersionRow,
 )
 from .cache import executor_cache_key
-from .gates import GATES
+from .gates import GATES, gate_enabled
 from .library import RecipeLibrary
 from .recipe import BLOB_TYPES, Recipe, RecipeError, find_step_refs, ref_value, substitute_refs
 from .scheduler import LaneScheduler
@@ -517,6 +517,19 @@ class StudioEngine:
             inputs = await self._resolve_inputs(st, step)
         except StepError as e:
             await self._set_step(step, status=StepStatus.FAILED, ended_at=_now(), error=_err(e.code, e.message))
+            return
+        if not gate_enabled(step.params):
+            res = gate.auto_resolution(step.params, inputs)
+            try:
+                outputs = gate.resolve(step.params, inputs, res)
+            except (StepError, ValueError) as e:
+                await self._set_step(step, status=StepStatus.FAILED, ended_at=_now(),
+                                     error=_err(getattr(e, "code", "gate_auto"), str(e)))
+                return
+            now = _now()
+            await self._set_step(step, status=StepStatus.SUCCEEDED, inputs=inputs, outputs=outputs, progress=1.0,
+                                 started_at=now, ended_at=now,
+                                 meta={**step.meta, "resolution": {**res.model_dump(), "auto": True}})
             return
         data = gate.awaiting_data(step.params, inputs)
         await self._set_step(step, status=StepStatus.AWAITING_HUMAN, inputs=inputs, started_at=_now(),

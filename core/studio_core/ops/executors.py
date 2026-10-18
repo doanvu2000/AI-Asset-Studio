@@ -10,6 +10,7 @@ from PIL import Image
 from ..contracts import BlobRef, Lane, Outputs, StepContext, StepError, StepResult
 from . import glb
 from . import image as im
+from . import viewcheck as vc
 from .presets import ExportPreset, PresetStore, apply_preset, resolve_preset
 
 
@@ -280,5 +281,31 @@ class GlbValidate(OpExecutor):
         return StepResult(outputs={"meshes": list(refs)}, meta=report)
 
 
+class ViewCheck(OpExecutor):
+    """Checks generated views against the front; passing views go to `images`, scores to `report`."""
+    kind = "op.view_check"
+
+    async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        front_refs = _images_in(inputs, "front")
+        refs = _images_in(inputs)
+        cfg = vc.ViewCheckConfig.from_params(params)
+        front = await _load(ctx, front_refs[0])
+        views = await _load_all(ctx, refs)
+        try:
+            results = await asyncio.to_thread(vc.check_views, front, views, cfg)
+        except ValueError as e:
+            raise StepError("op_bad_input", str(e)) from e
+        names = list(params.get("names") or [])
+        report = [{"name": names[i] if i < len(names) else str(i), "hash": r.hash, **res}
+                  for i, (r, res) in enumerate(zip(refs, results))]
+        failed = [x["name"] for x in report if not x["ok"]]
+        if failed and params.get("fail", False):
+            raise StepError("views_rejected", f"bad views: {', '.join(failed)}", detail={"views": report})
+        data = json.dumps({"views": report, "failed": failed, "config": vc.config_dict(cfg)}, indent=1).encode()
+        report_ref = await ctx.blobs.put_bytes(data, name="view_check.json", mime="application/json")
+        passed = [r for r, res in zip(refs, results) if res["ok"]]
+        return StepResult(outputs={"images": passed, "report": [report_ref]}, meta={"failed": failed})
+
+
 ALL_OPS: tuple[type[OpExecutor], ...] = (TrimPadResize, Normalize, MirrorDirs, Sheet, Downscale, Pixelate,
-                                         GlbValidate)
+                                         GlbValidate, ViewCheck)

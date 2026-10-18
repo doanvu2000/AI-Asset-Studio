@@ -42,11 +42,22 @@ COMFY_OPTIONS: dict[str, P] = {
     "_auto_retry": _int(1, min=0, max=3, label="Tự thử lại khi lỗi GPU", advanced=True),
 }
 
+VIEW_CHECK: dict[str, P] = {
+    "max_aspect": _float(1.35, min=1, max=4, label="Tỉ lệ rộng/cao tối đa so với mặt trước", advanced=True),
+    "height_tol": _float(0.15, min=0, max=1, label="Lệch chiều cao tối đa so với mặt trước", advanced=True),
+    "min_area": _float(0.02, min=0, max=1, label="Diện tích nhân vật tối thiểu", advanced=True),
+    "max_area": _float(0.85, min=0, max=1, label="Diện tích nhân vật tối đa", advanced=True),
+    "rot_margin": _float(0.08, min=0, max=1, label="Ngưỡng phát hiện nằm ngang", advanced=True),
+    "edge_px": _int(2, min=0, max=64, label="Lề chống cắt mép (px)", advanced=True),
+}
+
 # "in"/"out" map port name -> port type (image, image[], mesh, json, text, any); "*" means pass-through.
 CATALOG: dict[str, P] = {
     "gate.pick": {"label": "Chọn ảnh", "in": {"images": "image[]"}, "out": {"images": "image[]"},
-                  "params": {"k": _int(1, min=0, label="Số ảnh cần chọn (0 = ít nhất 1)")}},
-    "gate.approve": {"label": "Duyệt kết quả", "in": {"*": "any"}, "out": {"*": "any"}, "params": {}},
+                  "params": {"k": _int(1, min=0, label="Số ảnh cần chọn (0 = ít nhất 1)"),
+                             "enabled": _bool(True, label="Chờ người chọn (tắt = tự chọn ảnh đầu)")}},
+    "gate.approve": {"label": "Duyệt kết quả", "in": {"*": "any"}, "out": {"*": "any"},
+                     "params": {"enabled": _bool(True, label="Chờ người duyệt (tắt = tự duyệt)")}},
     "op.trim_pad_resize": {"label": "Cắt viền & căn cỡ", "in": {"images": "image[]"}, "out": {"images": "image[]"},
                            "params": {"size": _int(512, min=8, max=4096, label="Cỡ (px)"),
                                       "pad": _float(0.06, min=0, max=0.5, label="Lề"),
@@ -79,6 +90,20 @@ CATALOG: dict[str, P] = {
                         "params": {"require_textures": _bool(True, label="Bắt buộc texture"),
                                    "max_triangles": _int(min=0, label="Tối đa tam giác"),
                                    "max_bytes": _int(min=0, label="Tối đa dung lượng (byte)")}},
+    "op.view_check": {"label": "Kiểm tra góc nhìn", "in": {"front": "image", "images": "image[]"},
+                      "out": {"images": "image[]", "report": "json"},
+                      "params": {"names": {"type": "list", "label": "Tên từng góc"},
+                                 "fail": _bool(False, label="Báo lỗi khi có góc hỏng"), **VIEW_CHECK}},
+    "views.qwen_checked": {
+        "label": "Nhiều góc có kiểm tra (Qwen)", "in": {"image": "image"},
+        "out": {"images": "image[]", "report": "json"},
+        "params": {"views": {"type": "json", "label": "Các góc (name, output, prompt_key, prompt, slot)"},
+                   "workflow": _text("multi_angles_qwen2511", label="Workflow sinh góc", advanced=True),
+                   "attempts": _int(3, min=1, max=6, label="Số lần thử mỗi góc"),
+                   "on_fail": _enum(["drop", "keep", "fail"], "drop", label="Góc vẫn hỏng thì"),
+                   "min_views": _int(1, min=0, max=8, label="Số góc tối thiểu"),
+                   "retry_prompt": _text(label="Thêm vào prompt khi thử lại", multiline=True, advanced=True),
+                   **VIEW_CHECK, **COMFY_OPTIONS}},
     "op.parts": {"label": "Tách part (rig 2D)", "in": {"image": "image", "masks": "image[]"},
                  "out": {"meta": "json", "labels": "image", "preview": "image"},
                  "params": {"roles": {"type": "list", "default": ["head", "torso", "arm", "hand", "leg", "cape"],

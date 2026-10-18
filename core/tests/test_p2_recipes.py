@@ -175,7 +175,8 @@ def test_comfy_params_address_real_nodes_and_angle_order() -> None:
             entry = index[s.kind.removeprefix("comfy.")]
             wf = json.loads((WORKFLOWS_DIR / entry["file"]).read_text(encoding="utf-8"))
             params = {k: (v[0] if isinstance(v, list) and not k.startswith("_") else v) for k, v in s.params.items()}
-            params = {k: ("x" if isinstance(v, str) and "${" in v else v) for k, v in params.items()}
+            params = {k: ("x" if isinstance(v, str) and "${" in v else v) for k, v in params.items()
+                      if not (k.startswith("_") and isinstance(v, str) and "${" in v)}
             names = ["studio/x.png"] * max(len(entry.get("images", [])), 1) if s.bindings else []
             build_prompt(wf, entry, params, names, "p")
 

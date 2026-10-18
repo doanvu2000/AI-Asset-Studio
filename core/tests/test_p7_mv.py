@@ -23,7 +23,10 @@ def test_mv_recipe_shape() -> None:
     r = _mv_recipe()
     assert [s.id for s in r.steps] == ["concept", "pick", "views", "check", "mesh", "cleanup", "render", "dirs", "down",
                                        "sheet"]
+    assert r.step("views").kind == "views.qwen_checked"
     assert r.step("check").kind == "gate.approve"
+    assert r.resolve_params(r.step("check"), r.coerce_inputs({"prompt": "x"}))["enabled"] is False
+    assert r.resolve_params(r.step("check"), r.coerce_inputs({"prompt": "x", "review_views": True}))["enabled"] is True
     assert str(r.step("check").bindings["images"]) == "views.images"
     mesh = r.step("mesh")
     assert mesh.kind == "comfy.img2mesh_trellis2_mv_textured"
@@ -35,6 +38,7 @@ def test_mv_recipe_shape() -> None:
     assert params["186.target_face_count"] == 20000
     assert params["94.target_resolution"] == 1024 and params["241.resolution"] == 512
     assert params["_restart_before"] is True and params["_timeout_s"] == 900
+    assert params["_drop_inputs"] == "${steps.views.report.drop_inputs}" and "views" in mesh.deps
     assert isinstance(r.step("views").bindings["image"], Binding)
     assert r.step("views").bindings["image"].source == "pick"
     assert str(r.outputs["final"]) == "sheet.sheet"
@@ -42,6 +46,7 @@ def test_mv_recipe_shape() -> None:
 
 def test_mv_recipe_kinds_resolve(tmp_path: Path) -> None:
     from studio_core.adapters.blender import BlenderCleanupExecutor, BlenderRenderDirsExecutor
+    from studio_core.adapters.comfy import CheckedViewsExecutor
     from studio_core.contracts import ExecutorRegistry, Lane
     from studio_core.engine.gates import register_gates
     from studio_core.ops import register as register_ops
@@ -53,6 +58,7 @@ def test_mv_recipe_kinds_resolve(tmp_path: Path) -> None:
     reg.register(BlenderRenderDirsExecutor(settings, object()))  # type: ignore[arg-type]
     reg.register(BlenderCleanupExecutor(settings, object()))  # type: ignore[arg-type]
     reg.register_prefix("comfy.", lambda kind: type("C", (), {"kind": kind, "lane": Lane.GPU})())  # type: ignore[arg-type, return-value]
+    reg.register(CheckedViewsExecutor(reg.resolve))
     for s in _mv_recipe().steps:
         reg.resolve(s.kind)
 
@@ -63,7 +69,7 @@ def test_mv_tail_matches_single_view_recipe() -> None:
     for sid in ("cleanup", "render", "dirs", "down", "sheet"):
         assert mv.step(sid).kind == sv.step(sid).kind
         assert mv.step(sid).params == sv.step(sid).params
-    assert mv.inputs.keys() == sv.inputs.keys()
+    assert mv.inputs.keys() - sv.inputs.keys() == {"review_views"}
 
 
 @needs_workflows
@@ -104,12 +110,27 @@ def test_mv_qwen_views_are_left_back_right() -> None:
 
     entry = load_index(WORKFLOWS_DIR)["multi_angles_qwen2511"]
     wf = json.loads((WORKFLOWS_DIR / entry["file"]).read_text(encoding="utf-8"))
-    params = _mv_recipe().step("views").params
-    kept = [o["node"] for o in entry["outputs"] if o["node"] not in params["_drop_outputs"]]
-    prompts = []
-    for node in kept:
-        branch = wf[node]["inputs"]["images"][0].split(":")[1]
-        prompts.append(next(v for k, v in params.items() if ":" in k and k.split(":")[1] == branch))
-    assert len(prompts) == 3
-    for text, want in zip(prompts, ["90 degrees to the right", "180 degrees", "90 degrees to the left"]):
-        assert want in text, prompts
+    views = _mv_recipe().step("views").params["views"]
+    assert [v["name"] for v in views] == ["left", "back", "right"]
+    outputs = [o["node"] for o in entry["outputs"]]
+    assert [outputs.index(v["output"]) for v in views] == sorted(outputs.index(v["output"]) for v in views)
+    for v, want in zip(views, ["90 degrees to the right", "180 degrees", "90 degrees to the left"]):
+        branch = wf[v["output"]]["inputs"]["images"][0].split(":")[1]
+        assert v["prompt_key"].split(":")[1] == branch
+        assert v["prompt_key"].split(".")[0] in wf
+        assert want in v["prompt"]
+        assert v["slot"] == f"330.{v['name']}"
+
+
+@needs_workflows
+def test_mv_workflow_drops_a_view_slot() -> None:
+    from studio_core.adapters.comfy.executor import build_prompt, load_index
+
+    entry = load_index(WORKFLOWS_DIR)["img2mesh_trellis2_mv_textured"]
+    wf = json.loads((WORKFLOWS_DIR / entry["file"]).read_text(encoding="utf-8"))
+    names = ["studio/front.png", "studio/back.png", "studio/right.png"]
+    prompt, values = build_prompt(wf, entry, {"_drop_inputs": ["330.left"]}, names, "p")
+    assert "left" not in prompt["330"]["inputs"]
+    assert prompt["122"]["inputs"]["image"] == names[0]
+    assert prompt["402"]["inputs"]["image"] == names[1] and prompt["403"]["inputs"]["image"] == names[2]
+    assert "401.image" not in values
