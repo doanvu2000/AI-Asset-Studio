@@ -33,7 +33,8 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
    Mở: reviewer R7 khắt khe → thường chạy đủ 3 vòng; procedural_3d không giữ lane BLENDER.
 6. [x] P4b MCP (`aac51e2`): `python -m studio_core mcp`, lock `<data>/core.lock.json`, E2E claude -p + codex exec (CPU recipe).
    Codex cần `tool_timeout_sec=900`, `default_tools_approval_mode="approve"`. Chưa E2E GPU qua MCP (R1/R5) → lead làm.
-7. [ ] Agent: app attach core qua lock + chặn core thứ 2 cùng data dir + spawn race (app/src/main/core.ts, main.py, mcp/link.py).
+7. [x] 1 core / data dir (`7c0d955`): spawn lock, serve thoát mã 3 nếu đã có core, app + MCP attach qua lock. pytest 159.
+   Mở: `npm run typecheck` (web) có lỗi sẵn ở ws.ts, StatusGlyph.vue, NewRunView.vue, TS6307 preload/types.ts.
 8. [ ] Agent: P6 flow editor (Vue Flow), API kinds/validate/save recipe, batch, preset export Unity/Godot.
 9. [ ] Sau đó: E2E GPU qua MCP (R1, R5); P5 Spine (cần workflow SAM3.1 — R&D); P7 đóng gói.
 
