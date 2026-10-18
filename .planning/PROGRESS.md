@@ -39,7 +39,8 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 9. [x] R5 live lại @1024/512: 192s (TRELLIS 119s). Mặt trước tốt; lưng có texture "mặt ma" (TRELLIS bịa mặt sau từ 1 ảnh)
    → cải tiến sau: thêm ảnh mặt sau (Qwen) làm input đa góc nếu workflow hỗ trợ.
 10. [x] E2E GPU qua MCP: `claude -p` (sonnet) chạy R1 auto_first → final.png 66.5s; core MCP tự tắt, lock xoá.
-11. [ ] P5 Spine (SAM3.1 workflow — R&D) · P7 đóng gói (sau P6 vì cùng package.json).
+11. [~] Agent P5 Spine đang chạy (giữ GPU; lead không chạy GPU tới khi xong): SAM3.1 workflow, op.layers, op.spine_export, R6.
+12. [ ] P7 đóng gói (sau P6 vì cùng package.json).
 
 ## Nhật ký
 
