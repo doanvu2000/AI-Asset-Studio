@@ -152,7 +152,7 @@ def test_procedural_loop(tmp_path: Path) -> None:
         writer_r3 = q.calls[3][0][-1]["text"]
         assert "lowest point" in writer_r3 and "fix it" in writer_r3
         qa_content, qa_options = q.calls[2]
-        assert sum(1 for b in qa_content if b["type"] == "image") == 2 and qa_options.model == "sonnet"
+        assert sum(1 for b in qa_content if b["type"] == "image") == 2 and qa_options.model == "claude-opus-5-5"
         assert "Automatic checks already failed" in qa_content[-1]["text"]
         assert ctx.blobs.path(res.outputs["code"][0].hash).read_text() == "v = 3"
         assert len(res.outputs["images"]) == 2 and res.outputs["meshes"][0].name == "procedural.glb"
@@ -264,7 +264,7 @@ def test_p4_recipes_load_and_resolve(tmp_path: Path) -> None:
     assert [x.id for x in r7.steps] == ["build", "validate", "turntable", "approve"]
     v7 = r7.coerce_inputs({"idea": "barrel", "rounds": 2})
     b = r7.resolve_params(r7.step("build"), v7)
-    assert b["rounds"] == 2 and b["views"] == 6 and b["code_model"] == "sonnet"
+    assert b["rounds"] == 2 and b["views"] == 6 and b["code_model"] == "opus"
     assert reg.resolve("claude.procedural_3d").lane == Lane.CLOUD
     assert r7.resolve_params(r7.step("validate"), v7)["require_textures"] is False
     with pytest.raises(ValueError):

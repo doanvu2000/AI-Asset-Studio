@@ -13,7 +13,7 @@ steps:
   - id: build
     kind: claude.procedural_3d
     params: {idea: "${inputs.idea}", style: "${inputs.style}", height: "${inputs.height}", rounds: "${inputs.rounds}",
-             views: "${inputs.views}", res: 256, elevation: 20, code_model: sonnet, qa_model: sonnet, accept_score: 7}
+             views: "${inputs.views}", res: 256, elevation: 20, code_model: opus, qa_model: opus, accept_score: 7}
   - id: validate
     kind: op.glb_validate
     in: {mesh: build.meshes}

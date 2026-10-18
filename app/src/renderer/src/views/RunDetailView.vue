@@ -12,6 +12,7 @@ import ElapsedTimer from '@/components/ElapsedTimer.vue'
 import BlobThumb from '@/components/BlobThumb.vue'
 import AssetViewer from '@/components/viewers/AssetViewer.vue'
 import AssetActions from '@/components/AssetActions.vue'
+import ViewsReport from '@/components/ViewsReport.vue'
 import { featuredAsset, isImage, viewsFor } from '@/components/viewers/detect'
 import Lightbox from '@/components/Lightbox.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
@@ -504,6 +505,8 @@ function segTitle(s: StepRow): string {
                 </button>
               </div>
             </div>
+
+            <ViewsReport v-if="sel.kind === 'views.qwen_checked' && sel.outputs.report?.[0]" :report="sel.outputs.report[0]" />
 
             <div v-for="[name, list] in selInputs" :key="`i-${name}`" class="group">
               <h3 class="section-label">{{ portName(name) }} đầu vào</h3>

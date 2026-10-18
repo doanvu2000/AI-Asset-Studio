@@ -34,7 +34,7 @@ steps:
     kind: claude.task
     in: {images: [rmbg.images, parts.preview]}
     params:
-      model: sonnet
+      model: opus
       max_turns: 2
       _auto_retry: 1
       system: You place joints for a 2D cutout (Spine) rig of a front-view character. Coordinates are image pixels, origin top-left, x right, y down. The character's left side (suffix _l) is on the IMAGE RIGHT.

@@ -10,7 +10,7 @@ from typing import Any
 
 from ...config import Settings
 from ...contracts import Lane, Outputs, StepContext, StepError, StepResult
-from ..claude import QueryFn, ask, put_json, sdk_query
+from ..claude import DEFAULT_MODEL, QueryFn, ask, put_json, sdk_query
 
 MCP_NAME = "blender"
 DEFAULT_TOOLS = ("get_addon_status", "get_scene_info", "execute_blender_code", "look")
@@ -78,7 +78,7 @@ class BlenderAgentExecutor:
             prompt += f"\n\nStart by importing this GLB into your collection: {src}"
         cmd, args = (str(params["mcp_command"]), list(params.get("mcp_args") or [])) if params.get("mcp_command") \
             else mcp_command()
-        q = {"model": params.get("model") or "sonnet", "max_turns": int(params.get("max_turns", 40)),
+        q = {"model": params.get("model") or DEFAULT_MODEL, "max_turns": int(params.get("max_turns", 40)),
              "system": SYSTEM.format(collection=collection, out=str(out)), "schema": RESULT_SCHEMA}
         servers = {MCP_NAME: {"type": "stdio", "command": cmd, "args": args}}
         t0 = time.perf_counter()

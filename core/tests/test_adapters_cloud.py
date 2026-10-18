@@ -61,8 +61,8 @@ def test_codex_executor_flags():
 def test_claude_options_and_content():
     opts = build_options({"model": "haiku", "schema": {"type": "object"}}, "C:/job")
     assert opts.setting_sources == [] and opts.strict_mcp_config is True and opts.tools == []
-    assert opts.model == "haiku" and opts.output_format["type"] == "json_schema" and opts.cwd == "C:/job"
-    assert build_options({}, ".").model == "sonnet" and build_options({}, ".").output_format is None
+    assert opts.model == "claude-haiku-5-5" and opts.output_format["type"] == "json_schema" and opts.cwd == "C:/job"
+    assert build_options({}, ".").model == "claude-opus-5-5" and build_options({}, ".").output_format is None
     content = build_content("describe", [(b"\x89PNG", "image/png")])
     assert content[0]["type"] == "image" and content[0]["source"]["media_type"] == "image/png"
     assert content[-1] == {"type": "text", "text": "describe"}

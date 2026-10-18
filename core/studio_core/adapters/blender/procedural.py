@@ -11,7 +11,7 @@ from typing import Any
 
 from ...config import Settings
 from ...contracts import Lane, Outputs, StepContext, StepError, StepResult
-from ..claude import QueryFn, ask, put_json, sdk_query
+from ..claude import DEFAULT_MODEL, QueryFn, ask, put_json, sdk_query
 from .client import BlenderResource
 from .executor import SCRIPT_ERRORS, call_script, put_frames, worker_hash
 
@@ -159,9 +159,9 @@ class Procedural3DExecutor:
         accept_score = int(params.get("accept_score", 8))
         render = {"count": int(params.get("views", 6)), "res": int(params.get("res", 256)),
                   "elevation": params.get("elevation", 20), "engine": "BLENDER_EEVEE"}
-        code_q = {"model": params.get("code_model") or "sonnet", "max_turns": 2, "system": CODE_SYSTEM,
+        code_q = {"model": params.get("code_model") or DEFAULT_MODEL, "max_turns": 2, "system": CODE_SYSTEM,
                   "schema": CODE_SCHEMA}
-        qa_q = {"model": params.get("qa_model") or "sonnet", "max_turns": 2, "system": QA_SYSTEM, "schema": QA_SCHEMA}
+        qa_q = {"model": params.get("qa_model") or DEFAULT_MODEL, "max_turns": 2, "system": QA_SYSTEM, "schema": QA_SCHEMA}
         cwd = str(ctx.job_dir)
         await asyncio.to_thread(ctx.job_dir.mkdir, parents=True, exist_ok=True)
         t0 = time.perf_counter()

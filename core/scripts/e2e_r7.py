@@ -25,7 +25,7 @@ id: brief-check
 inputs:
   idea: {type: text}
 steps:
-  - {id: brief, kind: claude.brief, params: {idea: "${inputs.idea}", target: concept-2d, model: haiku}}
+  - {id: brief, kind: claude.brief, params: {idea: "${inputs.idea}", target: concept-2d, model: opus}}
   - id: use
     kind: t.echo
     params: {"57:27.text": "${steps.brief.text}, isolated on plain white background", palette: "${steps.brief.json.palette}"}

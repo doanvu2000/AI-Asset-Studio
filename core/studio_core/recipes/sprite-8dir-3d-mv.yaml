@@ -13,6 +13,7 @@ inputs:
   faces: {type: int, default: 30000, min: 2000, max: 200000, label: Số mặt}
   preset: {type: preset, default: studio, label: Preset xuất}
   review_views: {type: bool, default: false, label: Duyệt tay 3 góc Qwen}
+  consistency_check: {type: bool, default: true, label: Claude kiểm tra góc khớp mặt trước}
 steps:
   - id: concept
     kind: comfy.t2i_zimage_turbo
@@ -31,13 +32,17 @@ steps:
     params:
       views:
         - {name: left, output: "376", prompt_key: "427:271:253.prompt", slot: "330.left",
-           prompt: "Rotate the camera 90 degrees to the right."}
+           prompt: "Rotate the camera 90 degrees to the right.",
+           expect: "side view of the character's LEFT side; the character faces image-left"}
         - {name: back, output: "379", prompt_key: "427:296:278.prompt", slot: "330.back",
-           prompt: "Rotate the camera 180 degrees to show the back view."}
+           prompt: "Rotate the camera 180 degrees to show the back view.",
+           expect: "back view; the face is not visible"}
         - {name: right, output: "381", prompt_key: "427:371:353.prompt", slot: "330.right",
-           prompt: "Rotate the camera 90 degrees to the left."}
+           prompt: "Rotate the camera 90 degrees to the left.",
+           expect: "side view of the character's RIGHT side; the character faces image-right"}
       attempts: 3
       on_fail: drop
+      consistency: "${inputs.consistency_check}"
   - id: check
     kind: gate.approve
     in: {images: views.images}

@@ -171,7 +171,7 @@ def test_claude_brief(tmp_path: Path) -> None:
         ex = ClaudeBriefExecutor(Settings(data_dir=tmp_path), q)
         res = await ex.run(ctx, {"idea": "healing potion", "target": "concept-2d", "style": "pixel art"}, {})
         content, options = q.calls[0]
-        assert options.model == "haiku" and options.output_format["schema"] == BRIEF_SCHEMA
+        assert options.model == "claude-opus-5-5" and options.output_format["schema"] == BRIEF_SCHEMA
         assert options.tools == [] and options.setting_sources == [] and options.strict_mcp_config
         assert "healing potion" in content[-1]["text"] and "pixel art" in content[-1]["text"]
         assert ctx.blobs.path(res.outputs["text"][0].hash).read_text() == "a red potion bottle, painterly"

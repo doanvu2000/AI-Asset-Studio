@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ..adapters.claude import DEFAULT_MODEL, MODEL_CHOICES
 from ..contracts import ExecutorRegistry
 
 log = logging.getLogger(__name__)
@@ -103,6 +104,8 @@ CATALOG: dict[str, P] = {
                    "on_fail": _enum(["drop", "keep", "fail"], "drop", label="Góc vẫn hỏng thì"),
                    "min_views": _int(1, min=0, max=8, label="Số góc tối thiểu"),
                    "retry_prompt": _text(label="Thêm vào prompt khi thử lại", multiline=True, advanced=True),
+                   "consistency": _bool(False, label="Claude kiểm tra nhất quán với mặt trước"),
+                   "consistency_model": _enum(MODEL_CHOICES, DEFAULT_MODEL, label="Model kiểm tra", advanced=True),
                    **VIEW_CHECK, **COMFY_OPTIONS}},
     "op.parts": {"label": "Tách part (rig 2D)", "in": {"image": "image", "masks": "image[]"},
                  "out": {"meta": "json", "labels": "image", "preview": "image"},
@@ -130,7 +133,7 @@ CATALOG: dict[str, P] = {
                                "transparent": _bool(False, label="Nền trong suốt")}},
     "claude.task": {"label": "Claude phân tích", "in": {"images": "image[]"}, "out": {"json": "json", "text": "text"},
                     "params": {"prompt": _text(label="Yêu cầu", multiline=True),
-                               "model": _enum(["haiku", "sonnet", "opus"], "sonnet", label="Model"),
+                               "model": _enum(MODEL_CHOICES, DEFAULT_MODEL, label="Model"),
                                "max_turns": _int(4, min=1, max=40, label="Số lượt tối đa"),
                                "system": _text(label="System prompt", multiline=True, advanced=True),
                                "schema": {"type": "json", "label": "JSON schema", "advanced": True},
@@ -139,7 +142,7 @@ CATALOG: dict[str, P] = {
                      "params": {"idea": _text(label="Ý tưởng", multiline=True),
                                 "target": _enum(["generic", "concept", "sprite", "prop"], "generic", label="Mục tiêu"),
                                 "style": _text(label="Phong cách"),
-                                "model": _enum(["haiku", "sonnet", "opus"], "haiku", label="Model"),
+                                "model": _enum(MODEL_CHOICES, DEFAULT_MODEL, label="Model"),
                                 "cache": _bool(False, label="Cho phép dùng lại kết quả")}},
     "claude.procedural_3d": {"label": "Claude dựng 3D procedural", "in": {},
                              "out": {"meshes": "mesh", "images": "image[]", "code": "text", "json": "json"},
@@ -150,8 +153,8 @@ CATALOG: dict[str, P] = {
                                         "accept_score": _int(8, min=1, max=10, label="Điểm chấp nhận"),
                                         "views": _int(6, min=1, max=16, label="Số góc render"),
                                         "res": _int(256, options=[128, 256, 512], label="Cỡ render"),
-                                        "code_model": _enum(["haiku", "sonnet", "opus"], "sonnet", label="Model viết code"),
-                                        "qa_model": _enum(["haiku", "sonnet", "opus"], "sonnet", label="Model QA"),
+                                        "code_model": _enum(MODEL_CHOICES, DEFAULT_MODEL, label="Model viết code"),
+                                        "qa_model": _enum(MODEL_CHOICES, DEFAULT_MODEL, label="Model QA"),
                                         "cache": _bool(False, label="Cho phép dùng lại kết quả")}},
     "blender.cleanup": {"label": "Dọn mesh (Blender)", "in": {"mesh": "mesh"}, "out": {"meshes": "mesh"},
                         "params": {"target_faces": _int(50000, min=100, label="Số mặt đích"),
@@ -182,7 +185,7 @@ CATALOG: dict[str, P] = {
                                   "timeout_s": _int(120, min=5, label="Giới hạn thời gian (giây)")}},
     "blender.agent": {"label": "Agent Blender (MCP)", "in": {"mesh": "mesh"}, "out": {"meshes": "mesh"},
                       "params": {"task": _text(label="Nhiệm vụ", multiline=True),
-                                 "model": _enum(["haiku", "sonnet", "opus"], "sonnet", label="Model"),
+                                 "model": _enum(MODEL_CHOICES, DEFAULT_MODEL, label="Model"),
                                  "max_turns": _int(40, min=1, max=200, label="Số lượt tối đa"),
                                  "require_mesh": _bool(True, label="Bắt buộc xuất mesh"),
                                  "timeout_s": _int(900, min=30, label="Giới hạn thời gian (giây)")}},

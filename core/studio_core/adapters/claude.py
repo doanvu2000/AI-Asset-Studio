@@ -38,6 +38,16 @@ def build_content(prompt: str, images: list[tuple[bytes, str]]) -> list[dict[str
 
 _settings: Settings | None = None
 
+# Pinned ids: the CLI's bare aliases follow whatever it ships with, and recipes should not change model silently.
+MODEL_IDS = {"opus": "claude-opus-5-5", "sonnet": "claude-sonnet-5-5", "haiku": "claude-haiku-5-5"}
+DEFAULT_MODEL = "opus"
+MODEL_CHOICES = list(MODEL_IDS)
+
+
+def model_id(name: Any) -> str:
+    key = str(name or DEFAULT_MODEL)
+    return MODEL_IDS.get(key, key)
+
 
 def cli_path() -> str | None:
     """The bundled SDK CLI is stripped from frozen builds, and the SDK refuses npm's claude.CMD on Windows."""
@@ -51,7 +61,7 @@ def build_options(params: dict[str, Any], cwd: str, *, mcp_servers: dict[str, An
 
     opts: dict[str, Any] = dict(
         setting_sources=[], strict_mcp_config=True, tools=[], allowed_tools=allowed_tools or [],
-        mcp_servers=mcp_servers or {}, model=params.get("model") or "sonnet",
+        mcp_servers=mcp_servers or {}, model=model_id(params.get("model")),
         max_turns=int(params.get("max_turns", 4)), cwd=cwd, env={"ENABLE_CLAUDEAI_MCP_SERVERS": "false"},
     )
     if cli := cli_path():
@@ -248,7 +258,7 @@ class ClaudeBriefExecutor:
         if not idea:
             raise StepError("claude_bad_params", "params.idea is required")
         target = str(params.get("target") or "generic")
-        q = {"model": params.get("model") or "haiku", "max_turns": 2, "system": BRIEF_SYSTEM, "schema": BRIEF_SCHEMA}
+        q = {"model": params.get("model") or DEFAULT_MODEL, "max_turns": 2, "system": BRIEF_SYSTEM, "schema": BRIEF_SCHEMA}
         await asyncio.to_thread(ctx.job_dir.mkdir, parents=True, exist_ok=True)
         ctx.progress(0, 1, "brief")
         reply = await ask(self.query, q, brief_prompt(idea, target, str(params.get("style") or "")),

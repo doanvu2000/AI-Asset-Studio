@@ -1,6 +1,6 @@
 id: sprite-8dir-3d-brief
 name: Sprite 8 hướng (3D, ý tưởng → brief)
-description: Ý tưởng ngắn → Claude (haiku) viết brief → concept → chọn → TRELLIS mesh → Blender dọn mesh → render 8 hướng ortho → thu nhỏ 2× → sprite sheet + JSON
+description: Ý tưởng ngắn → Claude (Opus) viết brief → concept → chọn → TRELLIS mesh → Blender dọn mesh → render 8 hướng ortho → thu nhỏ 2× → sprite sheet + JSON
 inputs:
   idea: {type: text, label: Ý tưởng, placeholder: "goblin merchant with a huge backpack"}
   style: {type: text, required: false, default: "", label: Phong cách (tuỳ chọn)}
@@ -12,7 +12,7 @@ inputs:
 steps:
   - id: brief
     kind: claude.brief
-    params: {idea: "${inputs.idea}", style: "${inputs.style}", target: character-3d, model: haiku}
+    params: {idea: "${inputs.idea}", style: "${inputs.style}", target: character-3d, model: opus}
   - id: concept
     kind: comfy.t2i_zimage_turbo
     params: {"57:27.text": "${steps.brief.text}, single full-body character, front view facing the camera, standing upright, whole figure visible head to feet, isolated on plain white background, centered, game asset",

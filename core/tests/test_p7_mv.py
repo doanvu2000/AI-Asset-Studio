@@ -69,7 +69,7 @@ def test_mv_tail_matches_single_view_recipe() -> None:
     for sid in ("cleanup", "render", "dirs", "down", "sheet"):
         assert mv.step(sid).kind == sv.step(sid).kind
         assert mv.step(sid).params == sv.step(sid).params
-    assert mv.inputs.keys() - sv.inputs.keys() == {"review_views"}
+    assert mv.inputs.keys() - sv.inputs.keys() == {"review_views", "consistency_check"}
 
 
 @needs_workflows

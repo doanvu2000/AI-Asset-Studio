@@ -140,7 +140,7 @@ async def test_live_claude_schema_with_image(tmp_path):
               "additionalProperties": False}
     t0 = time.perf_counter()
     r = await ClaudeTaskExecutor(Settings()).run(
-        ctx, {"prompt": "What is the dominant color of the image? One lowercase word.", "model": "haiku",
+        ctx, {"prompt": "What is the dominant color of the image? One lowercase word.", "model": "opus",
               "schema": schema}, {"images": [copy_blob(ctx, src)]})
     out = _json.loads(ctx.blobs.path(r.outputs["json"][0].hash).read_text(encoding="utf-8"))
     report(claude_s=round(time.perf_counter() - t0, 1), out=out, cost=r.meta["cost_usd"])

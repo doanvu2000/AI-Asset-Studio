@@ -60,7 +60,7 @@ export const MOCK_KINDS: KindInfo[] = [
     count: int(1, 'Số ảnh', { min: 1, max: 4 }),
     transparent: bool(false, 'Nền trong suốt')
   }),
-  k('claude.brief', 'cloud', 'Claude viết brief', {}, { json: 'json', text: 'text' }, { idea: text('Ý tưởng', { multiline: true }), model: choice(['haiku', 'sonnet', 'opus'], 'haiku', 'Model') }),
+  k('claude.brief', 'cloud', 'Claude viết brief', {}, { json: 'json', text: 'text' }, { idea: text('Ý tưởng', { multiline: true }), model: choice(['opus', 'sonnet', 'haiku'], 'opus', 'Model') }),
   k('blender.cleanup', 'blender', 'Dọn mesh (Blender)', { mesh: 'mesh' }, { meshes: 'mesh' }, {
     target_faces: int(50000, 'Số mặt đích', { min: 100 }),
     origin: choice(['feet', 'center', 'keep'], 'feet', 'Gốc toạ độ')

@@ -116,3 +116,33 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   thumbnail (FLIP WAAPI, prop `origin`), stagger 30ms thẻ Gần đây (check morph + shake lỗi StepChip đã có sẵn).
   typecheck sạch, pytest 235/4 skip, chụp mock Thư viện + lightbox OK. CHƯA commit (chờ chủ nhân).
   Còn mở: kiểm xuất thư mục với core thật; shared-element run → result hero.
+- [x] Commit 5 nhóm `62d4776..a75d5d5` (chủ nhân cho phép). Build core (PyInstaller) + app (`electron-builder --win dir`).
+  Test bản đóng gói trong scratchpad (`pkg/` + marker portable, STUDIO_DATA_DIR = bản sao data live r5mv5 / r6b):
+  "Xuất cho engine" + menu preset hiện đúng; API export Godot/Unity trên sheet thật đúng thứ tự + pivot_norm; Spine
+  7 tệp, `hero.atlas` trỏ `hero.png`; kill core → supervisor tự spawn lại ~2s; `restartCore` IPC OK; run thật
+  `sprite-8dir-glb` (Blender, 28s) xong trong app. Chưa kiểm bằng tay: kéo ra Explorer, taskbar progress, Notification
+  (CDP giả focus nên notify bị chặn đúng thiết kế). Lưu ý: đổi `location.hash` từ CDP không đổi trang → dùng click.
+- Chép vào `L:\AI\AI Asset Studio Portable`: app đã chép; `resources\core` bị khoá bởi 3 MCP `studio-core.exe mcp` (cha
+  claude.exe) → vòng chờ nền tự chép core khi chúng thoát. Chưa xong thì: thoát các phiên Claude Code rồi
+  `robocopy app\release\0.1.0\win-unpacked\resources\core "L:\AI\AI Asset Studio Portable\resources\core" /E`.
+- [x] Check nhất quán góc Qwen bằng Claude (`views.qwen_checked` param `consistency`, `consistency_model`=haiku; ViewSpec
+  `expect`): góc qua silhouette → 1 call Claude (front + các góc mới, JSON schema) → góc "inconsistent" sinh lại như
+  góc hỏng; Claude lỗi → cho qua (fail-open, report ghi `consistency.error`); meta `claude_cost_usd`. R5-mv input mới
+  `consistency_check` (mặc định bật). Test `test_view_consistency.py`; pytest 240/4 skip.
+  Live judge trên ảnh cũ (không GPU, ~$0.0025/lần, 8–10s): bản prompt đầu haiku loại nhầm mặt sau pháp sư (lẫn
+  trái/phải khi nhìn từ sau) → thêm bảng ánh xạ trái/phải vào prompt → đúng 100% ca thật (2 lần), ca âm (lật gương
+  góc sau = gậy đổi tay; góc của nhân vật khác) bắt đúng 2/2. Kết luận cũ "gậy đổi tay" ở vc/live2: góc Qwen thật ra
+  đúng → mesh hỏng do chỗ khác (TRELLIS), chưa rõ.
+- Live R5-mv có check Claude (`scratchpad/r5mv_vlm`, `e2e_r5mv.py --only mv`): views 84s, 3/3 đạt lần 1, Claude giải
+  thích đúng phía gậy, $0.0023. Mesh FAIL 2 lần: `Pixal3DMultiViewConditioning … not enough memory: 8589934592 bytes`
+  — Windows commit 50.8/67.8 GB khi ComfyUI đã tắt (pagefile trên C: nhỏ, C: gần đầy) → không phải lỗi code. Cần chủ
+  nhân: tắt bớt app / khởi động lại máy, hoặc thêm pagefile ở ổ khác (L:/F:). Chạy lại: lệnh trên.
+- UI: `components/ViewsReport.vue` (khối "Kiểm tra góc" trong inspector bước views.qwen_checked: thumbnail, Đạt/Đã
+  bỏ góc, chip lý do từng lần, lý do Claude ở tooltip). typecheck sạch, CHƯA chụp (mock không có report; cần build).
+- Chưa commit: views.py/kinds.py/recipe R5-mv/test_view_consistency.py/test_p7_mv.py + ViewsReport.vue + RunDetailView.
+- [x] CHỦ NHÂN CHỐT: mọi bước Claude (viết prompt/brief, check góc, task, procedural code+QA, blender.agent) mặc định
+  **Opus 5.5**, bỏ haiku. `adapters/claude.py`: `MODEL_IDS` alias→id ghim (`opus`→`claude-opus-5-5`), `DEFAULT_MODEL`
+  = opus, `build_options` map qua `model_id`; kinds enum `MODEL_CHOICES` default opus; recipe brief/spine/procedural →
+  opus. Live: brief Opus 13s $0.026 prompt chi tiết; check góc Opus ~$0.07–0.09/lần (haiku $0.0025), đúng 100% ca
+  thật + ca âm. pytest 240/4 skip, typecheck sạch. Chưa commit.
+- [x] 22:22 Handoff mới: `.planning/HANDOFF-2026-10-18-2222.md` (thay 2034).
