@@ -7,6 +7,7 @@ directories:
 files:
   - out/**/*
   - package.json
+  - resources/**/*
   # Main/preload use only electron + node builtins and the renderer is fully bundled by Vite.
   - "!node_modules/**/*"
 asar: true

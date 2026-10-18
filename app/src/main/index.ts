@@ -31,7 +31,8 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, codeCache: true } }
 ])
 
-if (!app.requestSingleInstanceLock()) app.quit()
+// exit() rather than quit(): quit() still lets whenReady fire, which spawned a second core before exiting.
+if (!app.requestSingleInstanceLock()) app.exit(0)
 
 const core = new CoreSupervisor({
   repoRoot: process.env.STUDIO_REPO ?? resolve(app.getAppPath(), '..'),
