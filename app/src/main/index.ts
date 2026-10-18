@@ -170,13 +170,18 @@ function showWindow(): void {
   }
 }
 
-function isTrustedSender(frameUrl: string | undefined): boolean {
-  if (!frameUrl) return false
+// Node's URL reports origin "null" for custom schemes like app://, so compare scheme + host instead.
+function originOf(url: string): string | null {
   try {
-    return new URL(frameUrl).origin === RENDERER_ORIGIN
+    const u = new URL(url)
+    return `${u.protocol}//${u.host}`
   } catch {
-    return false
+    return null
   }
+}
+
+function isTrustedSender(frameUrl: string | undefined): boolean {
+  return !!frameUrl && originOf(frameUrl) === RENDERER_ORIGIN
 }
 
 function registerIpc(): void {
@@ -210,7 +215,7 @@ app.on('web-contents-created', (_e, contents) => {
     return { action: 'deny' }
   })
   contents.on('will-navigate', (e, url) => {
-    if (new URL(url).origin !== RENDERER_ORIGIN) e.preventDefault()
+    if (originOf(url) !== RENDERER_ORIGIN) e.preventDefault()
   })
   contents.on('will-attach-webview', (e) => e.preventDefault())
 })
