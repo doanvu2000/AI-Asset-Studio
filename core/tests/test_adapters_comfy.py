@@ -299,3 +299,26 @@ def test_execution_error_marks_cuda_failures_retryable():
     assert cuda.retryable
     assert not execution_error({"node_type": "VAEDecode", "exception_type": "ValueError",
                                 "exception_message": "bad shape"}).retryable
+
+
+async def test_restart_before_stops_running_server_first(tmp_path):
+    calls: list[str] = []
+
+    class Res(FakeResource):
+        status = "up"
+
+        async def stop(self):
+            calls.append("stop")
+
+        async def ensure_started(self):
+            calls.append("start")
+            raise StepError("halt", "stop the test here")
+
+    ex = ComfyExecutor("comfy.wf", _settings(tmp_path), Res(None))
+    with pytest.raises(StepError):
+        await ex.run(FakeCtx(tmp_path), {"_restart_before": True, "1.image": "x.png"}, {})
+    assert calls == ["stop", "start"]
+    calls.clear()
+    with pytest.raises(StepError):
+        await ex.run(FakeCtx(tmp_path), {"1.image": "x.png"}, {})
+    assert calls == ["start"]

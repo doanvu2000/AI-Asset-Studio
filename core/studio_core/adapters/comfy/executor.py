@@ -116,6 +116,10 @@ class ComfyExecutor:
         ctx.job_dir.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread((ctx.job_dir / "prompt.json").write_text, json.dumps(prompt, indent=1), "utf-8")
 
+        if params.get("_restart_before") and self.resource.status == "up":
+            # Pixal3D multi-view needs ~24 GB host RAM; leftovers from earlier prompts in the same process
+            # end in hostbuf/MemoryError, and /free only releases VRAM.
+            await self.resource.stop()
         await self.resource.ensure_started()
         client = self.resource.client
         if client is None:

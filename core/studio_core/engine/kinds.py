@@ -37,6 +37,7 @@ RESAMPLE = ["lanczos", "bicubic", "bilinear", "box", "nearest"]
 TIMEOUT = {"_timeout_s": _int(label="Giới hạn thời gian (giây)", advanced=True)}
 COMFY_OPTIONS: dict[str, P] = {
     "_free_before": _bool(False, label="Giải phóng VRAM trước khi chạy", advanced=True),
+    "_restart_before": _bool(False, label="Khởi động lại ComfyUI trước khi chạy", advanced=True),
     "_timeout_s": _int(1800, label="Giới hạn thời gian (giây)", advanced=True),
     "_auto_retry": _int(1, min=0, max=3, label="Tự thử lại khi lỗi GPU", advanced=True),
 }

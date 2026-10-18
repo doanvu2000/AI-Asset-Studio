@@ -34,7 +34,7 @@ def test_mv_recipe_shape() -> None:
     params = r.resolve_params(mesh, vals)
     assert params["186.target_face_count"] == 20000
     assert params["94.target_resolution"] == 1024 and params["241.resolution"] == 512
-    assert params["_free_before"] is True and params["_timeout_s"] == 900
+    assert params["_restart_before"] is True and params["_timeout_s"] == 900
     assert isinstance(r.step("views").bindings["image"], Binding)
     assert r.step("views").bindings["image"].source == "pick"
     assert str(r.outputs["final"]) == "sheet.sheet"
