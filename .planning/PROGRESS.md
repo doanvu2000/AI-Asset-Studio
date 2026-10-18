@@ -22,11 +22,16 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 
 ## Việc tiếp (theo thứ tự)
 
-1. [ ] Chờ R4a xong → kiểm GLB + turntable.
-2. [ ] Review code P3 → commit P3.
-3. [ ] Ổn định bước mesh TRELLIS: `/free` ComfyUI trước TRELLIS, auto-retry lỗi `retryable` (comfy_crashed / CUDA unknown).
-4. [ ] Bắt đầu P4.
+1. [x] R4a (code cũ): mesh `comfy_timeout` 1800s — VRAM sát trần (Z-Image còn nạp) → remesh/QEM cực chậm.
+2. [x] Review + commit P3 (`d1655d8`).
+3. [x] Ổn định TRELLIS (`ad51647`): CUDA error → retryable; engine auto-retry (`auto_retry`, Comfy=1, `/free` giữa 2 lần);
+   `_free_before: true` ở bước mesh R4/R5. pytest 132 pass.
+4. [ ] Dừng run R4a cũ (PID 37548 script, 38444 core, 38356 comfy — bị chặn kill tự động, cần chủ nhân) → chạy lại R4 bằng
+   `core/scripts/e2e_r5.py` (recipe prop-3d) với code mới, kiểm GLB + turntable.
+5. [ ] Bắt đầu P4.
+6. [ ] P4b — MCP server cho Claude CLI / Codex CLI (thêm vào plan §3.6 + §5 lúc 13:35).
 
 ## Nhật ký
 
 - 2026-10-18 13:10 — resume sau crash; tạo file này; pytest xanh.
+- 13:25 — commit P3 `d1655d8`, fix TRELLIS `ad51647`.

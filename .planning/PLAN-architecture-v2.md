@@ -146,6 +146,33 @@ chỉ gồm tool của core, `mcp_servers` chỉ thêm `blender` khi step cần,
 
 Cổng typed: `image`, `image[]`, `rgba`, `mesh`, `blend`, `spine`, `text`, `brief`.
 
+### 3.6 MCP server cho Claude CLI / Codex CLI (chủ nhân yêu cầu 2026-10-18)
+
+Mục tiêu: agent CLI bên ngoài (Claude Code, Codex CLI, …) gọi Asset Studio như 1 tool — gửi input, nhận output file.
+Khác §3.1 (tool in-process cho Claude *bên trong* core): đây là chiều ngược lại, agent ngoài điều khiển core.
+
+- **Transport**: `studio-core mcp` = MCP server **stdio** (SDK `mcp`/FastMCP), là proxy mỏng tới core đang chạy
+  (đọc port + token từ file lock trong data dir; core chưa chạy → tự spawn như app làm). Không mở thêm cổng mạng;
+  mọi logic vẫn ở engine → app UI và agent CLI thấy cùng run/gate/library.
+- **Tools**:
+  - `list_recipes` / `describe_recipe(id)` — inputs typed, default, options.
+  - `start_run(recipe, inputs, title?, gate_policy?)` — input `image`/`mesh` nhận **đường dẫn file local**
+    (core copy vào blob store); trả `run_id`.
+  - `get_run(run_id)` — trạng thái run + từng step, lỗi, gate đang chờ (kèm thumbnail ứng viên).
+  - `wait_run(run_id, timeout_s)` — chặn tới khi xong / chờ gate / fail; gửi progress notification.
+  - `resolve_gate(step_id, pick=[…] | approve=bool)`, `cancel_run`, `retry_step`.
+  - `get_outputs(run_id)` — export output ra `<data>/exports/mcp/<run_id>/`, trả **đường dẫn tuyệt đối** + metadata
+    (sheet JSON, GLB report); ảnh nhỏ trả kèm dạng MCP image content để agent nhìn được.
+  - `list_versions` / `set_version_status` — duyệt trong Library.
+- **Gate**: mặc định `human` (chờ chủ nhân chọn trên app, `wait_run` trả `awaiting_human`); `gate_policy: agent` cho
+  agent tự chọn sau khi xem thumbnail; `auto_first` cho batch/test.
+- **Đăng ký**: Claude — `claude mcp add asset-studio -- <core>\.venv\Scripts\python.exe -m studio_core mcp`;
+  Codex — `~/.codex/config.toml` `[mcp_servers.asset-studio] command = "…python.exe", args = ["-m","studio_core","mcp"]`.
+  App có nút "Copy lệnh kết nối" cho cả hai.
+- **An toàn**: chỉ đọc file input chủ nhân/agent chỉ định, output là bản copy; run do MCP tạo gắn `source: mcp` để lọc
+  trên UI; không có tool xoá dữ liệu.
+- **Test**: unit test tool qua core giả; E2E: `claude -p` và `codex exec` gọi R1 thật, nhận PNG về đúng đường dẫn.
+
 ## 4. Recipe theo loại asset
 
 | Recipe | Chuỗi | Ghi chú |
@@ -194,6 +221,8 @@ mỗi hướng × mỗi frame. Thuộc R8, cần spike riêng.
 - **P2 — 2D**: Codex adapter, gate inbox, R1 Codex, R2, op sprite (trim/pack/sheet), R3.
 - **P3 — 3D + sprite 8 hướng**: Blender worker, R4, **R5**.
 - **P4 — Claude**: brief/prompt expansion, tool in-process cho Claude, R7 + Blender MCP agent step.
+- **P4b — MCP ngoài** (§3.6): `studio-core mcp` stdio cho Claude CLI / Codex CLI — start run bằng input file,
+  chờ, xử lý gate, nhận output path. Đạt: `claude -p` và `codex exec` chạy R1 + R5 qua MCP, nhận file về.
 - **P5 — Spine**: workflow SAM3.1, R6, Spine export + preview.
 - **P6 — flow editor**: Vue Flow chỉnh recipe, batch từ danh sách (stage-major), preset theo project/engine.
 - **P7 — đóng gói**: electron-builder NSIS, core PyInstaller onedir trong `extraResources`, cấu hình đường dẫn tool/model
