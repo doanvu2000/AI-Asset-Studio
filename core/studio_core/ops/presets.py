@@ -174,3 +174,17 @@ def apply_preset(preset: ExportPreset, angles: list[int], asset: str) -> tuple[l
         frames.append({"name": preset.frame_name(asset, compass, slot), "dir": compass, "label": preset.label(compass),
                        "angle": COMPASS_ANGLE[compass], "index": slot})
     return slots, frames
+
+
+def annotate_sheet_meta(meta: dict[str, Any], named: list[dict[str, Any]], preset: ExportPreset) -> None:
+    """Adds per-frame rects, direction labels and an engine-oriented normalized pivot to a pack_sheet meta."""
+    fw, fh, c, pad = meta["frame_w"], meta["frame_h"], meta["cols"], meta.get("padding", 0)
+    for rec in named:
+        r, col = divmod(rec["index"], c)
+        rec.update(x=col * (fw + pad), y=r * (fh + pad), w=fw, h=fh)
+    meta.update(preset=preset.id, dirs=[n["label"] for n in named], frames_named=named,
+                pivot_origin=preset.pivot_origin)
+    if "pivot" in meta:
+        px, py = meta["pivot"]
+        meta["pivot_norm"] = [round(px / fw, 4),
+                              round((fh - py) / fh if preset.pivot_origin == "bottom_left" else py / fh, 4)]

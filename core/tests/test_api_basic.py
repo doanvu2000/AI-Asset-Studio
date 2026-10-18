@@ -122,6 +122,8 @@ async def test_runs_gates_and_engine_errors(app_ctx) -> None:
     await repo.create_run(RunRow(id="r1", recipe_id="concept-2d", recipe_hash="h", created_at=1.0))
     await repo.create_steps([StepRow(id="s1", run_id="r1", key="pick", kind="gate.pick", lane=Lane.NONE,
                                      status=StepStatus.AWAITING_HUMAN)])
+    listed = (await client.get("/api/runs", headers=AUTH)).json()
+    assert listed[0]["id"] == "r1" and listed[0]["preview_hash"] is None
     detail = (await client.get("/api/runs/r1", headers=AUTH)).json()
     assert detail["run"]["id"] == "r1" and detail["steps"][0]["key"] == "pick"
     assert (await client.get("/api/runs/zzz", headers=AUTH)).status_code == 404

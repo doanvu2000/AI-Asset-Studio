@@ -104,6 +104,28 @@ class SqliteRepo:
         rows = await self.db.fetchall(sql, [*params, limit])
         return [_RUNS.decode(r) for r in rows]
 
+    async def run_preview_hashes(self, run_ids: list[str]) -> dict[str, str]:
+        """Per run, the first image output of the latest step that produced one (list thumbnails)."""
+        if not run_ids:
+            return {}
+        out: dict[str, str] = {}
+        # SQLite caps bound parameters per statement; 500 stays far below every build's limit.
+        for i in range(0, len(run_ids), 500):
+            chunk = run_ids[i:i + 500]
+            marks = ", ".join("?" for _ in chunk)
+            rows = await self.db.fetchall(
+                f"SELECT run_id, outputs FROM steps WHERE run_id IN ({marks}) AND outputs != '{{}}' "
+                'ORDER BY run_id, "order" DESC, rowid DESC', chunk)
+            for row in rows:
+                if row["run_id"] in out:
+                    continue
+                for blobs in orjson.loads(row["outputs"]).values():
+                    image = next((b for b in blobs if str(b.get("mime", "")).startswith("image/")), None)
+                    if image:
+                        out[row["run_id"]] = image["hash"]
+                        break
+        return out
+
     async def create_steps(self, steps: list[StepRow]) -> None:
         if steps:
             await self.db.write_many(_STEPS.insert_sql(), [_STEPS.to_params(s) for s in steps])

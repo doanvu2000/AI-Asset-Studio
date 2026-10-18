@@ -42,6 +42,8 @@ log = logging.getLogger(__name__)
 INTERRUPTED = "interrupted"
 _RUN_TERMINAL = {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}
 _ACTIVE = {StepStatus.READY, StepStatus.WAITING_RESOURCE, StepStatus.RUNNING}
+_RETRYABLE = (StepStatus.FAILED, StepStatus.CANCELLED)
+_REGENERABLE = (StepStatus.SUCCEEDED, StepStatus.CACHED)
 
 PROGRESS_INTERVAL_S = 0.1
 PROGRESS_PERSIST_S = 1.0
@@ -417,7 +419,10 @@ class StudioEngine:
             if ref_values:
                 extra["meta"] = {**step.meta, "refs": {k: str(v)[:500] for k, v in ref_values.items()}}
             await self._set_step(step, inputs=inputs, cache_key=key, **extra)
-            if key is not None:
+            fresh = bool(step.meta.get("fresh"))
+            if fresh:
+                await self._set_step(step, meta={k: v for k, v in step.meta.items() if k != "fresh"})
+            if key is not None and not fresh:
                 hit = await self.repo.cache_get(key)
                 if hit is not None:
                     now = _now()
@@ -575,7 +580,7 @@ class StudioEngine:
         row = await self.repo.get_step(step_id)
         if row is None:
             raise NotFoundError(f"unknown step: {step_id}")
-        if row.status not in (StepStatus.FAILED, StepStatus.CANCELLED):
+        if row.status not in (*_RETRYABLE, *_REGENERABLE):
             raise EngineStateError(f"step {row.key} is {row.status.value}; only failed/cancelled steps can be retried")
         old = self._runs.get(row.run_id)
         if old is not None and old.driver is not None and old.closing:
@@ -583,9 +588,13 @@ class StudioEngine:
         st, alive = await self._with_state(row.run_id)
         async with st.lock:
             target = st.steps[row.key]
-            if target.status not in (StepStatus.FAILED, StepStatus.CANCELLED):
-                raise EngineStateError(f"step {target.key} changed to {target.status.value}")
             downstream = self._downstream(st, target.key)
+            # Re-running a finished step is only offered as "regenerate" for a gate still waiting on its output.
+            regen = target.status in _REGENERABLE and any(
+                st.steps[k].status == StepStatus.AWAITING_HUMAN and st.steps[k].kind in GATES for k in downstream)
+            if target.status not in _RETRYABLE and not regen:
+                raise EngineStateError(f"step {target.key} is {target.status.value}; only failed/cancelled steps "
+                                       "or the source of a waiting gate can be retried")
             for s in st.ordered():
                 if s.key == target.key or s.key in downstream or s.status in (StepStatus.SKIPPED,
                                                                                 StepStatus.CANCELLED):
@@ -594,7 +603,8 @@ class StudioEngine:
                     await self._set_step(
                         s, status=StepStatus.PENDING, attempt=s.attempt + (1 if s.started_at else 0),
                         error=None, outputs={}, inputs={}, progress=None, cache_key=None, started_at=None,
-                        ended_at=None, meta={"spec": s.meta.get("spec", {})})
+                        ended_at=None, meta={"spec": s.meta.get("spec", {}),
+                                             **({"fresh": True} if regen and s.key == target.key else {})})
             if st.run.status != RunStatus.RUNNING:
                 await self._set_run(st.run, status=RunStatus.RUNNING, error=None, ended_at=None)
             if alive:

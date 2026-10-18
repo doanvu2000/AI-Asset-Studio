@@ -11,7 +11,7 @@ from ..contracts import BlobRef, Lane, Outputs, StepContext, StepError, StepResu
 from . import glb
 from . import image as im
 from . import viewcheck as vc
-from .presets import ExportPreset, PresetStore, apply_preset, resolve_preset
+from .presets import ExportPreset, PresetStore, annotate_sheet_meta, apply_preset, resolve_preset
 
 
 def _png(img: Image.Image) -> bytes:
@@ -241,16 +241,7 @@ class Sheet(OpExecutor):
         meta["frames"] = [r.hash for r in refs]
         sheet_name = "sheet.png"
         if preset is not None and named is not None:
-            fw, fh, c = meta["frame_w"], meta["frame_h"], meta["cols"]
-            for rec in named:
-                r, col = divmod(rec["index"], c)
-                rec.update(x=col * (fw + padding), y=r * (fh + padding), w=fw, h=fh)
-            meta.update(preset=preset.id, dirs=[n["label"] for n in named], frames_named=named,
-                        pivot_origin=preset.pivot_origin)
-            if "pivot" in meta:
-                px, py = meta["pivot"]
-                meta["pivot_norm"] = [round(px / fw, 4),
-                                      round((fh - py) / fh if preset.pivot_origin == "bottom_left" else py / fh, 4)]
+            annotate_sheet_meta(meta, named, preset)
             sheet_name = f"{params.get('asset') or 'sprite'}_sheet.png"
         sheet_ref = await _put_png(ctx, sheet, sheet_name)
         meta_ref = await ctx.blobs.put_bytes(json.dumps(meta, indent=2).encode(), name="sheet.json",

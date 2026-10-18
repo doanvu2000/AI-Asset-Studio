@@ -90,3 +90,21 @@ async def test_cache_versions_blobs(repo: SqliteRepo) -> None:
     await repo.put_blob_row(row)
     await repo.put_blob_row(row)
     assert await repo.get_blob_row(row.hash) == row
+
+
+async def test_run_preview_hashes_pick_latest_image_output(repo: SqliteRepo) -> None:
+    mesh = BlobRef(hash="m" * 64, mime="model/gltf-binary", size=9, name="x.glb")
+    await repo.create_steps([
+        StepRow(id="a0", run_id="ra", key="gen", kind="op.x", lane=Lane.GPU, order=0,
+                outputs={"images": [_blob("1" * 64), _blob("2" * 64)]}),
+        StepRow(id="a1", run_id="ra", key="fit", kind="op.x", lane=Lane.CPU, order=1,
+                outputs={"images": [_blob("3" * 64)]}),
+        StepRow(id="a2", run_id="ra", key="pending", kind="op.x", lane=Lane.CPU, order=2),
+        StepRow(id="b0", run_id="rb", key="gen", kind="op.x", lane=Lane.GPU, order=0,
+                outputs={"images": [_blob("4" * 64)]}),
+        StepRow(id="b1", run_id="rb", key="mesh", kind="op.x", lane=Lane.GPU, order=1, outputs={"meshes": [mesh]}),
+        StepRow(id="c0", run_id="rc", key="gen", kind="op.x", lane=Lane.GPU, order=0),
+    ])
+    got = await repo.run_preview_hashes(["ra", "rb", "rc", "zz"])
+    assert got == {"ra": "3" * 64, "rb": "4" * 64}
+    assert await repo.run_preview_hashes([]) == {}

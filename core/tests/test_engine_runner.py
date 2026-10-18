@@ -429,6 +429,26 @@ async def test_gate_pick(tmp_path: Path) -> None:
         await env.engine.resolve_gate(gate.id, GateResolution(picked=[cands[0]]))
 
 
+async def test_regenerate_source_of_waiting_gate(tmp_path: Path) -> None:
+    gen = FakeExec("t.gen")
+    env = Env(tmp_path, [gen, FakeExec("t.op")], {"pick": PICK})
+    run_id = await env.run("pick")
+    steps = env.steps(run_id)
+    with pytest.raises(EngineStateError):
+        await env.engine.retry_step(steps["fit"].id)
+    await env.engine.retry_step(steps["gen"].id)
+    await until(lambda: env.steps(run_id)["pick"].status == StepStatus.AWAITING_HUMAN
+                and env.steps(run_id)["gen"].attempt == 2)
+    steps = env.steps(run_id)
+    assert len(gen.calls) == 2 and steps["gen"].status == StepStatus.SUCCEEDED
+    assert env.status(run_id) == RunStatus.AWAITING_HUMAN
+    await env.engine.resolve_gate(steps["pick"].id, GateResolution(picked=[steps["pick"].inputs["images"][0].hash]))
+    await asyncio.wait_for(env.engine.wait_idle(run_id), 5)
+    assert env.status(run_id) == RunStatus.SUCCEEDED
+    with pytest.raises(EngineStateError):
+        await env.engine.retry_step(env.steps(run_id)["gen"].id)
+
+
 async def test_gate_survives_restart(tmp_path: Path) -> None:
     env = Env(tmp_path, [FakeExec("t.gen"), FakeExec("t.op")], {"pick": PICK})
     run_id = await env.run("pick")

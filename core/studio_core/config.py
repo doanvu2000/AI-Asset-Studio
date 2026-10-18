@@ -69,6 +69,10 @@ class Settings(BaseModel):
         return self.data_dir / "recipes"
 
     @property
+    def app_exports_dir(self) -> Path:
+        return self.data_dir / "exports" / "app"
+
+    @property
     def presets_path(self) -> Path:
         return self.data_dir / "presets.json"
 

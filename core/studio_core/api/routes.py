@@ -21,6 +21,8 @@ from studio_core.engine.kinds import describe_kinds
 from studio_core.engine.library import RecipeLibrary, issue, to_text, validate
 from studio_core.engine.recipe import Recipe, RecipeError
 from studio_core.ops.presets import ExportPreset, PresetStore
+from studio_core.store.bundle import BundleError, export_bundle, sheet_meta
+from studio_core.store.export import export_copy
 from studio_core.contracts import (
     BlobStore,
     Engine,
@@ -293,7 +295,10 @@ async def create_run(request: Request, body: RunCreate) -> Response:
 @api.get("/runs")
 async def list_runs(request: Request, limit: int = Query(50, ge=1, le=500), before: float | None = None,
                     status: RunStatus | None = None) -> Response:
-    return _json(await _repo(request).list_runs(limit=limit, before=before, status=status))
+    repo = _repo(request)
+    runs = await repo.list_runs(limit=limit, before=before, status=status)
+    previews = await repo.run_preview_hashes([r.id for r in runs])
+    return _json([{**r.model_dump(mode="json"), "preview_hash": previews.get(r.id)} for r in runs])
 
 
 @api.get("/runs/{run_id}")
@@ -389,6 +394,66 @@ async def get_blob(request: Request, hash: str) -> Response:
     if ref is None or not await asyncio.to_thread(path.is_file):
         raise ApiError(404, "not_found", f"unknown blob: {hash}")
     return FileResponse(path, media_type=ref.mime, headers={"Cache-Control": _IMMUTABLE})
+
+
+class BlobExport(BaseModel):
+    name: str | None = None
+
+
+@api.post("/blobs/{hash}/export")
+async def export_blob(request: Request, hash: str, body: BlobExport) -> Response:
+    """Absolute path of a readable-name copy under <data>/exports/app; the app reveals, copies or drags that file."""
+    blobs = _blobs(request)
+    path = _blob_path(blobs, hash)
+    ref = await blobs.get(hash)
+    if ref is None or not await asyncio.to_thread(path.is_file):
+        raise ApiError(404, "not_found", f"unknown blob: {hash}")
+    settings = request.app.state.settings
+    root = getattr(settings, "app_exports_dir", None) or Path(settings.data_dir) / "exports" / "app"
+    dst = await asyncio.to_thread(export_copy, path, ref, Path(root), body.name)
+    return _json({"hash": hash, "path": str(dst.resolve()), "name": dst.name, "mime": ref.mime, "size": ref.size})
+
+
+class StepExport(BaseModel):
+    name: str | None = None
+    preset: str | None = None
+
+
+async def _exportable_step(request: Request, step_id: str) -> Any:
+    step = await _repo(request).get_step(step_id)
+    if step is None:
+        raise ApiError(404, "not_found", f"unknown step: {step_id}")
+    if step.status not in (StepStatus.SUCCEEDED, StepStatus.CACHED) or not step.outputs:
+        raise ApiError(409, "not_exportable", "step has no finished outputs")
+    return step
+
+
+@api.get("/steps/{step_id}/export")
+async def step_export_options(request: Request, step_id: str) -> Response:
+    """What a folder export of this step can do: file count and whether engine presets apply."""
+    step = await _exportable_step(request, step_id)
+    meta = await asyncio.to_thread(sheet_meta, step, _blobs(request))
+    files = len({r.hash for refs in step.outputs.values() for r in refs})
+    return _json({"step_id": step.id, "kind": step.kind, "files": files, "sprite_sheet": meta is not None,
+                  "preset": (meta or {}).get("preset")})
+
+
+@api.post("/steps/{step_id}/export")
+async def export_step(request: Request, step_id: str, body: StepExport) -> Response:
+    """Writes every output of the step (or a preset-repacked sprite sheet + frames) into one folder under exports/app."""
+    step = await _exportable_step(request, step_id)
+    preset = None
+    if body.preset:
+        preset = await asyncio.to_thread(_presets(request).get, body.preset)
+        if preset is None:
+            raise ApiError(404, "not_found", f"unknown export preset: {body.preset}")
+    settings = request.app.state.settings
+    root = getattr(settings, "app_exports_dir", None) or Path(settings.data_dir) / "exports" / "app"
+    try:
+        out = await asyncio.to_thread(export_bundle, step, _blobs(request), Path(root), body.name, preset)
+    except BundleError as e:
+        raise ApiError(422, "not_exportable", str(e)) from e
+    return _json(out)
 
 
 @blob_api.get("/blobs/{hash}/thumb")
