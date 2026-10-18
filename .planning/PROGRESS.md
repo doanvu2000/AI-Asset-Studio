@@ -39,7 +39,10 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 9. [x] R5 live lại @1024/512: 192s (TRELLIS 119s). Mặt trước tốt; lưng có texture "mặt ma" (TRELLIS bịa mặt sau từ 1 ảnh)
    → cải tiến sau: thêm ảnh mặt sau (Qwen) làm input đa góc nếu workflow hỗ trợ.
 10. [x] E2E GPU qua MCP: `claude -p` (sonnet) chạy R1 auto_first → final.png 66.5s; core MCP tự tắt, lock xoá.
-11. [~] Agent P5 Spine đang chạy (giữ GPU; lead không chạy GPU tới khi xong): SAM3.1 workflow, op.layers, op.spine_export, R6.
+11. [x] P5 R6 spine-character (`35018e8`): SAM3.1 seed → partition → Claude joints → layers → Flux2 fill → Spine 4.2.
+   Live 2 run ~108s, setup pose IoU 0.9994, anim relax ổn. Mở: HTML spine-player (unpkg 4.2.43) CHƯA mở thử
+   trên browser; JSON chưa thử trong Spine Editor; chỉ front-view T/A-pose; Claude joints sửa rất ít.
+   Workflow mới `segment_sam3`, `inpaint_flux2_klein4b` nằm ở L:\AI\setup\workflows (ngoài repo, có index.json.bak-p5).
 12. [ ] P7 đóng gói (sau P6 vì cùng package.json).
 
 ## Nhật ký
