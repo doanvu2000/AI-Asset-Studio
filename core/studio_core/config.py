@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -7,13 +8,24 @@ from pydantic import BaseModel, Field
 from studio_core.paths import default_data_dir, recipes_dir
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOL_KEYS = ("comfy_dir", "comfy_python", "comfy_models_dir", "comfy_workflows_dir", "blender_exe", "codex_exe")
+TOOL_KEYS = ("comfy_dir", "comfy_python", "comfy_models_dir", "comfy_workflows_dir", "blender_exe", "codex_exe",
+             "claude_exe")
 
 
 def _default_codex_exe() -> str:
     appdata = os.environ.get("APPDATA", "")
     return str(Path(appdata) / "npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor"
                / "x86_64-pc-windows-msvc/bin/codex.exe")
+
+
+def _default_claude_exe() -> str:
+    """Native claude.exe only: the SDK refuses npm's claude.CMD shim (cmd.exe argument injection)."""
+    candidates = [Path(os.environ.get("APPDATA", "")) / "npm/node_modules/@anthropic-ai/claude-code/bin/claude.exe",
+                  Path.home() / ".local/bin/claude.exe"]
+    found = shutil.which("claude.exe")
+    if found:
+        candidates.append(Path(found))
+    return str(next((c for c in candidates if c.is_file()), candidates[0]))
 
 
 class Settings(BaseModel):
@@ -31,6 +43,7 @@ class Settings(BaseModel):
     blender_exe: Path = Path(r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe")
     codex_exe: Path = Field(default_factory=lambda: Path(_default_codex_exe()))
     codex_home: Path = Path.home() / ".codex"
+    claude_exe: Path = Field(default_factory=lambda: Path(_default_claude_exe()))
 
     lane_limits: dict[str, int] = {"gpu": 1, "blender": 1, "cloud": 3, "cpu": 4}
     allowed_origins: list[str] = ["app://studio", "http://localhost:5173", "http://127.0.0.1:5173"]

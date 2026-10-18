@@ -7,6 +7,7 @@ import base64
 import io
 import json
 import time
+from pathlib import Path
 from contextlib import aclosing
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Awaitable, Callable
@@ -35,6 +36,15 @@ def build_content(prompt: str, images: list[tuple[bytes, str]]) -> list[dict[str
     return [_image_block(d, m) for d, m in images] + [{"type": "text", "text": prompt}]
 
 
+_settings: Settings | None = None
+
+
+def cli_path() -> str | None:
+    """The bundled SDK CLI is stripped from frozen builds, and the SDK refuses npm's claude.CMD on Windows."""
+    exe = getattr(_settings, "claude_exe", None)
+    return str(exe) if exe and Path(exe).is_file() else None
+
+
 def build_options(params: dict[str, Any], cwd: str, *, mcp_servers: dict[str, Any] | None = None,
                   allowed_tools: list[str] | None = None) -> Any:
     from claude_agent_sdk import ClaudeAgentOptions
@@ -44,6 +54,8 @@ def build_options(params: dict[str, Any], cwd: str, *, mcp_servers: dict[str, An
         mcp_servers=mcp_servers or {}, model=params.get("model") or "sonnet",
         max_turns=int(params.get("max_turns", 4)), cwd=cwd, env={"ENABLE_CLAUDEAI_MCP_SERVERS": "false"},
     )
+    if cli := cli_path():
+        opts["cli_path"] = cli
     if params.get("system"):
         opts["system_prompt"] = str(params["system"])
     if params.get("schema"):
@@ -122,8 +134,10 @@ class ClaudeResource:
     name = "claude"
 
     def __init__(self, settings: Settings, bus: Any = None):
+        global _settings
         self.settings = settings
         self.bus = bus
+        _settings = settings
 
     async def health(self) -> ResourceHealth:
         try:

@@ -38,6 +38,7 @@ TOOLS: dict[str, ToolSpec] = {
     "comfy_workflows_dir": ToolSpec("Thư mục workflow", "dir"),
     "blender_exe": ToolSpec("Blender", "file", probe_version=True),
     "codex_exe": ToolSpec("Codex CLI", "file", probe_version=True),
+    "claude_exe": ToolSpec("Claude Code (claude.exe)", "file", probe_version=True),
 }
 assert tuple(TOOLS) == TOOL_KEYS
 

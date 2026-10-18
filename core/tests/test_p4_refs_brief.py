@@ -185,3 +185,15 @@ def test_claude_brief(tmp_path: Path) -> None:
             await bad.run(ctx, {"idea": "x"}, {})
 
     asyncio.run(go())
+
+
+def test_build_options_uses_native_claude_exe(tmp_path: Path) -> None:
+    from studio_core.adapters import claude as cl
+    from studio_core.config import Settings
+
+    exe = tmp_path / "claude.exe"
+    exe.write_bytes(b"")
+    cl.ClaudeResource(Settings(data_dir=tmp_path, claude_exe=exe))
+    assert cl.build_options({}, str(tmp_path)).cli_path == str(exe)
+    cl.ClaudeResource(Settings(data_dir=tmp_path, claude_exe=tmp_path / "missing.exe"))
+    assert cl.build_options({}, str(tmp_path)).cli_path is None
