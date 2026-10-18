@@ -74,7 +74,8 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   Mở: wizard ra mesh hỏng dù góc qua check (các góc lệch nhau: gậy đổi tay) → cần check nhất quán (màu/part hoặc VLM).
 
 ## Việc còn mở (ưu tiên)
-1. Chủ nhân build thử `cd app && npm run dist` (P7 chưa build).
+1. [x] Chủ nhân đã build (17:17): installer 140.7MB. Lead smoke test core frozen: READY, 13 recipe, 32 kind, /settings/tools 200, shutdown OK.
+   Tiếp: cài thử installer, chạy 1 run thật trong app đóng gói.
 2. Check nhất quán giữa các góc Qwen (VLM Claude haiku so 4 góc) cho R5-mv.
 3. Sprite + Spine viewer mới kiểm mock, chưa kiểm với core thật.
 4. R7 reviewer khắt khe (thường đủ 3 vòng); procedural_3d không giữ lane BLENDER.
