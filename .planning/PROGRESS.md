@@ -47,7 +47,7 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
    JSON chưa thử trong Spine Editor; chỉ front-view T/A-pose; Claude joints sửa rất ít.
    Workflow mới `segment_sam3`, `inpaint_flux2_klein4b` nằm ở L:\AI\setup\workflows (ngoài repo, có index.json.bak-p5).
 12. [ ] R3 live qua MCP OK 177s (Qwen 134s); góc 45/90/135 gần như cùng profile → đúng hạn chế đã biết, R5 tốt hơn.
-13. [ ] Agent: app viewer GLB (three.js) / Spine (spine-player) / sprite sheet + catalog kinds cho op.parts/layers/spine_export.
+13. [~] Agent: app viewer GLB (three.js) / Spine (spine-player) / sprite sheet + catalog kinds cho op.parts/layers/spine_export.
 14. [ ] P7 đóng gói — sau 13 (cùng package.json). Rule: không tự build → agent chỉ chuẩn bị config/script, chủ nhân build.
 
 ## Nhật ký
@@ -60,3 +60,5 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   P4 Claude (brief expansion, `blender.script`, R7 procedural-3d, `blender.agent`). Agent chết → xem file đã đổi
   bằng `git status`, giao lại phần dở. Chỉ lead chạy recipe GPU.
 - 15:21 — 2 agent P6 + P5 bị rate limit (14:xx), quota reset 15:20 → đã resume bằng SendMessage. File dở nằm trong working tree (chưa commit).
+- 15:55 — Agent viewer (GLB/Spine/sheet, app) + agent R5 multi-view (Pixal3DMultiViewConditioning, Qwen sinh trái/sau/phải;
+  giữ GPU) đang chạy. Lead không chạy GPU tới khi agent MV báo xong.
