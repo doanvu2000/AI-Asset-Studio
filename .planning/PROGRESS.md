@@ -47,7 +47,7 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
    JSON chưa thử trong Spine Editor; chỉ front-view T/A-pose; Claude joints sửa rất ít.
    Workflow mới `segment_sam3`, `inpaint_flux2_klein4b` nằm ở L:\AI\setup\workflows (ngoài repo, có index.json.bak-p5).
 12. [ ] R3 live qua MCP OK 177s (Qwen 134s); góc 45/90/135 gần như cùng profile → đúng hạn chế đã biết, R5 tốt hơn.
-13. [~] Agent: app viewer GLB (three.js) / Spine (spine-player) / sprite sheet + catalog kinds cho op.parts/layers/spine_export.
+13. [x] Viewer app (`71a1886`): GLB/sheet/Spine + catalog kinds rig. Kiểm GLB với core thật; sprite+Spine mới kiểm mock.
 14. [ ] P7 đóng gói — sau 13 (cùng package.json). Rule: không tự build → agent chỉ chuẩn bị config/script, chủ nhân build.
 
 ## Nhật ký
