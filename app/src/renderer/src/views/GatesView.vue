@@ -2,14 +2,15 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useElementSize, onKeyStroke } from '@vueuse/core'
-import { Check, ExternalLink, Inbox, LoaderCircle, ThumbsDown, ThumbsUp } from '@lucide/vue'
+import { ART } from '@/assets/art'
+import { Check, ExternalLink, LoaderCircle, ThumbsDown, ThumbsUp } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import BlobImage from '@/components/BlobImage.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import { useGates, type GateItem } from '@/stores/gates'
 import { useRuns } from '@/stores/runs'
 import { useToasts } from '@/stores/toasts'
-import { relativeTime } from '@/composables/format'
+import RelTime from '@/components/RelTime.vue'
 
 const gates = useGates()
 const runs = useRuns()
@@ -132,7 +133,7 @@ onKeyStroke(true, (e) => {
 <template>
   <div class="view">
     <PageHeader title="Cần duyệt" :subtitle="gates.count ? `${gates.count} bước đang chờ` : 'Không có gì đang chờ'" />
-    <EmptyState v-if="!current" :icon="Inbox" title="Hộp duyệt trống" text="Khi một run cần bạn chọn ảnh hoặc duyệt, nó sẽ xuất hiện ở đây." />
+    <EmptyState v-if="!current" class="gates-empty" :art="ART.emptyGates" :art-size="176" title="Hộp duyệt trống" text="Khi một run cần bạn chọn ảnh hoặc duyệt, nó sẽ xuất hiện ở đây." />
     <div v-else class="split">
       <aside class="queue" aria-label="Danh sách chờ duyệt">
         <TransitionGroup name="q" tag="div" class="q-list">
@@ -146,7 +147,7 @@ onKeyStroke(true, (e) => {
           >
             <span class="q-title">{{ runTitle(g) }}</span>
             <span class="caption">
-              {{ g.kind === 'pick' ? 'Chọn ảnh' : 'Duyệt' }} · {{ g.candidates.length }} ảnh · {{ relativeTime(g.since) }}
+              {{ g.kind === 'pick' ? 'Chọn ảnh' : 'Duyệt' }} · {{ g.candidates.length }} ảnh · <RelTime :ts="g.since" />
             </span>
           </button>
         </TransitionGroup>
@@ -210,6 +211,11 @@ onKeyStroke(true, (e) => {
 </template>
 
 <style scoped>
+.gates-empty {
+  flex: 1;
+  align-content: center;
+  padding-bottom: 72px;
+}
 .split {
   flex: 1;
   min-height: 0;

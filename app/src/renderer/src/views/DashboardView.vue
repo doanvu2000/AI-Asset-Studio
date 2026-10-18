@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
-import { Inbox, ListChecks, Plus } from '@lucide/vue'
+import { computed, onBeforeUnmount, watch } from 'vue'
+import { Inbox, Plus } from '@lucide/vue'
+import { ART } from '@/assets/art'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceCard from '@/components/ResourceCard.vue'
 import RunRowItem from '@/components/RunRowItem.vue'
@@ -21,19 +22,35 @@ const toasts = useToasts()
 const active = computed(() => runs.activeRuns.slice(0, 6))
 const recent = computed(() => runs.runList.filter((r) => r.status !== 'running' && r.status !== 'awaiting_human').slice(0, 8))
 
-// Active runs need their steps for the inline pipeline dots; fetch each once, WS keeps them fresh.
-const fetched = new Set<string>()
+// Active runs need their steps for the inline pipeline dots. Hold each only while it is shown so
+// resync reloads just these; WS keeps them fresh in between.
+const HOLDER = 'dashboard'
+const held = new Set<string>()
 watch(
-  [active, () => conn.lastSync],
-  () => {
-    for (const r of active.value) {
-      if (fetched.has(r.id)) continue
-      fetched.add(r.id)
-      runs.loadDetail(r.id).catch(() => fetched.delete(r.id))
+  [active, () => conn.transport],
+  ([list, transport]) => {
+    const ids = new Set(list.map((r) => r.id))
+    for (const id of held) {
+      if (ids.has(id)) continue
+      held.delete(id)
+      runs.closeDetail(id, HOLDER)
+    }
+    if (!transport) return
+    for (const id of ids) {
+      if (held.has(id)) continue
+      held.add(id)
+      runs.loadDetail(id, HOLDER).catch(() => {
+        held.delete(id)
+        runs.closeDetail(id, HOLDER)
+      })
     }
   },
   { immediate: true }
 )
+onBeforeUnmount(() => {
+  for (const id of held) runs.closeDetail(id, HOLDER)
+  held.clear()
+})
 
 async function toggle(name: string, start: boolean): Promise<void> {
   try {
@@ -101,7 +118,7 @@ async function toggle(name: string, start: boolean): Promise<void> {
               <RunRowItem :run="r" />
             </div>
           </div>
-          <EmptyState v-else-if="runs.listLoaded" :icon="ListChecks" title="Chưa có run nào" text="Chọn một recipe để tạo asset đầu tiên.">
+          <EmptyState v-else-if="runs.listLoaded" :art="ART.emptyRuns" title="Chưa có run nào" text="Chọn một recipe để tạo asset đầu tiên.">
             <RouterLink to="/new" class="btn btn-primary"><Plus /> Tạo mới</RouterLink>
           </EmptyState>
         </section>

@@ -47,7 +47,7 @@
 
   --text: #1d1d1f;
   --text-2: #5e5e66;
-  --text-3: #8a8a93;
+  --text-3: #6e6e77;
   --text-on-accent: #ffffff;
 
   --separator: rgba(0, 0, 0, 0.09);
@@ -94,7 +94,7 @@
 
     --text: #f5f5f7;
     --text-2: #a8a8b0;
-    --text-3: #7c7c85;
+    --text-3: #93939c;
 
     --separator: rgba(255, 255, 255, 0.08);
     --separator-strong: rgba(255, 255, 255, 0.16);

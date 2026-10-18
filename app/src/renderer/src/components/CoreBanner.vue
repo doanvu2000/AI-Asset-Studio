@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { CircleAlert, LoaderCircle } from '@lucide/vue'
+import { LoaderCircle } from '@lucide/vue'
+import { ART } from '@/assets/art'
 import { useConnection } from '@/stores/connection'
 
 const conn = useConnection()
@@ -24,7 +25,7 @@ const banner = computed(() => {
   <Transition name="banner">
     <div v-if="banner" class="banner" :class="banner.tone" role="status" aria-live="polite">
       <LoaderCircle v-if="banner.tone === 'wait'" class="spin" :size="16" />
-      <CircleAlert v-else :size="16" />
+      <img v-else class="art" :src="ART.coreDisconnected" alt="" width="40" height="40" draggable="false" />
       <div class="txt">
         <strong>{{ banner.title }}</strong>
         <span>{{ banner.text }}</span>
@@ -67,6 +68,11 @@ const banner = computed(() => {
   font-size: 11px;
   white-space: pre-wrap;
   color: var(--text-2);
+}
+.art {
+  flex: none;
+  margin: -6px 0 -6px -4px;
+  user-select: none;
 }
 .spin {
   animation: spin 1s linear infinite;

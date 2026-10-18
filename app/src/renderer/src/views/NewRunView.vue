@@ -6,6 +6,7 @@ import type { BlobRef, RecipeInfo, RecipeInputSpec } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import LaneTag from '@/components/LaneTag.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import RecipeThumb from '@/components/RecipeThumb.vue'
 import BlobDropZone from '@/components/BlobDropZone.vue'
 import { useRecipes } from '@/stores/recipes'
 import { api, useConnection } from '@/stores/connection'
@@ -147,8 +148,11 @@ function onKey(e: KeyboardEvent): void {
           :aria-pressed="selected?.id === r.id"
           @click="selectedId = r.id"
         >
-          <span class="r-name">{{ r.name }}</span>
-          <span class="caption r-desc">{{ r.description }}</span>
+          <RecipeThumb :id="r.id" />
+          <span class="r-text">
+            <span class="r-name">{{ r.name }}</span>
+            <span class="caption r-desc">{{ r.description }}</span>
+          </span>
         </button>
       </aside>
 
@@ -156,8 +160,13 @@ function onKey(e: KeyboardEvent): void {
         <EmptyState v-if="recipes.loaded && !selected" :icon="BookOpen" title="Chưa có recipe" text="Core chưa nạp recipe nào. Thêm file YAML vào core/studio_core/recipes rồi khởi động lại." />
         <form v-else-if="selected" class="form" novalidate @submit.prevent="submit">
           <header class="f-head">
-            <h2 class="large-title">{{ selected.name }}</h2>
-            <p class="secondary">{{ selected.description }}</p>
+            <div class="f-title">
+              <RecipeThumb :id="selected.id" :key="selected.id" :size="88" class="f-art" />
+              <div class="f-title-text">
+                <h2 class="large-title">{{ selected.name }}</h2>
+                <p class="secondary">{{ selected.description }}</p>
+              </div>
+            </div>
             <ol class="pipeline" aria-label="Các bước">
               <li v-for="(s, i) in selected.steps" :key="s.id">
                 <span class="p-step">
@@ -287,8 +296,9 @@ function onKey(e: KeyboardEvent): void {
   padding: 0 8px 6px;
 }
 .recipe {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   text-align: left;
   padding: 10px 12px;
   border: 0;
@@ -308,8 +318,37 @@ function onKey(e: KeyboardEvent): void {
 .recipe.on {
   background: var(--bg-selected);
 }
+.r-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
 .r-name {
   font-weight: 600;
+}
+.f-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.f-title-text {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.f-art {
+  animation: art-pop var(--t-slow) var(--ease-spring);
+}
+@keyframes art-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .f-art {
+    animation: none;
+  }
 }
 .r-desc {
   display: -webkit-box;

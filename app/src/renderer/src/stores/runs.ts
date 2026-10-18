@@ -17,7 +17,8 @@ export const useRuns = defineStore('runs', () => {
   const previews = shallowRef(new Map<string, string>())
   const logs = shallowRef(new Map<string, LogLine[]>())
   const stepIdsByRun = new Map<string, Set<string>>()
-  const openDetails = new Set<string>()
+  // Dashboard and run detail can hold the same run; it leaves the resync set only when every holder closes it.
+  const openDetails = new Map<string, Set<string>>()
   const listLoaded = ref(false)
   const listError = ref<string | null>(null)
 
@@ -109,8 +110,7 @@ export const useRuns = defineStore('runs', () => {
     }
   }
 
-  async function loadDetail(id: string): Promise<void> {
-    openDetails.add(id)
+  async function fetchDetail(id: string): Promise<void> {
     const d = await api().getRun(id)
     runs.value.set(d.run.id, d.run)
     for (const s of d.steps) putStep(s)
@@ -118,12 +118,22 @@ export const useRuns = defineStore('runs', () => {
     triggerRef(steps)
   }
 
-  async function reloadDetails(): Promise<void> {
-    await Promise.allSettled([...openDetails].map((id) => loadDetail(id)))
+  async function loadDetail(id: string, holder = 'detail'): Promise<void> {
+    let holders = openDetails.get(id)
+    if (!holders) openDetails.set(id, (holders = new Set()))
+    holders.add(holder)
+    await fetchDetail(id)
   }
 
-  function closeDetail(id: string): void {
-    openDetails.delete(id)
+  async function reloadDetails(): Promise<void> {
+    await Promise.allSettled([...openDetails.keys()].map((id) => fetchDetail(id)))
+  }
+
+  function closeDetail(id: string, holder = 'detail'): void {
+    const holders = openDetails.get(id)
+    if (!holders) return
+    holders.delete(holder)
+    if (!holders.size) openDetails.delete(id)
   }
 
   async function cancel(id: string): Promise<void> {

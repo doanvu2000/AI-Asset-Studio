@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 
-defineProps<{ icon: Component; title: string; text?: string }>()
+withDefaults(defineProps<{ icon?: Component; art?: string; artSize?: number; title: string; text?: string }>(), {
+  artSize: 152
+})
 </script>
 
 <template>
   <div class="empty">
-    <span class="ic"><component :is="icon" :size="26" :stroke-width="1.6" /></span>
+    <img v-if="art" class="art" :src="art" alt="" :width="artSize" :height="artSize" decoding="async" draggable="false" />
+    <span v-else-if="icon" class="ic"><component :is="icon" :size="26" :stroke-width="1.6" /></span>
     <p class="headline">{{ title }}</p>
     <p v-if="text" class="secondary txt">{{ text }}</p>
     <div v-if="$slots.default" class="act"><slot /></div>
@@ -21,6 +24,12 @@ defineProps<{ icon: Component; title: string; text?: string }>()
   padding: 48px 24px;
   text-align: center;
   animation: fade-up var(--t-slow) var(--ease-out);
+}
+.art {
+  margin-bottom: 4px;
+  object-fit: contain;
+  user-select: none;
+  animation: art-in 520ms var(--ease-spring) both;
 }
 .ic {
   display: grid;
@@ -37,5 +46,16 @@ defineProps<{ icon: Component; title: string; text?: string }>()
 }
 .act {
   margin-top: 10px;
+}
+@keyframes art-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .art {
+    animation: none;
+  }
 }
 </style>

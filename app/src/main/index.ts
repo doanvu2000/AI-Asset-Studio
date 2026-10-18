@@ -4,6 +4,7 @@ import { release } from 'node:os'
 import { pathToFileURL } from 'node:url'
 import trayIconPath from '../../resources/tray.png?asset'
 import appIconPath from '../../resources/icon.png?asset'
+import winIconPath from '../../resources/icon.ico?asset'
 import { CoreSupervisor } from './core'
 
 const isDev = !app.isPackaged && !!process.env.ELECTRON_RENDERER_URL
@@ -85,7 +86,7 @@ function createWindow(): void {
     minHeight: 620,
     show: false,
     title: 'AI Asset Studio',
-    icon: appIconPath,
+    icon: process.platform === 'win32' ? winIconPath : appIconPath,
     backgroundColor: vibrancy ? '#00000000' : dark ? '#1c1c1e' : '#f2f2f5',
     backgroundMaterial: vibrancy ? 'mica' : undefined,
     titleBarStyle: 'hidden',
@@ -131,7 +132,8 @@ function createWindow(): void {
 }
 
 function createTray(): void {
-  tray = new Tray(nativeImage.createFromPath(trayIconPath))
+  // The multi-size .ico lets Windows pick the exact 16/20/24/32px frame for the current DPI instead of downscaling.
+  tray = new Tray(nativeImage.createFromPath(process.platform === 'win32' ? winIconPath : trayIconPath))
   tray.setToolTip('AI Asset Studio')
   tray.setContextMenu(
     Menu.buildFromTemplate([

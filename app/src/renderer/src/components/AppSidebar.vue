@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ART } from '@/assets/art'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { motion } from 'motion-v'
@@ -43,7 +44,7 @@ const status = computed(() => {
 <template>
   <aside class="sidebar">
     <div class="brand">
-      <span class="logo" aria-hidden="true"><span /></span>
+      <img class="logo" :src="ART.appIcon" alt="" width="22" height="22" draggable="false" />
       <span class="brand-name">Asset Studio</span>
     </div>
 
@@ -100,19 +101,10 @@ const status = computed(() => {
   padding: 0 8px;
 }
 .logo {
-  display: grid;
-  place-items: center;
   width: 22px;
   height: 22px;
-  border-radius: 6px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 80%, white), var(--accent));
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 0.5px 0 rgba(255, 255, 255, 0.4);
-}
-.logo span {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  border: 2px solid #fff;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.22));
+  user-select: none;
 }
 .brand-name {
   font-weight: 650;

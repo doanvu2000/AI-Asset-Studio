@@ -2,7 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { Check, Images, X } from '@lucide/vue'
+import { Check, X } from '@lucide/vue'
+import { ART } from '@/assets/art'
 import type { BlobRef, VersionRow, VersionStatus } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import BlobImage from '@/components/BlobImage.vue'
@@ -11,7 +12,7 @@ import Lightbox from '@/components/Lightbox.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import { useVersions } from '@/stores/versions'
 import { useToasts } from '@/stores/toasts'
-import { relativeTime } from '@/composables/format'
+import RelTime from '@/components/RelTime.vue'
 
 const versions = useVersions()
 const toasts = useToasts()
@@ -97,7 +98,7 @@ const lightbox = ref<BlobRef | null>(null)
     <div ref="scroller" class="grid-scroll">
       <EmptyState
         v-if="versions.loaded && !items.length"
-        :icon="Images"
+        :art="ART.emptyGallery"
         title="Chưa có phiên bản nào"
         text="Run hoàn tất sẽ thêm bản nháp vào đây để bạn duyệt."
       />
@@ -122,7 +123,7 @@ const lightbox = ref<BlobRef | null>(null)
                   <span :key="v.status" class="pill">{{ STATUS_TEXT[v.status] }}</span>
                 </Transition>
               </div>
-              <span class="caption">{{ relativeTime(v.created_at) }}</span>
+              <RelTime class="caption" :ts="v.created_at" />
             </div>
             <div class="acts">
               <button

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { ListChecks, Plus } from '@lucide/vue'
+import { Plus } from '@lucide/vue'
+import { ART } from '@/assets/art'
 import type { RunStatus } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import RunRowItem from '@/components/RunRowItem.vue'
@@ -81,7 +82,7 @@ const total = computed(() => virtualizer.value.getTotalSize())
       </div>
     </div>
     <div ref="scroller" class="list-scroll">
-      <EmptyState v-if="runs.listLoaded && !rows.length" :icon="ListChecks" title="Không có run nào ở mục này" />
+      <EmptyState v-if="runs.listLoaded && !rows.length" :art="ART.emptyRuns" :art-size="128" title="Không có run nào ở mục này" />
       <div v-else class="inner" :style="{ height: `${total}px` }">
         <div
           v-for="it in items"

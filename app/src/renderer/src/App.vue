@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { MotionConfig } from 'motion-v'
 import { onKeyStroke } from '@vueuse/core'
 import AppSidebar from './components/AppSidebar.vue'
 import CoreBanner from './components/CoreBanner.vue'
+import CoreOffline from './components/CoreOffline.vue'
 import ToastHost from './components/ToastHost.vue'
 import { useConnection } from './stores/connection'
 
@@ -12,6 +13,9 @@ const conn = useConnection()
 const router = useRouter()
 
 onMounted(() => void conn.init())
+
+// Before the first connection there is nothing to show, so a dead core gets the full screen instead of a banner.
+const offline = computed(() => !conn.core.mock && !conn.transport && ['error', 'restarting', 'stopped'].includes(conn.core.state))
 
 const NAV = ['/', '/new', '/runs', '/gates', '/gallery']
 onKeyStroke(
@@ -34,8 +38,9 @@ onKeyStroke(
     <div class="shell">
       <AppSidebar />
       <main class="content">
-        <CoreBanner />
-        <RouterView v-slot="{ Component, route }">
+        <CoreBanner v-if="!offline" />
+        <CoreOffline v-if="offline" />
+        <RouterView v-else v-slot="{ Component, route }">
           <Transition name="page" mode="out-in">
             <component :is="Component" :key="route.name === 'run' ? route.fullPath : String(route.name)" />
           </Transition>

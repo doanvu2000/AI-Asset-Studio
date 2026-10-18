@@ -3,10 +3,11 @@ import { computed } from 'vue'
 import { ChevronRight } from '@lucide/vue'
 import type { RunRow, StepRow } from '@/api/types'
 import { RUN_ACTIVE } from '@/api/types'
-import { humanDuration, kindName, relativeTime } from '@/composables/format'
+import { humanDuration, kindName } from '@/composables/format'
 import { useRecipes } from '@/stores/recipes'
 import RunStatusBadge from './RunStatusBadge.vue'
 import ElapsedTimer from './ElapsedTimer.vue'
+import RelTime from './RelTime.vue'
 
 const props = defineProps<{ run: RunRow; steps?: StepRow[] }>()
 const recipes = useRecipes()
@@ -28,7 +29,7 @@ const current = computed(() =>
       <div class="l2 caption">
         <span>{{ recipeName }}</span>
         <span>·</span>
-        <span>{{ relativeTime(run.created_at) }}</span>
+        <RelTime :ts="run.created_at" />
         <template v-if="current">
           <span>·</span>
           <span class="cur" :class="`c-${current.status}`">{{ kindName(current.kind) }}</span>

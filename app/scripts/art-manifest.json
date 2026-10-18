@@ -1,0 +1,62 @@
+[
+  {
+    "name": "app-icon",
+    "alpha": true,
+    "prompt": "Generate an image: a macOS Big Sur style app icon for a desktop app called 'AI asset forge'. A rounded-square (squircle) icon tile filling about 82% of the canvas, centered, with a deep violet-to-indigo gradient (#3B2A8F to #6E56CF) and a soft inner top highlight; on the tile sits a glowing faceted crystal gem cube (lavender #9E8CFC with white-hot core glow) hovering above a small stylized anvil-like base, tiny pixel-sprite sparkles orbiting it, suggesting forging game assets with AI. Soft 3D clay / glass rendering, gentle top-left light, subtle drop shadow of the tile only. Outside the squircle tile the canvas must be fully transparent. No text, no letters. Square 1:1."
+  },
+  {
+    "name": "empty-runs",
+    "alpha": true,
+    "prompt": "Generate an image: an empty-state illustration meaning 'no runs yet': a small clay rocket / play-button capsule resting idle on a soft rounded launch pad, with a few floating dotted path markers, calm and inviting.\n\nArt style (keep identical across the whole set): soft 3D clay illustration with an Apple-like premium feel; smooth rounded matte-satin forms with subtle subsurface glow; color palette strictly violet #6E56CF and lavender #9E8CFC as the main hues, soft white and pale lilac #E9E4FF as secondaries, one tiny warm amber #FFB340 accent at most; gentle top-left studio key light, soft rim light, subtle ambient occlusion; no drop shadow on the background, no ground plane, no floor; a single centered object group in a 3/4 isometric view with generous empty margin around it; must read clearly on both a dark (#1E1E21) and a light (#FBFBFD) app background; absolutely no text, letters, numbers, logos, watermarks or UI chrome. Square 1:1 image."
+  },
+  {
+    "name": "empty-gates",
+    "alpha": true,
+    "prompt": "Generate an image: an empty-state illustration meaning 'nothing waiting for your approval, all clear': a soft rounded inbox tray, empty, with a big friendly checkmark badge floating above it and two small sparkles.\n\nArt style (keep identical across the whole set): soft 3D clay illustration with an Apple-like premium feel; smooth rounded matte-satin forms with subtle subsurface glow; color palette strictly violet #6E56CF and lavender #9E8CFC as the main hues, soft white and pale lilac #E9E4FF as secondaries, one tiny warm amber #FFB340 accent at most; gentle top-left studio key light, soft rim light, subtle ambient occlusion; no drop shadow on the background, no ground plane, no floor; a single centered object group in a 3/4 isometric view with generous empty margin around it; must read clearly on both a dark (#1E1E21) and a light (#FBFBFD) app background; absolutely no text, letters, numbers, logos, watermarks or UI chrome. Square 1:1 image."
+  },
+  {
+    "name": "empty-gallery",
+    "alpha": true,
+    "prompt": "Generate an image: an empty-state illustration meaning 'gallery is empty': a few blank rounded picture frames / image cards fanned out, with a small mountain-and-sun placeholder glyph on the front card and a little sparkle, nothing inside yet.\n\nArt style (keep identical across the whole set): soft 3D clay illustration with an Apple-like premium feel; smooth rounded matte-satin forms with subtle subsurface glow; color palette strictly violet #6E56CF and lavender #9E8CFC as the main hues, soft white and pale lilac #E9E4FF as secondaries, one tiny warm amber #FFB340 accent at most; gentle top-left studio key light, soft rim light, subtle ambient occlusion; no drop shadow on the background, no ground plane, no floor; a single centered object group in a 3/4 isometric view with generous empty margin around it; must read clearly on both a dark (#1E1E21) and a light (#FBFBFD) app background; absolutely no text, letters, numbers, logos, watermarks or UI chrome. Square 1:1 image."
+  },
+  {
+    "name": "core-disconnected",
+    "alpha": true,
+    "prompt": "Generate an image: an illustration meaning 'engine disconnected': a soft rounded power plug and socket gently pulled apart with a tiny gap between them, a small dotted spark line in the gap, a little cloud of dashes, calm not alarming.\n\nArt style (keep identical across the whole set): soft 3D clay illustration with an Apple-like premium feel; smooth rounded matte-satin forms with subtle subsurface glow; color palette strictly violet #6E56CF and lavender #9E8CFC as the main hues, soft white and pale lilac #E9E4FF as secondaries, one tiny warm amber #FFB340 accent at most; gentle top-left studio key light, soft rim light, subtle ambient occlusion; no drop shadow on the background, no ground plane, no floor; a single centered object group in a 3/4 isometric view with generous empty margin around it; must read clearly on both a dark (#1E1E21) and a light (#FBFBFD) app background; absolutely no text, letters, numbers, logos, watermarks or UI chrome. Square 1:1 image."
+  },
+  {
+    "name": "recipe-concept-2d",
+    "alpha": true,
+    "prompt": "Generate an image: a recipe thumbnail for '2D concept art from text': a rounded drawing canvas card with a simple character silhouette sketch on it and a chunky paintbrush leaning on it, a few paint dots.\n\nArt style (keep identical across the whole set): soft 3D clay illustration with an Apple-like premium feel; smooth rounded matte-satin forms with subtle subsurface glow; color palette strictly violet #6E56CF and lavender #9E8CFC as the main hues, soft white and pale lilac #E9E4FF as secondaries, one tiny warm amber #FFB340 accent at most; gentle top-left studio key light, soft rim light, subtle ambient occlusion; no drop shadow on the background, no ground plane, no floor; a single centered object group in a 3/4 isometric view with generous empty margin around it; must read clearly on both a dark (#1E1E21) and a light (#FBFBFD) app background; absolutely no text, letters, numbers, logos, watermarks or UI chrome. Square 1:1 image."
+  },
+  {
+    "name": "recipe-concept-2d-codex",
+    "alpha": true,
+    "prompt": "Generate an image: a recipe thumbnail for 'cloud AI 2D concept with transparent background': a rounded canvas card with a glowing potion-bottle sketch on it, a small soft cloud and a magic sparkle star hovering at its corner.\n\nArt style (keep identical across the whole set): soft 3D clay illustration with an Apple-like premium feel; smooth rounded matte-satin forms with subtle subsurface glow; color palette strictly violet #6E56CF and lavender #9E8CFC as the main hues, soft white and pale lilac #E9E4FF as secondaries, one tiny warm amber #FFB340 accent at most; gentle top-left studio key light, soft rim light, subtle ambient occlusion; no drop shadow on the background, no ground plane, no floor; a single centered object group in a 3/4 isometric view with generous empty margin around it; must read clearly on both a dark (#1E1E21) and a light (#FBFBFD) app background; absolutely no text, letters, numbers, logos, watermarks or UI chrome. Square 1:1 image."
+  },
+  {
+    "name": "recipe-variants-2d",
+    "alpha": true,
+    "prompt": "Generate an image: a recipe thumbnail for '2D variants of one image': three identical small rounded cards fanned out like playing cards, each showing the same simple gem shape in slightly different tints (violet, lavender, amber).\n\nArt style (keep identical across the whole set): soft 3D clay illustration with an Apple-like premium feel; smooth rounded matte-satin forms with subtle subsurface glow; color palette strictly violet #6E56CF and lavender #9E8CFC as the main hues, soft white and pale lilac #E9E4FF as secondaries, one tiny warm amber #FFB340 accent at most; gentle top-left studio key light, soft rim light, subtle ambient occlusion; no drop shadow on the background, no ground plane, no floor; a single centered object group in a 3/4 isometric view with generous empty margin around it; must read clearly on both a dark (#1E1E21) and a light (#FBFBFD) app background; absolutely no text, letters, numbers, logos, watermarks or UI chrome. Square 1:1 image."
+  },
+  {
+    "name": "recipe-sprite-8dir-2d",
+    "alpha": true,
+    "prompt": "Generate an image: a recipe thumbnail for '8-direction 2D sprite': a flat pixel-art-like little hero figurine in the center surrounded by a ring of 8 small rounded arrow chips pointing outward in the 8 compass directions.\n\nArt style (keep identical across the whole set): soft 3D clay illustration with an Apple-like premium feel; smooth rounded matte-satin forms with subtle subsurface glow; color palette strictly violet #6E56CF and lavender #9E8CFC as the main hues, soft white and pale lilac #E9E4FF as secondaries, one tiny warm amber #FFB340 accent at most; gentle top-left studio key light, soft rim light, subtle ambient occlusion; no drop shadow on the background, no ground plane, no floor; a single centered object group in a 3/4 isometric view with generous empty margin around it; must read clearly on both a dark (#1E1E21) and a light (#FBFBFD) app background; absolutely no text, letters, numbers, logos, watermarks or UI chrome. Square 1:1 image."
+  },
+  {
+    "name": "recipe-sprite-8dir-3d",
+    "alpha": true,
+    "prompt": "Generate an image: a recipe thumbnail for '8-direction sprite rendered from a 3D model': a small clay hero figurine standing on a round turntable disc with 8 small evenly spaced dots around its rim and a tiny camera orbiting it.\n\nArt style (keep identical across the whole set): soft 3D clay illustration with an Apple-like premium feel; smooth rounded matte-satin forms with subtle subsurface glow; color palette strictly violet #6E56CF and lavender #9E8CFC as the main hues, soft white and pale lilac #E9E4FF as secondaries, one tiny warm amber #FFB340 accent at most; gentle top-left studio key light, soft rim light, subtle ambient occlusion; no drop shadow on the background, no ground plane, no floor; a single centered object group in a 3/4 isometric view with generous empty margin around it; must read clearly on both a dark (#1E1E21) and a light (#FBFBFD) app background; absolutely no text, letters, numbers, logos, watermarks or UI chrome. Square 1:1 image."
+  },
+  {
+    "name": "recipe-sprite-8dir-glb",
+    "alpha": true,
+    "prompt": "Generate an image: a recipe thumbnail for 'GLB 3D mesh to 8-direction sprites': a low-poly faceted wireframe-ish cube mesh on the left with an arrow flowing into a small 3x3 grid of sprite tiles on the right.\n\nArt style (keep identical across the whole set): soft 3D clay illustration with an Apple-like premium feel; smooth rounded matte-satin forms with subtle subsurface glow; color palette strictly violet #6E56CF and lavender #9E8CFC as the main hues, soft white and pale lilac #E9E4FF as secondaries, one tiny warm amber #FFB340 accent at most; gentle top-left studio key light, soft rim light, subtle ambient occlusion; no drop shadow on the background, no ground plane, no floor; a single centered object group in a 3/4 isometric view with generous empty margin around it; must read clearly on both a dark (#1E1E21) and a light (#FBFBFD) app background; absolutely no text, letters, numbers, logos, watermarks or UI chrome. Square 1:1 image."
+  },
+  {
+    "name": "recipe-prop-3d",
+    "alpha": true,
+    "prompt": "Generate an image: a recipe thumbnail for '3D game prop': a chunky low-poly treasure chest prop with rounded edges, slightly open lid with a soft glow inside, small amber latch.\n\nArt style (keep identical across the whole set): soft 3D clay illustration with an Apple-like premium feel; smooth rounded matte-satin forms with subtle subsurface glow; color palette strictly violet #6E56CF and lavender #9E8CFC as the main hues, soft white and pale lilac #E9E4FF as secondaries, one tiny warm amber #FFB340 accent at most; gentle top-left studio key light, soft rim light, subtle ambient occlusion; no drop shadow on the background, no ground plane, no floor; a single centered object group in a 3/4 isometric view with generous empty margin around it; must read clearly on both a dark (#1E1E21) and a light (#FBFBFD) app background; absolutely no text, letters, numbers, logos, watermarks or UI chrome. Square 1:1 image."
+  }
+]
