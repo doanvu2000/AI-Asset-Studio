@@ -74,6 +74,8 @@ outputs:
 
 - `${inputs.x}` thay nguyên kiểu nếu chuỗi chỉ gồm 1 placeholder; trong chuỗi dài → str.
 - `in: {name: "<step>.<output>"}`; deps suy ra từ `in`. DAG kiểm cycle lúc load.
+- Ghép nhiều nguồn: `in: {image: [inputs.image, angles.images]}` → blob nối theo thứ tự list.
+- Comfy option `_drop_outputs: ["373"]` bỏ output node (ComfyUI bỏ luôn cả nhánh).
 - `map: <input>` = chạy executor 1 lần / item của input đó. `map_param: <param key>` (P2) = chạy 1 lần / phần tử của
   param dạng list (cùng inputs), gộp outputs theo thứ tự; không dùng chung với `map`. Param list lấy từ list YAML hoặc
   filter `${inputs.x | lines}` (input `text`, mỗi dòng không rỗng = 1 phần tử; phần chữ quanh placeholder ghép vào
