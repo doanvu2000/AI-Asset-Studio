@@ -32,8 +32,18 @@ import { exportName, useVersions } from '@/stores/versions'
 import ResizeHandle from '@/components/ResizeHandle.vue'
 import { usePaneWidth } from '@/composables/paneSize'
 import { absoluteTime, humanDuration, kindName, STEP_LABEL, stepName, waitingHint, waitingLabel } from '@/composables/format'
+import { flyFromOrigin, takeOrigin, useReducedMotion, type SharedOrigin } from '@/composables/motion'
 
 const props = defineProps<{ id: string }>()
+const reducedMotion = useReducedMotion()
+const heroOrigin = ref<SharedOrigin | null>(takeOrigin(props.id))
+watch(() => props.id, (id) => (heroOrigin.value = takeOrigin(id)))
+function onHeroStage(el: unknown): void {
+  const o = heroOrigin.value
+  if (!o || !(el instanceof HTMLElement)) return
+  heroOrigin.value = null
+  if (!reducedMotion.value && performance.now() - o.at < 2000) requestAnimationFrame(() => flyFromOrigin(o, el))
+}
 const runs = useRuns()
 const recipes = useRecipes()
 const conn = useConnection()
@@ -399,7 +409,7 @@ function segTitle(s: StepRow): string {
           :key="hero.view.blob.hash"
           class="hero"
           aria-label="Kết quả"
-          :initial="{ opacity: 0, y: 10 }"
+          :initial="heroOrigin ? false : { opacity: 0, y: 10 }"
           :animate="{ opacity: 1, y: 0 }"
           :transition="{ type: 'spring', stiffness: 380, damping: 34 }"
         >
@@ -407,7 +417,7 @@ function segTitle(s: StepRow): string {
             <h2 class="section-label">Kết quả</h2>
             <span class="caption">{{ stepName(hero.step) }}</span>
           </div>
-          <div class="hero-stage card">
+          <div :ref="onHeroStage" class="hero-stage card">
             <AssetViewer :key="hero.view.blob.hash" :view="hero.view" />
           </div>
           <div class="hero-actions">

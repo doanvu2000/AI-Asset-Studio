@@ -17,6 +17,7 @@ import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { stepName } from '@/composables/format'
 import { openPalette } from '@/composables/palette'
+import { rememberOrigin } from '@/composables/motion'
 
 const resources = useResources()
 const runs = useRuns()
@@ -167,7 +168,8 @@ async function toggle(name: string, start: boolean): Promise<void> {
               <RouterLink to="/runs" class="link">Xem tất cả <ChevronRight :size="14" /></RouterLink>
             </div>
             <div v-if="recent.length" class="tiles">
-              <RouterLink v-for="(r, i) in recent" :key="r.id" :to="`/runs/${r.id}`" class="tile" :style="{ '--i': i }" :title="runTitle(r.id)">
+              <RouterLink v-for="(r, i) in recent" :key="r.id" :to="`/runs/${r.id}`" class="tile" :style="{ '--i': i }" :title="runTitle(r.id)"
+                @click="rememberOrigin(r.id, ($event.currentTarget as HTMLElement).querySelector('.t-img'))">
                 <span class="t-img"><BlobImage :hash="runs.previewHash(r.id)!" :size="256" /></span>
                 <span class="t-name">{{ runTitle(r.id) }}</span>
                 <RelTime :ts="r.ended_at ?? r.created_at" class="caption" />

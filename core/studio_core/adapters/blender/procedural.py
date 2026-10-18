@@ -30,6 +30,7 @@ QA_SCHEMA: dict[str, Any] = {
         "ok": {"type": "boolean"},
         "score": {"type": "integer", "minimum": 1, "maximum": 10},
         "issues": {"type": "array", "items": {"type": "string"}},
+        "polish": {"type": "array", "items": {"type": "string"}},
         "fix_hint": {"type": "string"},
     },
     "required": ["ok", "score", "issues", "fix_hint"],
@@ -60,13 +61,18 @@ Contract (checked automatically after the script runs):
 - Deterministic: if you use random, call random.seed(params.get("seed", 0)) first. Must finish in a few seconds.
 Return the COMPLETE script in `code` (no markdown fences) and a one-line summary in `notes`."""
 
-QA_SYSTEM = """You are a strict reviewer of procedurally modeled game assets. You get renders of ONE asset, rotated
-about its vertical axis (angles given), orthographic camera slightly above, transparent background.
+QA_SYSTEM = """You review procedurally modeled game assets. You get renders of ONE asset, rotated about its vertical
+axis (angles given), orthographic camera slightly above, transparent background.
 Judge: does it clearly read as the requested idea; plausible proportions; all parts attached (nothing floating or
 clipping badly); sensible colors/materials; no artifacts (black/inverted faces, z-fighting, stray geometry).
-Ignore absolute scale and ground placement (checked numerically elsewhere).
-ok = true only if a game artist would accept it as a first-pass asset. issues: short and concrete.
-fix_hint: concrete modeling instructions for the script author (which part, what to change, by how much)."""
+Ignore absolute scale and ground placement (checked numerically elsewhere). Judge against the requested style: flat
+shading, few parts and no surface detail (planks, rivets, textures) are correct for low-poly, not defects.
+Score: 9-10 polished; 7-8 reads clearly as the idea with no blocking defect, fine as a first pass; 5-6 recognizable
+but has a blocking defect; 3-4 hard to recognize or broken; 1-2 wrong object or empty.
+issues: ONLY blocking defects (wrong read, missing requested part, floating/detached part, artifact, broken
+material), at most 4, short and concrete. polish: optional nice-to-haves; they never lower the score below 7.
+ok = true when issues is empty.
+fix_hint: concrete modeling instructions for the blocking issues only (which part, what to change, by how much)."""
 
 
 def contract_issues(report: dict[str, Any], height: float) -> list[str]:
@@ -156,7 +162,7 @@ class Procedural3DExecutor:
         style = str(params.get("style") or "").strip()
         height = float(params.get("height", 1.0))
         max_rounds = max(1, min(MAX_ROUNDS, int(params.get("rounds", MAX_ROUNDS))))
-        accept_score = int(params.get("accept_score", 8))
+        accept_score = int(params.get("accept_score", 7))
         render = {"count": int(params.get("views", 6)), "res": int(params.get("res", 256)),
                   "elevation": params.get("elevation", 20), "engine": "BLENDER_EEVEE"}
         code_q = {"model": params.get("code_model") or DEFAULT_MODEL, "max_turns": 2, "system": CODE_SYSTEM,

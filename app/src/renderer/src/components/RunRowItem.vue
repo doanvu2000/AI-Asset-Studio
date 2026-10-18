@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, useTemplateRef } from 'vue'
 import { ChevronRight } from '@lucide/vue'
 import type { RunRow, StepRow } from '@/api/types'
 import { RUN_ACTIVE } from '@/api/types'
 import { humanDuration, STEP_LABEL, stepName } from '@/composables/format'
 import { recipeArt } from '@/assets/art'
+import { rememberOrigin } from '@/composables/motion'
 import { useRecipes } from '@/stores/recipes'
 import { useRuns } from '@/stores/runs'
 import RunStatusBadge from './RunStatusBadge.vue'
@@ -24,11 +25,12 @@ const current = computed(() =>
 const live = computed(() => (props.run.status === 'running' ? runs.livePreview(props.run.id) : null))
 const hash = computed(() => runs.previewHash(props.run.id))
 const art = computed(() => recipeArt(props.run.recipe_id))
+const thumb = useTemplateRef<HTMLElement>('thumb')
 </script>
 
 <template>
-  <RouterLink :to="`/runs/${run.id}`" class="row">
-    <span class="thumb checker" aria-hidden="true">
+  <RouterLink :to="`/runs/${run.id}`" class="row" @click="!live && hash && rememberOrigin(run.id, thumb)">
+    <span ref="thumb" class="thumb checker" aria-hidden="true">
       <img v-if="live" class="live" :src="live" alt="" draggable="false" />
       <BlobImage v-else-if="hash" :hash="hash" :size="96" />
       <img v-else-if="art" class="art" :src="art" alt="" draggable="false" />

@@ -146,3 +146,26 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   opus. Live: brief Opus 13s $0.026 prompt chi tiết; check góc Opus ~$0.07–0.09/lần (haiku $0.0025), đúng 100% ca
   thật + ca âm. pytest 240/4 skip, typecheck sạch. Chưa commit.
 - [x] 22:22 Handoff mới: `.planning/HANDOFF-2026-10-18-2222.md` (thay 2034).
+- [x] 23:xx (session mới) — Pagefile F: 64 GB cố định (chờ reboot). Commit `de8210c` (check góc + Opus + ViewsReport).
+- [x] Việc 6–10 trong lúc chờ reboot:
+  - R7 reviewer: `QA_SYSTEM` có thang điểm, low-poly phẳng không tính lỗi, `issues` chỉ lỗi chặn (≤4), thêm `polish`
+    (không hạ điểm), `accept_score` mặc định 7. Chấm lại ảnh r7a cũ bằng Opus: vòng 1/2 còn đúng 1 lỗi chặn thật
+    (mặt đen / nắp chồng thân), vòng 3 = 7 ok (cũ 5/6/5, 7 mục lặt vặt). pytest 240/4 skip.
+  - Shared-element run → result hero: `composables/motion.ts` `rememberOrigin/takeOrigin/flyFromOrigin` (ghost ảnh
+    thumbnail bay vào ô kết quả rồi mờ; tôn trọng reduced-motion; origin quá 1.2s/2s bỏ). Gắn ở RunRowItem (chỉ khi có
+    preview_hash), tile Gần đây ở Tổng quan, RunDetailView `:ref="onHeroStage"`. Kiểm mock qua CDP: ghost hiện ~150ms
+    sau click, ~500ms rồi xoá; run chờ duyệt không có hero → không bay. typecheck sạch.
+  - Kéo ra Explorer: code đúng (prepare khi hover ở cả 2 nơi gọi) — còn chủ nhân thử tay + taskbar + Notification.
+  - Đợt 3 UI-AUDIT: #18 (stat lọc + "Duyệt cả lô" mở hộp duyệt lọc theo lô = duyệt tuần tự), #23 (Chọn…, tách mục
+    Preset, phụ đề caption) đã có → Đợt 3 coi như xong.
+  - Mesh pháp sư (vc/live2): workflow giống hệt live1 (hiệp sĩ 2D, tốt) và live3 (yêu tinh, tốt), chỉ khác seed + ảnh;
+    4 góc nhất quán. Không phải style 2D. Giả thuyết: (a) seed xấu ở Pixal3D/TRELLIS, (b) crop từng góc riêng
+    (ImageCropToMask theo bbox mỗi ảnh) lệch tâm vì gậy dài. Cần GPU: chạy lại mesh cùng 4 ảnh với 2–3 seed; nếu
+    seed → thêm check chất lượng mesh + tự sinh lại.
+- [x] 23:16 Handoff mới: `.planning/HANDOFF-2026-10-18-2316.md` (thay 2222).
+- [x] 2026-10-19 (session mới, chủ nhân đang dùng GPU → không chạy GPU). Máy đã reboot: `F:\pagefile.sys` 65536 MB
+  đã cấp phát. Giả thuyết (b) crop lệch tâm ở mesh pháp sư (vc/live2) → BÁC: đo bbox 4 góc, cạnh dài 886–898 px
+  (lệch ≤1.5%, live3 tốt còn lệch 5%), tâm x 0.48–0.52 → ImageCropToMask cho cùng tỉ lệ. Còn giả thuyết seed.
+  Script sẵn: scratchpad `81ce8457-.../scratchpad/seed_probe.py` (chạy lại mesh live2 với N seed mới qua
+  run_workflow.py, GLB ra ComfyUI `output/seedprobe/`). Chạy khi GPU rảnh: bật ComfyUI rồi
+  `cd core && uv run python <scratchpad>/seed_probe.py 3`. Chép core Portable vẫn chặn (10 studio-core.exe đang chạy).
