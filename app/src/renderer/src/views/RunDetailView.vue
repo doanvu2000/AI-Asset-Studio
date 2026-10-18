@@ -15,7 +15,7 @@ import { useRuns } from '@/stores/runs'
 import { useRecipes } from '@/stores/recipes'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
-import { absoluteTime, humanDuration, kindName, STEP_LABEL, WAITING_LABEL } from '@/composables/format'
+import { absoluteTime, humanDuration, kindName, STEP_LABEL, waitingHint, waitingLabel } from '@/composables/format'
 
 const props = defineProps<{ id: string }>()
 const runs = useRuns()
@@ -206,8 +206,8 @@ const isImage = (b: BlobRef): boolean => b.mime.startsWith('image/')
             <div v-else-if="sel.status === 'waiting_resource'" class="note wait">
               <Hourglass :size="16" />
               <span>
-                <strong>{{ WAITING_LABEL[String(sel.meta.waiting_for ?? '')] ?? 'Chờ tài nguyên' }}</strong>
-                — một bước khác đang dùng làn này. Bước sẽ tự chạy khi làn trống.
+                <strong>{{ waitingLabel(sel.meta.waiting_for) }}</strong>
+                — {{ waitingHint(sel.meta.waiting_for) }}
               </span>
             </div>
 

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { RotateCcw } from '@lucide/vue'
 import type { ProgressData, StepRow } from '@/api/types'
-import { humanDuration, kindName, STEP_LABEL, WAITING_LABEL } from '@/composables/format'
+import { humanDuration, kindName, STEP_LABEL, waitingLabel } from '@/composables/format'
 import StatusGlyph from './StatusGlyph.vue'
 import LaneTag from './LaneTag.vue'
 import ElapsedTimer from './ElapsedTimer.vue'
@@ -26,7 +26,7 @@ const detail = computed(() => {
   const st = props.step
   switch (st.status) {
     case 'waiting_resource':
-      return WAITING_LABEL[String(st.meta.waiting_for ?? '')] ?? 'Chờ tài nguyên'
+      return waitingLabel(st.meta.waiting_for)
     case 'ready':
       return 'Sẵn sàng, đang xếp lượt'
     case 'awaiting_human':

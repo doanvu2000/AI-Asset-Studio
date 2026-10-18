@@ -73,7 +73,22 @@ export const WAITING_LABEL: Record<string, string> = {
   gpu: 'Chờ GPU',
   blender: 'Chờ Blender',
   cloud: 'Chờ lượt cloud',
-  cpu: 'Chờ CPU'
+  cpu: 'Chờ CPU',
+  comfyui: 'Đang khởi động ComfyUI',
+  codex: 'Chờ Codex',
+  claude: 'Chờ Claude'
+}
+
+// meta.waiting_for is a lane name while queued, or a resource name while that resource boots.
+export function waitingLabel(waitingFor: unknown): string {
+  if (waitingFor === 'blender') return 'Chờ / khởi động Blender'
+  return WAITING_LABEL[String(waitingFor ?? '')] ?? 'Chờ tài nguyên'
+}
+
+export function waitingHint(waitingFor: unknown): string {
+  if (waitingFor === 'gpu' || waitingFor === 'cloud' || waitingFor === 'cpu')
+    return 'một bước khác đang dùng làn này. Bước sẽ tự chạy khi làn trống.'
+  return 'tài nguyên đang được bật hoặc đang bận. Bước sẽ tự chạy khi sẵn sàng.'
 }
 
 const KIND_NAMES: Record<string, string> = {

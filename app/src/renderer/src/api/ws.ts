@@ -39,6 +39,8 @@ const BACKOFF = [300, 600, 1200, 2500, 5000, 8000]
 export class StudioSocket implements EventStream {
   private ws: WebSocket | null = null
   private lastSeq = 0
+  // Live events can arrive between hello and the resume replay; drop them until the replay catches up.
+  private resuming = false
   private attempts = 0
   private neverOpened = 0
   private timer: number | undefined
@@ -91,6 +93,10 @@ export class StudioSocket implements EventStream {
         return
       }
       if (typeof ev.seq !== 'number' || ev.seq <= this.lastSeq) return
+      if (this.resuming) {
+        if (ev.seq !== this.lastSeq + 1) return
+        this.resuming = false
+      }
       this.lastSeq = ev.seq
       this.batcher?.push(ev)
     }
@@ -137,6 +143,7 @@ export class StudioSocket implements EventStream {
   }
 
   private onHello(ws: WebSocket, serverSeq: number): void {
+    this.resuming = false
     if (this.lastSeq === 0) {
       this.lastSeq = serverSeq
       this.sink?.resync()
@@ -153,6 +160,7 @@ export class StudioSocket implements EventStream {
         this.lastSeq = serverSeq
         this.sink?.resync()
       } else {
+        this.resuming = true
         ws.send(JSON.stringify({ op: 'resume', after_seq: this.lastSeq }))
       }
     }

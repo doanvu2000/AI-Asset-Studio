@@ -13,15 +13,24 @@ export interface GateItem {
   since: number
 }
 
+function uniqueBlobs(inputs: StepRow['inputs']): BlobRef[] {
+  const seen = new Set<string>()
+  return Object.values(inputs)
+    .flat()
+    .filter((b) => !seen.has(b.hash) && !!seen.add(b.hash))
+}
+
+// GET /api/gates returns bare StepRows: kind/k live in meta.gate, candidates are the step's inputs.
 function fromStep(step: StepRow, prev?: GateItem): GateItem {
-  const kind = prev?.kind ?? (step.kind === 'gate.pick' ? 'pick' : 'approve')
-  const fallback = Object.values(step.inputs).flat()
+  const gate = (step.meta.gate ?? {}) as { kind?: 'pick' | 'approve'; k?: number }
+  const kind = prev?.kind ?? gate.kind ?? (step.kind === 'gate.pick' ? 'pick' : 'approve')
+  const fallback = uniqueBlobs(step.inputs)
   return {
     stepId: step.id,
     runId: step.run_id,
     step,
     kind,
-    k: prev?.k ?? Number(step.params.k ?? 0),
+    k: prev?.k ?? Number(gate.k ?? step.params.k ?? 0),
     candidates: prev?.candidates.length ? prev.candidates : fallback,
     since: step.started_at ?? Date.now() / 1000
   }

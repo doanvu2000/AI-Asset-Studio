@@ -156,7 +156,7 @@ export interface ResourceHealth {
   }
 }
 
-export type RecipeInputType = 'text' | 'int' | 'float' | 'bool' | 'image' | 'images' | 'mesh' | 'select' | string
+export type RecipeInputType = 'text' | 'int' | 'float' | 'bool' | 'image' | 'images' | 'mesh' | 'enum' | 'select' | string
 
 export interface RecipeInputSpec {
   type: RecipeInputType
@@ -174,6 +174,8 @@ export interface RecipeStepInfo {
   id: string
   kind: string
   lane: Lane
+  deps?: string[]
+  map?: string | null
 }
 
 export interface RecipeInfo {

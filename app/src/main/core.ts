@@ -71,7 +71,7 @@ export class CoreSupervisor extends EventEmitter {
 
     const child = spawn(python, ['-m', 'studio_core', 'serve', '--port', '0'], {
       cwd: join(this.opts.repoRoot, 'core'),
-      env: { ...process.env, STUDIO_TOKEN: this.token, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
+      env: { ...process.env, STUDIO_TOKEN: this.token, STUDIO_PARENT_PID: String(process.pid), PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe']
     })

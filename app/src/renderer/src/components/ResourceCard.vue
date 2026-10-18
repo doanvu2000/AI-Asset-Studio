@@ -17,12 +17,19 @@ const STATUS_TEXT: Record<string, string> = {
   error: 'Lỗi'
 }
 const d = computed(() => props.resource.detail)
+const isOn = computed(() => ['up', 'busy', 'starting'].includes(props.resource.status))
+const note = computed(() => {
+  const v = d.value.message ?? d.value.error ?? d.value.warning
+  return typeof v === 'string' && v ? v : null
+})
 const vramTotal = computed(() => Number(d.value.vram_total_mb ?? 0))
 const vramFree = computed(() => Number(d.value.vram_free_mb ?? 0))
 const vramUsedFrac = computed(() => (vramTotal.value ? 1 - vramFree.value / vramTotal.value : 0))
 const hasVram = computed(() => d.value.vram_free_mb !== undefined && props.resource.status !== 'down')
-const canToggle = computed(() => d.value.managed !== false && ['comfyui', 'blender'].includes(props.resource.name))
-const isOn = computed(() => ['up', 'busy', 'starting'].includes(props.resource.status))
+// An attached (unmanaged) server is not ours to stop; `managed` is only meaningful while it is on.
+const canToggle = computed(
+  () => ['comfyui', 'blender'].includes(props.resource.name) && !(isOn.value && d.value.managed === false)
+)
 const gb = (mb: number): string => (mb / 1024).toFixed(1).replace('.', ',')
 </script>
 
@@ -61,8 +68,9 @@ const gb = (mb: number): string => (mb / 1024).toFixed(1).replace('.', ',')
       </div>
     </div>
     <p v-else class="caption meta">
-      <template v-if="d.message">{{ d.message }}</template>
+      <template v-if="note">{{ note }}</template>
       <template v-else-if="d.version">{{ d.version }}</template>
+      <template v-else-if="d.sdk_version">SDK {{ d.sdk_version }}</template>
       <template v-else>—</template>
     </p>
   </article>

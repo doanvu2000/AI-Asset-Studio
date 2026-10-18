@@ -82,7 +82,7 @@ function validate(name: string, spec: RecipeInputSpec): boolean {
     else if (spec.min !== undefined && v < spec.min) err = `Nhỏ nhất là ${spec.min}`
     else if (spec.max !== undefined && v > spec.max) err = `Lớn nhất là ${spec.max}`
     else if (spec.type === 'int' && !Number.isInteger(v)) err = 'Nhập số nguyên'
-  } else if (spec.type === 'text' && spec.required && !String(values[name] ?? '').trim()) {
+  } else if (spec.type === 'text' && spec.required !== false && spec.default === undefined && !String(values[name] ?? '').trim()) {
     err = 'Không được để trống'
   }
   errors[name] = err
@@ -106,7 +106,7 @@ async function submit(): Promise<void> {
   }
   submitting.value = true
   try {
-    const { run_id } = await api().startRun({ recipe_id: r.id, inputs, title: title.value.trim() || undefined })
+    const { run_id } = await api().startRun({ recipe_id: r.id, inputs, title: title.value.trim() || autoTitle(r, inputs) })
     toasts.push('Đã bắt đầu chạy', 'success', 2500)
     await router.push(`/runs/${run_id}`)
   } catch (e) {
@@ -114,6 +114,13 @@ async function submit(): Promise<void> {
   } finally {
     submitting.value = false
   }
+}
+
+// Core names versions after the run title (else the recipe name), so default it to the prompt.
+function autoTitle(r: RecipeInfo, inputs: Record<string, unknown>): string | undefined {
+  const name = Object.keys(r.inputs).find((k) => r.inputs[k]!.type === 'text' && String(inputs[k] ?? '').trim())
+  const text = name ? String(inputs[name]).trim().replace(/\s+/g, ' ') : ''
+  return text ? (text.length > 60 ? `${text.slice(0, 59)}…` : text) : undefined
 }
 
 function onKey(e: KeyboardEvent): void {
