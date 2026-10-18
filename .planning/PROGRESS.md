@@ -81,3 +81,7 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 4. R7 reviewer khắt khe (thường đủ 3 vòng); procedural_3d không giữ lane BLENDER.
 5. Push lên remote khi chủ nhân bảo.
 - 17:30 — Bản portable (`5617ec4`): cài ở L:\AI\AI Asset Studio Portable (465MB), file marker `portable` → data/ + userdata/ cạnh exe. Đã mở thử: core lên, không ghi %APPDATA%. Build lại: `cd app && npm run dist:portable` rồi chép win-unpacked.
+- 17:45 — Fix bản đóng gói: IPC app:// bị coi untrusted (`1364404`, đã chép vào portable); Claude step lỗi claude.CMD →
+  `claude_exe` + cli_path (`00f3122`, CHƯA build vào portable). Đã đăng ký MCP asset-studio cho Claude (user scope) và Codex
+  (~/.codex/config.toml, backup .bak-asset-studio) trỏ bản portable. Agent devlog (logs/ + /api/diagnostics + panel
+  Nhật ký chẩn đoán) đang chạy → xong thì build core + app, chép vào portable (chủ nhân phải thoát app).
