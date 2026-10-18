@@ -51,3 +51,4 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 - Chạy song song 2 agent: P4b MCP (`core/studio_core/mcp/**`, main/api/app/contracts, app nút copy lệnh) và
   P4 Claude (brief expansion, `blender.script`, R7 procedural-3d, `blender.agent`). Agent chết → xem file đã đổi
   bằng `git status`, giao lại phần dở. Chỉ lead chạy recipe GPU.
+- 15:21 — 2 agent P6 + P5 bị rate limit (14:xx), quota reset 15:20 → đã resume bằng SendMessage. File dở nằm trong working tree (chưa commit).
