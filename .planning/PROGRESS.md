@@ -85,3 +85,6 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   `claude_exe` + cli_path (`00f3122`, CHƯA build vào portable). Đã đăng ký MCP asset-studio cho Claude (user scope) và Codex
   (~/.codex/config.toml, backup .bak-asset-studio) trỏ bản portable. Agent devlog (logs/ + /api/diagnostics + panel
   Nhật ký chẩn đoán) đang chạy → xong thì build core + app, chép vào portable (chủ nhân phải thoát app).
+- 18:05 — Devlog (`90402ab`), resize + UI pass (`a8107c4`), second-instance + icon (`3556e57`). Build core+app mới:
+  test bản portable tạm: core kết nối, panel Nhật ký chẩn đoán, claude_exe ok, bước claude.brief chạy thật OK.
+  Đang chờ chủ nhân thoát app để chép vào L:\AI\AI Asset Studio Portable. Agent khảo sát UI → .planning/UI-AUDIT.md (đang chạy).
