@@ -96,15 +96,49 @@ textarea {
   line-height: 1.15;
 }
 
+.title-1 {
+  font-size: var(--fs-title1);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 28px;
+}
+
 .title {
   font-size: var(--fs-title);
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 
+.title-2 {
+  font-size: var(--fs-title);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 22px;
+}
+
 .headline {
   font-size: var(--fs-headline);
   font-weight: 600;
+}
+
+.body {
+  font-size: var(--fs-body);
+  line-height: 18px;
+}
+
+.callout {
+  font-size: var(--fs-callout);
+  line-height: 16px;
+  color: var(--text-2);
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.stage {
+  background-color: var(--bg-stage);
 }
 
 .secondary {
@@ -199,7 +233,7 @@ textarea {
   height: 18px;
   padding: 0 4px;
   border-radius: 4px;
-  font-size: 10.5px;
+  font-size: var(--fs-caption);
   font-weight: 600;
   color: var(--text-2);
   background: var(--bg-sunken);
@@ -232,6 +266,10 @@ textarea {
 textarea.field {
   resize: vertical;
   line-height: 1.5;
+}
+.field::placeholder {
+  color: var(--text-3);
+  opacity: 1;
 }
 
 .checker {

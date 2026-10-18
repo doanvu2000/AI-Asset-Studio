@@ -7,6 +7,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RecipeThumb from '@/components/RecipeThumb.vue'
 import LaneTag from '@/components/LaneTag.vue'
+import { stepName } from '@/composables/format'
 import { useRecipes } from '@/stores/recipes'
 import { useConnection } from '@/stores/connection'
 
@@ -20,23 +21,32 @@ watch(
   { immediate: true }
 )
 
-const SOURCE: Record<string, { label: string; tone: string }> = {
-  builtin: { label: 'Gốc', tone: 'muted' },
-  user: { label: 'Của bạn', tone: 'user' },
+// Built-in is the default, so it gets no badge; only recipes the user owns or changed are marked.
+const SOURCE: Record<string, { label: string; tone: string } | undefined> = {
+  user: { label: 'Của tôi', tone: 'user' },
   override: { label: 'Đã sửa', tone: 'edit' }
 }
 const sorted = computed(() => [...recipes.list].sort((a, b) => a.name.localeCompare(b.name, 'vi')))
+const flow = (r: RecipeInfo) => [...new Set(r.steps.map((s) => stepName(s)))].join(' · ')
 const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((l) => l && l !== 'none'))]
 </script>
 
 <template>
   <div class="view">
-    <PageHeader title="Recipe" subtitle="Xem và chỉnh chuỗi bước của từng recipe">
-      <button class="btn btn-primary" @click="router.push('/recipes/new')"><Plus /> Recipe mới</button>
+    <PageHeader title="Quy trình" subtitle="Các bước để tạo ra từng loại asset">
+      <button class="btn btn-primary" @click="router.push('/recipes/new')"><Plus /> Quy trình mới</button>
     </PageHeader>
     <div class="scroll">
       <div class="stack">
-        <EmptyState v-if="recipes.loaded && !recipes.list.length" :icon="BookOpen" title="Chưa có recipe" :text="recipes.error ?? 'Tạo recipe mới để bắt đầu.'" />
+        <EmptyState
+          v-if="recipes.loaded && !recipes.list.length"
+          :icon="BookOpen"
+          title="Chưa có quy trình nào"
+          :text="recipes.error ?? 'Tạo một quy trình mới, hoặc kiểm tra kết nối tới core.'"
+          action-label="Quy trình mới"
+          action-to="/recipes/new"
+          :action-icon="Plus"
+        />
         <div v-else v-auto-animate class="grid">
           <article v-for="r in sorted" :key="r.id" class="rc card">
             <RouterLink :to="`/recipes/${encodeURIComponent(r.id)}`" class="rc-main">
@@ -44,9 +54,9 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
               <div class="rc-text">
                 <div class="rc-top">
                   <h2 class="headline name">{{ r.name }}</h2>
-                  <span class="badge" :class="SOURCE[r.source ?? 'builtin']?.tone">{{ SOURCE[r.source ?? 'builtin']?.label }}</span>
+                  <span v-if="SOURCE[r.source ?? 'builtin']" class="badge" :class="SOURCE[r.source ?? 'builtin']!.tone">{{ SOURCE[r.source ?? 'builtin']!.label }}</span>
                 </div>
-                <p class="caption desc">{{ r.description }}</p>
+                <p class="caption desc" :title="r.description">{{ flow(r) }}</p>
                 <div class="meta">
                   <span class="caption num">{{ r.steps.length }} bước</span>
                   <LaneTag v-for="l in lanes(r)" :key="l" :lane="l" />
@@ -126,7 +136,7 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
   flex: none;
   padding: 1px 8px;
   border-radius: 999px;
-  font-size: 10.5px;
+  font-size: var(--fs-caption);
   font-weight: 650;
   color: var(--text-2);
   background: var(--bg-active);

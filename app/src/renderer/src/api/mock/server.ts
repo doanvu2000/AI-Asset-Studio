@@ -911,7 +911,7 @@ export class MockCore implements StudioApi, EventStream {
 
   async startRun(body: StartRunBody): Promise<{ run_id: string }> {
     const recipe = this.recipe(body.recipe_id)
-    if (!recipe) throw new ApiError('unknown_recipe', `Không có recipe ${body.recipe_id}`, 400)
+    if (!recipe) throw new ApiError('unknown_recipe', `Không có quy trình ${body.recipe_id}`, 400)
     const title = body.title || String(body.inputs.prompt ?? recipe.info.name).slice(0, 60)
     const run = this.newRun(recipe, body.inputs, title, now(), body.params ?? {})
     const steps = this.createSteps(run, recipe)
@@ -926,19 +926,31 @@ export class MockCore implements StudioApi, EventStream {
     let rows = [...this.runs.values()].sort((a, b) => b.created_at - a.created_at)
     if (q.status) rows = rows.filter((r) => r.status === q.status)
     if (q.before) rows = rows.filter((r) => r.created_at < q.before!)
-    return clone(rows.slice(0, q.limit ?? 50))
+    return clone(rows.slice(0, q.limit ?? 50).map((r) => ({ ...r, preview_hash: this.previewHash(r.id) })))
+  }
+
+  // Same rule as the core: first image output of the latest step that produced one.
+  private previewHash(runId: string): string | null {
+    const steps = this.stepsOf(runId).sort((a, b) => b.order - a.order)
+    for (const s of steps) {
+      for (const blobs of Object.values(s.outputs)) {
+        const img = blobs.find((b) => b.mime.startsWith('image/'))
+        if (img) return img.hash
+      }
+    }
+    return null
   }
 
   async getRun(id: string): Promise<RunDetail> {
     await this.ready
     const run = this.runs.get(id)
-    if (!run) throw new ApiError('not_found', 'Không tìm thấy run', 404)
+    if (!run) throw new ApiError('not_found', 'Không tìm thấy lượt chạy', 404)
     return clone({ run, steps: this.stepsOf(id) })
   }
 
   async cancelRun(id: string): Promise<void> {
     const run = this.runs.get(id)
-    if (!run) throw new ApiError('not_found', 'Không tìm thấy run', 404)
+    if (!run) throw new ApiError('not_found', 'Không tìm thấy lượt chạy', 404)
     this.cancelled.add(id)
     for (const s of this.stepsOf(id)) {
       if (s.status === 'pending') this.patchStep(s, { status: 'skipped' })
@@ -949,12 +961,17 @@ export class MockCore implements StudioApi, EventStream {
 
   async retryStep(stepId: string): Promise<void> {
     const s = this.steps.get(stepId)
-    if (!s || !['failed', 'cancelled'].includes(s.status)) throw new ApiError('bad_state', 'Chỉ thử lại được bước lỗi hoặc đã huỷ', 409)
+    if (!s) throw new ApiError('not_found', 'Không có bước này', 404)
     const run = this.runs.get(s.run_id)!
-    this.cancelled.delete(run.id)
     const steps = this.stepsOf(run.id)
     const downstream = new Set<string>([s.key])
     for (const x of steps) if (x.deps.some((d) => downstream.has(d))) downstream.add(x.key)
+    const regen = ['succeeded', 'cached'].includes(s.status) &&
+      steps.some((x) => downstream.has(x.key) && x.key !== s.key && x.status === 'awaiting_human')
+    if (!regen && !['failed', 'cancelled'].includes(s.status)) {
+      throw new ApiError('bad_state', 'Chỉ thử lại được bước lỗi hoặc đã huỷ', 409)
+    }
+    this.cancelled.delete(run.id)
     for (const x of steps) {
       if (x.id === s.id) this.patchStep(x, { status: 'pending', attempt: x.attempt + 1, error: null, progress: null, outputs: {}, started_at: null, ended_at: null })
       else if (downstream.has(x.key) || x.status === 'skipped') this.patchStep(x, { status: 'pending', error: null, progress: null, outputs: {}, started_at: null, ended_at: null })

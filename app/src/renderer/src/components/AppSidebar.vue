@@ -6,9 +6,7 @@ import { motion } from 'motion-v'
 import { Images, Inbox, Layers, LayoutDashboard, ListChecks, Plus, Settings, Workflow } from '@lucide/vue'
 import { useRuns } from '@/stores/runs'
 import { useGates } from '@/stores/gates'
-import { useVersions } from '@/stores/versions'
 import { useConnection } from '@/stores/connection'
-import { useBatches } from '@/stores/batches'
 import TweenNumber from './TweenNumber.vue'
 
 defineProps<{ compact?: boolean }>()
@@ -16,19 +14,24 @@ defineProps<{ compact?: boolean }>()
 const route = useRoute()
 const runs = useRuns()
 const gates = useGates()
-const versions = useVersions()
 const conn = useConnection()
-const batches = useBatches()
 
+// Only "Cần duyệt" carries a number: it is the one place that needs the user. Lượt chạy gets a quiet
+// activity dot while something is really executing (not parked at a gate).
 const items = computed(() => [
-  { to: '/', name: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard, badge: 0, tone: '' },
-  { to: '/new', name: 'new', label: 'Tạo mới', icon: Plus, badge: 0, tone: '' },
-  { to: '/runs', name: 'runs', label: 'Lượt chạy', icon: ListChecks, badge: runs.activeRuns.length, tone: 'run' },
-  { to: '/gates', name: 'gates', label: 'Cần duyệt', icon: Inbox, badge: gates.count, tone: 'human' },
-  { to: '/gallery', name: 'gallery', label: 'Thư viện', icon: Images, badge: versions.draftCount, tone: '' },
-  { to: '/recipes', name: 'recipes', label: 'Recipe', icon: Workflow, badge: 0, tone: '' },
-  { to: '/batch', name: 'batch', label: 'Hàng loạt', icon: Layers, badge: batches.list.filter((b) => b.active > 0).length, tone: 'run' }
+  { to: '/', name: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard, badge: 0, busy: false, key: '1' },
+  { to: '/new', name: 'new', label: 'Tạo mới', icon: Plus, badge: 0, busy: false, key: '2' },
+  { to: '/runs', name: 'runs', label: 'Lượt chạy', icon: ListChecks, badge: 0, busy: runs.runningRuns.length > 0, key: '3' },
+  { to: '/gates', name: 'gates', label: 'Cần duyệt', icon: Inbox, badge: gates.count, busy: false, key: '4' },
+  { to: '/gallery', name: 'gallery', label: 'Thư viện', icon: Images, badge: 0, busy: false, key: '5' },
+  { to: '/recipes', name: 'recipes', label: 'Quy trình', icon: Workflow, badge: 0, busy: false, key: '6' },
+  { to: '/batch', name: 'batch', label: 'Hàng loạt', icon: Layers, badge: 0, busy: false, key: '7' }
 ])
+
+function tip(it: { label: string; badge: number; busy: boolean; key: string }): string {
+  const extra = it.badge ? ` · ${it.badge} đang chờ` : it.busy ? ` · ${runs.runningRuns.length} đang chạy` : ''
+  return `${it.label}${extra}  (Ctrl+${it.key})`
+}
 
 function isActive(name: string): boolean {
   const r = String(route.name ?? '')
@@ -62,7 +65,7 @@ const status = computed(() => {
         class="item"
         :class="{ active: isActive(it.name) }"
         :aria-current="isActive(it.name) ? 'page' : undefined"
-        :title="compact ? (it.badge ? `${it.label} (${it.badge})` : it.label) : undefined"
+        :title="tip(it)"
       >
         <motion.span
           v-if="isActive(it.name)"
@@ -73,9 +76,10 @@ const status = computed(() => {
         <component :is="it.icon" class="ic" :size="16" :stroke-width="2" />
         <span class="label">{{ it.label }}</span>
         <Transition name="badge">
-          <span v-if="it.badge > 0" class="count" :class="it.tone">
+          <span v-if="it.badge > 0" class="count human" :aria-label="`${it.badge} đang chờ`">
             <TweenNumber :value="it.badge" :duration="200" />
           </span>
+          <span v-else-if="it.busy" class="busy" role="img" aria-label="Đang chạy" />
         </Transition>
       </RouterLink>
     </nav>
@@ -86,7 +90,7 @@ const status = computed(() => {
         class="item"
         :class="{ active: isActive('settings') }"
         :aria-current="isActive('settings') ? 'page' : undefined"
-        :title="compact ? 'Cài đặt' : undefined"
+        title="Cài đặt"
       >
         <motion.span v-if="isActive('settings')" layout-id="nav-pill" class="pill" :transition="{ type: 'spring', stiffness: 520, damping: 40 }" />
         <Settings class="ic" :size="16" :stroke-width="2" />
@@ -191,12 +195,26 @@ nav {
   color: var(--text-2);
   background: var(--bg-active);
 }
-.count.run {
-  color: var(--st-running);
-  background: var(--st-running-soft);
+.busy {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  border-radius: 50%;
+  border: 2px solid var(--st-running-soft);
+  border-top-color: var(--st-running);
+  animation: spin 0.9s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .busy {
+    animation: none;
+    border-color: var(--st-running);
+  }
 }
 .count.human {
-  color: #fff;
+  color: var(--bg-content);
   background: var(--st-human);
 }
 .nav-foot {
@@ -242,8 +260,13 @@ nav {
   background: var(--text-3);
   box-shadow: 0 0 0 2px var(--bg-sidebar);
 }
-.compact .count.run {
-  background: var(--st-running);
+.compact .busy {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  width: 10px;
+  height: 10px;
+  margin: 0;
 }
 .compact .count.human {
   background: var(--st-human);

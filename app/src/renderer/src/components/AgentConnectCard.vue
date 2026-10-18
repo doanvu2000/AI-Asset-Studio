@@ -64,7 +64,7 @@ async function copy(): Promise<void> {
       <span class="ic"><TerminalSquare :size="17" :stroke-width="2" /></span>
       <div class="names">
         <h3 class="headline">Kết nối agent CLI</h3>
-        <p class="caption">Claude Code / Codex CLI chạy recipe, duyệt gate và nhận file output qua MCP.</p>
+        <p class="caption">Claude Code / Codex CLI chạy quy trình, duyệt bước chờ và nhận file output qua MCP.</p>
       </div>
       <div class="seg" role="tablist" aria-label="Chọn agent CLI">
         <button

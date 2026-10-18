@@ -10,12 +10,13 @@ const emit = defineEmits<{ toggle: [start: boolean] }>()
 
 const icon = computed(() => ({ comfyui: Workflow, blender: Box, codex: Sparkles, claude: Bot })[props.resource.name] ?? Workflow)
 const STATUS_TEXT: Record<string, string> = {
-  down: 'Đang tắt',
-  starting: 'Đang khởi động',
-  up: 'Sẵn sàng',
-  busy: 'Đang bận',
-  error: 'Lỗi'
+  down: 'tắt',
+  starting: 'đang bật…',
+  up: 'sẵn sàng',
+  busy: 'đang bận',
+  error: 'lỗi'
 }
+const name = computed(() => RESOURCE_NAMES[props.resource.name] ?? props.resource.name)
 const d = computed(() => props.resource.detail)
 const isOn = computed(() => ['up', 'busy', 'starting'].includes(props.resource.status))
 const note = computed(() => {
@@ -24,95 +25,75 @@ const note = computed(() => {
 })
 const vramTotal = computed(() => Number(d.value.vram_total_mb ?? 0))
 const vramFree = computed(() => Number(d.value.vram_free_mb ?? 0))
-const vramUsedFrac = computed(() => (vramTotal.value ? 1 - vramFree.value / vramTotal.value : 0))
-const hasVram = computed(() => d.value.vram_free_mb !== undefined && props.resource.status !== 'down')
+const vramUsed = computed(() => Math.max(0, vramTotal.value - vramFree.value))
+const vramUsedFrac = computed(() => (vramTotal.value ? vramUsed.value / vramTotal.value : 0))
+const hasVram = computed(() => d.value.vram_free_mb !== undefined && vramTotal.value > 0 && props.resource.status !== 'down')
 // An attached (unmanaged) server is not ours to stop; `managed` is only meaningful while it is on.
 const canToggle = computed(
   () => ['comfyui', 'blender'].includes(props.resource.name) && !(isOn.value && d.value.managed === false)
 )
+const tooltip = computed(() => {
+  const parts = [`${name.value}: ${STATUS_TEXT[props.resource.status] ?? props.resource.status}`]
+  if (d.value.version) parts.push(String(d.value.version))
+  if (note.value) parts.push(note.value)
+  return parts.join(' · ')
+})
 const gb = (mb: number): string => (mb / 1024).toFixed(1).replace('.', ',')
 </script>
 
 <template>
-  <article class="res card" :class="`rs-${resource.status}`">
-    <header>
-      <span class="ic"><component :is="icon" :size="17" :stroke-width="2" /></span>
-      <div class="names">
-        <h3 class="headline">{{ RESOURCE_NAMES[resource.name] ?? resource.name }}</h3>
-        <Transition name="fade" mode="out-in">
-          <p :key="resource.status" class="state">
-            <span class="dot" />
-            {{ STATUS_TEXT[resource.status] ?? resource.status }}
-          </p>
-        </Transition>
-      </div>
-      <button
-        v-if="canToggle"
-        class="btn btn-plain btn-icon"
-        :disabled="pending || resource.status === 'starting'"
-        :aria-label="isOn ? 'Tắt' : 'Bật'"
-        :title="isOn ? 'Tắt' : 'Bật'"
-        @click="emit('toggle', !isOn)"
-      >
-        <Power />
-      </button>
-    </header>
-
-    <div v-if="hasVram" class="vram">
-      <div class="vram-top">
-        <span class="caption">VRAM trống</span>
-        <span class="num val"><TweenNumber :value="vramFree" :format="gb" /> / {{ gb(vramTotal) }} GB</span>
-      </div>
-      <div class="meter" role="meter" :aria-valuenow="Math.round(vramUsedFrac * 100)" aria-valuemin="0" aria-valuemax="100" aria-label="VRAM đã dùng">
+  <div class="res" :class="`rs-${resource.status}`" :title="tooltip">
+    <component :is="icon" class="ic" :size="15" :stroke-width="2" aria-hidden="true" />
+    <span class="name">{{ name }}</span>
+    <span class="state">
+      <span class="dot" aria-hidden="true" />
+      <Transition name="fade" mode="out-in">
+        <span :key="resource.status">{{ STATUS_TEXT[resource.status] ?? resource.status }}</span>
+      </Transition>
+    </span>
+    <span v-if="hasVram" class="vram num" :title="`VRAM đã dùng ${gb(vramUsed)} / ${gb(vramTotal)} GB`">
+      <span><TweenNumber :value="vramUsed" :format="gb" /> / {{ gb(vramTotal) }} GB</span>
+      <span class="meter" role="meter" :aria-valuenow="Math.round(vramUsedFrac * 100)" aria-valuemin="0" aria-valuemax="100" aria-label="VRAM đã dùng">
         <span class="fill" :style="{ transform: `scaleX(${vramUsedFrac})` }" />
-      </div>
-    </div>
-    <p v-else class="caption meta">
-      <template v-if="note">{{ note }}</template>
-      <template v-else-if="d.version">{{ d.version }}</template>
-      <template v-else-if="d.sdk_version">SDK {{ d.sdk_version }}</template>
-      <template v-else>—</template>
-    </p>
-  </article>
+      </span>
+    </span>
+    <button
+      v-if="canToggle"
+      class="btn btn-plain toggle"
+      :disabled="pending || resource.status === 'starting'"
+      :aria-label="isOn ? `Tắt ${name}` : `Bật ${name}`"
+      @click="emit('toggle', !isOn)"
+    >
+      <Power />
+      {{ isOn ? 'Tắt' : 'Bật' }}
+    </button>
+  </div>
 </template>
 
 <style scoped>
 .res {
-  display: grid;
-  gap: 14px;
-  padding: 14px 14px 16px;
-  min-height: 118px;
-  align-content: start;
-}
-header {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
+  min-height: 32px;
+  white-space: nowrap;
 }
 .ic {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  color: var(--text-2);
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
-  transition: color var(--t-base), background-color var(--t-base);
+  color: var(--text-3);
+  flex: none;
+  transition: color var(--t-base);
 }
 .rs-up .ic,
 .rs-busy .ic {
   color: var(--accent);
-  background: var(--accent-soft);
 }
-.names {
-  flex: 1;
-  min-width: 0;
+.name {
+  font-weight: 600;
 }
 .state {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   font-size: var(--fs-callout);
   color: var(--text-2);
 }
@@ -120,40 +101,39 @@ header {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--st-pending);
+  box-shadow: inset 0 0 0 1.5px var(--st-pending);
 }
 .rs-up .dot {
   background: var(--st-ok);
+  box-shadow: none;
 }
 .rs-busy .dot {
   background: var(--st-running);
+  box-shadow: none;
   animation: soft-pulse 1.4s ease-in-out infinite;
 }
 .rs-starting .dot {
   background: var(--st-waiting);
+  box-shadow: none;
   animation: soft-pulse 1s ease-in-out infinite;
 }
 .rs-error .dot {
   background: var(--st-fail);
+  box-shadow: none;
 }
 .rs-error .state {
   color: var(--st-fail);
 }
 .vram {
-  display: grid;
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-}
-.vram-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-.val {
   font-size: var(--fs-callout);
-  font-weight: 600;
+  color: var(--text-2);
 }
 .meter {
-  height: 6px;
+  width: 44px;
+  height: 5px;
   border-radius: 3px;
   background: var(--bg-sunken);
   box-shadow: var(--hairline);
@@ -166,10 +146,14 @@ header {
   transform-origin: left;
   transition: transform 600ms var(--ease-out);
 }
-.meta {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.toggle {
+  height: 24px;
+  padding: 0 8px;
+  font-size: var(--fs-callout);
+}
+.toggle svg {
+  width: 13px;
+  height: 13px;
 }
 .fade-enter-active,
 .fade-leave-active {

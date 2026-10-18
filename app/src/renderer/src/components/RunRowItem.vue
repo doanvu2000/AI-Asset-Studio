@@ -3,41 +3,61 @@ import { computed } from 'vue'
 import { ChevronRight } from '@lucide/vue'
 import type { RunRow, StepRow } from '@/api/types'
 import { RUN_ACTIVE } from '@/api/types'
-import { humanDuration, kindName } from '@/composables/format'
+import { humanDuration, STEP_LABEL, stepName } from '@/composables/format'
+import { recipeArt } from '@/assets/art'
 import { useRecipes } from '@/stores/recipes'
+import { useRuns } from '@/stores/runs'
 import RunStatusBadge from './RunStatusBadge.vue'
 import ElapsedTimer from './ElapsedTimer.vue'
 import RelTime from './RelTime.vue'
+import BlobImage from './BlobImage.vue'
 
 const props = defineProps<{ run: RunRow; steps?: StepRow[] }>()
 const recipes = useRecipes()
+const runs = useRuns()
 
-const recipeName = computed(() => recipes.byId(props.run.recipe_id)?.name ?? props.run.recipe_id)
+const recipeName = computed(() => recipes.byId(props.run.recipe_id)?.name ?? (recipes.loaded ? 'Quy trình đã xoá' : ''))
 const active = computed(() => RUN_ACTIVE.has(props.run.status))
 const current = computed(() =>
   props.steps?.find((s) => ['running', 'waiting_resource', 'awaiting_human', 'failed'].includes(s.status))
 )
+const live = computed(() => (props.run.status === 'running' ? runs.livePreview(props.run.id) : null))
+const hash = computed(() => runs.previewHash(props.run.id))
+const art = computed(() => recipeArt(props.run.recipe_id))
 </script>
 
 <template>
   <RouterLink :to="`/runs/${run.id}`" class="row">
+    <span class="thumb checker" aria-hidden="true">
+      <img v-if="live" class="live" :src="live" alt="" draggable="false" />
+      <BlobImage v-else-if="hash" :hash="hash" :size="96" />
+      <img v-else-if="art" class="art" :src="art" alt="" draggable="false" />
+    </span>
     <div class="main">
       <div class="l1">
         <span class="title-text">{{ run.title || recipeName }}</span>
         <RunStatusBadge :status="run.status" />
       </div>
       <div class="l2 caption">
-        <span>{{ recipeName }}</span>
+        <span class="recipe">{{ recipeName }}</span>
         <span>·</span>
         <RelTime :ts="run.created_at" />
         <template v-if="current">
           <span>·</span>
-          <span class="cur" :class="`c-${current.status}`">{{ kindName(current.kind) }}</span>
+          <span class="cur" :class="`c-${current.status}`">{{ stepName(current) }}</span>
         </template>
       </div>
     </div>
-    <div v-if="steps?.length" class="dots" aria-hidden="true">
-      <span v-for="s in steps" :key="s.id" class="d" :class="`d-${s.status}`" />
+    <div v-if="steps?.length" class="dots">
+      <span
+        v-for="s in steps"
+        :key="s.id"
+        class="d"
+        :class="`d-${s.status}`"
+        :title="`${stepName(s)}: ${STEP_LABEL[s.status]}`"
+        role="img"
+        :aria-label="`${stepName(s)}: ${STEP_LABEL[s.status]}`"
+      />
     </div>
     <span class="time num caption">
       <ElapsedTimer v-if="active" :from="run.created_at" />
@@ -51,9 +71,9 @@ const current = computed(() =>
 .row {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   height: 100%;
-  padding: 0 14px 0 16px;
+  padding: 0 14px 0 8px;
   color: inherit;
   text-decoration: none;
   border-radius: var(--r-md);
@@ -61,6 +81,30 @@ const current = computed(() =>
 }
 .row:hover {
   background: var(--bg-hover);
+}
+.thumb {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--hairline);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}
+.thumb :deep(.blob) {
+  width: 100%;
+  height: 100%;
+}
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.thumb .art {
+  padding: 3px;
+  opacity: 0.9;
 }
 .main {
   flex: 1;
@@ -85,6 +129,10 @@ const current = computed(() =>
   gap: 6px;
   white-space: nowrap;
   overflow: hidden;
+}
+.recipe {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .cur {
   font-weight: 600;

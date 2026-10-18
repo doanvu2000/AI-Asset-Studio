@@ -1,9 +1,21 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
+import type { RouteLocationRaw } from 'vue-router'
 
-withDefaults(defineProps<{ icon?: Component; art?: string; artSize?: number; title: string; text?: string }>(), {
-  artSize: 152
-})
+// Every empty state should offer one way forward: pass actionLabel + actionTo, or a slot for custom buttons.
+withDefaults(
+  defineProps<{
+    icon?: Component
+    art?: string
+    artSize?: number
+    title: string
+    text?: string
+    actionLabel?: string
+    actionTo?: RouteLocationRaw
+    actionIcon?: Component
+  }>(),
+  { artSize: 152 }
+)
 </script>
 
 <template>
@@ -12,7 +24,13 @@ withDefaults(defineProps<{ icon?: Component; art?: string; artSize?: number; tit
     <span v-else-if="icon" class="ic"><component :is="icon" :size="26" :stroke-width="1.6" /></span>
     <p class="headline">{{ title }}</p>
     <p v-if="text" class="secondary txt">{{ text }}</p>
-    <div v-if="$slots.default" class="act"><slot /></div>
+    <div v-if="$slots.default || (actionLabel && actionTo)" class="act">
+      <RouterLink v-if="actionLabel && actionTo" :to="actionTo" class="btn btn-primary">
+        <component :is="actionIcon" v-if="actionIcon" />
+        {{ actionLabel }}
+      </RouterLink>
+      <slot />
+    </div>
   </div>
 </template>
 
@@ -45,6 +63,10 @@ withDefaults(defineProps<{ icon?: Component; art?: string; artSize?: number; tit
   max-width: 44ch;
 }
 .act {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
   margin-top: 10px;
 }
 @keyframes art-in {

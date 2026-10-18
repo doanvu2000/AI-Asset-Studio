@@ -50,6 +50,8 @@ export interface RunRow {
   error: string | null
   created_at: number
   ended_at: number | null
+  // Only on GET /runs: latest image output, for list thumbnails.
+  preview_hash?: string | null
 }
 
 export interface StepMeta {

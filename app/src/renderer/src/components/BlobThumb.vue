@@ -53,13 +53,13 @@ const glyph = computed(() => GLYPH[fileBadge(props.blob)])
   color: var(--lane-cloud);
 }
 .tag {
-  font-size: 10.5px;
+  font-size: var(--fs-caption);
   font-weight: 700;
   letter-spacing: 0.04em;
 }
 .nm {
   max-width: 100%;
-  font-size: 10.5px;
+  font-size: var(--fs-caption);
   color: var(--text-3);
   white-space: nowrap;
   overflow: hidden;

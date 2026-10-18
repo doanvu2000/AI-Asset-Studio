@@ -1,34 +1,68 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, watch } from 'vue'
-import { Inbox, Plus } from '@lucide/vue'
-import { ART } from '@/assets/art'
+import { ArrowRight, ChevronRight, Plus, Search } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceCard from '@/components/ResourceCard.vue'
 import RunRowItem from '@/components/RunRowItem.vue'
-import EmptyState from '@/components/EmptyState.vue'
-import TweenNumber from '@/components/TweenNumber.vue'
+import BlobImage from '@/components/BlobImage.vue'
+import RecipeThumb from '@/components/RecipeThumb.vue'
+import RelTime from '@/components/RelTime.vue'
+import GettingStarted from '@/components/GettingStarted.vue'
 import AgentConnectCard from '@/components/AgentConnectCard.vue'
 import { useResources } from '@/stores/resources'
 import { useRuns } from '@/stores/runs'
-import { useGates } from '@/stores/gates'
+import { useGates, type GateItem } from '@/stores/gates'
+import { useRecipes } from '@/stores/recipes'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
+import { stepName } from '@/composables/format'
+import { openPalette } from '@/composables/palette'
 
 const resources = useResources()
 const runs = useRuns()
 const gates = useGates()
+const recipes = useRecipes()
 const conn = useConnection()
 const toasts = useToasts()
 
-const active = computed(() => runs.activeRuns.slice(0, 6))
-const recent = computed(() => runs.runList.filter((r) => r.status !== 'running' && r.status !== 'awaiting_human').slice(0, 8))
+watch(
+  () => conn.transport,
+  (t) => t && void recipes.load(),
+  { immediate: true }
+)
 
-// Active runs need their steps for the inline pipeline dots. Hold each only while it is shown so
+const firstTime = computed(() => runs.listLoaded && !runs.listError && runs.runList.length === 0)
+const needsYou = computed(() => gates.list.slice(0, 5))
+const running = computed(() => runs.runningRuns.slice(0, 6))
+const recent = computed(() => runs.runList.filter((r) => r.status === 'succeeded' && runs.previewHash(r.id)).slice(0, 12))
+
+function runTitle(runId: string): string {
+  const r = runs.runs.get(runId)
+  if (!r) return 'Lượt chạy'
+  return r.title || recipes.byId(r.recipe_id)?.name || 'Lượt chạy'
+}
+
+function gateAsk(g: GateItem): string {
+  if (g.kind === 'pick') {
+    const n = g.candidates.length
+    if (g.k === 1 && n) return `Chọn 1 trong ${n} ảnh`
+    return n ? `Chọn ảnh ưng ý trong ${n} ảnh` : 'Chọn ảnh'
+  }
+  const name = g.step ? stepName(g.step) : ''
+  return name && name !== 'Duyệt kết quả' ? `Duyệt: ${name}` : 'Duyệt kết quả'
+}
+
+// Approve gates often carry JSON/atlas next to the image; the row thumbnail should be the picture.
+function gateThumb(g: GateItem) {
+  return g.candidates.find((b) => b.mime.startsWith('image/'))
+}
+
+// Running rows need their steps for the inline pipeline dots and live preview. Hold each only while shown so
 // resync reloads just these; WS keeps them fresh in between.
 const HOLDER = 'dashboard'
 const held = new Set<string>()
 watch(
-  [active, () => conn.transport],
+  [running, () => conn.transport],
   ([list, transport]) => {
     const ids = new Set(list.map((r) => r.id))
     for (const id of held) {
@@ -65,64 +99,86 @@ async function toggle(name: string, start: boolean): Promise<void> {
 <template>
   <div class="view">
     <PageHeader title="Tổng quan">
-      <RouterLink to="/new" class="btn btn-primary"><Plus /> Tạo mới</RouterLink>
+      <button class="btn search-btn" title="Tìm nhanh (Ctrl+K)" @click="openPalette">
+        <Search /> Tìm… <span class="kbd">Ctrl K</span>
+      </button>
+      <RouterLink to="/new" class="btn btn-primary" title="Tạo mới (Ctrl+N)"><Plus /> Tạo mới</RouterLink>
     </PageHeader>
     <div class="scroll">
-      <div class="stack">
-        <section>
-          <h2 class="section-label">Tài nguyên</h2>
-          <div v-if="resources.list.length" class="res-grid">
-            <ResourceCard
-              v-for="r in resources.list"
-              :key="r.name"
-              :resource="r"
-              :pending="resources.pending.has(r.name)"
-              @toggle="toggle(r.name, $event)"
-            />
-          </div>
-          <div v-else class="res-grid">
-            <div v-for="i in 4" :key="i" class="card skeleton" />
-          </div>
+      <div class="stack dash">
+        <section class="strip card" aria-label="Tài nguyên">
+          <template v-if="resources.list.length">
+            <template v-for="(r, i) in resources.list" :key="r.name">
+              <span v-if="i" class="sep" aria-hidden="true" />
+              <ResourceCard :resource="r" :pending="resources.pending.has(r.name)" @toggle="toggle(r.name, $event)" />
+            </template>
+          </template>
+          <span v-else class="skeleton" />
         </section>
 
-        <Transition name="callout">
-          <RouterLink v-if="gates.count" to="/gates" class="callout card">
-            <span class="callout-ic"><Inbox :size="18" /></span>
-            <span class="callout-text">
-              <strong><TweenNumber :value="gates.count" /> bước đang chờ bạn duyệt</strong>
-              <span class="caption">Run sẽ dừng ở đó cho tới khi bạn chọn.</span>
-            </span>
-            <span class="btn">Mở hộp duyệt</span>
-          </RouterLink>
-        </Transition>
+        <GettingStarted v-if="firstTime" />
 
-        <section>
-          <div class="sec-head">
-            <h2 class="section-label">Đang chạy</h2>
-            <span class="caption num">{{ runs.activeRuns.length }}</span>
-          </div>
-          <div v-if="active.length" v-auto-animate class="list card">
-            <div v-for="r in active" :key="r.id" class="list-row">
-              <RunRowItem :run="r" :steps="runs.stepsOf(r.id)" />
+        <template v-else>
+          <Transition name="section">
+            <section v-if="gates.count" class="sec" aria-labelledby="sec-you">
+              <div class="sec-head">
+                <h2 id="sec-you" class="section-label">
+                  Cần bạn <span class="num count human">{{ gates.count }}</span>
+                </h2>
+                <RouterLink to="/gates" class="link">Duyệt lần lượt <ArrowRight :size="14" /></RouterLink>
+              </div>
+              <div v-auto-animate class="list card">
+                <RouterLink v-for="g in needsYou" :key="g.stepId" :to="{ path: '/gates', query: { step: g.stepId } }" class="gate-row">
+                  <span class="g-thumb">
+                    <BlobImage v-if="gateThumb(g)" :hash="gateThumb(g)!.hash" :size="96" />
+                    <RecipeThumb v-else-if="runs.runs.get(g.runId)" :id="runs.runs.get(g.runId)!.recipe_id" :size="40" />
+                  </span>
+                  <span class="g-text">
+                    <span class="headline g-title">{{ runTitle(g.runId) }}</span>
+                    <span class="callout ask">{{ gateAsk(g) }}</span>
+                  </span>
+                  <RelTime :ts="g.since" class="caption" />
+                  <ChevronRight :size="16" class="chev" />
+                </RouterLink>
+                <RouterLink v-if="gates.count > needsYou.length" to="/gates" class="more caption">
+                  và <span class="num">{{ gates.count - needsYou.length }}</span> mục khác
+                </RouterLink>
+              </div>
+            </section>
+          </Transition>
+
+          <section class="sec" aria-labelledby="sec-run">
+            <div class="sec-head">
+              <h2 id="sec-run" class="section-label">
+                Đang chạy <span v-if="runs.runningRuns.length" class="num count">{{ runs.runningRuns.length }}</span>
+              </h2>
             </div>
-          </div>
-          <p v-else class="card idle secondary">Không có run nào đang chạy.</p>
-        </section>
-
-        <section>
-          <div class="sec-head">
-            <h2 class="section-label">Gần đây</h2>
-            <RouterLink to="/runs" class="link caption">Xem tất cả</RouterLink>
-          </div>
-          <div v-if="recent.length" v-auto-animate class="list card">
-            <div v-for="r in recent" :key="r.id" class="list-row">
-              <RunRowItem :run="r" />
+            <div v-if="running.length" v-auto-animate class="list card">
+              <div v-for="r in running" :key="r.id" class="list-row">
+                <RunRowItem :run="r" :steps="runs.stepsOf(r.id)" />
+              </div>
             </div>
-          </div>
-          <EmptyState v-else-if="runs.listLoaded" :art="ART.emptyRuns" title="Chưa có run nào" text="Chọn một recipe để tạo asset đầu tiên.">
-            <RouterLink to="/new" class="btn btn-primary"><Plus /> Tạo mới</RouterLink>
-          </EmptyState>
-        </section>
+            <p v-else class="idle callout">Không có lượt nào đang chạy.</p>
+          </section>
+
+          <section class="sec" aria-labelledby="sec-recent">
+            <div class="sec-head">
+              <h2 id="sec-recent" class="section-label">Gần đây</h2>
+              <RouterLink to="/runs" class="link">Xem tất cả <ChevronRight :size="14" /></RouterLink>
+            </div>
+            <div v-if="recent.length" class="tiles">
+              <RouterLink v-for="(r, i) in recent" :key="r.id" :to="`/runs/${r.id}`" class="tile" :style="{ '--i': i }" :title="runTitle(r.id)">
+                <span class="t-img"><BlobImage :hash="runs.previewHash(r.id)!" :size="256" /></span>
+                <span class="t-name">{{ runTitle(r.id) }}</span>
+                <RelTime :ts="r.ended_at ?? r.created_at" class="caption" />
+              </RouterLink>
+            </div>
+            <p v-else class="idle callout">
+              Asset hoàn tất sẽ hiện ở đây.
+              <RouterLink to="/new" class="link inline">Tạo asset mới</RouterLink>
+            </p>
+          </section>
+        </template>
 
         <AgentConnectCard />
       </div>
@@ -131,24 +187,36 @@ async function toggle(name: string, start: boolean): Promise<void> {
 </template>
 
 <style scoped>
-section {
-  display: grid;
-  gap: 10px;
+.dash {
+  gap: var(--sp-8);
 }
-.sec-head {
+.search-btn {
+  color: var(--text-2);
+  gap: 8px;
+}
+.search-btn .kbd {
+  margin-left: 4px;
+}
+.strip {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  min-height: 48px;
+  padding: 8px 16px;
 }
-.res-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
+.sep {
+  width: 0.5px;
+  height: 18px;
+  background: var(--separator-strong);
 }
 .skeleton {
-  height: 118px;
+  flex: 1;
+  height: 20px;
+  border-radius: 6px;
   position: relative;
   overflow: hidden;
+  background: var(--bg-sunken);
 }
 .skeleton::after {
   content: '';
@@ -157,6 +225,48 @@ section {
   background: linear-gradient(100deg, transparent 20%, var(--bg-hover) 50%, transparent 80%);
   animation: shimmer 1.4s ease-in-out infinite;
 }
+.sec {
+  display: grid;
+  gap: 10px;
+}
+.sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sec-head .section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  display: inline-grid;
+  place-items: center;
+  font-size: var(--fs-caption);
+  color: var(--text-2);
+  background: var(--bg-active);
+}
+.count.human {
+  color: var(--bg-content);
+  background: var(--st-human);
+}
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: var(--fs-callout);
+}
+.link.inline {
+  display: inline;
+  margin-left: 6px;
+}
 .list {
   padding: 4px;
   display: grid;
@@ -164,52 +274,115 @@ section {
 .list-row {
   height: 58px;
 }
-.list-row + .list-row {
+.list-row + .list-row,
+.gate-row + .gate-row {
+  border-top: 0.5px solid var(--separator);
+}
+.gate-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 58px;
+  padding: 0 14px 0 8px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--r-md);
+  transition: background-color var(--t-fast);
+}
+.gate-row:hover {
+  background: var(--bg-hover);
+}
+.g-thumb {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--hairline);
+}
+.g-thumb :deep(.blob) {
+  width: 100%;
+  height: 100%;
+}
+.g-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+.g-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ask {
+  color: var(--st-human);
+  font-weight: 500;
+}
+.chev {
+  flex: none;
+  color: var(--text-3);
+}
+.more {
+  padding: 8px 14px;
+  text-decoration: none;
   border-top: 0.5px solid var(--separator);
 }
 .idle {
-  padding: 18px 16px;
+  padding: 2px 2px 0;
 }
-.callout {
-  display: flex;
-  align-items: center;
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
   gap: 14px;
-  padding: 14px 16px;
+}
+.tile {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
   color: inherit;
   text-decoration: none;
-  background: color-mix(in srgb, var(--bg-elevated) 90%, var(--st-human));
+  animation: fade-up var(--t-slow) var(--ease-out) backwards;
+  animation-delay: calc(min(var(--i, 0), 12) * 30ms);
 }
-.callout-ic {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  color: #fff;
-  background: var(--st-human);
+.t-img {
+  display: block;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-1), var(--hairline);
+  transition:
+    transform var(--t-fast) var(--ease-spring),
+    box-shadow var(--t-base) var(--ease-out);
 }
-.callout-text {
-  flex: 1;
-  display: grid;
+.tile:hover .t-img {
+  box-shadow: var(--shadow-2), var(--hairline);
 }
-.link {
-  color: var(--accent);
-  text-decoration: none;
+.tile:active .t-img {
+  transform: scale(0.97);
+}
+.t-name {
+  margin-top: 2px;
+  font-size: var(--fs-callout);
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.callout-enter-active {
+.section-enter-active {
   transition:
     transform var(--t-slow) var(--ease-spring),
     opacity var(--t-base);
 }
-.callout-leave-active {
+.section-leave-active {
   transition: opacity var(--t-fast);
 }
-.callout-enter-from {
-  transform: translateY(-6px) scale(0.98);
+.section-enter-from {
+  transform: translateY(-6px);
   opacity: 0;
 }
-.callout-leave-to {
+.section-leave-to {
   opacity: 0;
 }
 </style>

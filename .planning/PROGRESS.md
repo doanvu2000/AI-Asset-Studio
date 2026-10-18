@@ -1,6 +1,6 @@
 # PROGRESS — nhật ký làm việc (resume sau crash)
 
-Session mới: đọc `.planning/HANDOFF-2026-10-18-1810.md` rồi file này TRƯỚC, rồi `git log --oneline -10` + `git status`. Cập nhật mỗi khi xong 1 bước / commit.
+Session mới: đọc `.planning/HANDOFF-2026-10-18-2034.md` rồi file này TRƯỚC, rồi `git log --oneline -10` + `git status`. Cập nhật mỗi khi xong 1 bước / commit.
 Lộ trình đầy đủ: `PLAN-architecture-v2.md` §5. Chủ nhân cho phép commit dần (không push, không trailer Co-Authored-By).
 
 ## Trạng thái phase
@@ -88,3 +88,31 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 - 18:05 — Devlog (`90402ab`), resize + UI pass (`a8107c4`), second-instance + icon (`3556e57`). Build core+app mới:
   test bản portable tạm: core kết nối, panel Nhật ký chẩn đoán, claude_exe ok, bước claude.brief chạy thật OK.
   Đang chờ chủ nhân thoát app để chép vào L:\AI\AI Asset Studio Portable. Agent khảo sát UI → .planning/UI-AUDIT.md (đang chạy).
+- 19:xx — Bắt đầu nâng cấp UI theo UI-AUDIT (`.planning/PLAN-ui-upgrade.md`): 4 agent song song A graph · B run+gate ·
+  C export+shell · D vocab/lists/art Codex. Lead chờ xong → typecheck + pytest + chụp mock → commit theo nhóm.
+- Agent C xong: export blob (`POST /api/blobs/{hash}/export`, main AssetExporter whitelist exports/app), AssetActions,
+  Gallery gom asset, Lightbox footer, CoreOffline/Banner, Settings Chọn…, taskbar+Notification. pytest 230. Mở: xuất theo
+  preset Unity/Godot, xuất cả bộ Spine, chưa chụp màn.
+- Agent A xong: fitView+ResizeObserver, minimap ≥13 node, connector theo bước đích, sheet xác nhận thay confirm, SelectMenu. Lead sửa graph.ts sparse columns (NaN khi recipe rỗng).
+- Agent A xong: fitView+ResizeObserver, minimap ≥13 node, connector theo bước đích, sheet xác nhận thay confirm, SelectMenu. Lead sửa graph.ts sparse columns (NaN khi recipe rỗng).
+- Agent B xong: result hero, GatePicker/GateApprove inline, errorAdvice callout, segment progress, menu Huỷ. Lead: core retry_step cho phép 'tạo lại' bước nguồn (succeeded/cached) khi gate sau đang chờ, meta fresh bỏ qua cache + test. Mock retry cần sửa sau khi D xong.
+- Agent D xong: format.ts stepLabel/errorLabel/directionLabel, thumbnail RunRow (core preview_hash), sidebar badge, Dashboard
+  + GettingStarted, NewRun lưới quy trình + chế độ Nhiều prompt, BatchDetail stat lọc, Ctrl+K palette + `?`, token, 6 art Codex.
+- Lead: mock retry "tạo lại", GatesView lọc `?batch=`, chữ 10.5px/recipe sót, review fix (phím gate không cướp Enter trên
+  nút/overlay, `?` guard, đuôi file xuất, isDestroyed drag, prepare retry, xoá cờ fresh). typecheck sạch, pytest 231+.
+  Chụp mock kiểm: Tổng quan (sáng/tối), Thư viện, Tạo mới, run hoàn tất/chờ chọn/lỗi, Tạo lại ảnh OK.
+- COMMIT BỊ CHẶN (classifier) → working tree chưa commit, chờ chủ nhân. Đề xuất 5 commit: core / export+shell / graph /
+  run+gate / vocab+lists+art.
+- Mở: xuất theo preset Unity/Godot + xuất cả bộ Spine; kiểm app thật (kéo ra Explorer, taskbar, Notification);
+  thẻ Thư viện thừa khoảng trống dưới caption; Đợt 3 motion (check morph, shared-element) chưa làm.
+- 20:26 — Viết HANDOFF-2026-10-18-2026.md. Working tree 76 file chưa commit, chờ chủ nhân.
+- [x] 20:34 Handoff mới: `.planning/HANDOFF-2026-10-18-2034.md` (thay 2026). Kill Electron mock sót PID 10956.
+- [x] 21:xx (session mới) — Xuất thư mục: core `store/bundle.py` + `GET/POST /api/steps/{id}/export` (op.sheet repack theo
+  preset → `<asset>_sheet.png/.json` + `frames/`; Spine/khác chép mọi output giữ tên blob để .atlas trỏ đúng png),
+  `presets.annotate_sheet_meta` dùng chung với op.sheet, test `test_step_export.py`. Main `assets.ts` bundleOptions/exportBundle
+  (dir phải nằm trong exports/app), IPC `studio:asset:{bundleOptions,saveBundle,revealBundle}` (chọn thư mục cha → `fs.cp`).
+  Renderer `BundleMenu.vue` trong AssetActions (prop `stepId`; RunDetail truyền bước op.sheet/op.spine_export). Mock không
+  có tệp thật → nút ẩn ở mock. Thư viện: nút Duyệt/Từ chối nổi trên ảnh (bỏ dải 40px trống). Motion: lightbox mọc từ
+  thumbnail (FLIP WAAPI, prop `origin`), stagger 30ms thẻ Gần đây (check morph + shake lỗi StepChip đã có sẵn).
+  typecheck sạch, pytest 235/4 skip, chụp mock Thư viện + lightbox OK. CHƯA commit (chờ chủ nhân).
+  Còn mở: kiểm xuất thư mục với core thật; shared-element run → result hero.

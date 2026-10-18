@@ -23,7 +23,7 @@ const icon = computed(() => ({ gpu: Zap, blender: Box, cloud: Cloud, cpu: Cpu, n
   height: 18px;
   padding: 0 6px;
   border-radius: 5px;
-  font-size: 10.5px;
+  font-size: var(--fs-caption);
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--text-3);

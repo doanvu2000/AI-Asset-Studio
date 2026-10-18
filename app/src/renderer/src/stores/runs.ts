@@ -10,6 +10,14 @@ export interface LogLine extends LogData {
 
 const LOG_CAP = 200
 
+function firstImage(s: StepRow): string | null {
+  for (const blobs of Object.values(s.outputs ?? {})) {
+    const img = blobs.find((b) => b.mime.startsWith('image/'))
+    if (img) return img.hash
+  }
+  return null
+}
+
 export const useRuns = defineStore('runs', () => {
   const runs = shallowRef(new Map<string, RunRow>())
   const steps = shallowRef(new Map<string, StepRow>())
@@ -19,11 +27,16 @@ export const useRuns = defineStore('runs', () => {
   const stepIdsByRun = new Map<string, Set<string>>()
   // Dashboard and run detail can hold the same run; it leaves the resync set only when every holder closes it.
   const openDetails = new Map<string, Set<string>>()
+  // Latest image output per run, learned from step rows; wins over the list's preview_hash once known.
+  const outputImages = shallowRef(new Map<string, { order: number; hash: string }>())
   const listLoaded = ref(false)
   const listError = ref<string | null>(null)
 
   const runList = computed(() => [...runs.value.values()].sort((a, b) => b.created_at - a.created_at))
   const activeRuns = computed(() => runList.value.filter((r) => RUN_ACTIVE.has(r.status)))
+  // run.status 'running' covers steps queued for a lane too; a run parked at a gate is not running.
+  const runningRuns = computed(() => runList.value.filter((r) => r.status === 'running'))
+  const awaitingRuns = computed(() => runList.value.filter((r) => r.status === 'awaiting_human'))
 
   function putStep(s: StepRow): void {
     const prev = steps.value.get(s.id)
@@ -31,6 +44,11 @@ export const useRuns = defineStore('runs', () => {
     let ids = stepIdsByRun.get(s.run_id)
     if (!ids) stepIdsByRun.set(s.run_id, (ids = new Set()))
     ids.add(s.id)
+    const img = firstImage(s)
+    if (img) {
+      const cur = outputImages.value.get(s.run_id)
+      if (!cur || cur.order <= s.order) outputImages.value.set(s.run_id, { order: s.order, hash: img })
+    }
     if (prev && (prev.attempt !== s.attempt || (prev.status !== 'running' && s.status === 'running'))) {
       progress.value.delete(s.id)
       previews.value.delete(s.id)
@@ -47,6 +65,21 @@ export const useRuns = defineStore('runs', () => {
       if (s) out.push(s)
     }
     return out.sort((a, b) => a.order - b.order)
+  }
+
+  function previewHash(runId: string): string | null {
+    return outputImages.value.get(runId)?.hash ?? runs.value.get(runId)?.preview_hash ?? null
+  }
+
+  /** Live sampler preview of the run's running step, if the core is streaming one. */
+  function livePreview(runId: string): string | null {
+    const ids = stepIdsByRun.get(runId)
+    if (!ids) return null
+    for (const id of ids) {
+      const src = previews.value.get(id)
+      if (src && steps.value.get(id)?.status === 'running') return src
+    }
+    return null
   }
 
   function begin() {
@@ -89,7 +122,10 @@ export const useRuns = defineStore('runs', () => {
       },
       commit() {
         if (r) triggerRef(runs)
-        if (s) triggerRef(steps)
+        if (s) {
+          triggerRef(steps)
+          triggerRef(outputImages)
+        }
         if (p) triggerRef(progress)
         if (v) triggerRef(previews)
         if (l) triggerRef(logs)
@@ -116,6 +152,7 @@ export const useRuns = defineStore('runs', () => {
     for (const s of d.steps) putStep(s)
     triggerRef(runs)
     triggerRef(steps)
+    triggerRef(outputImages)
   }
 
   async function loadDetail(id: string, holder = 'detail'): Promise<void> {
@@ -152,6 +189,10 @@ export const useRuns = defineStore('runs', () => {
     logs,
     runList,
     activeRuns,
+    runningRuns,
+    awaitingRuns,
+    previewHash,
+    livePreview,
     listLoaded,
     listError,
     stepsOf,

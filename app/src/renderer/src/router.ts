@@ -12,6 +12,8 @@ export const router = createRouter({
     { path: '/recipes', name: 'recipes', component: () => import('./views/RecipesView.vue') },
     { path: '/recipes/:id', name: 'recipe', component: () => import('./views/RecipeEditorView.vue'), props: true },
     { path: '/batch', name: 'batch', component: () => import('./views/BatchView.vue') },
+    // Creating a batch moved into Tạo mới (mode "Nhiều prompt"); /batch itself is the list of batches.
+    { path: '/batch/new', redirect: (to) => ({ path: '/new', query: { ...to.query, mode: 'batch' } }) },
     { path: '/batch/:id', name: 'batch-detail', component: () => import('./views/BatchDetailView.vue'), props: true },
     { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' }

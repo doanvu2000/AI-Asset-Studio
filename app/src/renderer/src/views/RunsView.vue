@@ -47,7 +47,7 @@ const rows = computed(() => {
 })
 
 const scroller = ref<HTMLElement | null>(null)
-const ROW_H = 62
+const ROW_H = 60
 const virtualizer = useVirtualizer(
   computed(() => ({
     count: rows.value.length,
@@ -63,7 +63,7 @@ const total = computed(() => virtualizer.value.getTotalSize())
 
 <template>
   <div class="view">
-    <PageHeader title="Lượt chạy" :subtitle="`${runs.runList.length} run`">
+    <PageHeader title="Lượt chạy" :subtitle="`${runs.runList.length} lượt`">
       <RouterLink to="/new" class="btn btn-primary"><Plus /> Tạo mới</RouterLink>
     </PageHeader>
     <div class="bar">
@@ -82,7 +82,25 @@ const total = computed(() => virtualizer.value.getTotalSize())
       </div>
     </div>
     <div ref="scroller" class="list-scroll">
-      <EmptyState v-if="runs.listLoaded && !rows.length" :art="ART.emptyRuns" :art-size="128" title="Không có run nào ở mục này" />
+      <EmptyState
+        v-if="runs.listLoaded && !rows.length && filter !== 'all'"
+        :art="ART.emptyRuns"
+        :art-size="128"
+        title="Không có lượt chạy nào ở mục này"
+      >
+        <button class="btn" @click="filter = 'all'">Xem tất cả</button>
+        <RouterLink to="/new" class="btn btn-primary"><Plus /> Tạo asset mới</RouterLink>
+      </EmptyState>
+      <EmptyState
+        v-else-if="runs.listLoaded && !rows.length"
+        :art="ART.emptyRuns"
+        :art-size="128"
+        title="Chưa có lượt chạy nào"
+        text="Chọn một quy trình, nhập mô tả và bấm chạy. Lượt chạy sẽ hiện ở đây."
+        action-label="Tạo asset mới"
+        action-to="/new"
+        :action-icon="Plus"
+      />
       <div v-else class="inner" :style="{ height: `${total}px` }">
         <div
           v-for="it in items"

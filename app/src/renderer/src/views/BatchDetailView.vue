@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, watch } from 'vue'
-import { ArrowLeft, CircleAlert, CircleStop } from '@lucide/vue'
-import type { StepRow } from '@/api/types'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { ArrowLeft, CircleAlert, CircleStop, Inbox } from '@lucide/vue'
+import type { RunRow, StepRow } from '@/api/types'
 import { RUN_ACTIVE } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -15,7 +16,8 @@ import { useRuns } from '@/stores/runs'
 import { useRecipes } from '@/stores/recipes'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
-import { kindName, STEP_LABEL } from '@/composables/format'
+import { useGates } from '@/stores/gates'
+import { kindName, STEP_LABEL, stepLabel } from '@/composables/format'
 
 const props = defineProps<{ id: string }>()
 const batches = useBatches()
@@ -23,6 +25,8 @@ const runs = useRuns()
 const recipes = useRecipes()
 const conn = useConnection()
 const toasts = useToasts()
+const gates = useGates()
+const router = useRouter()
 
 const batch = computed(() => batches.byId(props.id))
 const HOLDER = 'batch'
@@ -57,6 +61,48 @@ const fraction = (s: StepRow | undefined): number | null => {
 }
 const currentStage = computed(() => stages.value.find((c) => c.done < c.total)?.key ?? null)
 
+type Filter = 'all' | 'done' | 'running' | 'queued' | 'awaiting' | 'failed'
+const filter = ref<Filter>('all')
+const isQueued = (r: RunRow): boolean =>
+  r.status === 'running' &&
+  !runs.stepsOf(r.id).some((s) => s.status === 'running') &&
+  runs.stepsOf(r.id).some((s) => s.status === 'waiting_resource')
+const MATCH: Record<Filter, (r: RunRow) => boolean> = {
+  all: () => true,
+  done: (r) => r.status === 'succeeded',
+  running: (r) => r.status === 'running' && !isQueued(r),
+  queued: isQueued,
+  awaiting: (r) => r.status === 'awaiting_human',
+  failed: (r) => r.status === 'failed' || r.status === 'interrupted' || r.status === 'cancelled'
+}
+const shownRuns = computed(() => {
+  void runs.steps
+  const all = batch.value?.runs ?? []
+  return all.map((r, i) => ({ r, i })).filter(({ r }) => MATCH[filter.value](r))
+})
+function toggleFilter(f: Filter): void {
+  filter.value = filter.value === f ? 'all' : f
+}
+
+const stats = computed(() => {
+  const b = batch.value
+  if (!b) return []
+  return [
+    { id: 'done' as const, value: b.done, label: `/ ${total.value} hoàn tất`, tone: '' },
+    { id: 'running' as const, value: b.running, label: 'đang chạy', tone: 'run' },
+    { id: 'queued' as const, value: b.queued, label: 'chờ GPU', tone: 'wait' },
+    { id: 'awaiting' as const, value: b.awaiting, label: 'chờ bạn duyệt', tone: 'human' },
+    { id: 'failed' as const, value: b.failed, label: 'lỗi / huỷ', tone: 'bad' }
+  ]
+})
+
+// Opens the gate inbox at this batch's oldest pending gate; `batch` lets the inbox keep to this batch.
+function reviewBatch(): void {
+  const ids = new Set(batch.value?.runs.map((r) => r.id))
+  const first = gates.list.find((g) => ids.has(g.runId))
+  void router.push({ path: '/gates', query: { ...(first ? { step: first.stepId } : {}), batch: props.id } })
+}
+
 async function cancelAll(): Promise<void> {
   const active = batch.value?.runs.filter((r) => RUN_ACTIVE.has(r.status)) ?? []
   const res = await Promise.allSettled(active.map((r) => runs.cancel(r.id)))
@@ -73,32 +119,37 @@ async function cancelAll(): Promise<void> {
         <RouterLink to="/batch" class="btn btn-plain btn-icon" aria-label="Về danh sách lô"><ArrowLeft /></RouterLink>
       </template>
       <template v-if="batch" #subtitle>
-        {{ recipes.byId(batch.recipeId)?.name ?? batch.recipeId }} · <RelTime :ts="batch.createdAt" /> · {{ total }} lượt
+        {{ recipes.byId(batch.recipeId)?.name ?? 'Quy trình đã xoá' }} · <RelTime :ts="batch.createdAt" /> · <span class="num">{{ total }}</span> lượt
       </template>
-      <button v-if="batch?.active" class="btn" @click="cancelAll"><CircleStop /> Huỷ các lượt đang chạy</button>
+      <button v-if="batch?.active" class="btn btn-danger" @click="cancelAll"><CircleStop /> Huỷ các lượt đang chạy</button>
+      <button v-if="batch?.awaiting" class="btn btn-primary" @click="reviewBatch"><Inbox /> Duyệt cả lô</button>
     </PageHeader>
 
-    <EmptyState v-if="!batch" :icon="CircleAlert" title="Không thấy lô này" text="Lô có thể đã cũ hơn danh sách run đang tải." />
+    <EmptyState
+      v-if="!batch"
+      :icon="CircleAlert"
+      title="Không thấy lô này"
+      text="Lô có thể đã cũ hơn danh sách lượt chạy đang tải."
+      action-label="Về danh sách lô"
+      action-to="/batch"
+    />
 
     <div v-else class="scroll">
       <div class="stack">
-        <section class="summary">
-          <div class="stat card">
-            <span class="big num"><TweenNumber :value="batch.done" /></span>
-            <span class="caption">/ {{ total }} hoàn tất</span>
-          </div>
-          <div class="stat card">
-            <span class="big num run"><TweenNumber :value="batch.active - batch.awaiting" /></span>
-            <span class="caption">đang chạy</span>
-          </div>
-          <div class="stat card">
-            <span class="big num human"><TweenNumber :value="batch.awaiting" /></span>
-            <span class="caption">chờ bạn duyệt</span>
-          </div>
-          <div class="stat card">
-            <span class="big num bad"><TweenNumber :value="batch.failed" /></span>
-            <span class="caption">lỗi / huỷ</span>
-          </div>
+        <section class="summary" aria-label="Lọc theo trạng thái">
+          <button
+            v-for="st in stats"
+            :key="st.id"
+            type="button"
+            class="stat card"
+            :class="{ on: filter === st.id }"
+            :aria-pressed="filter === st.id"
+            :disabled="!st.value && filter !== st.id"
+            @click="toggleFilter(st.id)"
+          >
+            <span class="big num" :class="st.value ? st.tone : 'zero'"><TweenNumber :value="st.value" /></span>
+            <span class="caption">{{ st.label }}</span>
+          </button>
         </section>
 
         <section class="grp">
@@ -107,10 +158,9 @@ async function cancelAll(): Promise<void> {
           <ol class="stages">
             <li v-for="c in stages" :key="c.key" class="stage card" :class="{ now: c.key === currentStage, full: c.done === c.total }">
               <div class="st-top">
-                <span class="st-name">{{ kindName(c.kind) }}</span>
+                <span class="st-name" :title="kindName(c.kind)">{{ stepLabel(c.kind, c.key) }}</span>
                 <LaneTag :lane="c.lane" />
               </div>
-              <span class="st-key">{{ c.key }}</span>
               <div class="st-bar">
                 <span class="fill" :style="{ transform: `scaleX(${c.total ? c.done / c.total : 0})` }" />
                 <span class="fill live" :style="{ transform: `scaleX(${c.total ? c.running / c.total : 0})`, left: `${c.total ? (c.done / c.total) * 100 : 0}%` }" />
@@ -121,20 +171,24 @@ async function cancelAll(): Promise<void> {
         </section>
 
         <section class="grp">
-          <h2 class="section-label">Từng lượt</h2>
+          <div class="sec-head">
+            <h2 class="section-label">Từng lượt</h2>
+            <button v-if="filter !== 'all'" class="btn btn-plain small" @click="filter = 'all'">Bỏ lọc · xem cả <span class="num">{{ total }}</span></button>
+          </div>
           <div class="matrix card" :style="{ '--cols': stages.length || 1 }" role="table" aria-label="Trạng thái từng bước của từng lượt">
             <div class="mrow head" role="row">
               <span class="mcell mtitle" role="columnheader">Lượt</span>
-              <span v-for="c in stages" :key="c.key" class="mcell" role="columnheader" :title="kindName(c.kind)">{{ c.key }}</span>
+              <span v-for="c in stages" :key="c.key" class="mcell" role="columnheader" :title="kindName(c.kind)">{{ stepLabel(c.kind, c.key) }}</span>
               <span class="mcell st" role="columnheader">Trạng thái</span>
             </div>
-            <RouterLink v-for="(r, i) in batch.runs" :key="r.id" :to="`/runs/${r.id}`" class="mrow" role="row">
-              <span class="mcell mtitle" role="cell"><span class="idx num">{{ i + 1 }}</span>{{ r.title || r.id }}</span>
+            <RouterLink v-for="{ r, i } in shownRuns" :key="r.id" :to="`/runs/${r.id}`" class="mrow" role="row">
+              <span class="mcell mtitle" role="cell"><span class="idx num">{{ i + 1 }}</span>{{ r.title || `Lượt ${i + 1}` }}</span>
               <span v-for="c in stages" :key="c.key" class="mcell" role="cell" :title="stepFor(r.id, c.key) ? STEP_LABEL[stepFor(r.id, c.key)!.status] : ''">
                 <StatusGlyph v-if="stepFor(r.id, c.key)" :status="stepFor(r.id, c.key)!.status" :progress="fraction(stepFor(r.id, c.key))" :size="18" />
               </span>
               <span class="mcell st" role="cell"><RunStatusBadge :status="r.status" /></span>
             </RouterLink>
+            <p v-if="!shownRuns.length" class="none caption">Không có lượt nào ở trạng thái này.</p>
           </div>
         </section>
       </div>
@@ -145,7 +199,7 @@ async function cancelAll(): Promise<void> {
 <style scoped>
 .summary {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
 }
 .stat {
@@ -153,11 +207,49 @@ async function cancelAll(): Promise<void> {
   align-items: baseline;
   gap: 6px;
   padding: 14px 16px;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    box-shadow var(--t-base) var(--ease-out),
+    transform var(--t-fast) var(--ease-spring);
+}
+.stat:hover:not(:disabled) {
+  box-shadow: var(--shadow-2), var(--hairline);
+}
+.stat:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.stat:disabled {
+  cursor: default;
+}
+.stat.on {
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-1);
 }
 .big {
-  font-size: 26px;
+  font-size: var(--fs-title1);
   font-weight: 700;
   letter-spacing: -0.02em;
+}
+.wait {
+  color: var(--st-waiting);
+}
+.zero {
+  color: var(--text-3);
+}
+.sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+}
+.small {
+  height: 24px;
+  font-size: var(--fs-callout);
+}
+.none {
+  padding: 14px;
 }
 .run {
   color: var(--st-running);
@@ -202,11 +294,6 @@ async function cancelAll(): Promise<void> {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.st-key {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--text-3);
 }
 .st-bar {
   position: relative;
@@ -271,9 +358,6 @@ a.mrow:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.head .mcell {
-  font-family: var(--mono);
 }
 .mcell.mtitle {
   justify-content: flex-start;
