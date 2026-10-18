@@ -48,7 +48,9 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
    Workflow mới `segment_sam3`, `inpaint_flux2_klein4b` nằm ở L:\AI\setup\workflows (ngoài repo, có index.json.bak-p5).
 12. [ ] R3 live qua MCP OK 177s (Qwen 134s); góc 45/90/135 gần như cùng profile → đúng hạn chế đã biết, R5 tốt hơn.
 13. [x] Viewer app (`71a1886`): GLB/sheet/Spine + catalog kinds rig. Kiểm GLB với core thật; sprite+Spine mới kiểm mock.
-14. [~] Agent P7 đóng gói: PyInstaller spec onedir, path frozen-aware, settings đường dẫn tool (API + UI), electron-builder NSIS, BUILD.md. KHÔNG build.
+14. [x] P7 chuẩn bị đóng gói (`0b2d3e2`): spec PyInstaller onedir, paths.py frozen-aware, /api/settings/tools + UI,
+   electron-builder NSIS, BUILD.md. CHƯA BUILD (rule) → chủ nhân chạy `cd app && npm run dist`, lỗi thì báo con.
+   Claude steps ở bản đóng gói cần `claude` trên PATH (đã bỏ claude.exe 260MB khỏi bundle). pytest 199.
 
 ## Nhật ký
 
