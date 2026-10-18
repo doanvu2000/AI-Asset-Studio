@@ -1,4 +1,4 @@
 from .client import BlenderResource
-from .executor import BlenderRenderDirsExecutor
+from .executor import BlenderCleanupExecutor, BlenderRenderDirsExecutor
 
-__all__ = ["BlenderRenderDirsExecutor", "BlenderResource"]
+__all__ = ["BlenderCleanupExecutor", "BlenderRenderDirsExecutor", "BlenderResource"]

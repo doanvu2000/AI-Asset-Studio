@@ -8,6 +8,7 @@ from typing import Any, Callable
 from PIL import Image
 
 from ..contracts import BlobRef, Lane, Outputs, StepContext, StepError, StepResult
+from . import glb
 from . import image as im
 
 
@@ -168,6 +169,18 @@ class MirrorDirs(OpExecutor):
         return StepResult(outputs={"images": list(refs) + mirrored}, meta={"mirrored": True, "angles": angles})
 
 
+async def _pivot_from_blob(ctx: StepContext, ref: BlobRef, frame_size: tuple[int, int]) -> tuple[int, int]:
+    """JSON {pivot: [x, y], width, height} in source-frame pixels, rescaled to the frames actually packed."""
+    try:
+        info = json.loads(await asyncio.to_thread(ctx.blobs.path(ref.hash).read_bytes))
+        x, y = (float(v) for v in info["pivot"])
+        sx = frame_size[0] / float(info.get("width") or frame_size[0])
+        sy = frame_size[1] / float(info.get("height") or frame_size[1])
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise StepError("op_bad_input", f"bad pivot json: {e}") from e
+    return round(x * sx), round(y * sy)
+
+
 class Sheet(OpExecutor):
     kind = "op.sheet"
 
@@ -181,6 +194,12 @@ class Sheet(OpExecutor):
         elif cell is not None:
             cell = int(cell)
         pivot = params.get("pivot")
+        if inputs.get("pivot"):
+            pivot = await _pivot_from_blob(ctx, inputs["pivot"][0], imgs[0].size)
+        elif pivot == "bottom":
+            # Recipes cannot read another step's meta; this reproduces op.normalize(anchor=bottom)'s pivot.
+            w, h = imgs[0].size
+            pivot = (w // 2, h - round(h * float(params.get("pivot_pad", 0.06))))
         try:
             sheet, meta = await asyncio.to_thread(
                 im.pack_sheet, imgs, cols, cell, int(params.get("padding", 0)),
@@ -195,4 +214,27 @@ class Sheet(OpExecutor):
         return StepResult(outputs={"sheet": [sheet_ref], "meta": [meta_ref]}, meta=meta)
 
 
-ALL_OPS: tuple[type[OpExecutor], ...] = (TrimPadResize, Normalize, MirrorDirs, Sheet, Downscale, Pixelate)
+class GlbValidate(OpExecutor):
+    kind = "op.glb_validate"
+
+    async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        refs = _images_in(inputs, "mesh")
+        if len(refs) != 1:
+            raise StepError("op_bad_input", f"expected exactly 1 mesh, got {len(refs)}")
+        try:
+            report = await asyncio.to_thread(glb.read_report, ctx.blobs.path(refs[0].hash))
+        except glb.GlbError as e:
+            raise StepError("glb_invalid", str(e), detail={"hash": refs[0].hash}) from e
+        except OSError as e:
+            raise StepError("glb_invalid", f"cannot read mesh: {e}", detail={"hash": refs[0].hash}) from e
+        bad = glb.problems(report, bool(params.get("require_textures", True)),
+                           int(params["max_triangles"]) if params.get("max_triangles") else None,
+                           int(params["max_bytes"]) if params.get("max_bytes") else None)
+        if bad:
+            raise StepError("glb_invalid", "; ".join(bad), detail={"report": report, "problems": bad})
+        ctx.progress(1.0)
+        return StepResult(outputs={"meshes": list(refs)}, meta=report)
+
+
+ALL_OPS: tuple[type[OpExecutor], ...] = (TrimPadResize, Normalize, MirrorDirs, Sheet, Downscale, Pixelate,
+                                         GlbValidate)

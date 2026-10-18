@@ -15,7 +15,10 @@ import traceback
 import addon_utils
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Matrix, Vector
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import cleanup_math as cm  # noqa: E402
 
 LIGHT_PRESETS = {
     # (rotation_euler degrees, energy) per sun; tuned in P0 because sun 3 + ambient 1 rendered too dark.
@@ -173,11 +176,138 @@ def render_dirs(p, emit):
         t = time.perf_counter()
         bpy.ops.render.render(write_still=True)
         frames.append({"angle": a, "file": scene.render.filepath, "s": round(time.perf_counter() - t, 3)})
-        emit({"event": "progress", "value": i + 1, "max": len(angles), "label": f"{round(a)}Â°"})
+        emit({"event": "progress", "value": i + 1, "max": len(angles), "label": f"{round(a)}°"})
     return {"import_s": round(t_import, 2), "total_s": round(time.perf_counter() - t0, 2),
             "engine": scene.render.engine, "ortho_scale": round(ortho, 4), "radius": round(r, 4),
             "height": round(zmax - zmin, 4), "verts": int(len(v)), "res": res, "supersample": supersample,
-            "elevation": p.get("elevation", 30), "frames": frames}
+            "elevation": p.get("elevation", 30), "frames": frames,
+            # Foot origin (0,0,0) projects to the frame's horizontal centre at up-offset 0 from the camera centre vmid.
+            "pivot": [res / 2, res * (0.5 + vmid / ortho)]}
+
+
+def upright_matrix(spec):
+    """Axes are Blender's Z-up frame after glTF import."""
+    rot = cm.parse_upright(spec)
+    return None if rot is None else Matrix.Rotation(math.radians(rot[1]), 4, rot[0].upper())
+
+
+def face_count(meshes):
+    return sum(len(o.data.polygons) for o in meshes)
+
+
+def bake_world(meshes):
+    """Clear parents and apply transforms into vertex data so later edits work in world space."""
+    for o in meshes:
+        mw = o.matrix_world.copy()
+        if o.data.users > 1:
+            o.data = o.data.copy()
+        o.parent = None
+        o.data.transform(mw)
+        o.matrix_world = Matrix.Identity(4)
+    for o in [o for o in bpy.context.scene.objects if o.type != "MESH"]:
+        bpy.data.objects.remove(o, do_unlink=True)
+
+
+def bbox(meshes):
+    v = world_verts(meshes)
+    return v.min(0), v.max(0)
+
+
+def merge_by_distance(meshes, dist):
+    import bmesh
+    removed = 0
+    for o in meshes:
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        n = len(bm.verts)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=dist)
+        removed += n - len(bm.verts)
+        bm.to_mesh(o.data)
+        bm.free()
+        o.data.update()
+    return removed
+
+
+def decimate(meshes, ratio):
+    for o in meshes:
+        mod = o.modifiers.new("studio_decimate", "DECIMATE")
+        mod.decimate_type = "COLLAPSE"
+        mod.ratio = ratio
+        mod.use_collapse_triangulate = True
+        with bpy.context.temp_override(object=o, active_object=o, selected_objects=[o]):
+            bpy.ops.object.modifier_apply(modifier=mod.name)
+
+
+def smooth_by_angle(meshes, angle_deg):
+    """Decimated triangles shade faceted unless normals are re-derived; sharp edges above the angle stay hard."""
+    if angle_deg <= 0:
+        return
+    for o in meshes:
+        with bpy.context.temp_override(object=o, active_object=o, selected_objects=[o],
+                                       selected_editable_objects=[o]):
+            bpy.ops.object.shade_smooth_by_angle(angle=math.radians(angle_deg))
+
+
+def cleanup(p, emit):
+    t0 = time.perf_counter()
+    reset()
+    meshes = import_glb(p["glb"])
+    faces_before = face_count(meshes)
+    lo, hi = bbox(meshes)
+    dims_before = [round(float(x), 4) for x in hi - lo]
+    emit({"event": "progress", "value": 1, "max": 5, "label": "import"})
+
+    bake_world(meshes)
+    rot = upright_matrix(p.get("upright", "none"))
+    if rot is not None:
+        for o in meshes:
+            o.data.transform(rot)
+
+    merged = 0
+    dist = cm.merge_distance(p.get("merge_by_distance"))
+    if dist > 0:
+        merged = merge_by_distance(meshes, dist)
+    emit({"event": "progress", "value": 2, "max": 5, "label": "merge"})
+
+    faces_merged = face_count(meshes)
+    ratio = cm.decimate_ratio(faces_merged, p.get("target_faces"))
+    if ratio is not None:
+        decimate(meshes, ratio)
+        # Collapse overshoots on meshes with many tiny islands; one corrective pass is enough in practice.
+        again = cm.decimate_ratio(face_count(meshes), int(int(p["target_faces"]) * 1.05))
+        if again is not None:
+            decimate(meshes, again * 0.97)
+        smooth_by_angle(meshes, float(p.get("smooth_angle", 40)))
+    emit({"event": "progress", "value": 3, "max": 5, "label": "decimate"})
+
+    lo, hi = bbox(meshes)
+    height = p.get("height")
+    scale = cm.height_scale(float(hi[2] - lo[2]), height)
+    origin = str(p.get("origin", "feet"))
+    if origin == "feet":
+        shift = Vector((-(lo[0] + hi[0]) / 2, -(lo[1] + hi[1]) / 2, -lo[2]))
+    elif origin == "center":
+        shift = Vector([-(a + b) / 2 for a, b in zip(lo, hi)])
+    else:
+        shift = Vector((0, 0, 0))
+    m = Matrix.Scale(scale, 4) @ Matrix.Translation(shift)
+    for o in meshes:
+        o.data.transform(m)
+        o.data.update()
+    lo, hi = bbox(meshes)
+    emit({"event": "progress", "value": 4, "max": 5, "label": "transform"})
+
+    bpy.ops.export_scene.gltf(filepath=p["out"], export_format="GLB", export_image_format="AUTO",
+                              use_selection=False, export_apply=True)
+    emit({"event": "progress", "value": 5, "max": 5, "label": "export"})
+    return {"faces_before": faces_before, "faces_after": face_count(meshes),
+            "verts_after": sum(len(o.data.vertices) for o in meshes), "merged_verts": merged,
+            "decimate_ratio": None if ratio is None else round(ratio, 5),
+            "dims_before": dims_before, "dims_after": [round(float(x), 4) for x in hi - lo],
+            "min_after": [round(float(x), 4) for x in lo], "scale": round(scale, 6),
+            "upright": str(p.get("upright", "none")), "applied_rotation": rot is not None, "origin": origin,
+            "materials": len(bpy.data.materials), "images": len(bpy.data.images),
+            "total_s": round(time.perf_counter() - t0, 2), "out": p["out"]}
 
 
 def warmup(p, emit):
@@ -206,6 +336,7 @@ HANDLERS = {
     "ping": lambda p, emit: {"blender": bpy.app.version_string, "pid": os.getpid(), "engines": engine_ids()},
     "warmup": warmup,
     "render_dirs": render_dirs,
+    "cleanup": cleanup,
 }
 
 

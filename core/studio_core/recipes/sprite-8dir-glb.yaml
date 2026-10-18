@@ -1,17 +1,33 @@
 id: sprite-8dir-glb
 name: Sprite 8 hướng (GLB → Blender)
-description: Mesh GLB → render 8 hướng ortho (Blender) → sprite sheet
+description: Mesh GLB → dọn mesh → render 8 hướng ortho (Blender) → thu nhỏ 2× → sprite sheet (pivot = tâm chân) + JSON
 inputs:
   mesh: {type: mesh, label: Mesh GLB}
   elevation: {type: float, default: 30, min: 0, max: 90, label: Góc nghiêng}
+  res: {type: int, default: 256, options: [64, 128, 256, 512], label: Kích thước frame}
+  mirror: {type: bool, default: false, label: Lật gương (5 hướng → 8)}
+  upright: {type: enum, default: none, options: [none, x90, x-90, y90, y-90, x180], label: Dựng đứng}
 steps:
+  - id: cleanup
+    kind: blender.cleanup
+    in: {mesh: inputs.mesh}
+    params: {target_faces: 50000, height: 1.0, origin: feet, upright: "${inputs.upright}"}
   - id: render
     kind: blender.render_dirs
-    in: {mesh: inputs.mesh}
-    params: {elevation: "${inputs.elevation}", count: 8, res: 512, mirror: false}
+    in: {mesh: cleanup.meshes}
+    params: {elevation: "${inputs.elevation}", count: 8, res: "${inputs.res}", supersample: 2, mirror: "${inputs.mirror}"}
+  - id: dirs
+    kind: op.mirror_dirs
+    in: {images: render.images}
+    params: {count: 8}
+  - id: down
+    kind: op.downscale
+    in: {images: dirs.images}
+    params: {factor: 2, resample: box}
   - id: sheet
     kind: op.sheet
-    in: {images: render.images}
-    params: {cols: 8}
+    in: {images: down.images, pivot: render.meta}
+    params: {cols: 8, order: [0, 45, 90, 135, 180, 225, 270, 315]}
 outputs:
   final: sheet.sheet
+  meta: sheet.meta

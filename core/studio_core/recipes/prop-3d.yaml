@@ -1,0 +1,38 @@
+id: prop-3d
+name: Prop 3D (TRELLIS → GLB)
+description: Text → concept → chọn → TRELLIS mesh có texture → Blender dọn mesh → kiểm GLB → turntable → duyệt
+inputs:
+  prompt: {type: text, label: Prompt}
+  faces: {type: int, default: 30000, min: 2000, max: 200000, label: Số mặt}
+  texture: {type: int, default: 2048, options: [1024, 2048, 4096], label: Texture}
+  height: {type: float, default: 1.0, min: 0.01, max: 100, label: Chiều cao (m)}
+steps:
+  - id: concept
+    kind: comfy.t2i_zimage_turbo
+    params: {"57:27.text": "${inputs.prompt}, isolated on plain white background, centered, full object, game asset, three-quarter view",
+             "57:13.batch_size": 4}
+  - id: pick
+    kind: gate.pick
+    in: {images: concept.images}
+    params: {k: 1}
+  - id: mesh
+    kind: comfy.img2mesh_trellis2_textured
+    in: {image: pick.images}
+    params: {"186.target_face_count": "${inputs.faces}", "288.value": "${inputs.texture}"}
+  - id: cleanup
+    kind: blender.cleanup
+    in: {mesh: mesh.meshes}
+    params: {target_faces: "${inputs.faces}", height: "${inputs.height}", origin: feet, upright: none}
+  - id: validate
+    kind: op.glb_validate
+    in: {mesh: cleanup.meshes}
+    params: {require_textures: true}
+  - id: turntable
+    kind: blender.render_dirs
+    in: {mesh: validate.meshes}
+    params: {count: 16, res: 256, elevation: 20}
+  - id: approve
+    kind: gate.approve
+    in: {meshes: validate.meshes, preview: turntable.images}
+outputs:
+  final: approve.meshes
