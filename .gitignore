@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+out/
+dist/
+release/
+data/
+spikes/out/
+spikes/*.log
+*.log
+.DS_Store
+Thumbs.db
