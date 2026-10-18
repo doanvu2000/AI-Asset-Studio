@@ -26,12 +26,23 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 2. [x] Review + commit P3 (`d1655d8`).
 3. [x] Ổn định TRELLIS (`ad51647`): CUDA error → retryable; engine auto-retry (`auto_retry`, Comfy=1, `/free` giữa 2 lần);
    `_free_before: true` ở bước mesh R4/R5. pytest 132 pass.
-4. [ ] Dừng run R4a cũ (PID 37548 script, 38444 core, 38356 comfy — bị chặn kill tự động, cần chủ nhân) → chạy lại R4 bằng
-   `core/scripts/e2e_r5.py` (recipe prop-3d) với code mới, kiểm GLB + turntable.
-5. [ ] Bắt đầu P4.
-6. [ ] P4b — MCP server cho Claude CLI / Codex CLI (thêm vào plan §3.6 + §5 lúc 13:35).
+4. [~] R4a cũ tự fail 13:41 (timeout ×2). R4b chạy lại bằng code mới 13:45: log `scratchpad(5172a7e0)/r4b.log`.
+   Thêm `_timeout_s: 900` cho bước TRELLIS (`d732799`).
+5. [x] P4 Claude (`490ddff`): `${steps.x.out.field}` refs, claude.brief, blender.script, R7 procedural-3d
+   (live 228s/$0.19, rương gỗ — đạt blockout), blender.agent (chỉ probe read-only live). pytest 153 pass.
+   Mở: reviewer R7 khắt khe → thường chạy đủ 3 vòng; procedural_3d không giữ lane BLENDER.
+6. [x] P4b MCP (`aac51e2`): `python -m studio_core mcp`, lock `<data>/core.lock.json`, E2E claude -p + codex exec (CPU recipe).
+   Codex cần `tool_timeout_sec=900`, `default_tools_approval_mode="approve"`. Chưa E2E GPU qua MCP (R1/R5) → lead làm.
+7. [ ] Agent: app attach core qua lock + chặn core thứ 2 cùng data dir + spawn race (app/src/main/core.ts, main.py, mcp/link.py).
+8. [ ] Agent: P6 flow editor (Vue Flow), API kinds/validate/save recipe, batch, preset export Unity/Godot.
+9. [ ] Sau đó: E2E GPU qua MCP (R1, R5); P5 Spine (cần workflow SAM3.1 — R&D); P7 đóng gói.
 
 ## Nhật ký
 
 - 2026-10-18 13:10 — resume sau crash; tạo file này; pytest xanh.
 - 13:25 — commit P3 `d1655d8`, fix TRELLIS `ad51647`.
+- 13:40 — NGUYÊN NHÂN CRASH: TRELLIS upsample 1536 → mesh thô 46M mặt → ComfyUI giữ ~25GB commit, pagefile cạn
+  (Win32 1455, bash fork fail). Fix `3255a39`: `94.target_resolution: 1024`, `241.resolution: 512` ở R4/R5.
+- Chạy song song 2 agent: P4b MCP (`core/studio_core/mcp/**`, main/api/app/contracts, app nút copy lệnh) và
+  P4 Claude (brief expansion, `blender.script`, R7 procedural-3d, `blender.agent`). Agent chết → xem file đã đổi
+  bằng `git status`, giao lại phần dở. Chỉ lead chạy recipe GPU.
