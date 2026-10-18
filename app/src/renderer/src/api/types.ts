@@ -156,7 +156,7 @@ export interface ResourceHealth {
   }
 }
 
-export type RecipeInputType = 'text' | 'int' | 'float' | 'bool' | 'image' | 'images' | 'mesh' | 'enum' | 'select' | string
+export type RecipeInputType = 'preset' | 'text' | 'int' | 'float' | 'bool' | 'image' | 'images' | 'mesh' | 'enum' | 'select' | string
 
 export interface RecipeInputSpec {
   type: RecipeInputType
@@ -185,6 +185,7 @@ export interface RecipeInfo {
   inputs: Record<string, RecipeInputSpec>
   steps: RecipeStepInfo[]
   hash: string
+  source?: RecipeSource
 }
 
 export interface GateResolution {
@@ -198,7 +199,7 @@ export interface RunDetail {
 }
 
 export interface ApiErrorBody {
-  error: { code: string; message: string }
+  error: { code: string; message: string; issues?: RecipeIssue[] }
 }
 
 export interface StartRunBody {
@@ -207,4 +208,114 @@ export interface StartRunBody {
   params?: Record<string, Record<string, unknown>>
   title?: string
   project_id?: string
+}
+
+export type RecipeSource = 'builtin' | 'user' | 'override'
+
+// 'image[]' etc.; '*' in a port map means the step passes through whatever it receives.
+export type PortType = string
+
+export interface ParamSpec extends RecipeInputSpec {
+  multiline?: boolean
+  advanced?: boolean
+  code?: boolean
+  node?: boolean
+}
+
+export interface KindInfo {
+  kind: string
+  lane: Lane
+  label: string
+  in: Record<string, PortType> | null
+  out: Record<string, PortType> | null
+  params: Record<string, ParamSpec>
+  free_params: boolean
+}
+
+export type Binding = string | string[]
+
+export interface RecipeStepDoc {
+  id: string
+  kind: string
+  in?: Record<string, Binding>
+  params?: Record<string, unknown>
+  map?: string | null
+  map_param?: string | null
+}
+
+export interface RecipeDoc {
+  id: string
+  name?: string
+  description?: string
+  inputs?: Record<string, RecipeInputSpec>
+  steps: RecipeStepDoc[]
+  outputs?: Record<string, string>
+  ui?: { positions?: Record<string, [number, number]> }
+  [k: string]: unknown
+}
+
+export interface RecipeDetail {
+  info: RecipeInfo
+  source: RecipeSource
+  has_builtin: boolean
+  yaml: string
+  doc: RecipeDoc
+}
+
+export interface RecipeIssue {
+  level: 'error' | 'warning'
+  step: string | null
+  field: string | null
+  message: string
+}
+
+export interface ValidateResult {
+  ok: boolean
+  issues: RecipeIssue[]
+  info: RecipeInfo | null
+}
+
+export interface SavedRecipe {
+  info: RecipeInfo
+  source: RecipeSource
+  has_builtin: boolean
+  issues?: RecipeIssue[]
+}
+
+export type Compass = 'S' | 'SW' | 'W' | 'NW' | 'N' | 'NE' | 'E' | 'SE'
+
+export interface ExportPreset {
+  id: string
+  name: string
+  description: string
+  dir_order: Compass[]
+  dir_labels: Partial<Record<Compass, string>>
+  file_pattern: string
+  layout: 'row' | 'column' | 'grid'
+  cols: number
+  padding: number
+  pivot_origin: 'top_left' | 'bottom_left'
+  builtin: boolean
+}
+
+export interface BatchItem {
+  inputs: Record<string, unknown>
+  title?: string
+}
+
+export interface BatchCreateBody {
+  recipe_id: string
+  items: BatchItem[]
+  inputs?: Record<string, unknown>
+  title?: string
+  project_id?: string
+}
+
+export interface RunMeta {
+  source?: string
+  batch_id?: string
+  batch_index?: number
+  batch_total?: number
+  batch_title?: string
+  [k: string]: unknown
 }

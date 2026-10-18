@@ -48,6 +48,14 @@ class Settings(BaseModel):
     def jobs_dir(self) -> Path:
         return self.data_dir / "jobs"
 
+    @property
+    def user_recipes_dir(self) -> Path:
+        return self.data_dir / "recipes"
+
+    @property
+    def presets_path(self) -> Path:
+        return self.data_dir / "presets.json"
+
 
 def load_settings(data_dir: Path | None = None) -> Settings:
     """Defaults < data_dir/settings.json < STUDIO_* env (data dir only)."""

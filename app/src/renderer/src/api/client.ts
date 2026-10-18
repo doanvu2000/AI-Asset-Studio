@@ -1,6 +1,14 @@
 import type {
   ApiErrorBody,
+  BatchCreateBody,
   BlobRef,
+  ExportPreset,
+  KindInfo,
+  RecipeDetail,
+  RecipeDoc,
+  RecipeIssue,
+  SavedRecipe,
+  ValidateResult,
   GateResolution,
   RecipeInfo,
   ResourceHealth,
@@ -17,7 +25,8 @@ export class ApiError extends Error {
   constructor(
     readonly code: string,
     message: string,
-    readonly status: number
+    readonly status: number,
+    readonly issues: RecipeIssue[] = []
   ) {
     super(message)
   }
@@ -47,7 +56,18 @@ export interface StudioApi {
   setVersionStatus(id: string, action: 'approve' | 'reject'): Promise<VersionRow>
   blobUrl(hash: string): string
   thumbUrl(hash: string, size?: number): string
+  kinds(): Promise<KindInfo[]>
+  getRecipe(id: string): Promise<RecipeDetail>
+  validateRecipe(body: RecipeBody): Promise<ValidateResult>
+  saveRecipe(id: string, body: RecipeBody): Promise<SavedRecipe>
+  deleteRecipe(id: string): Promise<{ ok: boolean; restored_builtin: boolean }>
+  startBatch(body: BatchCreateBody): Promise<{ batch_id: string; run_ids: string[] }>
+  presets(): Promise<ExportPreset[]>
+  savePreset(p: ExportPreset): Promise<ExportPreset>
+  deletePreset(id: string): Promise<void>
 }
+
+export type RecipeBody = { yaml: string } | { doc: RecipeDoc }
 
 function query(params: Record<string, string | number | undefined>): string {
   const q = new URLSearchParams()
@@ -73,14 +93,16 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     if (!res.ok) {
       let code = `http_${res.status}`
       let message = res.statusText || 'Lỗi không rõ'
+      let issues: RecipeIssue[] = []
       try {
         const err = (await res.json()) as ApiErrorBody
         code = err.error?.code ?? code
         message = err.error?.message ?? message
+        issues = err.error?.issues ?? []
       } catch {
         /* non-JSON error body */
       }
-      throw new ApiError(code, message, res.status)
+      throw new ApiError(code, message, res.status, issues)
     }
     if (res.status === 204) return undefined as T
     return (await res.json()) as T
@@ -108,6 +130,15 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     versions: (q = {}) => call('GET', `/api/versions${query({ run_id: q.run_id, status: q.status })}`),
     setVersionStatus: (id, action) => call('POST', `/api/versions/${enc(id)}/${action}`),
     blobUrl: (hash) => `${baseUrl}/api/blobs/${enc(hash)}?t=${enc(token)}`,
-    thumbUrl: (hash, size = 256) => `${baseUrl}/api/blobs/${enc(hash)}/thumb?size=${size}&t=${enc(token)}`
+    thumbUrl: (hash, size = 256) => `${baseUrl}/api/blobs/${enc(hash)}/thumb?size=${size}&t=${enc(token)}`,
+    kinds: () => call('GET', '/api/kinds'),
+    getRecipe: (id) => call('GET', `/api/recipes/${enc(id)}`),
+    validateRecipe: (body) => call('POST', '/api/recipes/validate', body),
+    saveRecipe: (id, body) => call('PUT', `/api/recipes/${enc(id)}`, body),
+    deleteRecipe: (id) => call('DELETE', `/api/recipes/${enc(id)}`),
+    startBatch: (body) => call('POST', '/api/batches', body),
+    presets: () => call('GET', '/api/presets'),
+    savePreset: (p) => call('PUT', `/api/presets/${enc(p.id)}`, p),
+    deletePreset: (id) => call('DELETE', `/api/presets/${enc(id)}`)
   }
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Check, Hand, Hourglass, Minus, Recycle, X } from '@lucide/vue'
+import { Hand, Hourglass, Minus, Recycle, X } from '@lucide/vue'
 import type { StepStatus } from '@/api/types'
 import ProgressRing from './ProgressRing.vue'
 

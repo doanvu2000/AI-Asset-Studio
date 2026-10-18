@@ -16,5 +16,5 @@
     "baseUrl": ".",
     "paths": { "@/*": ["src/renderer/src/*"] }
   },
-  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.vue", "src/preload/*.d.ts"]
+  "include": ["src/renderer/src/**/*", "src/renderer/src/**/*.vue", "src/preload/*.d.ts", "src/preload/types.ts"]
 }

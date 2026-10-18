@@ -1,8 +1,17 @@
-import { ApiError, type ListRunsQuery, type StudioApi } from '../client'
+import { ApiError, type ListRunsQuery, type RecipeBody, type StudioApi } from '../client'
 import { FrameBatcher, type EventSink, type EventStream } from '../ws'
 import {
   STEP_DONE_OK,
+  type BatchCreateBody,
+  type Binding,
   type BlobRef,
+  type ExportPreset,
+  type KindInfo,
+  type RecipeDetail,
+  type RecipeDoc,
+  type RecipeSource,
+  type SavedRecipe,
+  type ValidateResult,
   type EventType,
   type GateResolution,
   type Lane,
@@ -17,18 +26,22 @@ import {
   type VersionStatus
 } from '../types'
 import { renderArt, renderPreviewB64 } from './art'
+import { MOCK_KINDS, MOCK_PRESETS, mockValidate, stepDeps } from './catalog'
 
 interface MockStepDef {
   id: string
   kind: string
   lane: Lane
   deps: string[]
+  in?: Record<string, Binding>
   params?: (inputs: Record<string, unknown>) => Record<string, unknown>
+  raw?: Record<string, unknown>
 }
 
 interface MockRecipe {
   info: RecipeInfo
   defs: MockStepDef[]
+  doc?: RecipeDoc
 }
 
 const LANE_LIMITS: Record<Lane, number> = { gpu: 1, blender: 1, cloud: 3, cpu: 4, none: Infinity }
@@ -83,20 +96,91 @@ const RECIPES: MockRecipe[] = [
       inputs: {
         ref: { type: 'image', label: 'Ảnh tham chiếu', required: true },
         elevation: { type: 'float', default: 30, min: 0, max: 60, step: 5, label: 'Góc nhìn (độ)' },
-        res: { type: 'int', default: 256, options: [128, 256, 512], label: 'Độ phân giải' }
+        res: { type: 'int', default: 256, options: [128, 256, 512], label: 'Độ phân giải' },
+        preset: { type: 'preset', default: 'studio', label: 'Preset xuất' }
       },
       steps: []
     },
     defs: [
-      { id: 'mesh', kind: 'comfy.i23d_hunyuan', lane: 'gpu', deps: [] },
+      { id: 'mesh', kind: 'comfy.i23d_hunyuan', lane: 'gpu', deps: [], in: { image: 'inputs.ref' } },
       { id: 'render', kind: 'blender.render_dirs', lane: 'blender', deps: ['mesh'], params: (i) => ({ elevation: i.elevation, count: 5, res: i.res }) },
       { id: 'mirror', kind: 'op.mirror_dirs', lane: 'cpu', deps: ['render'], params: () => ({ count: 8 }) },
       { id: 'approve', kind: 'gate.approve', lane: 'none', deps: ['mirror'] },
-      { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['approve'], params: () => ({ cols: 8, cell: 256 }) }
+      { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['approve'], params: (i) => ({ cols: 8, cell: 256, preset: i.preset }), raw: { cols: 8, cell: 256, preset: '${inputs.preset}' } }
     ]
   }
 ]
-for (const r of RECIPES) r.info.steps = r.defs.map((d) => ({ id: d.id, kind: d.kind, lane: d.lane }))
+for (const r of RECIPES) {
+  r.info.steps = r.defs.map((d) => ({ id: d.id, kind: d.kind, lane: d.lane, deps: d.deps }))
+  r.info.source = 'builtin'
+}
+
+const RAW_PARAMS: Record<string, Record<string, unknown>> = {
+  'concept-2d/gen': { '57:27.text': '${inputs.prompt}, isolated on plain white background, centered, game asset', '57:13.batch_size': '${inputs.count}' },
+  'concept-2d/pick': { k: 1 },
+  'concept-2d/fit': { size: '${inputs.size}', pad: 0.06 },
+  'concept-2d-codex/gen': { prompt: '${inputs.prompt}', count: '${inputs.count}', transparent: '${inputs.transparent}' },
+  'concept-2d-codex/pick': { k: 1 },
+  'sprite-8dir/render': { elevation: '${inputs.elevation}', count: 5, res: '${inputs.res}' }
+}
+
+function docOf(r: MockRecipe): RecipeDoc {
+  if (r.doc) return structuredClone(r.doc)
+  const last = r.defs[r.defs.length - 1]!
+  return {
+    id: r.info.id,
+    name: r.info.name,
+    description: r.info.description,
+    inputs: structuredClone(r.info.inputs),
+    steps: r.defs.map((d) => {
+      const params = d.raw ?? RAW_PARAMS[`${r.info.id}/${d.id}`] ?? {}
+      const src = d.deps[0] ? `${d.deps[0]}.images` : undefined
+      const inp = d.in ?? (src ? (d.kind === 'comfy.remove_bg_birefnet' ? { image: src } : { images: src }) : undefined)
+      return {
+        id: d.id,
+        kind: d.kind,
+        ...(inp ? { in: inp } : {}),
+        ...(Object.keys(params).length ? { params } : {}),
+        ...(d.kind === 'comfy.remove_bg_birefnet' ? { map: 'image' } : {})
+      }
+    }),
+    outputs: { final: `${last.id}.${last.kind === 'op.sheet' ? 'sheet' : 'images'}` }
+  }
+}
+
+function substituteInputs(v: unknown, inputs: Record<string, unknown>): unknown {
+  if (typeof v === 'string') {
+    const whole = /^\$\{inputs\.([\w-]+)\}$/.exec(v)
+    if (whole) return inputs[whole[1]!]
+    return v.replace(/\$\{inputs\.([\w-]+)\}/g, (_, n: string) => String(inputs[n] ?? ''))
+  }
+  if (Array.isArray(v)) return v.map((x) => substituteInputs(x, inputs))
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, substituteInputs(x, inputs)]))
+  return v
+}
+
+function recipeFromDoc(doc: RecipeDoc, source: RecipeSource): MockRecipe {
+  const lane = (kind: string): Lane => MOCK_KINDS.find((x) => x.kind === kind)?.lane ?? 'cpu'
+  const defs: MockStepDef[] = doc.steps.map((s) => ({
+    id: s.id,
+    kind: s.kind,
+    lane: lane(s.kind),
+    deps: stepDeps(s),
+    in: s.in,
+    raw: s.params,
+    params: (i) => substituteInputs(s.params ?? {}, i) as Record<string, unknown>
+  }))
+  const info: RecipeInfo = {
+    id: doc.id,
+    name: doc.name ?? doc.id,
+    description: doc.description ?? '',
+    inputs: doc.inputs ?? {},
+    hash: Math.random().toString(16).slice(2, 12),
+    source,
+    steps: defs.map((d) => ({ id: d.id, kind: d.kind, lane: d.lane, deps: d.deps }))
+  }
+  return { info, defs, doc: structuredClone(doc) }
+}
 
 const TITLES = ['Kiếm pha lê', 'Bình máu đỏ', 'Rương gỗ cổ', 'Nấm phát sáng', 'Khiên đồng', 'Đá rune', 'Cuộn phép', 'Lồng đèn giấy', 'Mũ phù thuỷ', 'Trứng rồng']
 
@@ -121,6 +205,9 @@ export class MockCore implements StudioApi, EventStream {
   private laneBusy: Record<Lane, number> = { gpu: 0, blender: 0, cloud: 0, cpu: 0, none: 0 }
   private laneQueue: Record<Lane, Array<() => void>> = { gpu: [], blender: [], cloud: [], cpu: [], none: [] }
   private cancelled = new Set<string>()
+  private builtins = new Map(RECIPES.map((r) => [r.info.id, r]))
+  private userRecipes = new Map<string, MockRecipe>()
+  private userPresets = new Map<string, ExportPreset>()
   private ready: Promise<void>
 
   constructor() {
@@ -244,8 +331,8 @@ export class MockCore implements StudioApi, EventStream {
     void gateRun
   }
 
-  private newRun(recipe: MockRecipe, inputs: Record<string, unknown>, title: string, created = now()): RunRow {
-    const run: RunRow = { id: uid('run'), project_id: 'default', recipe_id: recipe.info.id, recipe_hash: recipe.info.hash, title, inputs, params: {}, status: 'running', error: null, created_at: created, ended_at: null }
+  private newRun(recipe: MockRecipe, inputs: Record<string, unknown>, title: string, created = now(), params: Record<string, unknown> = {}): RunRow {
+    const run: RunRow = { id: uid('run'), project_id: 'default', recipe_id: recipe.info.id, recipe_hash: recipe.info.hash, title, inputs, params, status: 'running', error: null, created_at: created, ended_at: null }
     this.runs.set(run.id, run)
     return run
   }
@@ -524,16 +611,99 @@ export class MockCore implements StudioApi, EventStream {
     return clone(down)
   }
 
+  private recipe(id: string): MockRecipe | undefined {
+    return this.userRecipes.get(id) ?? this.builtins.get(id)
+  }
+
   async recipes(): Promise<RecipeInfo[]> {
     await sleep(80)
-    return clone(RECIPES.map((r) => r.info))
+    const ids = new Set([...this.builtins.keys(), ...this.userRecipes.keys()])
+    return clone([...ids].map((id) => this.recipe(id)!.info))
+  }
+
+  async kinds(): Promise<KindInfo[]> {
+    await sleep(60)
+    return clone(MOCK_KINDS)
+  }
+
+  async getRecipe(id: string): Promise<RecipeDetail> {
+    await sleep(80)
+    const r = this.recipe(id)
+    if (!r) throw new ApiError('not_found', `unknown recipe: ${id}`, 404)
+    const doc = docOf(r)
+    return clone({ info: r.info, source: r.info.source ?? 'builtin', has_builtin: this.builtins.has(id), yaml: JSON.stringify(doc, null, 2), doc })
+  }
+
+  private docFromBody(body: RecipeBody): RecipeDoc {
+    if ('doc' in body) return clone(body.doc)
+    try {
+      return JSON.parse(body.yaml) as RecipeDoc
+    } catch {
+      throw new ApiError('invalid', 'Chế độ mô phỏng chỉ đọc được YAML dạng JSON', 400)
+    }
+  }
+
+  async validateRecipe(body: RecipeBody): Promise<ValidateResult> {
+    await sleep(120)
+    const doc = this.docFromBody(body)
+    const issues = mockValidate(doc, MOCK_KINDS)
+    const ok = !issues.some((i) => i.level === 'error')
+    return { ok, issues, info: ok ? recipeFromDoc(doc, 'user').info : null }
+  }
+
+  async saveRecipe(id: string, body: RecipeBody): Promise<SavedRecipe> {
+    await sleep(160)
+    const doc = { ...this.docFromBody(body), id }
+    const issues = mockValidate(doc, MOCK_KINDS)
+    if (issues.some((i) => i.level === 'error')) throw new ApiError('invalid_recipe', issues[0]!.message, 422, issues)
+    const r = recipeFromDoc(doc, this.builtins.has(id) ? 'override' : 'user')
+    this.userRecipes.set(id, r)
+    return clone({ info: r.info, source: r.info.source!, has_builtin: this.builtins.has(id), issues })
+  }
+
+  async deleteRecipe(id: string): Promise<{ ok: boolean; restored_builtin: boolean }> {
+    await sleep(100)
+    if (!this.userRecipes.delete(id)) throw new ApiError('not_found', `no user recipe '${id}'`, 404)
+    return { ok: true, restored_builtin: this.builtins.has(id) }
+  }
+
+  async startBatch(body: BatchCreateBody): Promise<{ batch_id: string; run_ids: string[] }> {
+    if (!this.recipe(body.recipe_id)) throw new ApiError('not_found', `unknown recipe: ${body.recipe_id}`, 404)
+    if (!body.items.length) throw new ApiError('invalid', 'batch needs at least one item', 400)
+    const batch_id = uid('batch')
+    const run_ids: string[] = []
+    for (const [i, it] of body.items.entries()) {
+      const meta = { source: 'app', batch_id, batch_index: i, batch_total: body.items.length, batch_title: body.title ?? '' }
+      const { run_id } = await this.startRun({ recipe_id: body.recipe_id, inputs: { ...body.inputs, ...it.inputs }, title: it.title, params: { $meta: meta } })
+      run_ids.push(run_id)
+    }
+    return { batch_id, run_ids }
+  }
+
+  async presets(): Promise<ExportPreset[]> {
+    await sleep(60)
+    return clone([...MOCK_PRESETS, ...this.userPresets.values()])
+  }
+
+  async savePreset(p: ExportPreset): Promise<ExportPreset> {
+    await sleep(120)
+    if (MOCK_PRESETS.some((b) => b.id === p.id)) throw new ApiError('conflict', `'${p.id}' is a built-in preset; save a copy under another id`, 409)
+    if (new Set(p.dir_order).size !== 8) throw new ApiError('invalid', 'dir_order must list each direction exactly once', 422)
+    const saved = { ...clone(p), builtin: false }
+    this.userPresets.set(p.id, saved)
+    return clone(saved)
+  }
+
+  async deletePreset(id: string): Promise<void> {
+    await sleep(80)
+    if (!this.userPresets.delete(id)) throw new ApiError('not_found', `no user preset '${id}'`, 404)
   }
 
   async startRun(body: StartRunBody): Promise<{ run_id: string }> {
-    const recipe = RECIPES.find((r) => r.info.id === body.recipe_id)
+    const recipe = this.recipe(body.recipe_id)
     if (!recipe) throw new ApiError('unknown_recipe', `Không có recipe ${body.recipe_id}`, 400)
     const title = body.title || String(body.inputs.prompt ?? recipe.info.name).slice(0, 60)
-    const run = this.newRun(recipe, body.inputs, title)
+    const run = this.newRun(recipe, body.inputs, title, now(), body.params ?? {})
     const steps = this.createSteps(run, recipe)
     this.emit('run.created', run, run.id)
     for (const s of steps) this.emit('step.updated', s, run.id, s.id)

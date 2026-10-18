@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowLeft, CircleAlert, CircleStop, Hand, Hourglass, Inbox, RotateCcw } from '@lucide/vue'
+import { ArrowLeft, CircleAlert, CircleStop, Hand, Hourglass, Inbox, List, RotateCcw, Workflow } from '@lucide/vue'
 import type { BlobRef, StepRow } from '@/api/types'
 import { RUN_ACTIVE, STEP_DONE_OK } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
@@ -11,6 +11,9 @@ import BlobImage from '@/components/BlobImage.vue'
 import Lightbox from '@/components/Lightbox.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import FlowCanvas from '@/components/flow/FlowCanvas.vue'
+import { buildRunGraph } from '@/composables/graph'
+import { useKinds } from '@/stores/catalog'
 import { useRuns } from '@/stores/runs'
 import { useRecipes } from '@/stores/recipes'
 import { useConnection } from '@/stores/connection'
@@ -22,6 +25,24 @@ const runs = useRuns()
 const recipes = useRecipes()
 const conn = useConnection()
 const toasts = useToasts()
+const kinds = useKinds()
+
+const MODE_KEY = 'studio.run.view'
+function readMode(): 'list' | 'graph' {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'graph' ? 'graph' : 'list'
+  } catch {
+    return 'list'
+  }
+}
+const viewMode = ref<'list' | 'graph'>(readMode())
+watch(viewMode, (m) => {
+  try {
+    localStorage.setItem(MODE_KEY, m)
+  } catch {
+    /* storage unavailable */
+  }
+})
 
 const loading = ref(true)
 const loadError = ref<string | null>(null)
@@ -38,7 +59,11 @@ async function load(): Promise<void> {
 }
 watch(
   () => conn.transport,
-  (t) => t && void load(),
+  (t) => {
+    if (!t) return
+    void load()
+    void kinds.load()
+  },
   { immediate: true }
 )
 onBeforeUnmount(() => runs.closeDetail(props.id))
@@ -112,6 +137,13 @@ const selOutputs = computed(() => (sel.value ? Object.entries(sel.value.outputs)
 const selInputs = computed(() => (sel.value ? Object.entries(sel.value.inputs).filter(([, v]) => v.length) : []))
 const selParams = computed(() => (sel.value && Object.keys(sel.value.params).length ? JSON.stringify(sel.value.params, null, 2) : ''))
 
+const graph = computed(() => buildRunGraph(steps.value, kinds.byKind, selected.value?.id ?? null))
+const graphFit = computed(() => `${props.id}:${steps.value.length}:${viewMode.value}`)
+function selectByKey(key: string): void {
+  const s = steps.value.find((x) => x.key === key)
+  if (s) select(s)
+}
+
 const lightbox = ref<BlobRef | null>(null)
 const isImage = (b: BlobRef): boolean => b.mime.startsWith('image/')
 </script>
@@ -127,6 +159,10 @@ const isImage = (b: BlobRef): boolean => b.mime.startsWith('image/')
         <ElapsedTimer v-if="active" :from="run.created_at" />
         <span v-else-if="run.ended_at" class="num">{{ humanDuration(run.ended_at - run.created_at) }}</span>
       </template>
+      <div class="seg" role="radiogroup" aria-label="Kiểu xem">
+        <button type="button" role="radio" :aria-checked="viewMode === 'list'" :class="{ on: viewMode === 'list' }" title="Danh sách bước" @click="viewMode = 'list'"><List :size="14" /> Danh sách</button>
+        <button type="button" role="radio" :aria-checked="viewMode === 'graph'" :class="{ on: viewMode === 'graph' }" title="Sơ đồ bước" @click="viewMode = 'graph'"><Workflow :size="14" /> Sơ đồ</button>
+      </div>
       <RunStatusBadge v-if="run" :status="run.status" />
       <button v-if="active" class="btn" :class="{ 'btn-danger': confirmCancel }" @click="cancel">
         <CircleStop />
@@ -139,7 +175,18 @@ const isImage = (b: BlobRef): boolean => b.mime.startsWith('image/')
     </EmptyState>
 
     <div v-else class="detail">
-      <section class="rail scroll" aria-label="Các bước">
+      <section v-if="viewMode === 'graph'" class="rail graph" aria-label="Sơ đồ các bước">
+        <FlowCanvas
+          v-if="steps.length"
+          :id="`run-${id}`"
+          :nodes="graph.nodes"
+          :edges="graph.edges"
+          :fit-key="graphFit"
+          :minimap="steps.length > 6"
+          @node-click="selectByKey"
+        />
+      </section>
+      <section v-else class="rail scroll" aria-label="Các bước">
         <Transition name="fade">
           <div v-if="run?.status === 'failed' || run?.status === 'interrupted'" class="run-err">
             <CircleAlert :size="16" />
@@ -279,6 +326,40 @@ const isImage = (b: BlobRef): boolean => b.mime.startsWith('image/')
   width: min(460px, 46%);
   flex: none;
   border-right: 0.5px solid var(--separator);
+}
+.rail.graph {
+  width: 58%;
+  position: relative;
+}
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--bg-sunken);
+  box-shadow: var(--hairline);
+}
+.seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: var(--fs-callout);
+  font-weight: 500;
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast),
+    box-shadow var(--t-fast);
+}
+.seg button.on {
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-1), var(--hairline);
+  color: var(--text);
+  font-weight: 600;
 }
 .steps {
   list-style: none;

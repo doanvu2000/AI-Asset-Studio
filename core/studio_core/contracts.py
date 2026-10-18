@@ -294,6 +294,7 @@ class RecipeInfo(BaseModel):
     inputs: dict[str, dict[str, Any]] = {}  # name -> {type, default, label, min, max, options}
     steps: list[dict[str, Any]] = []  # [{id, kind, lane}]
     hash: str
+    source: str = "builtin"  # builtin | user | override (user copy shadowing a built-in)
 
 
 class GateResolution(BaseModel):

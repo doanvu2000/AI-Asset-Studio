@@ -10,6 +10,7 @@ from PIL import Image
 from ..contracts import BlobRef, Lane, Outputs, StepContext, StepError, StepResult
 from . import glb
 from . import image as im
+from .presets import ExportPreset, PresetStore, apply_preset, resolve_preset
 
 
 def _png(img: Image.Image) -> bytes:
@@ -184,10 +185,40 @@ async def _pivot_from_blob(ctx: StepContext, ref: BlobRef, frame_size: tuple[int
 class Sheet(OpExecutor):
     kind = "op.sheet"
 
+    def __init__(self, presets: PresetStore | None = None):
+        self.presets = presets
+
+    def _preset(self, params: dict[str, Any]) -> ExportPreset | None:
+        try:
+            return resolve_preset(params.get("preset"), self.presets)
+        except ValueError as e:
+            raise StepError("op_bad_params", str(e)) from e
+
+    def cache_material(self, params: dict[str, Any]) -> str:
+        # The preset id alone would keep serving stale sheets after the user edits that preset.
+        try:
+            p = resolve_preset(params.get("preset"), self.presets)
+        except ValueError:
+            return ""
+        return p.model_dump_json() if p else ""
+
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = _images_in(inputs)
+        preset = self._preset(params)
         imgs = await _load_all(ctx, refs)
         cols = int(params.get("cols") or len(imgs))
+        order = params.get("order")
+        named: list[dict[str, Any]] | None = None
+        if preset is not None:
+            angles = [int(a) for a in order] if isinstance(order, list) else \
+                [i * 360 // len(imgs) for i in range(len(imgs))]
+            try:
+                slots, named = apply_preset(preset, angles, str(params.get("asset") or "sprite"))
+            except ValueError as e:
+                raise StepError("op_bad_params", str(e)) from e
+            imgs, refs = [imgs[i] for i in slots], [refs[i] for i in slots]
+            order = [angles[i] for i in slots]
+            cols = preset.cols_for(len(imgs))
         cell = params.get("cell")
         if isinstance(cell, list):
             cell = (int(cell[0]), int(cell[1]))
@@ -200,14 +231,27 @@ class Sheet(OpExecutor):
             # Recipes cannot read another step's meta; this reproduces op.normalize(anchor=bottom)'s pivot.
             w, h = imgs[0].size
             pivot = (w // 2, h - round(h * float(params.get("pivot_pad", 0.06))))
+        padding = preset.padding if preset is not None else int(params.get("padding", 0))
         try:
             sheet, meta = await asyncio.to_thread(
-                im.pack_sheet, imgs, cols, cell, int(params.get("padding", 0)),
-                tuple(pivot) if pivot else None, params.get("order"))
+                im.pack_sheet, imgs, cols, cell, padding, tuple(pivot) if pivot else None, order)
         except ValueError as e:
             raise StepError("op_bad_params", str(e)) from e
         meta["frames"] = [r.hash for r in refs]
-        sheet_ref = await _put_png(ctx, sheet, "sheet.png")
+        sheet_name = "sheet.png"
+        if preset is not None and named is not None:
+            fw, fh, c = meta["frame_w"], meta["frame_h"], meta["cols"]
+            for rec in named:
+                r, col = divmod(rec["index"], c)
+                rec.update(x=col * (fw + padding), y=r * (fh + padding), w=fw, h=fh)
+            meta.update(preset=preset.id, dirs=[n["label"] for n in named], frames_named=named,
+                        pivot_origin=preset.pivot_origin)
+            if "pivot" in meta:
+                px, py = meta["pivot"]
+                meta["pivot_norm"] = [round(px / fw, 4),
+                                      round((fh - py) / fh if preset.pivot_origin == "bottom_left" else py / fh, 4)]
+            sheet_name = f"{params.get('asset') or 'sprite'}_sheet.png"
+        sheet_ref = await _put_png(ctx, sheet, sheet_name)
         meta_ref = await ctx.blobs.put_bytes(json.dumps(meta, indent=2).encode(), name="sheet.json",
                                              mime="application/json")
         ctx.progress(1.0)

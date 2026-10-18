@@ -8,6 +8,7 @@ import LaneTag from '@/components/LaneTag.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RecipeThumb from '@/components/RecipeThumb.vue'
 import BlobDropZone from '@/components/BlobDropZone.vue'
+import PresetSelect from '@/components/PresetSelect.vue'
 import { useRecipes } from '@/stores/recipes'
 import { api, useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
@@ -189,13 +190,15 @@ function onKey(e: KeyboardEvent): void {
                   v-if="spec.type === 'text'"
                   :id="`in-${name}`"
                   ref="promptEl"
-                  v-model="values[name]"
+                  :value="String(values[name] ?? '')"
                   class="field"
                   rows="3"
                   :aria-invalid="!!errors[name]"
                   placeholder="Ví dụ: thanh kiếm pha lê xanh, low-poly"
+                  @input="values[name] = ($event.target as HTMLTextAreaElement).value"
                   @blur="validate(String(name), spec)"
                 />
+                <PresetSelect v-else-if="spec.type === 'preset'" :id="`in-${name}`" v-model="values[name]" />
                 <div v-else-if="isNum(spec.type) && spec.options?.length" class="segmented" role="radiogroup" :aria-label="label(String(name), spec)">
                   <button
                     v-for="o in spec.options"

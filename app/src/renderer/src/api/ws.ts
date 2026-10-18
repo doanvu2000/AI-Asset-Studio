@@ -81,7 +81,7 @@ export class StudioSocket implements EventStream {
       } catch {
         return
       }
-      const ev = data as StudioEvent & { type: string }
+      const ev = data as Omit<StudioEvent, 'type'> & { type: string }
       if (ev.type === 'hello') {
         this.onHello(ws, (data as { seq: number }).seq)
         return
@@ -98,7 +98,7 @@ export class StudioSocket implements EventStream {
         this.resuming = false
       }
       this.lastSeq = ev.seq
-      this.batcher?.push(ev)
+      this.batcher?.push(ev as StudioEvent)
     }
     let opened = false
     ws.onopen = () => {

@@ -17,7 +17,7 @@ onMounted(() => void conn.init())
 // Before the first connection there is nothing to show, so a dead core gets the full screen instead of a banner.
 const offline = computed(() => !conn.core.mock && !conn.transport && ['error', 'restarting', 'stopped'].includes(conn.core.state))
 
-const NAV = ['/', '/new', '/runs', '/gates', '/gallery']
+const NAV = ['/', '/new', '/runs', '/gates', '/gallery', '/recipes', '/batch']
 onKeyStroke(
   (e) => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey,
   (e) => {
@@ -42,7 +42,7 @@ onKeyStroke(
         <CoreOffline v-if="offline" />
         <RouterView v-else v-slot="{ Component, route }">
           <Transition name="page" mode="out-in">
-            <component :is="Component" :key="route.name === 'run' ? route.fullPath : String(route.name)" />
+            <component :is="Component" :key="['run', 'recipe', 'batch-detail'].includes(String(route.name)) ? route.fullPath : String(route.name)" />
           </Transition>
         </RouterView>
       </main>

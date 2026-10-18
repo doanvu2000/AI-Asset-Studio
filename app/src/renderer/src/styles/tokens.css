@@ -79,6 +79,13 @@
 
   --checker-a: #ffffff;
   --checker-b: #ececf0;
+
+  --lane-gpu: #8e4ec6;
+  --lane-blender: #d55b00;
+  --lane-cloud: #0d74ce;
+  --lane-cpu: #2b9a66;
+  --lane-none: #c2298a;
+  --canvas-dot: rgba(0, 0, 0, 0.13);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -124,6 +131,13 @@
 
     --checker-a: #2a2a2e;
     --checker-b: #232326;
+
+    --lane-gpu: #bf7af0;
+    --lane-blender: #ff9a4d;
+    --lane-cloud: #70b8ff;
+    --lane-cpu: #3dd68c;
+    --lane-none: #f17ac5;
+    --canvas-dot: rgba(255, 255, 255, 0.1);
   }
 }
 

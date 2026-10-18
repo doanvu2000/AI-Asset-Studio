@@ -6,6 +6,7 @@ description: >-
 inputs:
   image: {type: image, label: Ảnh nhân vật (mặt trước)}
   size: {type: int, default: 512, options: [128, 256, 512, 1024]}
+  preset: {type: preset, default: studio, label: Preset xuất}
 steps:
   - id: angles
     kind: comfy.multi_angles_qwen2511
@@ -32,7 +33,7 @@ steps:
   - id: sheet
     kind: op.sheet
     in: {images: norm.images}
-    params: {cols: 8}
+    params: {cols: 8, order: [0, 45, 90, 135, 180, 225, 270, 315], preset: "${inputs.preset}"}
 outputs:
   final: norm.images
   sheet: sheet.sheet

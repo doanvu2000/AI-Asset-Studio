@@ -32,8 +32,9 @@ from ..contracts import (
     VersionRow,
 )
 from .cache import executor_cache_key
-from .gates import GATES, register_gates
-from .recipe import BLOB_TYPES, Recipe, RecipeError, find_step_refs, load_recipes, ref_value, substitute_refs
+from .gates import GATES
+from .library import RecipeLibrary
+from .recipe import BLOB_TYPES, Recipe, RecipeError, find_step_refs, ref_value, substitute_refs
 from .scheduler import LaneScheduler
 
 log = logging.getLogger(__name__)
@@ -140,39 +141,30 @@ class StudioEngine:
         self.registry = registry
         self.resources = resources
         self.scheduler = LaneScheduler(settings.lane_limits)
-        self._recipes: dict[str, Recipe] = {}
-        self._recipes_sig: tuple[tuple[str, int], ...] | None = None
+        self.library = RecipeLibrary(settings.recipes_dir, settings.user_recipes_dir)
         self._runs: dict[str, _RunState] = {}
         self._bg: set[asyncio.Task[Any]] = set()
         self._closed = False
-        self.reload_recipes()
 
     # recipes
 
-    def _dir_signature(self) -> tuple[tuple[str, int], ...]:
-        d = self.settings.recipes_dir
-        if not d.is_dir():
-            return ()
-        return tuple(sorted((p.name, p.stat().st_mtime_ns) for p in d.glob("*.y*ml")))
-
     def reload_recipes(self) -> None:
-        self._recipes_sig = self._dir_signature()
-        self._recipes = load_recipes(self.settings.recipes_dir)
+        self.library.reload()
 
-    def _maybe_reload(self) -> None:
-        if self._dir_signature() != self._recipes_sig:
-            self.reload_recipes()
+    def recipe_info(self, r: Recipe) -> RecipeInfo:
+        info = r.info(self.registry)
+        info.source = self.library.sources.get(r.id, "builtin")
+        return info
 
     def list_recipes(self) -> list[RecipeInfo]:
-        self._maybe_reload()
-        return [r.info(self.registry) for r in self._recipes.values()]
+        self.library.maybe_reload()
+        return [self.recipe_info(r) for r in self.library.recipes.values()]
 
     def get_recipe(self, recipe_id: str) -> Recipe:
-        self._maybe_reload()
-        try:
-            return self._recipes[recipe_id]
-        except KeyError:
-            raise NotFoundError(f"unknown recipe: {recipe_id}") from None
+        r = self.library.get(recipe_id)
+        if r is None:
+            raise NotFoundError(f"unknown recipe: {recipe_id}")
+        return r
 
     # persistence + events
 

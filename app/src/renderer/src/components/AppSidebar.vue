@@ -3,11 +3,12 @@ import { ART } from '@/assets/art'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { motion } from 'motion-v'
-import { Images, Inbox, LayoutDashboard, ListChecks, Plus } from '@lucide/vue'
+import { Images, Inbox, Layers, LayoutDashboard, ListChecks, Plus, Settings, Workflow } from '@lucide/vue'
 import { useRuns } from '@/stores/runs'
 import { useGates } from '@/stores/gates'
 import { useVersions } from '@/stores/versions'
 import { useConnection } from '@/stores/connection'
+import { useBatches } from '@/stores/batches'
 import TweenNumber from './TweenNumber.vue'
 
 const route = useRoute()
@@ -15,18 +16,21 @@ const runs = useRuns()
 const gates = useGates()
 const versions = useVersions()
 const conn = useConnection()
+const batches = useBatches()
 
 const items = computed(() => [
   { to: '/', name: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard, badge: 0, tone: '' },
   { to: '/new', name: 'new', label: 'Tạo mới', icon: Plus, badge: 0, tone: '' },
   { to: '/runs', name: 'runs', label: 'Lượt chạy', icon: ListChecks, badge: runs.activeRuns.length, tone: 'run' },
   { to: '/gates', name: 'gates', label: 'Cần duyệt', icon: Inbox, badge: gates.count, tone: 'human' },
-  { to: '/gallery', name: 'gallery', label: 'Thư viện', icon: Images, badge: versions.draftCount, tone: '' }
+  { to: '/gallery', name: 'gallery', label: 'Thư viện', icon: Images, badge: versions.draftCount, tone: '' },
+  { to: '/recipes', name: 'recipes', label: 'Recipe', icon: Workflow, badge: 0, tone: '' },
+  { to: '/batch', name: 'batch', label: 'Hàng loạt', icon: Layers, badge: batches.list.filter((b) => b.active > 0).length, tone: 'run' }
 ])
 
 function isActive(name: string): boolean {
   const r = String(route.name ?? '')
-  return r === name || (name === 'runs' && r === 'run')
+  return r === name || (name === 'runs' && r === 'run') || (name === 'recipes' && r === 'recipe') || (name === 'batch' && r === 'batch-detail')
 }
 
 const status = computed(() => {
@@ -70,6 +74,14 @@ const status = computed(() => {
             <TweenNumber :value="it.badge" :duration="200" />
           </span>
         </Transition>
+      </RouterLink>
+    </nav>
+
+    <nav class="nav-foot" aria-label="Cài đặt">
+      <RouterLink to="/settings" class="item" :class="{ active: isActive('settings') }" :aria-current="isActive('settings') ? 'page' : undefined">
+        <motion.span v-if="isActive('settings')" layout-id="nav-pill" class="pill" :transition="{ type: 'spring', stiffness: 520, damping: 40 }" />
+        <Settings class="ic" :size="16" :stroke-width="2" />
+        <span class="label">Cài đặt</span>
       </RouterLink>
     </nav>
 
@@ -172,8 +184,13 @@ nav {
   color: #fff;
   background: var(--st-human);
 }
-.foot {
+.nav-foot {
+  -webkit-app-region: no-drag;
+  display: grid;
   margin-top: auto;
+  margin-bottom: 10px;
+}
+.foot {
   padding: 0 6px;
 }
 .conn {

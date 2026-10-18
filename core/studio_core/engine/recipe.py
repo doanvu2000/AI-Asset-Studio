@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -15,7 +17,8 @@ from ..contracts import ExecutorRegistry, RecipeInfo
 log = logging.getLogger(__name__)
 
 BLOB_TYPES = {"image", "mesh"}
-INPUT_TYPES = {"text", "int", "float", "bool", "enum"} | BLOB_TYPES
+# `preset` is text naming an export preset; the app offers the saved presets as choices.
+INPUT_TYPES = {"text", "int", "float", "bool", "enum", "preset"} | BLOB_TYPES
 _PLACEHOLDER = re.compile(r"\$\{inputs\.([A-Za-z_][\w-]*)\s*(?:\|\s*([A-Za-z_]\w*)\s*)?\}")
 _WHOLE = re.compile(r"^\$\{inputs\.([A-Za-z_][\w-]*)\}$")
 LIST_FILTERS = {"lines"}
@@ -25,7 +28,9 @@ STEP_REF = re.compile(r"\$\{steps\.([A-Za-z_][\w-]*)\.([A-Za-z_][\w-]*)((?:\.[\w
 
 
 class RecipeError(ValueError):
-    pass
+    def __init__(self, message: str, step: str | None = None):
+        super().__init__(message)
+        self.step = step
 
 
 @dataclass(frozen=True)
@@ -143,7 +148,7 @@ def coerce_value(name: str, spec: dict[str, Any], v: Any) -> Any:
     t = spec.get("type", "text")
     try:
         match t:
-            case "text":
+            case "text" | "preset":
                 if not isinstance(v, (str, int, float)):
                     raise TypeError
                 v = str(v)
@@ -342,37 +347,14 @@ def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
         if not isinstance(sid, str) or not _ID.match(sid) or sid == "inputs":
             raise RecipeError(f"{where}: step #{i} has invalid id {sid!r}")
         if sid in seen:
-            raise RecipeError(f"{where}: duplicate step id {sid!r}")
+            raise RecipeError(f"{where}: duplicate step id {sid!r}", step=sid)
         seen.add(sid)
-        if not isinstance(kind, str) or not kind:
-            raise RecipeError(f"{where}: step {sid} missing kind")
-        params = rs.get("params") or {}
-        if not isinstance(params, dict):
-            raise RecipeError(f"{where}: step {sid} params must be a mapping")
-        unknown = _placeholders(params) - inputs.keys()
-        if unknown:
-            raise RecipeError(f"{where}: step {sid} references unknown inputs {sorted(unknown)}")
-        bindings = {str(k): parse_binding(v, f"{where}: step {sid} in.{k}") for k, v in (rs.get("in") or {}).items()}
-        mp = rs.get("map")
-        if mp is not None and mp not in bindings:
-            raise RecipeError(f"{where}: step {sid} map '{mp}' is not one of its inputs")
-        mpp = rs.get("map_param")
-        _check_list_params(where, sid, params, mpp, inputs)
-        if mp is not None and mpp is not None:
-            raise RecipeError(f"{where}: step {sid} cannot use both map and map_param")
-        refs = tuple(dict.fromkeys(r[1] for r in find_step_refs(params)))
-        specs.append(StepSpec(sid, kind, params, bindings, mp, mpp, refs))
+        with _step_errors(sid):
+            specs.append(_parse_step(where, sid, kind, rs, inputs))
 
     for s in specs:
-        for name, b in ((n, p) for n, bb in s.bindings.items() for p in bb.parts):
-            if b.source == "inputs":
-                if b.name not in inputs or inputs[b.name]["type"] not in BLOB_TYPES:
-                    raise RecipeError(f"{where}: step {s.id} in.{name} must bind an image/mesh input, got {b}")
-            elif b.source not in seen:
-                raise RecipeError(f"{where}: step {s.id} in.{name} references unknown step {b.source!r}")
-        for r in s.refs:
-            if r not in seen or r == s.id:
-                raise RecipeError(f"{where}: step {s.id} params reference unknown step {r!r}")
+        with _step_errors(s.id):
+            _check_step_links(where, s, inputs, seen)
 
     outputs = {str(k): Binding.parse(v, f"{where}: outputs.{k}") for k, v in (doc.get("outputs") or {}).items()}
     for k, b in outputs.items():
@@ -383,6 +365,49 @@ def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
                   inputs=inputs, steps=_toposort(specs, where), outputs=outputs,
                   hash=blake3(raw_bytes).hexdigest(), path=path)
 
+
+
+@contextmanager
+def _step_errors(sid: str) -> Iterator[None]:
+    try:
+        yield
+    except RecipeError as e:
+        if e.step is None:
+            e.step = sid
+        raise
+
+
+def _parse_step(where: str, sid: str, kind: Any, rs: dict[str, Any], inputs: dict[str, dict[str, Any]]) -> StepSpec:
+    if not isinstance(kind, str) or not kind:
+        raise RecipeError(f"{where}: step {sid} missing kind")
+    params = rs.get("params") or {}
+    if not isinstance(params, dict):
+        raise RecipeError(f"{where}: step {sid} params must be a mapping")
+    unknown = _placeholders(params) - inputs.keys()
+    if unknown:
+        raise RecipeError(f"{where}: step {sid} references unknown inputs {sorted(unknown)}")
+    bindings = {str(k): parse_binding(v, f"{where}: step {sid} in.{k}") for k, v in (rs.get("in") or {}).items()}
+    mp = rs.get("map")
+    if mp is not None and mp not in bindings:
+        raise RecipeError(f"{where}: step {sid} map '{mp}' is not one of its inputs")
+    mpp = rs.get("map_param")
+    _check_list_params(where, sid, params, mpp, inputs)
+    if mp is not None and mpp is not None:
+        raise RecipeError(f"{where}: step {sid} cannot use both map and map_param")
+    refs = tuple(dict.fromkeys(r[1] for r in find_step_refs(params)))
+    return StepSpec(sid, kind, params, bindings, mp, mpp, refs)
+
+
+def _check_step_links(where: str, s: StepSpec, inputs: dict[str, dict[str, Any]], seen: set[str]) -> None:
+    for name, b in ((n, p) for n, bb in s.bindings.items() for p in bb.parts):
+        if b.source == "inputs":
+            if b.name not in inputs or inputs[b.name]["type"] not in BLOB_TYPES:
+                raise RecipeError(f"{where}: step {s.id} in.{name} must bind an image/mesh input, got {b}")
+        elif b.source not in seen:
+            raise RecipeError(f"{where}: step {s.id} in.{name} references unknown step {b.source!r}")
+    for r in s.refs:
+        if r not in seen or r == s.id:
+            raise RecipeError(f"{where}: step {s.id} params reference unknown step {r!r}")
 
 def _toposort(specs: list[StepSpec], where: str) -> list[StepSpec]:
     by_id = {s.id: s for s in specs}

@@ -3,13 +3,15 @@ from __future__ import annotations
 from typing import Any
 
 from ..contracts import ExecutorRegistry, Resource
-from .executors import ALL_OPS
+from .executors import ALL_OPS, Sheet
+from .presets import PresetStore
 from .rig import RIG_OPS
 
 
 def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, blobs: Any = None) -> list[Resource]:
+    presets = PresetStore(getattr(settings, "presets_path", None))
     for cls in ALL_OPS:
-        registry.register(cls())
+        registry.register(Sheet(presets) if cls is Sheet else cls())
     for rig_cls in RIG_OPS:
         registry.register(rig_cls())
     return []

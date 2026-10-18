@@ -9,13 +9,18 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+import yaml
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from starlette.responses import Response
 
 from studio_core import __version__
 from studio_core.api.auth import require_token, require_token_or_query
 from studio_core.api.errors import ApiError, OrjsonResponse
+from studio_core.engine.kinds import describe_kinds
+from studio_core.engine.library import RecipeLibrary, issue, to_text, validate
+from studio_core.engine.recipe import Recipe, RecipeError
+from studio_core.ops.presets import ExportPreset, PresetStore
 from studio_core.contracts import (
     BlobStore,
     Engine,
@@ -32,6 +37,7 @@ api = APIRouter(prefix="/api", dependencies=[Depends(require_token)])
 blob_api = APIRouter(prefix="/api", dependencies=[Depends(require_token_or_query)])
 
 _IMMUTABLE = "public, max-age=31536000, immutable"
+META_KEY = "$meta"
 _GENERIC_MIMES = {None, "", "application/octet-stream"}
 
 
@@ -114,7 +120,167 @@ async def list_recipes(request: Request) -> Response:
 
 @api.get("/kinds")
 async def list_kinds(request: Request) -> Response:
-    return _json(request.app.state.registry.kinds())
+    settings = request.app.state.settings
+    return _json(await asyncio.to_thread(describe_kinds, request.app.state.registry,
+                                         getattr(settings, "comfy_workflows_dir", None)))
+
+
+class RecipeBody(BaseModel):
+    yaml: str | None = None
+    doc: dict[str, Any] | None = None
+
+    def raw(self) -> str | dict[str, Any]:
+        if self.yaml is not None:
+            return self.yaml
+        if self.doc is not None:
+            return self.doc
+        raise ApiError(400, "invalid", "send 'yaml' or 'doc'")
+
+
+def _library(request: Request) -> RecipeLibrary:
+    lib = getattr(_engine(request), "library", None)
+    if lib is None:
+        raise ApiError(503, "engine_unavailable", "recipe library not available")
+    return lib
+
+
+def _validate(request: Request, raw: str | dict[str, Any]) -> tuple[Recipe | None, list[dict[str, Any]]]:
+    return validate(raw, request.app.state.registry, getattr(request.app.state.settings, "comfy_workflows_dir", None))
+
+
+def _recipe_view(request: Request, lib: RecipeLibrary, r: Recipe) -> dict[str, Any]:
+    return {"info": _engine(request).recipe_info(r), "source": lib.sources.get(r.id, "builtin"),
+            "has_builtin": lib.has_builtin(r.id)}
+
+
+@api.get("/recipes/{rid}")
+async def get_recipe(request: Request, rid: str) -> Response:
+    lib = _library(request)
+    r = await asyncio.to_thread(lib.get, rid)
+    if r is None:
+        raise ApiError(404, "not_found", f"unknown recipe: {rid}")
+    text = await asyncio.to_thread(lib.text, rid) or ""
+    return _json({**_recipe_view(request, lib, r), "yaml": text, "doc": yaml.safe_load(text) or {}})
+
+
+@api.post("/recipes/validate")
+async def validate_recipe(request: Request, body: RecipeBody) -> Response:
+    recipe, issues = await asyncio.to_thread(_validate, request, body.raw())
+    ok = recipe is not None and not any(i["level"] == "error" for i in issues)
+    return _json({"ok": ok, "issues": issues,
+                  "info": _engine(request).recipe_info(recipe) if recipe is not None else None})
+
+
+@api.put("/recipes/{rid}")
+async def save_recipe(request: Request, rid: str, body: RecipeBody) -> Response:
+    lib = _library(request)
+    raw = body.raw()
+    if isinstance(raw, dict):
+        raw = {**raw, "id": raw.get("id") or rid}
+    recipe, issues = await asyncio.to_thread(_validate, request, raw)
+    errors = [i for i in issues if i["level"] == "error"]
+    if recipe is not None and recipe.id != rid:
+        errors.append(issue(f"recipe id '{recipe.id}' does not match '{rid}'", field="id"))
+    if recipe is None or errors:
+        return OrjsonResponse({"error": {"code": "invalid_recipe", "message": (errors or issues)[0]["message"],
+                                         "issues": errors or issues}}, status_code=422)
+    try:
+        saved = await asyncio.to_thread(lib.save, rid, to_text(raw))
+    except RecipeError as e:
+        raise ApiError(422, "invalid_recipe", str(e)) from e
+    return _json({**_recipe_view(request, lib, saved), "issues": issues})
+
+
+@api.delete("/recipes/{rid}")
+async def delete_recipe(request: Request, rid: str) -> Response:
+    lib = _library(request)
+    try:
+        restored = await asyncio.to_thread(lib.delete, rid)
+    except LookupError as e:
+        raise ApiError(404, "not_found", str(e)) from e
+    except RecipeError as e:
+        raise ApiError(400, "invalid", str(e)) from e
+    return _json({"ok": True, "restored_builtin": restored})
+
+
+class BatchItem(BaseModel):
+    inputs: dict[str, Any] = {}
+    title: str = ""
+
+
+class BatchCreate(BaseModel):
+    recipe_id: str
+    items: list[BatchItem]
+    inputs: dict[str, Any] = {}
+    params: dict[str, Any] | None = None
+    title: str = ""
+    project_id: str = "default"
+
+
+MAX_BATCH = 200
+
+
+@api.post("/batches")
+async def create_batch(request: Request, body: BatchCreate) -> Response:
+    """N runs of one recipe tagged with `$meta.batch_*`; every item is checked before the first run starts."""
+    if not body.items:
+        raise ApiError(400, "invalid", "batch needs at least one item")
+    if len(body.items) > MAX_BATCH:
+        raise ApiError(400, "invalid", f"batch limited to {MAX_BATCH} items")
+    eng = _engine(request)
+    merged = [{**body.inputs, **it.inputs} for it in body.items]
+    get_recipe_fn = getattr(eng, "get_recipe", None)
+    if get_recipe_fn is not None:
+        try:
+            recipe = get_recipe_fn(body.recipe_id)
+            for i, values in enumerate(merged):
+                try:
+                    recipe.coerce_inputs(values)
+                except ValueError as e:
+                    raise ApiError(400, "invalid", f"item {i + 1}: {e}") from e
+        except LookupError as e:
+            raise ApiError(404, "not_found", str(e)) from e
+    batch_id = uuid.uuid4().hex
+    params = dict(body.params or {})
+    base_meta = dict(params.get(META_KEY) or {})
+    run_ids: list[str] = []
+    for i, (it, values) in enumerate(zip(body.items, merged)):
+        meta = {"source": "app", **base_meta, "batch_id": batch_id, "batch_index": i, "batch_total": len(body.items),
+                "batch_title": body.title}
+        run_ids.append(await _engine_call(eng.start_run(body.recipe_id, values, {**params, META_KEY: meta},
+                                                        project_id=body.project_id, title=it.title)))
+    return _json({"batch_id": batch_id, "run_ids": run_ids}, 201)
+
+
+def _presets(request: Request) -> PresetStore:
+    return PresetStore(getattr(request.app.state.settings, "presets_path", None))
+
+
+@api.get("/presets")
+async def list_presets(request: Request) -> Response:
+    return _json(await asyncio.to_thread(_presets(request).list))
+
+
+@api.put("/presets/{pid}")
+async def save_preset(request: Request, pid: str, body: dict[str, Any]) -> Response:
+    try:
+        preset = ExportPreset.model_validate({**body, "id": pid, "builtin": False})
+        saved = await asyncio.to_thread(_presets(request).save, preset)
+    except ValidationError as e:
+        msg = "; ".join(f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in e.errors())
+        raise ApiError(422, "invalid", msg) from e
+    except ValueError as e:
+        raise ApiError(409, "conflict", str(e)) from e
+    return _json(saved)
+
+
+@api.delete("/presets/{pid}")
+async def delete_preset(request: Request, pid: str) -> Response:
+    try:
+        await asyncio.to_thread(_presets(request).delete, pid)
+    except LookupError as e:
+        raise ApiError(404, "not_found", str(e)) from e
+    return _json({"ok": True})
 
 
 @api.post("/runs")
