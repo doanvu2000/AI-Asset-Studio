@@ -57,6 +57,11 @@ def build_prompt(workflow: dict[str, Any], entry: dict[str, Any], params: dict[s
         node = prompt.get(out["node"])
         if node is not None and "filename_prefix" in node["inputs"]:
             node["inputs"]["filename_prefix"] = prefix
+    # ComfyUI only executes nodes reachable from an output, so dropping an output skips its whole branch.
+    for node_id in params.get("_drop_outputs") or []:
+        if node_id not in {o["node"] for o in entry.get("outputs", [])}:
+            raise StepError("comfy_bad_param", f"_drop_outputs: {node_id!r} is not an output node")
+        prompt.pop(node_id, None)
     return prompt, values
 
 

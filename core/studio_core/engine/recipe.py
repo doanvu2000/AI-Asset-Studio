@@ -39,8 +39,33 @@ class Binding:
             raise RecipeError(f"{where}: bad binding {raw!r}")
         return cls(src, name)
 
+    @property
+    def parts(self) -> tuple[Binding, ...]:
+        return (self,)
+
     def __str__(self) -> str:
         return f"{self.source}.{self.name}"
+
+
+@dataclass(frozen=True)
+class ConcatBinding:
+    """`in: {images: [inputs.image, angles.images]}` — blobs concatenated in list order."""
+    parts: tuple[Binding, ...]
+
+    @property
+    def source(self) -> str:
+        return self.parts[0].source
+
+    def __str__(self) -> str:
+        return "+".join(str(p) for p in self.parts)
+
+
+def parse_binding(raw: Any, where: str) -> Binding | ConcatBinding:
+    if isinstance(raw, list):
+        if len(raw) < 2:
+            raise RecipeError(f"{where}: a binding list needs at least 2 entries")
+        return ConcatBinding(tuple(Binding.parse(r, where) for r in raw))
+    return Binding.parse(raw, where)
 
 
 @dataclass
@@ -48,14 +73,14 @@ class StepSpec:
     id: str
     kind: str
     params: dict[str, Any] = field(default_factory=dict)
-    bindings: dict[str, Binding] = field(default_factory=dict)
+    bindings: dict[str, Binding | ConcatBinding] = field(default_factory=dict)
     map: str | None = None
     map_param: str | None = None
 
     @property
     def deps(self) -> list[str]:
         out: list[str] = []
-        for b in self.bindings.values():
+        for b in (p for bb in self.bindings.values() for p in bb.parts):
             if b.source != "inputs" and b.source not in out:
                 out.append(b.source)
         return out
@@ -277,7 +302,7 @@ def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
         unknown = _placeholders(params) - inputs.keys()
         if unknown:
             raise RecipeError(f"{where}: step {sid} references unknown inputs {sorted(unknown)}")
-        bindings = {str(k): Binding.parse(v, f"{where}: step {sid} in.{k}") for k, v in (rs.get("in") or {}).items()}
+        bindings = {str(k): parse_binding(v, f"{where}: step {sid} in.{k}") for k, v in (rs.get("in") or {}).items()}
         mp = rs.get("map")
         if mp is not None and mp not in bindings:
             raise RecipeError(f"{where}: step {sid} map '{mp}' is not one of its inputs")
@@ -288,7 +313,7 @@ def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
         specs.append(StepSpec(sid, kind, params, bindings, mp, mpp))
 
     for s in specs:
-        for name, b in s.bindings.items():
+        for name, b in ((n, p) for n, bb in s.bindings.items() for p in bb.parts):
             if b.source == "inputs":
                 if b.name not in inputs or inputs[b.name]["type"] not in BLOB_TYPES:
                     raise RecipeError(f"{where}: step {s.id} in.{name} must bind an image/mesh input, got {b}")

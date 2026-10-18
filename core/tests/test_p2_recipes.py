@@ -174,7 +174,7 @@ def test_comfy_params_address_real_nodes_and_angle_order() -> None:
                 continue
             entry = index[s.kind.removeprefix("comfy.")]
             wf = json.loads((WORKFLOWS_DIR / entry["file"]).read_text(encoding="utf-8"))
-            params = {k: (v[0] if isinstance(v, list) else v) for k, v in s.params.items()}
+            params = {k: (v[0] if isinstance(v, list) and not k.startswith("_") else v) for k, v in s.params.items()}
             params = {k: ("x" if isinstance(v, str) and "${" in v else v) for k, v in params.items()}
             names = ["studio/x.png"] if s.bindings else []
             build_prompt(wf, entry, params, names, "p")
@@ -185,8 +185,27 @@ def test_comfy_params_address_real_nodes_and_angle_order() -> None:
         params = _real_recipes()[rid].step("angles").params
         ordered = []
         for out in entry["outputs"]:
+            if out["node"] in params.get("_drop_outputs", []):
+                continue
             branch = wf[out["node"]]["inputs"]["images"][0].split(":")[1]
-            ordered.append(next(v for k, v in params.items() if k.split(":")[1] == branch))
-        assert len(ordered) == 8
-        for text, want in zip(ordered, QWEN_ANGLE_PROMPTS):
+            ordered.append(next(v for k, v in params.items() if ":" in k and k.split(":")[1] == branch))
+        # 0° is the original front image, concatenated before the Qwen outputs.
+        assert len(ordered) == 7
+        for text, want in zip(ordered, QWEN_ANGLE_PROMPTS[1:]):
             assert want in text, (rid, ordered)
+
+
+def test_concat_binding_parses_and_tracks_deps(tmp_path):
+    from studio_core.engine.recipe import ConcatBinding, parse_recipe
+
+    f = tmp_path / "c.yaml"
+    f.write_text(
+        "id: c\nname: c\ninputs:\n  image: {type: image}\nsteps:\n"
+        "  - {id: a, kind: op.trim_pad_resize, in: {images: inputs.image}}\n"
+        "  - {id: b, kind: op.sheet, in: {images: [inputs.image, a.images]}}\n"
+        "outputs: {final: b.sheet}\n", encoding="utf-8")
+    r = parse_recipe(f.read_bytes(), f)
+    b = next(s for s in r.steps if s.id == "b")
+    assert isinstance(b.bindings["images"], ConcatBinding)
+    assert str(b.bindings["images"]) == "inputs.image+a.images"
+    assert b.deps == ["a"]

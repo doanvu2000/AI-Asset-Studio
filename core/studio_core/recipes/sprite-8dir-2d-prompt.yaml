@@ -19,9 +19,9 @@ steps:
   - id: angles
     kind: comfy.multi_angles_qwen2511
     in: {image: pick.images}
-    # Same branch → angle assignment as sprite-8dir-2d.yaml (output order = 0,45,...,315).
+    # Same branch → angle assignment as sprite-8dir-2d.yaml; front = picked concept.
     params:
-      "427:221:151.prompt": "Keep the camera at the same front view. Same character, same pose."
+      "_drop_outputs": ["373"]
       "427:246:228.prompt": "Rotate the camera 45 degrees to the right."
       "427:271:253.prompt": "Rotate the camera 90 degrees to the right."
       "427:346:328.prompt": "Rotate the camera 135 degrees to the right."
@@ -31,7 +31,7 @@ steps:
       "427:423:405.prompt": "Rotate the camera 45 degrees to the left."
   - id: rmbg
     kind: comfy.remove_bg_birefnet
-    in: {image: angles.images}
+    in: {image: [pick.images, angles.images]}
     map: image
   - id: norm
     kind: op.normalize

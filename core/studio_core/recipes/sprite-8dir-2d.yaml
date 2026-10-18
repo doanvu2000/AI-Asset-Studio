@@ -10,10 +10,10 @@ steps:
   - id: angles
     kind: comfy.multi_angles_qwen2511
     in: {image: inputs.image}
-    # Output order follows index.json outputs (373,374,376,377,379,380,381,424), so prompts are assigned per
-    # branch to make that order 0,45,...,315.
+    # Front (0°) is the original image; the front branch (output 373) is dropped. Remaining outputs follow index.json
+    # order (374,376,377,379,380,381,424), so prompts are assigned per branch to make that 45,90,...,315.
     params:
-      "427:221:151.prompt": "Keep the camera at the same front view. Same character, same pose."
+      "_drop_outputs": ["373"]
       "427:246:228.prompt": "Rotate the camera 45 degrees to the right."
       "427:271:253.prompt": "Rotate the camera 90 degrees to the right."
       "427:346:328.prompt": "Rotate the camera 135 degrees to the right."
@@ -23,7 +23,7 @@ steps:
       "427:423:405.prompt": "Rotate the camera 45 degrees to the left."
   - id: rmbg
     kind: comfy.remove_bg_birefnet
-    in: {image: angles.images}
+    in: {image: [inputs.image, angles.images]}
     map: image
   - id: norm
     kind: op.normalize

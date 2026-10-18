@@ -13,6 +13,7 @@ from ..config import Settings
 from ..contracts import (
     STEP_DONE_OK,
     STEP_TERMINAL,
+    BlobRef,
     BlobStore,
     EventBus,
     Executor,
@@ -381,19 +382,19 @@ class StudioEngine:
     async def _resolve_inputs(self, st: _RunState, step: StepRow) -> Outputs:
         out: Outputs = {}
         for name, raw in (step.meta.get("spec", {}).get("in") or {}).items():
-            src, oname = raw.split(".", 1)
-            if src == "inputs":
-                v = st.run.inputs.get(oname)
-                hashes = v if isinstance(v, list) else ([v] if v else [])
-                refs = []
-                for h in hashes:
-                    ref = await self.blobs.get(h)
-                    if ref is None:
-                        raise StepError("blob_missing", f"input blob {h} not found")
-                    refs.append(ref)
-                out[name] = refs
-            else:
-                out[name] = list(st.steps[src].outputs.get(oname, []))
+            refs: list[BlobRef] = []
+            for part in raw.split("+"):
+                src, oname = part.split(".", 1)
+                if src == "inputs":
+                    v = st.run.inputs.get(oname)
+                    for h in v if isinstance(v, list) else ([v] if v else []):
+                        ref = await self.blobs.get(h)
+                        if ref is None:
+                            raise StepError("blob_missing", f"input blob {h} not found")
+                        refs.append(ref)
+                else:
+                    refs.extend(st.steps[src].outputs.get(oname, []))
+            out[name] = refs
         return out
 
     async def _exec_step(self, st: _RunState, step: StepRow) -> None:
