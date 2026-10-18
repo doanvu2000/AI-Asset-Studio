@@ -12,6 +12,7 @@ from fastapi import FastAPI
 
 from studio_core import __version__
 from studio_core.api import ApiError, OrjsonResponse, mount_api
+from studio_core.adapters.translate import Translator
 from studio_core.config import Settings
 from studio_core.contracts import (
     BlobStore,
@@ -126,6 +127,7 @@ def build_app(settings: Settings, token: str, *, engine: Engine | None = None,
                   default_response_class=OrjsonResponse, docs_url=None, redoc_url=None, openapi_url=None)
     app.state.settings = settings
     app.state.token = token
+    app.state.translator = Translator(settings.data_dir / "tmp" / "translate")
     app.state.request_shutdown = lambda: log.warning("shutdown requested but no server is attached")
     mount_api(app, settings.allowed_origins)
     return app

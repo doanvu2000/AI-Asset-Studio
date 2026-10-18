@@ -189,3 +189,24 @@ def test_websocket_rejects_bad_token(tmp_path: Path) -> None:
         with pytest.raises(WebSocketDisconnect):
             with client.websocket_connect("/ws?t=bad") as ws:
                 ws.receive_json()
+
+
+async def test_translate_endpoint(app_ctx: tuple[FastAPI, httpx.AsyncClient, StubEngine]) -> None:
+    from studio_core.adapters.claude import ClaudeReply
+    from studio_core.contracts import StepError
+
+    app, client, _ = app_ctx
+
+    async def ok(content: list[dict[str, Any]], options: Any) -> ClaudeReply:
+        return ClaudeReply({"texts": ["treasure chest"]}, "", {})
+
+    app.state.translator.query = ok
+    r = await client.post("/api/translate", json={"texts": ["rương báu", "rock"]}, headers=AUTH)
+    assert r.status_code == 200 and r.json()["texts"] == ["treasure chest", "rock"]
+
+    async def down(content: list[dict[str, Any]], options: Any) -> ClaudeReply:
+        raise StepError("claude_failed", "offline")
+
+    app.state.translator.query = down
+    r = await client.post("/api/translate", json={"texts": ["cây"]}, headers=AUTH)
+    assert r.status_code == 502 and r.json()["error"]["code"] == "claude_failed"

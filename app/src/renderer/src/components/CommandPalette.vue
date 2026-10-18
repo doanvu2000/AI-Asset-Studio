@@ -2,11 +2,12 @@
 import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { onKeyStroke } from '@vueuse/core'
-import { CornerDownLeft, Images, Inbox, Keyboard, Layers, LayoutDashboard, ListChecks, Plus, Search, Settings, Workflow } from '@lucide/vue'
+import { CornerDownLeft, Images, Inbox, Keyboard, Layers, LayoutDashboard, ListChecks, Monitor, Moon, Plus, Search, Settings, Sun, Workflow } from '@lucide/vue'
 import { useRecipes } from '@/stores/recipes'
 import { useRuns } from '@/stores/runs'
 import { RUN_LABEL } from '@/composables/format'
 import { fold, openShortcuts, paletteOpen, shortcutsOpen } from '@/composables/palette'
+import { THEME_OPTIONS, useTheme } from '@/composables/theme'
 import RecipeThumb from './RecipeThumb.vue'
 import BlobImage from './BlobImage.vue'
 
@@ -46,10 +47,23 @@ const NAV: Item[] = [
   { id: 'nav-keys', group: 'Đi tới', label: 'Phím tắt', hint: '?', icon: Keyboard, run: () => openShortcuts() }
 ]
 
+const theme = useTheme()
+const THEME_ICON = { system: Monitor, light: Sun, dark: Moon }
+const LOOK: Item[] = theme.available
+  ? THEME_OPTIONS.map(([m, label]) => ({
+      id: `theme-${m}`,
+      group: 'Giao diện',
+      label: `Giao diện: ${label}`,
+      icon: THEME_ICON[m],
+      run: () => void theme.set(m)
+    }))
+  : []
+
 const items = computed<Item[]>(() => {
   const q = fold(query.value.trim())
   const match = (s: string) => !q || fold(s).includes(q)
   const nav = NAV.filter((i) => match(i.label))
+  const look = LOOK.filter((i) => match(i.label) || match('theme sáng tối dark light'))
   const make = recipes.list
     .filter((r) => match(r.name) || match(`tạo ${r.name}`))
     .slice(0, q ? 8 : 5)
@@ -72,7 +86,7 @@ const items = computed<Item[]>(() => {
       previewHash: runs.previewHash(r.id),
       run: () => void router.push(`/runs/${r.id}`)
     }))
-  return q ? [...make, ...recent, ...nav] : [...recent, ...make, ...nav]
+  return q ? [...make, ...recent, ...nav, ...look] : [...recent, ...make, ...nav, ...look]
 })
 
 const groups = computed(() => {

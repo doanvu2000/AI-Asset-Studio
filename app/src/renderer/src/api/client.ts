@@ -66,6 +66,8 @@ export interface StudioApi {
   saveRecipe(id: string, body: RecipeBody): Promise<SavedRecipe>
   deleteRecipe(id: string): Promise<{ ok: boolean; restored_builtin: boolean }>
   startBatch(body: BatchCreateBody): Promise<{ batch_id: string; run_ids: string[] }>
+  /** Vietnamese texts → English via Claude (others pass through), same order; cached per text in the core. */
+  translate(texts: string[]): Promise<{ texts: string[] }>
   presets(): Promise<ExportPreset[]>
   savePreset(p: ExportPreset): Promise<ExportPreset>
   deletePreset(id: string): Promise<void>
@@ -146,6 +148,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     saveRecipe: (id, body) => call('PUT', `/api/recipes/${enc(id)}`, body),
     deleteRecipe: (id) => call('DELETE', `/api/recipes/${enc(id)}`),
     startBatch: (body) => call('POST', '/api/batches', body),
+    translate: (texts) => call('POST', '/api/translate', { texts }),
     presets: () => call('GET', '/api/presets'),
     savePreset: (p) => call('PUT', `/api/presets/${enc(p.id)}`, p),
     deletePreset: (id) => call('DELETE', `/api/presets/${enc(id)}`),

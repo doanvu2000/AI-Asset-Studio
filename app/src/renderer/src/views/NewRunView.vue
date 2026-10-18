@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, BookOpen, Layers, LoaderCircle, Play } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, BookOpen, Languages, Layers, LoaderCircle, Play } from '@lucide/vue'
 import type { BlobRef, RecipeInfo, RecipeInputSpec } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import LaneTag from '@/components/LaneTag.vue'
+import QuickPrompts from '@/components/QuickPrompts.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RecipeThumb from '@/components/RecipeThumb.vue'
 import BlobDropZone from '@/components/BlobDropZone.vue'
@@ -14,7 +15,7 @@ import { useRecipes } from '@/stores/recipes'
 import { api, useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { stepName } from '@/composables/format'
-import { RECIPE_GROUP_LABEL, recipeGroup, type RecipeGroup } from '@/assets/art'
+import { RECIPE_GROUP_LABEL, RECOMMENDED_RECIPES, recipeGroup, recipePitch, type RecipeGroup } from '@/assets/art'
 
 const recipes = useRecipes()
 const conn = useConnection()
@@ -63,6 +64,7 @@ const groups = computed(() => {
 })
 const lastRecipe = computed(() => (lastId.value ? recipes.byId(lastId.value) : undefined))
 const flow = (r: RecipeInfo): string => [...new Set(r.steps.map((s) => stepName(s)))].join(' · ')
+const asksPick = (r: RecipeInfo): boolean => r.steps.some((s) => s.kind === 'gate.pick')
 const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((l) => l && l !== 'none'))]
 
 type FieldValue = string | number | boolean
@@ -186,10 +188,20 @@ async function submit(): Promise<void> {
   const inputs = collectInputs()
   submitting.value = true
   try {
+    const title0 = autoTitle(r, inputs)
+    const textKeys = Object.keys(inputs).filter((k) => r.inputs[k]?.type === 'text' && hasVi(inputs[k]))
+    const items = batchItems.value
+    const itemKey = varying.value
+    const batchTexts = mode.value === 'batch' && itemKey && varyBy.value === 'prompts' ? items.map((it) => String(it.inputs[itemKey])) : []
+    const english = await toEnglish([...textKeys.map((k) => String(inputs[k])), ...batchTexts])
+    textKeys.forEach((k, i) => (inputs[k] = english[i]))
+    const itemsEn = batchTexts.length
+      ? items.map((it, i) => ({ ...it, inputs: { ...it.inputs, [itemKey!]: english[textKeys.length + i] } }))
+      : items
     if (mode.value === 'batch') {
       const res = await api().startBatch({
         recipe_id: r.id,
-        items: batchItems.value,
+        items: itemsEn,
         inputs,
         title: title.value.trim() || `${r.name} × ${batchItems.value.length}`
       })
@@ -198,7 +210,7 @@ async function submit(): Promise<void> {
       batchFiles.value = []
       await router.push(`/batch/${res.batch_id}`)
     } else {
-      const { run_id } = await api().startRun({ recipe_id: r.id, inputs, title: title.value.trim() || autoTitle(r, inputs) })
+      const { run_id } = await api().startRun({ recipe_id: r.id, inputs, title: title.value.trim() || title0 })
       toasts.push('Đã bắt đầu chạy', 'success', 2500)
       await router.push(`/runs/${run_id}`)
     }
@@ -223,6 +235,45 @@ function onKey(e: KeyboardEvent): void {
   }
 }
 
+const QUICK_INPUTS = new Set(['prompt', 'idea'])
+
+// Local image models lose Vietnamese genre words ("rương", "tu tiên"); Claude and Codex steps read Vietnamese fine,
+// so recipes that route the text through them keep it as typed.
+const VI = /[ăâđêôơưàáạảãằắặẳẵầấậẩẫèéẹẻẽềếệểễìíịỉĩòóọỏõồốộổỗờớợởỡùúụủũừứựửữỳýỵỷỹ]/i
+const hasVi = (s: unknown): boolean => typeof s === 'string' && VI.test(s)
+const translatable = computed(
+  () => !!selected.value && !selected.value.steps.some((st) => /^(claude|codex)\.|^blender\.agent$/.test(st.kind))
+)
+const translating = ref<string | null>(null)
+
+async function translateField(name: string): Promise<void> {
+  const text = String(values[name] ?? '')
+  if (!hasVi(text) || translating.value) return
+  translating.value = name
+  try {
+    const res = await api().translate([text])
+    if (String(values[name] ?? '') === text) values[name] = res.texts[0] ?? text
+  } catch (e) {
+    toasts.error(e, 'Không dịch được')
+  } finally {
+    translating.value = null
+  }
+}
+
+async function toEnglish(texts: string[]): Promise<string[]> {
+  if (!translatable.value || !texts.some(hasVi)) return texts
+  translating.value = '*'
+  try {
+    const res = await api().translate(texts)
+    toasts.push('Đã dịch prompt sang tiếng Anh', 'success', 2200)
+    return res.texts
+  } catch (e) {
+    toasts.error(e, 'Không dịch được, chạy bằng tiếng Việt')
+    return texts
+  } finally {
+    translating.value = null
+  }
+}
 const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đồng', 'bình máu đỏ phát sáng']
 </script>
 
@@ -261,11 +312,17 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
           <section v-for="g in groups" :key="g.id" class="group" :aria-labelledby="`g-${g.id}`">
             <h2 :id="`g-${g.id}`" class="section-label">{{ g.label }}</h2>
             <div class="grid">
-              <button v-for="r in g.items" :key="r.id" class="rcard card" :title="r.description" @click="pick(r.id)">
+              <button v-for="r in g.items" :key="r.id" class="rcard card" :title="`${flow(r)}
+
+${r.description}`" @click="pick(r.id)">
                 <span class="rcard-art"><RecipeThumb :id="r.id" :size="76" /></span>
                 <span class="rcard-text">
                   <span class="headline rcard-name">{{ r.name }}</span>
-                  <span class="callout rcard-flow">{{ flow(r) }}</span>
+                  <span class="callout rcard-flow">{{ recipePitch(r.id) ?? flow(r) }}</span>
+                  <span v-if="asksPick(r) || RECOMMENDED_RECIPES.has(r.id)" class="caption rcard-note">
+                    <span v-if="RECOMMENDED_RECIPES.has(r.id)" class="rec">Khuyên dùng</span>
+                    <template v-if="asksPick(r)">Có bước bạn chọn ảnh</template>
+                  </span>
                   <span class="rcard-lanes">
                     <LaneTag v-for="l in lanes(r)" :key="l" :lane="l" />
                   </span>
@@ -343,6 +400,11 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
               <span v-if="spec.required" class="req" aria-hidden="true">*</span>
             </label>
             <div class="f-control">
+              <QuickPrompts
+                v-if="spec.type === 'text' && QUICK_INPUTS.has(name)"
+                :model-value="String(values[name] ?? '')"
+                @update:model-value="(v) => ((values[name] = v), validate(name, spec))"
+              />
               <textarea
                 v-if="spec.type === 'text'"
                 :id="`in-${name}`"
@@ -354,6 +416,14 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
                 @input="values[name] = ($event.target as HTMLTextAreaElement).value"
                 @blur="validate(name, spec)"
               />
+              <div v-if="spec.type === 'text' && translatable && hasVi(values[name])" class="vi-row">
+                <span class="caption">Model ảnh hiểu tiếng Anh tốt hơn — sẽ tự dịch khi chạy.</span>
+                <button type="button" class="btn btn-plain small" :disabled="!!translating" @click="translateField(name)">
+                  <LoaderCircle v-if="translating === name" class="spin" :size="14" />
+                  <Languages v-else :size="14" />
+                  Dịch ngay để xem
+                </button>
+              </div>
               <PresetSelect v-else-if="spec.type === 'preset'" :id="`in-${name}`" v-model="values[name]" />
               <div v-else-if="isNum(spec.type) && spec.options?.length" class="segmented" role="radiogroup" :aria-label="label(name, spec)">
                 <button
@@ -508,6 +578,21 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.rcard-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+}
+.rec {
+  flex: none;
+  white-space: nowrap;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 .rcard-lanes {
   display: flex;
@@ -747,5 +832,14 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
 }
 .spin {
   animation: spin 1s linear infinite;
+}
+.vi-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  margin-top: 6px;
+  color: var(--text-3);
 }
 </style>

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, session, shell, Tray, type IpcMainInvokeEvent } from 'electron'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { copyFile, cp, mkdir, writeFile } from 'node:fs/promises'
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path'
 import { release } from 'node:os'
@@ -8,10 +8,11 @@ import trayIconPath from '../../resources/tray.png?asset'
 import appIconPath from '../../resources/icon.png?asset'
 import winIconPath from '../../resources/icon.ico?asset'
 import { CoreSupervisor } from './core'
+import { deviceInfo } from './device'
 import { AssetExporter, checkHash, checkName, checkPreset, checkStep } from './assets'
 import { Devlog, listLogs, RateLimiter, type LogLevel } from './devlog'
 import { buildBundle, buildReport, parsePayload, REPORT_MAX_CHARS } from './diagnostics'
-import type { AppNotification, DiagInfo, PickPathOptions, ProgressMode } from '../preload/types'
+import type { AppNotification, DiagInfo, PickPathOptions, ProgressMode, ThemeMode } from '../preload/types'
 
 const isDev = !app.isPackaged && !!process.env.ELECTRON_RENDERER_URL
 
@@ -103,6 +104,24 @@ function hardenSession(): void {
       cb({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [csp()] } })
     })
   }
+}
+
+const THEMES: readonly ThemeMode[] = ['system', 'light', 'dark']
+const uiPrefsFile = (): string => join(app.getPath('userData'), 'ui.json')
+
+function loadTheme(): void {
+  try {
+    const t = (JSON.parse(readFileSync(uiPrefsFile(), 'utf8')) as { theme?: unknown }).theme
+    if (THEMES.includes(t as ThemeMode)) nativeTheme.themeSource = t as ThemeMode
+  } catch {
+    /* no prefs yet → follow Windows */
+  }
+}
+
+async function saveTheme(mode: ThemeMode): Promise<void> {
+  nativeTheme.themeSource = mode
+  await mkdir(dirname(uiPrefsFile()), { recursive: true })
+  await writeFile(uiPrefsFile(), JSON.stringify({ theme: mode }) + '\n', 'utf8')
 }
 
 function overlayColors(): { color: string; symbolColor: string; height: number } {
@@ -308,6 +327,12 @@ function registerIpc(): void {
     if (err) throw new Error(err)
   })
   handle('studio:restartCore', () => core.restart())
+  handle('studio:getTheme', () => nativeTheme.themeSource)
+  handle('studio:deviceInfo', () => deviceInfo())
+  handle('studio:setTheme', (_e, mode) => {
+    if (!THEMES.includes(mode as ThemeMode)) throw new Error('invalid theme')
+    return saveTheme(mode as ThemeMode)
+  })
   handle('studio:pickPath', (e, raw) => pickPath(e, raw))
   registerAssetIpc()
   registerShellIpc()
@@ -494,12 +519,14 @@ app.on('window-all-closed', () => {
 
 nativeTheme.on('updated', () => {
   win?.setTitleBarOverlay?.(overlayColors())
+  if (!vibrancy) win?.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#f2f2f5')
 })
 
 void app.whenReady().then(() => {
   app.setAppUserModelId('studio.ai-asset')
   hardenSession()
   if (!isDev) serveAppProtocol()
+  loadTheme()
   registerIpc()
   core.start()
   createWindow()

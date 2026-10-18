@@ -22,6 +22,14 @@ const counter = computed(() => {
 })
 const nodeLabel = computed(() => props.progress?.label || props.progress?.node || null)
 
+function redoNote(st: StepRow): string {
+  const views = Number(st.meta.regenerated ?? 0)
+  if (st.kind === 'views.qwen_checked' && views > 0) return ` · sinh lại ${views} góc`
+  const tries = Number(st.meta.attempts ?? 1)
+  if (st.kind === 'mesh.checked' && tries > 1) return ` · tự làm lại ${tries - 1} lần`
+  return ''
+}
+
 const detail = computed(() => {
   const st = props.step
   switch (st.status) {
@@ -32,7 +40,7 @@ const detail = computed(() => {
     case 'awaiting_human':
       return st.kind === 'gate.pick' ? 'Chờ bạn chọn ảnh' : 'Chờ bạn duyệt'
     case 'succeeded':
-      return st.started_at && st.ended_at ? `Xong sau ${humanDuration(st.ended_at - st.started_at)}` : 'Xong'
+      return (st.started_at && st.ended_at ? `Xong sau ${humanDuration(st.ended_at - st.started_at)}` : 'Xong') + redoNote(st)
     case 'cached':
       return 'Kết quả cũ, không chạy lại'
     case 'failed':

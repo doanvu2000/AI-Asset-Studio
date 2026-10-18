@@ -2,7 +2,7 @@ id: sprite-8dir-3d-mv
 name: Sprite 8 hướng (3D, multi-view)
 description: >-
   Text → concept → chọn → Qwen dựng thêm 3 góc (trái 90°, sau 180°, phải 270°) → kiểm tra góc → TRELLIS multi-view
-  (Pixal3D multiview 4 góc, mặt sau theo ảnh Qwen thay vì đoán) → Blender dọn mesh → render 8 hướng ortho → thu nhỏ 2×
+  (Pixal3D multiview 4 góc, mặt sau theo ảnh Qwen thay vì đoán; mesh lệch silhouette các góc thì sinh lại) → Blender dọn mesh → render 8 hướng ortho → thu nhỏ 2×
   → sprite sheet + JSON. Góc Qwen hỏng (nhân vật nằm ngang) được tự phát hiện và sinh lại, vẫn hỏng
   thì bỏ góc đó. Tốn RAM (~28 GB đỉnh).
 inputs:
@@ -47,10 +47,14 @@ steps:
     kind: gate.approve
     in: {images: views.images}
     params: {enabled: "${inputs.review_views}"}
+  # Same views, different seed: clean mesh or shredded fragments. Rendered back and compared to the views,
+  # a mismatch is regenerated.
   - id: mesh
-    kind: comfy.img2mesh_trellis2_mv_textured
+    kind: mesh.checked
     in: {image: [pick.images, check.images]}
-    params: {"186.target_face_count": "${inputs.faces}", "288.value": 2048, "94.target_resolution": 1024, "241.resolution": 512,
+    params: {workflow: img2mesh_trellis2_mv_textured, attempts: 3, min_iou: 0.75,
+             azimuths: {"122.image": 0, "401.image": 90, "402.image": 180, "403.image": 270},
+             "186.target_face_count": "${inputs.faces}", "288.value": 2048, "94.target_resolution": 1024, "241.resolution": 512,
              _drop_inputs: "${steps.views.report.drop_inputs}", _restart_before: true, _timeout_s: 900}
   - id: cleanup
     kind: blender.cleanup

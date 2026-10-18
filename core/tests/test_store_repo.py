@@ -104,7 +104,11 @@ async def test_run_preview_hashes_pick_latest_image_output(repo: SqliteRepo) -> 
                 outputs={"images": [_blob("4" * 64)]}),
         StepRow(id="b1", run_id="rb", key="mesh", kind="op.x", lane=Lane.GPU, order=1, outputs={"meshes": [mesh]}),
         StepRow(id="c0", run_id="rc", key="gen", kind="op.x", lane=Lane.GPU, order=0),
+        StepRow(id="d0", run_id="rd", key="down", kind="op.x", lane=Lane.CPU, order=0,
+                outputs={"images": [_blob("5" * 64), _blob("6" * 64)]}),
+        StepRow(id="d1", run_id="rd", key="sheet", kind="op.sheet", lane=Lane.CPU, order=1,
+                outputs={"sheet": [_blob("7" * 64)]}),
     ])
-    got = await repo.run_preview_hashes(["ra", "rb", "rc", "zz"])
-    assert got == {"ra": "3" * 64, "rb": "4" * 64}
+    got = await repo.run_preview_hashes(["ra", "rb", "rc", "rd", "zz"])
+    assert got == {"ra": "3" * 64, "rb": "4" * 64, "rd": "5" * 64}
     assert await repo.run_preview_hashes([]) == {}

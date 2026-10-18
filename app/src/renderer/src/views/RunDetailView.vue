@@ -13,6 +13,7 @@ import BlobThumb from '@/components/BlobThumb.vue'
 import AssetViewer from '@/components/viewers/AssetViewer.vue'
 import AssetActions from '@/components/AssetActions.vue'
 import ViewsReport from '@/components/ViewsReport.vue'
+import MeshReport from '@/components/MeshReport.vue'
 import { featuredAsset, isImage, viewsFor } from '@/components/viewers/detect'
 import Lightbox from '@/components/Lightbox.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
@@ -201,7 +202,13 @@ const selMeta = computed(() => {
     .join(' · ')
 })
 const selAwaiting = computed(() => sel.value?.status === 'awaiting_human')
-const selOutputs = computed(() => (sel.value ? Object.entries(sel.value.outputs).filter(([, v]) => v.length) : []))
+// These kinds render their report as a readable block below; the raw JSON tile would only duplicate it.
+const REPORT_KINDS = new Set(['views.qwen_checked', 'mesh.checked'])
+const selOutputs = computed(() =>
+  sel.value
+    ? Object.entries(sel.value.outputs).filter(([k, v]) => v.length && !(k === 'report' && REPORT_KINDS.has(sel.value!.kind)))
+    : []
+)
 const selInputs = computed(() => (sel.value && !selAwaiting.value ? Object.entries(sel.value.inputs).filter(([, v]) => v.length) : []))
 const selParams = computed(() => (sel.value && Object.keys(sel.value.params).length ? JSON.stringify(sel.value.params, null, 2) : ''))
 const selAdvice = computed(() => (sel.value?.status === 'failed' ? errorAdvice(sel.value.error) : null))
@@ -517,6 +524,7 @@ function segTitle(s: StepRow): string {
             </div>
 
             <ViewsReport v-if="sel.kind === 'views.qwen_checked' && sel.outputs.report?.[0]" :report="sel.outputs.report[0]" />
+            <MeshReport v-if="sel.kind === 'mesh.checked' && sel.outputs.report?.[0]" :report="sel.outputs.report[0]" />
 
             <div v-for="[name, list] in selInputs" :key="`i-${name}`" class="group">
               <h3 class="section-label">{{ portName(name) }} đầu vào</h3>

@@ -59,7 +59,7 @@ const offTitle = 'Chỉ dùng được trong app desktop'
     >
       <LoaderCircle v-if="file.busy.value === 'reveal'" class="spin" />
       <FolderOpen v-else />
-      <span v-if="!compact">Hiện trong thư mục</span>
+      <span v-if="!compact">Mở thư mục</span>
     </button>
     <button
       type="button"

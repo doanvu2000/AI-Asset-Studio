@@ -169,3 +169,50 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   Script sẵn: scratchpad `81ce8457-.../scratchpad/seed_probe.py` (chạy lại mesh live2 với N seed mới qua
   run_workflow.py, GLB ra ComfyUI `output/seedprobe/`). Chạy khi GPU rảnh: bật ComfyUI rồi
   `cd core && uv run python <scratchpad>/seed_probe.py 3`. Chép core Portable vẫn chặn (10 studio-core.exe đang chạy).
+- [x] Commit `2072734` (R7 reviewer + shared-element). GPU rảnh (chủ nhân cho phép).
+- [x] Live R5-mv (`scratchpad 81ce8457/r5mv`): 417s, views 3/3 đạt lần 1 (79s), mesh 183s KHÔNG còn lỗi RAM (pagefile F),
+  sheet 8 hướng pháp sư đẹp.
+- [x] Thử seed vc/live2 (cùng 4 ảnh): 3 seed mới → 1 đẹp (5079…), 2 hỏng; seed gốc hỏng → lỗi do SEED.
+  Metric IoU silhouette (render Blender 4 góc vs ảnh vào, `viewcheck.silhouette`): tốt min 0.82–0.90, hỏng ≤0.66.
+- [x] `mesh.checked` (`adapters/comfy/mesh_check.py`): sinh mesh qua workflow comfy → `render_dirs` 4 góc elevation 0 →
+  IoU với ảnh vào theo `azimuths` (key ảnh workflow → độ, theo slot còn lại sau `_drop_inputs`) → min < `min_iou` 0.75
+  thì sinh lại (seed mới, tối đa `attempts` 3); hết lượt `on_fail` best|fail; render lỗi → cho qua. Report
+  `mesh_report.json` (iou từng góc + ảnh render). Recipe R5-mv bước mesh dùng `mesh.checked`. Kinds + nhãn
+  "Dựng mesh 3D" + `MeshReport.vue` (khối "Kiểm tra mesh" trong inspector). Test `test_mesh_check.py` + test_p7_mv;
+  pytest 246/4 skip, typecheck sạch. Đang chạy live trên 4 ảnh pháp sư hỏng (`scratchpad 81ce8457/mc`).
+- [x] Live `mesh.checked` trên 4 ảnh pháp sư hỏng (`scratchpad 81ce8457/mc`): lần 1 min IoU 0.56 → sinh lại, lần 2
+  min 0.90 đạt; run 554s; sheet 8 hướng đẹp. CHƯA commit.
+- [x] Vòng kiểm UI trên app dev + data thật (`scratchpad 81ce8457/mc`, CDP 9354): khối "Kiểm tra mesh" hiện đúng
+  (Lần 1 Lệch hình 56% / Lần 2 Khớp 90%). Sửa: ẩn ô JSON `report` thô ở bước có khối báo cáo riêng (views/mesh),
+  StepChip ghi "· tự làm lại N lần" / "· sinh lại N góc", nút "Hiện trong thư mục" → "Mở thư mục" (hàng nút xuất
+  hết rớt dòng). `mesh.checked` lưu ảnh render kiểm tra vào report (chưa thấy live — run trước sửa). pytest 246/4,
+  typecheck sạch. CHƯA commit.
+  Còn mở (đề xuất): thẻ Tạo mới mô tả = chuỗi tên bước, chưa nói ra cái gì/mất bao lâu; tile Gần đây của sheet 8
+  khung quá nhỏ (nên hiện 1 khung).
+- [x] Chọn theme (chủ nhân hỏi): Cài đặt → Hệ thống → "Giao diện" (Theo Windows / Sáng / Tối) + Ctrl K "Giao diện: …".
+  Main `nativeTheme.themeSource` (CSS prefers-color-scheme, Mica, title bar đổi theo), lưu `userData/ui.json`, đọc
+  trước createWindow; IPC `studio:getTheme/setTheme`; renderer `composables/theme.ts`. Kiểm mock qua CDP: đổi
+  sáng/tối tức thì, ui.json ghi đúng. typecheck sạch. CHƯA commit.
+- [x] Thẻ Tạo mới: câu "ra cái gì" (`assets/art` `recipePitch`), nhãn "Khuyên dùng" (sprite-8dir-3d-mv), "Có bước bạn
+  chọn ảnh"; chuỗi bước chuyển vào tooltip. Thumbnail lượt chạy bỏ qua cổng `sheet` → khung mặt trước (core
+  `run_preview_hashes` + mock + test). Khung "Thông số máy" trên Tổng quan (`DeviceCard.vue`, main `device.ts`
+  IPC `studio:deviceInfo`: GPU/VRAM/tải/nhiệt qua nvidia-smi, RAM, CPU; poll 3s khi cửa sổ hiện; chủ nhân bảo bỏ ổ đĩa).
+- [ ] Chủ nhân thấy style icon/art xấu → đang sinh 4 hướng style bằng Codex (A glyph SF / B pixel / C diorama
+  low-poly / D mực+màu nước) × 3 chủ đề, `scratchpad 81ce8457/style/`, ghép bảng cho chủ nhân chọn.
+- [x] Mẫu nhanh (chủ nhân yêu cầu): `QuickPrompts.vue` trên ô prompt/idea (chế độ 1 lượt) — 12 chủ đề (cây cối, bụi
+  cỏ, đá, pha lê, nhà, vũ khí, rương, bình thuốc, thùng, nhân vật, quái vật, linh thú) + 10 phong cách (trung cổ,
+  anime, tu tiên, Nhật cổ, chibi, hoạt hình, pixel, low-poly, dark fantasy, sci-fi). Nhãn Việt, text tiếng Anh;
+  chip chỉ sửa phần của nó (chủ đề đầu câu, phong cách cuối câu), giữ chữ người dùng gõ giữa. Kiểm CDP OK.
+- [x] 12 mẫu style xong: `scratchpad 81ce8457/style/compare.png` (hàng A glyph / B pixel / C diorama / D mực; cột sprite,
+  rương, concept). Đề xuất C (diorama low-poly) cho art quy trình + empty state, giữ icon nét lucide cho thanh bên.
+  CHỜ chủ nhân chọn → sinh lại 13 art quy trình + 6 art empty/onboarding theo style chọn.
+- [x] Prompt tiếng Việt (chủ nhân chọn "cả hai"): thử Z-Image cùng seed VI/EN — VI mất ý chuyên biệt (rương → hộp,
+  tu tiên/linh khí mất), anime đơn giản thì OK. Core `adapters/translate.py` `Translator` (Claude Opus, schema, cache
+  theo text) + `POST /api/translate`; app: nút "Dịch ngay để xem" dưới ô prompt khi có dấu tiếng Việt + tự dịch khi
+  bấm chạy (cả lô 1 call), tên lượt chạy giữ tiếng Việt; bỏ qua recipe có bước claude./codex./blender.agent. Live:
+  9s, $0.013, dịch đúng xianxia/treasure chest. Test `test_translate.py` + API test.
+- [ ] Chủ nhân chọn style D (mực + màu nước) → sinh 18 art nền trong suốt (`scratchpad 81ce8457/artd`, `art_d.py`),
+  sẽ crop sát + webp 192 (recipe) / 352 (empty) thay vào `app/src/renderer/src/assets/art/` + map recipe-sprite-8dir-2d-prompt.
+- [x] Art style D đã thay: 18 webp nền trong suốt (12+1 recipe 192px, 5 empty/onboarding 352px), cắt sát nội dung;
+  `recipe-sprite-8dir-2d-prompt` có art riêng. app-icon giữ nguyên. Chụp mock Tạo mới sáng/tối OK.
+  pytest 249/4 skip, typecheck sạch. Mockup chọn style: `.planning/style-mockup/index.html`. TẤT CẢ CHƯA commit.

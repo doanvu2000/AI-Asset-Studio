@@ -9,6 +9,7 @@ import RecipeThumb from '@/components/RecipeThumb.vue'
 import RelTime from '@/components/RelTime.vue'
 import GettingStarted from '@/components/GettingStarted.vue'
 import AgentConnectCard from '@/components/AgentConnectCard.vue'
+import DeviceCard from '@/components/DeviceCard.vue'
 import { useResources } from '@/stores/resources'
 import { useRuns } from '@/stores/runs'
 import { useGates, type GateItem } from '@/stores/gates'
@@ -116,6 +117,8 @@ async function toggle(name: string, start: boolean): Promise<void> {
           </template>
           <span v-else class="skeleton" />
         </section>
+
+        <DeviceCard />
 
         <GettingStarted v-if="firstTime" />
 

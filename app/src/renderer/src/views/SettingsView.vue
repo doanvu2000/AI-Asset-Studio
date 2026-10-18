@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ArrowDown, ArrowUp, Copy, FolderCog, Lock, LoaderCircle, Plus, Save, ScrollText, Trash2 } from '@lucide/vue'
+import { ArrowDown, ArrowUp, Copy, FolderCog, Lock, LoaderCircle, Plus, Save, ScrollText, SunMoon, Trash2 } from '@lucide/vue'
 import type { Compass, ExportPreset } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import DiagnosticsPanel from '@/components/DiagnosticsPanel.vue'
 import ToolPathsPanel from '@/components/ToolPathsPanel.vue'
 import ResizeHandle from '@/components/ResizeHandle.vue'
 import { usePaneWidth } from '@/composables/paneSize'
+import { THEME_OPTIONS, useTheme } from '@/composables/theme'
 import { usePresets } from '@/stores/catalog'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
@@ -36,12 +37,13 @@ const presetSummary = (p: ExportPreset): string =>
 
 const route = useRoute()
 const selectedId = ref<string>('studio')
-const pane = ref<'tools' | 'diag' | null>(null)
+const pane = ref<'look' | 'tools' | 'diag' | null>(null)
+const theme = useTheme()
 // Deep links such as the offline screen's "Mở Cài đặt → Đường dẫn" (/settings?pane=tools).
 watch(
   () => route.query.pane,
   (q) => {
-    if (q === 'tools' || q === 'diag') pane.value = q
+    if (q === 'look' || q === 'tools' || q === 'diag') pane.value = q
   },
   { immediate: true }
 )
@@ -174,6 +176,11 @@ async function remove(): Promise<void> {
     <div class="split">
       <aside class="list" aria-label="Cài đặt" :style="{ '--pane-w': `${listW}px` }">
         <p class="section-label pad">Hệ thống</p>
+        <button v-if="theme.available" class="item" :class="{ on: pane === 'look' }" @click="pane = 'look'">
+          <span class="i-name">Giao diện</span>
+          <SunMoon :size="13" class="lock" aria-hidden="true" />
+          <span class="i-sub caption">{{ THEME_OPTIONS.find((o) => o[0] === theme.mode.value)?.[1] }}</span>
+        </button>
         <button class="item" :class="{ on: pane === 'tools' }" @click="pane = 'tools'">
           <span class="i-name">Đường dẫn công cụ</span>
           <FolderCog :size="13" class="lock" aria-hidden="true" />
@@ -201,7 +208,36 @@ async function remove(): Promise<void> {
       </aside>
       <ResizeHandle v-model="listW" label="Danh mục cài đặt" :default-size="250" :min="200" :max="400" />
 
-      <section v-if="pane === 'tools'" class="scroll pane">
+      <section v-if="pane === 'look'" class="scroll pane">
+        <div class="form">
+          <header class="f-head">
+            <div>
+              <p class="section-label eyebrow">Hệ thống</p>
+              <h2 class="content-title">Giao diện</h2>
+            </div>
+          </header>
+          <div class="f">
+            <span class="lbl">Chế độ màu</span>
+            <div>
+            <div class="seg" role="radiogroup" aria-label="Chế độ màu">
+              <button
+                v-for="o in THEME_OPTIONS"
+                :key="o[0]"
+                type="button"
+                role="radio"
+                :aria-checked="theme.mode.value === o[0]"
+                :class="{ on: theme.mode.value === o[0] }"
+                @click="theme.set(o[0])"
+              >
+                {{ o[1] }}
+              </button>
+            </div>
+            <p class="caption help">Áp dụng ngay, nhớ cho lần mở sau. Cũng đổi nhanh được qua Ctrl K → “Giao diện”.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section v-else-if="pane === 'tools'" class="scroll pane">
         <ToolPathsPanel />
       </section>
       <section v-else-if="pane === 'diag'" class="scroll pane">

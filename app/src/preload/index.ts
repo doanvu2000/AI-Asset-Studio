@@ -18,6 +18,9 @@ const bridge: StudioBridge = {
   openLogsDir: () => ipcRenderer.invoke('studio:openLogsDir'),
   openSettingsFile: () => ipcRenderer.invoke('studio:openSettingsFile'),
   restartCore: () => ipcRenderer.invoke('studio:restartCore'),
+  getTheme: () => ipcRenderer.invoke('studio:getTheme'),
+  deviceInfo: () => ipcRenderer.invoke('studio:deviceInfo'),
+  setTheme: (mode) => ipcRenderer.invoke('studio:setTheme', mode),
   pickPath: (opts) => ipcRenderer.invoke('studio:pickPath', opts),
   asset: {
     prepare: (hash, name) => ipcRenderer.invoke('studio:asset:prepare', hash, name),

@@ -37,6 +37,11 @@ export interface StudioBridge {
   /** Opens <data>/settings.json in the default editor (created as `{}` when missing); the way to fix paths while the core is down. */
   openSettingsFile(): Promise<void>
   restartCore(): Promise<void>
+  /** 'system' follows Windows; the choice is kept in userData/ui.json. */
+  getTheme(): Promise<ThemeMode>
+  /** CPU/RAM from the OS, NVIDIA GPUs via nvidia-smi (empty when absent). */
+  deviceInfo(): Promise<DeviceInfo>
+  setTheme(mode: ThemeMode): Promise<void>
   pickPath(opts: PickPathOptions): Promise<string | null>
   asset: AssetBridge
   /** Taskbar progress: 0..1, or null to clear. `paused` paints it amber (waiting on the user). */
@@ -46,6 +51,25 @@ export interface StudioBridge {
   onNavigate(cb: (route: string) => void): () => void
   platform: string
 }
+
+export interface GpuInfo {
+  name: string
+  vramTotal: number
+  vramUsed: number
+  util: number | null
+  temp: number | null
+  driver: string
+}
+
+export interface DeviceInfo {
+  cpu: string
+  threads: number
+  ramTotal: number
+  ramUsed: number
+  gpus: GpuInfo[]
+}
+
+export type ThemeMode = 'system' | 'light' | 'dark'
 
 export type ProgressMode = 'normal' | 'paused' | 'error' | 'indeterminate'
 

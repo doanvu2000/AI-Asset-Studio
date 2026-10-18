@@ -105,7 +105,8 @@ class SqliteRepo:
         return [_RUNS.decode(r) for r in rows]
 
     async def run_preview_hashes(self, run_ids: list[str]) -> dict[str, str]:
-        """Per run, the first image output of the latest step that produced one (list thumbnails)."""
+        """Per run, the first image output of the latest step that produced one (list thumbnails). A sprite sheet is
+        skipped for the frames before it: eight frames squeezed into a square tile read as specks."""
         if not run_ids:
             return {}
         out: dict[str, str] = {}
@@ -119,7 +120,9 @@ class SqliteRepo:
             for row in rows:
                 if row["run_id"] in out:
                     continue
-                for blobs in orjson.loads(row["outputs"]).values():
+                for port, blobs in orjson.loads(row["outputs"]).items():
+                    if port == "sheet":
+                        continue
                     image = next((b for b in blobs if str(b.get("mime", "")).startswith("image/")), None)
                     if image:
                         out[row["run_id"]] = image["hash"]

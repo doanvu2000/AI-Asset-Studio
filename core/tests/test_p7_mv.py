@@ -29,7 +29,7 @@ def test_mv_recipe_shape() -> None:
     assert r.resolve_params(r.step("check"), r.coerce_inputs({"prompt": "x", "review_views": True}))["enabled"] is True
     assert str(r.step("check").bindings["images"]) == "views.images"
     mesh = r.step("mesh")
-    assert mesh.kind == "comfy.img2mesh_trellis2_mv_textured"
+    assert mesh.kind == "mesh.checked" and mesh.params["workflow"] == "img2mesh_trellis2_mv_textured"
     image = mesh.bindings["image"]
     assert isinstance(image, ConcatBinding)
     assert [str(b) for b in image.parts] == ["pick.images", "check.images"]
@@ -46,7 +46,7 @@ def test_mv_recipe_shape() -> None:
 
 def test_mv_recipe_kinds_resolve(tmp_path: Path) -> None:
     from studio_core.adapters.blender import BlenderCleanupExecutor, BlenderRenderDirsExecutor
-    from studio_core.adapters.comfy import CheckedViewsExecutor
+    from studio_core.adapters.comfy import CheckedMeshExecutor, CheckedViewsExecutor
     from studio_core.contracts import ExecutorRegistry, Lane
     from studio_core.engine.gates import register_gates
     from studio_core.ops import register as register_ops
@@ -59,6 +59,7 @@ def test_mv_recipe_kinds_resolve(tmp_path: Path) -> None:
     reg.register(BlenderCleanupExecutor(settings, object()))  # type: ignore[arg-type]
     reg.register_prefix("comfy.", lambda kind: type("C", (), {"kind": kind, "lane": Lane.GPU})())  # type: ignore[arg-type, return-value]
     reg.register(CheckedViewsExecutor(reg.resolve))
+    reg.register(CheckedMeshExecutor(reg.resolve))
     for s in _mv_recipe().steps:
         reg.resolve(s.kind)
 
@@ -92,6 +93,8 @@ def test_mv_workflow_binds_views_in_rig_order() -> None:
 
     keys = [i["key"] for i in entry["images"]]
     assert keys == [f"{load_node_of(v)}.image" for v in VIEW_ORDER]
+    azimuths = _mv_recipe().step("mesh").params["azimuths"]
+    assert [azimuths[k] for k in keys] == [0, 90, 180, 270]
 
     names = [f"studio/{v}.png" for v in VIEW_ORDER]
     prompt, _ = build_prompt(wf, entry, {"94.target_resolution": 1024}, names, "p")
@@ -134,3 +137,14 @@ def test_mv_workflow_drops_a_view_slot() -> None:
     assert prompt["122"]["inputs"]["image"] == names[0]
     assert prompt["402"]["inputs"]["image"] == names[1] and prompt["403"]["inputs"]["image"] == names[2]
     assert "401.image" not in values
+
+
+@needs_workflows
+def test_mesh_check_azimuths_follow_dropped_slot() -> None:
+    from studio_core.adapters.comfy import CheckedMeshExecutor
+    from studio_core.adapters.comfy.executor import load_index
+
+    gen: Any = type("G", (), {"entry": load_index(WORKFLOWS_DIR)["img2mesh_trellis2_mv_textured"],
+                              "workflow_path": WORKFLOWS_DIR / "img2mesh_trellis2_mv_textured.api.json"})()
+    params = {**_mv_recipe().step("mesh").params, "_drop_inputs": ["330.left"]}
+    assert CheckedMeshExecutor(lambda k: gen)._image_azimuths(gen, params, 3) == [0, 180, 270]

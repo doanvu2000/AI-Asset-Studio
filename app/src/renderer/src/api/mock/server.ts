@@ -828,6 +828,11 @@ export class MockCore implements StudioApi, EventStream {
     return { ok: true, restored_builtin: this.builtins.has(id) }
   }
 
+  async translate(texts: string[]): Promise<{ texts: string[] }> {
+    await sleep(600)
+    return { texts: texts.map((t) => (/[ăâđêôơưàáạảãèéẹẻẽìíịỉĩòóọỏõùúụủũỳýỵỷỹ]/i.test(t) ? `[EN] ${t}` : t)) }
+  }
+
   async startBatch(body: BatchCreateBody): Promise<{ batch_id: string; run_ids: string[] }> {
     if (!this.recipe(body.recipe_id)) throw new ApiError('not_found', `unknown recipe: ${body.recipe_id}`, 404)
     if (!body.items.length) throw new ApiError('invalid', 'batch needs at least one item', 400)
@@ -929,11 +934,12 @@ export class MockCore implements StudioApi, EventStream {
     return clone(rows.slice(0, q.limit ?? 50).map((r) => ({ ...r, preview_hash: this.previewHash(r.id) })))
   }
 
-  // Same rule as the core: first image output of the latest step that produced one.
+  // Same rule as the core: first image output of the latest step that produced one, sprite sheets skipped.
   private previewHash(runId: string): string | null {
     const steps = this.stepsOf(runId).sort((a, b) => b.order - a.order)
     for (const s of steps) {
-      for (const blobs of Object.values(s.outputs)) {
+      for (const [port, blobs] of Object.entries(s.outputs)) {
+        if (port === 'sheet') continue
         const img = blobs.find((b) => b.mime.startsWith('image/'))
         if (img) return img.hash
       }

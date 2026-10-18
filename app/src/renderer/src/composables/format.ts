@@ -185,6 +185,7 @@ const KIND_SHORT: Record<string, string> = {
   'comfy.segment_sam3': 'Tách part',
   'comfy.inpaint_flux2_klein4b': 'Vá chỗ khuất',
   'views.qwen_checked': 'Sinh các góc',
+  'mesh.checked': 'Dựng mesh 3D',
   'codex.image': 'Sinh ảnh',
   'claude.task': 'Claude phân tích',
   'claude.brief': 'Viết brief',

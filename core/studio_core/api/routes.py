@@ -17,6 +17,7 @@ from starlette.responses import Response
 from studio_core import __version__
 from studio_core.api.auth import require_token, require_token_or_query
 from studio_core.api.errors import ApiError, OrjsonResponse
+from studio_core.adapters.translate import MAX_TEXTS
 from studio_core.engine.kinds import describe_kinds
 from studio_core.engine.library import RecipeLibrary, issue, to_text, validate
 from studio_core.engine.recipe import Recipe, RecipeError
@@ -30,6 +31,7 @@ from studio_core.contracts import (
     Repo,
     Resource,
     RunStatus,
+    StepError,
     StepStatus,
     VersionStatus,
 )
@@ -41,6 +43,10 @@ blob_api = APIRouter(prefix="/api", dependencies=[Depends(require_token_or_query
 _IMMUTABLE = "public, max-age=31536000, immutable"
 META_KEY = "$meta"
 _GENERIC_MIMES = {None, "", "application/octet-stream"}
+
+
+class TranslateBody(BaseModel):
+    texts: list[str]
 
 
 class RunCreate(BaseModel):
@@ -113,6 +119,17 @@ async def stop_resource(request: Request, name: str) -> Response:
     r = _resource(request, name)
     await r.stop()
     return _json(await r.health())
+
+
+@api.post("/translate")
+async def translate(request: Request, body: TranslateBody) -> Response:
+    if len(body.texts) > MAX_TEXTS:
+        raise ApiError(400, "invalid", f"at most {MAX_TEXTS} texts per call")
+    try:
+        texts, meta = await request.app.state.translator.to_english(body.texts)
+    except StepError as e:
+        raise ApiError(502, e.code, e.message) from e
+    return _json({"texts": texts, **meta})
 
 
 @api.get("/recipes")
