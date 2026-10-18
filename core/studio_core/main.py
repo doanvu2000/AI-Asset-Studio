@@ -15,9 +15,16 @@ import uvicorn
 from studio_core import __version__
 from studio_core.app import build_app
 from studio_core.config import load_settings
-from studio_core.mcp.lockfile import remove_lock, write_lock
+from studio_core.mcp.lockfile import (BUSY_PREFIX, EXIT_ALREADY_RUNNING, SpawnLock, live_core, remove_lock,
+                                      write_lock)
 
 READY_PREFIX = "STUDIO_CORE_READY"
+
+
+class AlreadyRunning(Exception):
+    def __init__(self, info: dict) -> None:
+        super().__init__(f"core already running: pid={info.get('pid')} port={info.get('port')}")
+        self.info = info
 
 
 def _parse(argv: list[str] | None) -> argparse.Namespace:
@@ -46,7 +53,8 @@ def _bind(host: str, port: int) -> socket.socket:
     return sock
 
 
-async def _announce_when_started(server: uvicorn.Server, host: str, port: int, data_dir: Path, token: str) -> None:
+async def _announce_when_started(server: uvicorn.Server, host: str, port: int, data_dir: Path, token: str,
+                                 spawn_lock: SpawnLock) -> None:
     while not server.started:
         if server.should_exit:
             return
@@ -55,6 +63,7 @@ async def _announce_when_started(server: uvicorn.Server, host: str, port: int, d
         write_lock(data_dir, host=host, port=port, token=token, version=__version__)
     except OSError:
         logging.getLogger(__name__).exception("could not write core lock file")
+    spawn_lock.release()
     sys.stdout.write(f"{READY_PREFIX} {json.dumps({'port': port, 'pid': os.getpid()})}\n")
     sys.stdout.flush()
 
@@ -88,8 +97,18 @@ async def _serve(args: argparse.Namespace) -> None:
         token = secrets.token_urlsafe(32)
         print(f"STUDIO_TOKEN not set; dev token: {token}", file=sys.stderr, flush=True)
 
-    app = build_app(settings, token)
-    sock = _bind(args.host, args.port)
+    spawn_lock = SpawnLock(settings.data_dir)
+    if not await asyncio.to_thread(spawn_lock.acquire):
+        logging.getLogger(__name__).warning("spawn lock held for >%.0fs; starting anyway", spawn_lock.wait_s)
+    try:
+        other = await asyncio.to_thread(live_core, settings.data_dir)
+        if other is not None:
+            raise AlreadyRunning(other)
+        app = build_app(settings, token)
+        sock = _bind(args.host, args.port)
+    except BaseException:
+        spawn_lock.release()
+        raise
     port = sock.getsockname()[1]
     config = uvicorn.Config(app, log_config=None, log_level=args.log_level, access_log=False,
                             ws_ping_interval=20.0, timeout_graceful_shutdown=10)
@@ -99,7 +118,8 @@ async def _serve(args: argparse.Namespace) -> None:
         server.should_exit = True
 
     app.state.request_shutdown = request_shutdown
-    announcer = asyncio.create_task(_announce_when_started(server, args.host, port, settings.data_dir, token))
+    announcer = asyncio.create_task(_announce_when_started(server, args.host, port, settings.data_dir, token,
+                                                         spawn_lock))
     parent = os.environ.get("STUDIO_PARENT_PID")
     watcher = None
     if parent and sys.platform == "win32":
@@ -111,6 +131,7 @@ async def _serve(args: argparse.Namespace) -> None:
         if watcher:
             watcher.cancel()
         sock.close()
+        spawn_lock.release()
         remove_lock(settings.data_dir)
 
 
@@ -123,6 +144,10 @@ def main(argv: list[str] | None = None) -> int:
             asyncio.run(_serve(args))
         except KeyboardInterrupt:
             pass
+        except AlreadyRunning as e:
+            print(f"{BUSY_PREFIX} {json.dumps({'port': e.info['port'], 'pid': e.info['pid']})}", flush=True)
+            print(f"studio_core: {e} for this data dir; attach via core.lock.json", file=sys.stderr, flush=True)
+            return EXIT_ALREADY_RUNNING
     elif args.cmd == "mcp":
         from studio_core.mcp.server import run_stdio
 

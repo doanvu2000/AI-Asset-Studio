@@ -1,7 +1,8 @@
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { EventEmitter } from 'node:events'
 import type { CoreConnection, CoreStatus } from '../preload/types'
 
@@ -9,14 +10,48 @@ const READY_PREFIX = 'STUDIO_CORE_READY '
 const READY_TIMEOUT_MS = 20_000
 const BACKOFF_MAX_MS = 30_000
 const STABLE_AFTER_MS = 60_000
+const ATTACH_WATCH_MS = 3_000
+// Must match EXIT_ALREADY_RUNNING in core/studio_core/mcp/lockfile.py.
+const EXIT_ALREADY_RUNNING = 3
 
 export interface CoreOptions {
   repoRoot: string
   mock: boolean
 }
 
+interface CoreLock {
+  pid: number
+  host: string
+  port: number
+  token: string
+}
+
+function parseCoreLock(text: string): CoreLock | null {
+  try {
+    const d = JSON.parse(text) as Record<string, unknown>
+    if (!Number.isInteger(d.port) || !Number.isInteger(d.pid) || typeof d.token !== 'string' || !d.token) return null
+    const host = typeof d.host === 'string' && d.host && d.host !== '0.0.0.0' && d.host !== '::' ? d.host : '127.0.0.1'
+    return { pid: d.pid as number, host, port: d.port as number, token: d.token }
+  } catch {
+    return null
+  }
+}
+
+function pidAlive(pid: number): boolean {
+  if (pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM'
+  }
+}
+
 export class CoreSupervisor extends EventEmitter {
-  readonly token = randomBytes(32).toString('hex')
+  private readonly ownToken = randomBytes(32).toString('hex')
+  private token = this.ownToken
+  private attachedPid: number | null = null
+  private attachWatch: NodeJS.Timeout | null = null
   private child: ChildProcess | null = null
   private status: CoreStatus = { state: 'stopped', attempt: 0 }
   private stopping = false
@@ -52,11 +87,66 @@ export class CoreSupervisor extends EventEmitter {
       this.setStatus({ state: 'ready', baseUrl: 'mock://core', attempt: 0, mock: true })
       return
     }
-    this.spawnOnce()
+    void this.connect()
   }
 
   get coreDir(): string {
     return join(this.opts.repoRoot, 'core')
+  }
+
+  // Mirrors core/studio_core/config.py: default <repo>/data, STUDIO_DATA_DIR relative to the core's cwd.
+  get dataDir(): string {
+    const env = process.env.STUDIO_DATA_DIR
+    return env ? resolve(this.coreDir, env) : join(this.opts.repoRoot, 'data')
+  }
+
+  private async connect(): Promise<void> {
+    if (this.stopping) return
+    if (!(await this.tryAttach()) && !this.stopping) this.spawnOnce()
+  }
+
+  /** Reuses a core another client (MCP server) already runs on our data dir instead of starting a second one. */
+  private async tryAttach(): Promise<boolean> {
+    let lock: CoreLock | null
+    try {
+      lock = parseCoreLock(await readFile(join(this.dataDir, 'core.lock.json'), 'utf8'))
+    } catch {
+      return false
+    }
+    if (!lock || !pidAlive(lock.pid)) return false
+    const baseUrl = `http://${lock.host}:${lock.port}`
+    try {
+      const res = await fetch(`${baseUrl}/api/runs?limit=1`, {
+        headers: { Authorization: `Bearer ${lock.token}` },
+        signal: AbortSignal.timeout(3000)
+      })
+      if (!res.ok) return false
+    } catch {
+      return false
+    }
+    if (this.stopping) return false
+    this.token = lock.token
+    this.attachedPid = lock.pid
+    this.readyAt = Date.now()
+    const pid = lock.pid
+    this.attachWatch = setInterval(() => {
+      if (!pidAlive(pid)) this.onAttachedLost()
+    }, ATTACH_WATCH_MS)
+    this.setStatus({ state: 'ready', attempt: this.status.attempt + 1, baseUrl, pid, attached: true })
+    return true
+  }
+
+  private detach(): void {
+    if (this.attachWatch) clearInterval(this.attachWatch)
+    this.attachWatch = null
+    this.attachedPid = null
+    this.token = this.ownToken
+  }
+
+  private onAttachedLost(): void {
+    this.detach()
+    this.lastMessage = 'Core dùng chung đã dừng'
+    this.scheduleRestart(null)
   }
 
   pythonPath(): string {
@@ -118,6 +208,12 @@ export class CoreSupervisor extends EventEmitter {
         this.setStatus({ state: 'stopped', attempt })
         return
       }
+      if (code === EXIT_ALREADY_RUNNING) {
+        void this.tryAttach().then((ok) => {
+          if (!ok && !this.stopping) this.scheduleRestart(code)
+        })
+        return
+      }
       this.scheduleRestart(code)
     })
   }
@@ -151,13 +247,19 @@ export class CoreSupervisor extends EventEmitter {
     this.lastMessage = undefined
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null
-      if (!this.stopping) this.spawnOnce()
+      void this.connect()
     }, delay)
   }
 
   async stop(): Promise<void> {
     this.stopping = true
     if (this.restartTimer) clearTimeout(this.restartTimer)
+    if (this.attachedPid !== null) {
+      // Not ours: its spawner (MCP server) decides when it exits.
+      this.detach()
+      this.setStatus({ state: 'stopped', attempt: this.status.attempt })
+      return
+    }
     const child = this.child
     if (!child) return
     const exited = new Promise<void>((r) => child.once('exit', () => r()))

@@ -16,7 +16,7 @@ from typing import Any, BinaryIO
 import httpx
 
 import studio_core
-from studio_core.mcp.lockfile import pid_alive, read_lock
+from studio_core.mcp.lockfile import BUSY_PREFIX, lock_host, pid_alive, read_lock
 
 log = logging.getLogger(__name__)
 
@@ -72,10 +72,7 @@ class CoreLink:
         info = await asyncio.to_thread(read_lock, self.data_dir)
         if info is None or not await asyncio.to_thread(pid_alive, int(info.get("pid", 0))):
             return None
-        host = str(info.get("host") or "127.0.0.1")
-        if host in ("0.0.0.0", "::"):
-            host = "127.0.0.1"
-        c = self._make_client(host, info["port"], str(info["token"]))
+        c = self._make_client(lock_host(info), info["port"], str(info["token"]))
         if await self._alive(c):
             log.info("attached to core pid=%s port=%s", info.get("pid"), info["port"])
             return c
@@ -91,7 +88,13 @@ class CoreLink:
         cmd = [self.python, "-m", "studio_core", "serve", "--port", "0", "--data-dir", str(self.data_dir)]
         with (logs / "mcp-core.log").open("ab") as err:
             proc = _popen_detached(cmd, env, err)
-        port, pid = await asyncio.to_thread(_await_ready, proc, self.boot_timeout_s)
+        try:
+            port, pid = await asyncio.to_thread(_await_ready, proc, self.boot_timeout_s)
+        except CoreError as e:
+            # Another spawner (app or a second MCP session) won the start race; its core is the one to use.
+            if e.code == "core_already_running" and (c := await self._attach()) is not None:
+                return c
+            raise
         self.spawned_pid = pid
         log.info("spawned core pid=%s port=%s", pid, port)
         return self._make_client("127.0.0.1", port, token)
@@ -202,6 +205,7 @@ def _await_ready(proc: subprocess.Popen[bytes], timeout_s: float) -> tuple[int, 
     assert proc.stdout is not None
     found: list[tuple[int, int]] = []
     eof = threading.Event()
+    busy = threading.Event()
 
     def reader() -> None:
         # Drains until EOF so a stray print in the core never blocks on a full pipe.
@@ -210,6 +214,8 @@ def _await_ready(proc: subprocess.Popen[bytes], timeout_s: float) -> tuple[int, 
             if not found and line.startswith(READY_PREFIX):
                 info = json.loads(line.split(" ", 1)[1])
                 found.append((int(info["port"]), int(info["pid"])))
+            elif line.startswith(BUSY_PREFIX):
+                busy.set()
         eof.set()
 
     threading.Thread(target=reader, name="core-stdout", daemon=True).start()
@@ -217,6 +223,8 @@ def _await_ready(proc: subprocess.Popen[bytes], timeout_s: float) -> tuple[int, 
     while time.monotonic() < deadline:
         if found:
             return found[0]
+        if busy.is_set():
+            raise CoreError(0, "core_already_running", "another core already serves this data dir")
         if eof.is_set():
             raise CoreError(0, "core_boot_failed", "core exited before READY; see logs/mcp-core.log")
         time.sleep(0.05)

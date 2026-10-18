@@ -9,6 +9,7 @@ export interface CoreStatus {
   detail?: string
   retryInMs?: number
   mock?: boolean
+  attached?: boolean
 }
 
 export interface CoreConnection {
