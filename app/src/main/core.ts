@@ -55,7 +55,11 @@ export class CoreSupervisor extends EventEmitter {
     this.spawnOnce()
   }
 
-  private pythonPath(): string {
+  get coreDir(): string {
+    return join(this.opts.repoRoot, 'core')
+  }
+
+  pythonPath(): string {
     return process.env.STUDIO_PYTHON ?? join(this.opts.repoRoot, 'core', '.venv', 'Scripts', 'python.exe')
   }
 

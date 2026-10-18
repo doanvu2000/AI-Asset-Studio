@@ -7,6 +7,7 @@ import ResourceCard from '@/components/ResourceCard.vue'
 import RunRowItem from '@/components/RunRowItem.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
+import AgentConnectCard from '@/components/AgentConnectCard.vue'
 import { useResources } from '@/stores/resources'
 import { useRuns } from '@/stores/runs'
 import { useGates } from '@/stores/gates'
@@ -122,6 +123,8 @@ async function toggle(name: string, start: boolean): Promise<void> {
             <RouterLink to="/new" class="btn btn-primary"><Plus /> Tạo mới</RouterLink>
           </EmptyState>
         </section>
+
+        <AgentConnectCard />
       </div>
     </div>
   </div>

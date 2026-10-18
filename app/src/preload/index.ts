@@ -3,6 +3,8 @@ import type { CoreStatus, StudioBridge } from './types'
 
 const bridge: StudioBridge = {
   getConnection: () => ipcRenderer.invoke('studio:getConnection'),
+  mcpInfo: () => ipcRenderer.invoke('studio:mcpInfo'),
+  copyText: (text) => ipcRenderer.invoke('studio:copyText', text),
   onCoreStatus(cb) {
     const listener = (_e: IpcRendererEvent, s: CoreStatus): void => cb(s)
     ipcRenderer.on('studio:coreStatus', listener)

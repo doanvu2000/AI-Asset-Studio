@@ -16,8 +16,15 @@ export interface CoreConnection {
   token: string
 }
 
+export interface McpInfo {
+  python: string
+  coreDir: string
+}
+
 export interface StudioBridge {
   getConnection(): Promise<CoreConnection>
+  mcpInfo(): Promise<McpInfo>
+  copyText(text: string): Promise<void>
   onCoreStatus(cb: (s: CoreStatus) => void): () => void
   platform: string
 }

@@ -12,8 +12,10 @@ from pathlib import Path
 
 import uvicorn
 
+from studio_core import __version__
 from studio_core.app import build_app
 from studio_core.config import load_settings
+from studio_core.mcp.lockfile import remove_lock, write_lock
 
 READY_PREFIX = "STUDIO_CORE_READY"
 
@@ -26,6 +28,9 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     serve.add_argument("--port", type=int, default=0)
     serve.add_argument("--data-dir", type=Path, default=None)
     serve.add_argument("--log-level", default="info")
+    mcp = sub.add_parser("mcp", help="stdio MCP server proxying to a running (or auto-spawned) core")
+    mcp.add_argument("--data-dir", type=Path, default=None)
+    mcp.add_argument("--log-level", default="warning")
     return p.parse_args(argv)
 
 
@@ -41,11 +46,15 @@ def _bind(host: str, port: int) -> socket.socket:
     return sock
 
 
-async def _announce_when_started(server: uvicorn.Server, port: int) -> None:
+async def _announce_when_started(server: uvicorn.Server, host: str, port: int, data_dir: Path, token: str) -> None:
     while not server.started:
         if server.should_exit:
             return
         await asyncio.sleep(0.02)
+    try:
+        write_lock(data_dir, host=host, port=port, token=token, version=__version__)
+    except OSError:
+        logging.getLogger(__name__).exception("could not write core lock file")
     sys.stdout.write(f"{READY_PREFIX} {json.dumps({'port': port, 'pid': os.getpid()})}\n")
     sys.stdout.flush()
 
@@ -90,7 +99,7 @@ async def _serve(args: argparse.Namespace) -> None:
         server.should_exit = True
 
     app.state.request_shutdown = request_shutdown
-    announcer = asyncio.create_task(_announce_when_started(server, port))
+    announcer = asyncio.create_task(_announce_when_started(server, args.host, port, settings.data_dir, token))
     parent = os.environ.get("STUDIO_PARENT_PID")
     watcher = None
     if parent and sys.platform == "win32":
@@ -102,6 +111,7 @@ async def _serve(args: argparse.Namespace) -> None:
         if watcher:
             watcher.cancel()
         sock.close()
+        remove_lock(settings.data_dir)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -113,4 +123,8 @@ def main(argv: list[str] | None = None) -> int:
             asyncio.run(_serve(args))
         except KeyboardInterrupt:
             pass
+    elif args.cmd == "mcp":
+        from studio_core.mcp.server import run_stdio
+
+        run_stdio(args.data_dir)
     return 0

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, session, shell, Tray } from 'electron'
+import { app, BrowserWindow, clipboard, ipcMain, Menu, nativeImage, nativeTheme, net, protocol, session, shell, Tray } from 'electron'
 import { join, normalize, relative, resolve, sep } from 'node:path'
 import { release } from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -167,6 +167,15 @@ function registerIpc(): void {
   ipcMain.handle('studio:getConnection', (e) => {
     if (!isTrustedSender(e.senderFrame?.url)) throw new Error('untrusted sender')
     return core.waitReady()
+  })
+  ipcMain.handle('studio:mcpInfo', (e) => {
+    if (!isTrustedSender(e.senderFrame?.url)) throw new Error('untrusted sender')
+    return { python: core.pythonPath(), coreDir: core.coreDir }
+  })
+  ipcMain.handle('studio:copyText', (e, text: unknown) => {
+    if (!isTrustedSender(e.senderFrame?.url)) throw new Error('untrusted sender')
+    if (typeof text !== 'string' || text.length > 10_000) throw new Error('invalid text')
+    clipboard.writeText(text)
   })
   ipcMain.handle('studio:coreStatus', (e) => {
     if (!isTrustedSender(e.senderFrame?.url)) throw new Error('untrusted sender')
