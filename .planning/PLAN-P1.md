@@ -74,6 +74,18 @@ outputs:
 
 - `${inputs.x}` thay nguyên kiểu nếu chuỗi chỉ gồm 1 placeholder; trong chuỗi dài → str.
 - `in: {name: "<step>.<output>"}`; deps suy ra từ `in`. DAG kiểm cycle lúc load.
+- `map: <input>` = chạy executor 1 lần / item của input đó. `map_param: <param key>` (P2) = chạy 1 lần / phần tử của
+  param dạng list (cùng inputs), gộp outputs theo thứ tự; không dùng chung với `map`. Param list lấy từ list YAML hoặc
+  filter `${inputs.x | lines}` (input `text`, mỗi dòng không rỗng = 1 phần tử; phần chữ quanh placeholder ghép vào
+  từng dòng). Filter list chỉ được dùng 1 lần, đúng trong param `map_param`. Danh sách rỗng → `POST /runs` lỗi 400.
+
+```yaml
+  - id: edit                                  # variants-2d (R2)
+    kind: comfy.edit_flux2_klein4b
+    in: {image: inputs.image}
+    params: {"75:74.text": "${inputs.instructions | lines}. Keep the same object, shape, pose…"}
+    map_param: "75:74.text"                   # "make the potion blue\nadd golden trim" → 2 lần chạy
+```
 - Hash recipe = blake3(file bytes).
 
 ## Engine semantics
@@ -84,7 +96,9 @@ outputs:
 - Cache key = blake3(kind | executor.version | canonical json params | sorted input hashes theo tên | cache_material).
   Hit → status `cached`, outputs từ cache.
 - Lane scheduler: semaphore theo `settings.lane_limits`; FIFO theo thời điểm ready; step chờ lane → `waiting_resource`
-  (meta.waiting_for = lane). Model-affinity: để P2.
+  (meta.waiting_for = lane). Model-affinity (P2, chỉ lane GPU): khi slot rảnh, ưu tiên waiter có `model_group` trùng
+  step GPU vừa chạy (`executor.model_group` nếu có, không thì `kind` → `comfy.<workflow>`), FIFO trong nhóm; waiter chờ
+  ≥120s (`AFFINITY_MAX_WAIT_S`) thắng bất kể nhóm → batch tự chạy stage-major mà không đói.
 - Retry: attempt+1, job_dir mới, downstream reset pending, run → running.
 - Cancel: set `ctx.cancelled`, task.cancel(); executor phải dọn process con (comfy: `/api/jobs/{id}/cancel` hoặc `/interrupt`).
 - Recover lúc start: step `running|waiting_resource|ready` → failed(code `interrupted`); run → interrupted. Gate đang chờ giữ nguyên

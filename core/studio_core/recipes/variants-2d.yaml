@@ -1,0 +1,29 @@
+id: variants-2d
+name: Biến thể 2D (Flux.2 Klein)
+description: Ảnh gốc + mỗi dòng 1 lệnh sửa → N biến thể (Flux.2 Klein) → tách nền → căn chỉnh → sprite sheet
+inputs:
+  image: {type: image, label: Ảnh gốc}
+  instructions: {type: text, multiline: true, label: Lệnh sửa (mỗi dòng 1 biến thể),
+                 placeholder: "make the potion blue\nadd golden trim"}
+  size: {type: int, default: 512, options: [128, 256, 512, 1024]}
+steps:
+  - id: edit
+    kind: comfy.edit_flux2_klein4b
+    in: {image: inputs.image}
+    params:
+      "75:74.text": "${inputs.instructions | lines}. Keep the same object, shape, pose, framing and camera angle, on a plain white background."
+    map_param: "75:74.text"
+  - id: rmbg
+    kind: comfy.remove_bg_birefnet
+    in: {image: edit.images}
+    map: image
+  - id: fit
+    kind: op.trim_pad_resize
+    in: {images: rmbg.images}
+    params: {size: "${inputs.size}", pad: 0.06}
+  - id: sheet
+    kind: op.sheet
+    in: {images: fit.images}
+outputs:
+  final: fit.images
+  sheet: sheet.sheet

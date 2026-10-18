@@ -1,0 +1,38 @@
+id: sprite-8dir-2d
+name: Sprite 8 hướng 2D (Qwen, nhanh)
+description: >-
+  Ảnh nhân vật mặt trước → Qwen multi-angle 8 hướng (0,45..315°) → tách nền → chuẩn hoá scale/chân → sheet 8 cột.
+  Góc chỉ gần đúng (P0: 45° hay ra ~90°, 135° chưa ra 3/4 sau) — dùng xem concept nhiều phía; sprite thật dùng R5.
+inputs:
+  image: {type: image, label: Ảnh nhân vật (mặt trước)}
+  size: {type: int, default: 512, options: [128, 256, 512, 1024]}
+steps:
+  - id: angles
+    kind: comfy.multi_angles_qwen2511
+    in: {image: inputs.image}
+    # Output order follows index.json outputs (373,374,376,377,379,380,381,424), so prompts are assigned per
+    # branch to make that order 0,45,...,315.
+    params:
+      "427:221:151.prompt": "Keep the camera at the same front view. Same character, same pose."
+      "427:246:228.prompt": "Rotate the camera 45 degrees to the right."
+      "427:271:253.prompt": "Rotate the camera 90 degrees to the right."
+      "427:346:328.prompt": "Rotate the camera 135 degrees to the right."
+      "427:296:278.prompt": "Rotate the camera 180 degrees to show the back view."
+      "427:321:303.prompt": "Rotate the camera 135 degrees to the left."
+      "427:371:353.prompt": "Rotate the camera 90 degrees to the left."
+      "427:423:405.prompt": "Rotate the camera 45 degrees to the left."
+  - id: rmbg
+    kind: comfy.remove_bg_birefnet
+    in: {image: angles.images}
+    map: image
+  - id: norm
+    kind: op.normalize
+    in: {images: rmbg.images}
+    params: {size: "${inputs.size}", pad: 0.06, anchor: bottom}
+  - id: sheet
+    kind: op.sheet
+    in: {images: norm.images}
+    params: {cols: 8}
+outputs:
+  final: norm.images
+  sheet: sheet.sheet

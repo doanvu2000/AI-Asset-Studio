@@ -62,6 +62,10 @@ def _new_id() -> str:
     return uuid.uuid4().hex
 
 
+def model_group(ex: Executor, kind: str) -> str:
+    return str(getattr(ex, "model_group", None) or kind)
+
+
 def _err(code: str, message: str, detail: Any = None, retryable: bool = False) -> dict[str, Any]:
     return {"code": code, "message": message, "detail": detail, "retryable": retryable}
 
@@ -236,11 +240,17 @@ class StudioEngine:
             ov = overrides.get(spec.id)
             if isinstance(ov, dict):
                 resolved.update(ov)
+            if spec.map_param is not None:
+                items = resolved.get(spec.map_param)
+                resolved[spec.map_param] = items = items if isinstance(items, list) else [items]
+                if not [x for x in items if x not in (None, "")]:
+                    raise RecipeError(f"step {spec.id}: '{spec.map_param}' has no items")
             steps.append(StepRow(
                 id=_new_id(), run_id=run.id, key=spec.id, kind=spec.kind, lane=ex.lane, deps=spec.deps,
                 params=resolved, order=i,
                 meta={"spec": {"in": {k: str(v) for k, v in spec.bindings.items()}, "map": spec.map,
-                               "publish": publish.get(spec.id, {}), "asset_name": title or recipe.name}},
+                               "map_param": spec.map_param, "publish": publish.get(spec.id, {}),
+                               "asset_name": title or recipe.name}},
             ))
         await self.repo.create_run(run)
         await self.repo.create_steps(steps)
@@ -405,7 +415,8 @@ class StudioEngine:
                 await self._set_step(step, status=StepStatus.WAITING_RESOURCE,
                                      meta={**step.meta, "waiting_for": lane.value})
 
-            await self.scheduler.acquire(lane, step.meta.get("ready_at", _now()), on_wait)
+            await self.scheduler.acquire(lane, step.meta.get("ready_at", _now()), on_wait,
+                                         hint={"group": model_group(ex, step.kind)})
             try:
                 await self._ensure_resource(ex, step)
                 job_dir = self.settings.jobs_dir / step.run_id / f"{step.key}-{step.attempt}"
@@ -440,19 +451,25 @@ class StudioEngine:
         await res.ensure_started()
 
     async def _run_executor(self, ex: Executor, ctx: _Ctx, step: StepRow, inputs: Outputs) -> StepResult:
-        mp = step.meta.get("spec", {}).get("map")
-        if not mp:
+        spec = step.meta.get("spec", {})
+        mp, mpp = spec.get("map"), spec.get("map_param")
+        calls: list[tuple[dict[str, Any], Outputs]]
+        if mp:
+            calls = [(step.params, {**inputs, mp: [item]}) for item in inputs.get(mp, [])]
+        elif mpp:
+            values = step.params.get(mpp)
+            calls = [({**step.params, mpp: v}, inputs) for v in (values if isinstance(values, list) else [values])]
+        else:
             return await ex.run(ctx, step.params, inputs)
-        items = inputs.get(mp, [])
         outputs: Outputs = {}
         metas: list[dict[str, Any]] = []
-        for i, item in enumerate(items):
-            ctx.set_item(i, len(items))
-            res = await ex.run(ctx, step.params, {**inputs, mp: [item]})
+        for i, (params, item_inputs) in enumerate(calls):
+            ctx.set_item(i, len(calls))
+            res = await ex.run(ctx, params, item_inputs)
             for name, refs in res.outputs.items():
                 outputs.setdefault(name, []).extend(refs)
             metas.append(res.meta)
-            self.bus.publish("step.progress", {"value": i + 1, "max": len(items), "label": f"{i + 1}/{len(items)}",
+            self.bus.publish("step.progress", {"value": i + 1, "max": len(calls), "label": f"{i + 1}/{len(calls)}",
                                                "node": None}, run_id=step.run_id, step_id=step.id)
         return StepResult(outputs=outputs, meta={"items": metas} if any(metas) else {})
 

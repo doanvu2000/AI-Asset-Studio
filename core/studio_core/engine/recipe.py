@@ -15,8 +15,9 @@ log = logging.getLogger(__name__)
 
 BLOB_TYPES = {"image", "mesh"}
 INPUT_TYPES = {"text", "int", "float", "bool", "enum"} | BLOB_TYPES
-_PLACEHOLDER = re.compile(r"\$\{inputs\.([A-Za-z_][\w-]*)\}")
+_PLACEHOLDER = re.compile(r"\$\{inputs\.([A-Za-z_][\w-]*)\s*(?:\|\s*([A-Za-z_]\w*)\s*)?\}")
 _WHOLE = re.compile(r"^\$\{inputs\.([A-Za-z_][\w-]*)\}$")
+LIST_FILTERS = {"lines"}
 _ID = re.compile(r"^[A-Za-z_][\w-]*$")
 
 
@@ -49,6 +50,7 @@ class StepSpec:
     params: dict[str, Any] = field(default_factory=dict)
     bindings: dict[str, Binding] = field(default_factory=dict)
     map: str | None = None
+    map_param: str | None = None
 
     @property
     def deps(self) -> list[str]:
@@ -101,7 +103,8 @@ class Recipe:
                     lane = registry.resolve(s.kind).lane.value
                 except KeyError:
                     pass
-            steps.append({"id": s.id, "kind": s.kind, "lane": lane, "deps": s.deps, "map": s.map})
+            steps.append({"id": s.id, "kind": s.kind, "lane": lane, "deps": s.deps, "map": s.map,
+                          "map_param": s.map_param})
         return RecipeInfo(id=self.id, name=self.name, description=self.description, inputs=self.inputs,
                           steps=steps, hash=self.hash)
 
@@ -154,13 +157,27 @@ def coerce_value(name: str, spec: dict[str, Any], v: Any) -> Any:
     return v
 
 
+def split_lines(v: Any) -> list[str]:
+    if v is None:
+        return []
+    return [ln.strip() for ln in str(v).splitlines() if ln.strip()]
+
+
+def _scalar_sub(value: str, inputs: dict[str, Any]) -> str:
+    return _PLACEHOLDER.sub(lambda mm: "" if inputs.get(mm.group(1)) is None else str(inputs[mm.group(1)]), value)
+
+
 def substitute(value: Any, inputs: dict[str, Any]) -> Any:
+    """`${inputs.x | lines}` turns the whole string into a list: one copy per non-empty line of x."""
     if isinstance(value, str):
         m = _WHOLE.match(value)
         if m:
             return inputs.get(m.group(1))
-        return _PLACEHOLDER.sub(lambda mm: "" if inputs.get(mm.group(1)) is None else str(inputs[mm.group(1)]),
-                                value)
+        lm = next((mm for mm in _PLACEHOLDER.finditer(value) if mm.group(2)), None)
+        if lm is None:
+            return _scalar_sub(value, inputs)
+        head, tail = _scalar_sub(value[:lm.start()], inputs), _scalar_sub(value[lm.end():], inputs)
+        return [head + ln + tail for ln in split_lines(inputs.get(lm.group(1)))]
     if isinstance(value, dict):
         return {k: substitute(v, inputs) for k, v in value.items()}
     if isinstance(value, list):
@@ -170,12 +187,46 @@ def substitute(value: Any, inputs: dict[str, Any]) -> Any:
 
 def _placeholders(value: Any) -> set[str]:
     if isinstance(value, str):
-        return set(_PLACEHOLDER.findall(value))
+        return {m.group(1) for m in _PLACEHOLDER.finditer(value)}
     if isinstance(value, dict):
         return set().union(*(_placeholders(v) for v in value.values())) if value else set()
     if isinstance(value, list):
         return set().union(*(_placeholders(v) for v in value)) if value else set()
     return set()
+
+
+def _list_placeholders(value: Any) -> list[tuple[str, str]]:
+    if isinstance(value, str):
+        return [(m.group(1), m.group(2)) for m in _PLACEHOLDER.finditer(value) if m.group(2)]
+    if isinstance(value, dict):
+        return [p for v in value.values() for p in _list_placeholders(v)]
+    if isinstance(value, list):
+        return [p for v in value for p in _list_placeholders(v)]
+    return []
+
+
+def _check_list_params(where: str, sid: str, params: dict[str, Any], map_param: Any,
+                       inputs: dict[str, dict[str, Any]]) -> None:
+    if map_param is not None:
+        if not isinstance(map_param, str) or map_param not in params:
+            raise RecipeError(f"{where}: step {sid} map_param {map_param!r} is not one of its params")
+        v = params[map_param]
+        listy = isinstance(v, list) or (isinstance(v, str) and len(_list_placeholders(v)) == 1)
+        if not listy:
+            raise RecipeError(f"{where}: step {sid} map_param '{map_param}' must be a list or one "
+                              "'${inputs.x | lines}' placeholder")
+    for key, v in params.items():
+        found = _list_placeholders(v)
+        if not found:
+            continue
+        if key != map_param or not isinstance(v, str) or len(found) > 1:
+            raise RecipeError(f"{where}: step {sid} param '{key}': list filters only allowed once, "
+                              "in the map_param value")
+        name, flt = found[0]
+        if flt not in LIST_FILTERS:
+            raise RecipeError(f"{where}: step {sid} unknown filter '{flt}'")
+        if inputs.get(name, {}).get("type") != "text":
+            raise RecipeError(f"{where}: step {sid} filter '{flt}' needs a text input, got '{name}'")
 
 
 def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
@@ -230,7 +281,11 @@ def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
         mp = rs.get("map")
         if mp is not None and mp not in bindings:
             raise RecipeError(f"{where}: step {sid} map '{mp}' is not one of its inputs")
-        specs.append(StepSpec(sid, kind, params, bindings, mp))
+        mpp = rs.get("map_param")
+        _check_list_params(where, sid, params, mpp, inputs)
+        if mp is not None and mpp is not None:
+            raise RecipeError(f"{where}: step {sid} cannot use both map and map_param")
+        specs.append(StepSpec(sid, kind, params, bindings, mp, mpp))
 
     for s in specs:
         for name, b in s.bindings.items():
