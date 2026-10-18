@@ -62,7 +62,7 @@ function bindTo(input: string): void {
       <span class="sp" />
       <button v-if="bound" type="button" class="mini" title="Bỏ liên kết, nhập giá trị cố định" @click="emit('change', undefined)"><Unlink :size="12" /></button>
       <div v-else-if="inputs.length && t !== 'json' && t !== 'list'" class="bind">
-        <button type="button" class="mini" title="Lấy từ đầu vào recipe" :aria-expanded="bindOpen" @click="bindOpen = !bindOpen"><Link2 :size="12" /></button>
+        <button type="button" class="mini" title="Lấy từ đầu vào quy trình" :aria-expanded="bindOpen" @click="bindOpen = !bindOpen"><Link2 :size="12" /></button>
         <Transition name="pop">
           <ul v-if="bindOpen" class="menu" role="menu">
             <li v-for="i in inputs" :key="i"><button type="button" role="menuitem" @click="bindTo(i)">inputs.{{ i }}</button></li>
@@ -145,7 +145,7 @@ function bindTo(input: string): void {
 }
 .pf-key {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: var(--fs-caption);
   color: var(--text-3);
   white-space: nowrap;
   overflow: hidden;

@@ -23,7 +23,7 @@ const TYPE_LABEL: Record<string, string> = {
   <div class="io" :class="[data.role, { selected: data.selected, bad: data.issues.length }]">
     <header class="head">
       <component :is="data.role === 'inputs' ? LogIn : LogOut" :size="14" class="ic" />
-      <span class="name">{{ data.role === 'inputs' ? 'Đầu vào recipe' : 'Đầu ra recipe' }}</span>
+      <span class="name">{{ data.role === 'inputs' ? 'Đầu vào quy trình' : 'Đầu ra quy trình' }}</span>
     </header>
     <ul class="ports">
       <li v-for="p in data.ports" :key="p.name" class="port" :class="{ off: !p.bindable }">
@@ -62,6 +62,7 @@ const TYPE_LABEL: Record<string, string> = {
   align-items: center;
   gap: 7px;
   padding: 9px 12px 7px;
+  font-size: var(--fs-body);
   font-weight: 600;
   color: var(--text-2);
 }
@@ -90,7 +91,7 @@ const TYPE_LABEL: Record<string, string> = {
   color: var(--text);
 }
 .ptype {
-  font-size: 10px;
+  font-size: var(--fs-caption);
   color: var(--text-3);
 }
 .off .pname {

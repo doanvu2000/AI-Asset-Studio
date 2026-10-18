@@ -21,6 +21,8 @@ const title = computed(() => {
   return n === props.data.kind ? props.data.label : n
 })
 
+const tooltip = computed(() => `${title.value}\nMã bước: ${props.data.stepId} · ${props.data.kind}`)
+
 const step = computed(() => props.data.step)
 const progress = computed(() => (step.value ? runs.progress.get(step.value.id) : undefined))
 const fraction = computed(() => {
@@ -49,9 +51,9 @@ const detail = computed(() => {
     <header class="head">
       <StatusGlyph v-if="step" :status="step.status" :progress="fraction" :size="22" />
       <div class="t">
-        <span class="name" :title="data.kind">{{ title }}</span>
-        <span class="sub">
-          <span class="key">{{ data.stepId }}</span>
+        <span class="name" :title="tooltip">{{ title }}</span>
+        <span v-if="data.mode === 'edit' || data.mapped" class="sub">
+          <span v-if="data.mode === 'edit'" class="key">{{ data.stepId }}</span>
           <span v-if="data.mapped" class="map" :title="`Chạy lặp theo ${data.mapped}`"><Repeat :size="10" />{{ data.mapped }}</span>
         </span>
       </div>
@@ -205,7 +207,7 @@ const detail = computed(() => {
 }
 .key {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-caption);
   color: var(--text-3);
   white-space: nowrap;
   overflow: hidden;
@@ -217,7 +219,7 @@ const detail = computed(() => {
   gap: 3px;
   padding: 0 5px;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: var(--fs-caption);
   font-weight: 600;
   color: var(--accent);
   background: var(--accent-soft);

@@ -6,6 +6,7 @@ import { kindName } from '@/composables/format'
 import { parts } from '@/composables/graph'
 import LaneTag from '../LaneTag.vue'
 import ParamField from './ParamField.vue'
+import SelectMenu, { type SelectOption } from './SelectMenu.vue'
 
 const props = defineProps<{ doc: RecipeDoc; step: RecipeStepDoc; kinds: KindInfo[]; issues: RecipeIssue[] }>()
 const emit = defineEmits<{ rename: [to: string]; remove: []; changed: [] }>()
@@ -22,6 +23,17 @@ const basic = computed(() => Object.entries(spec.value).filter(([, s]) => !s.adv
 const advanced = computed(() => Object.entries(spec.value).filter(([, s]) => s.advanced))
 const extra = computed(() => Object.keys(params.value).filter((k) => !(k in spec.value)))
 const bindings = computed(() => Object.entries(props.step.in ?? {}))
+
+const NONE: SelectOption = { value: '', label: 'Không' }
+const kindOptions = computed<SelectOption[]>(() => {
+  const opts = props.kinds.map((k) => {
+    const n = kindName(k.kind)
+    return { value: k.kind, label: n === k.kind ? k.label || k.kind : n }
+  })
+  return info.value ? opts : [{ value: props.step.kind, label: `${props.step.kind} (không rõ)` }, ...opts]
+})
+const mapOptions = computed<SelectOption[]>(() => [NONE, ...bindings.value.map(([n]) => ({ value: n, label: n }))])
+const mapParamOptions = computed<SelectOption[]>(() => [NONE, ...Object.keys(params.value).map((k) => ({ value: k, label: k }))])
 
 const idDraft = ref(props.step.id)
 const idError = ref<string | null>(null)
@@ -120,10 +132,7 @@ function remove(): void {
         </div>
         <div class="f">
           <label for="st-kind" class="lbl">Loại</label>
-          <select id="st-kind" class="field" :value="step.kind" @change="setKind(($event.target as HTMLSelectElement).value)">
-            <option v-if="!info" :value="step.kind">{{ step.kind }} (không rõ)</option>
-            <option v-for="k in kinds" :key="k.kind" :value="k.kind">{{ k.kind }}</option>
-          </select>
+          <SelectMenu id="st-kind" :model-value="step.kind" :options="kindOptions" @update:model-value="setKind" />
         </div>
       </div>
       <p v-if="idError" class="err">{{ idError }}</p>
@@ -144,17 +153,11 @@ function remove(): void {
       <div class="row2">
         <div class="f">
           <label for="st-map" class="lbl">Chạy lặp theo đầu vào</label>
-          <select id="st-map" class="field" :value="step.map ?? ''" @change="setMap(($event.target as HTMLSelectElement).value, 'map')">
-            <option value="">Không</option>
-            <option v-for="[n] in bindings" :key="n" :value="n">{{ n }}</option>
-          </select>
+          <SelectMenu id="st-map" :model-value="step.map ?? ''" :options="mapOptions" @update:model-value="setMap($event, 'map')" />
         </div>
         <div class="f">
           <label for="st-mapp" class="lbl">Chạy lặp theo tham số</label>
-          <select id="st-mapp" class="field" :value="step.map_param ?? ''" @change="setMap(($event.target as HTMLSelectElement).value, 'map_param')">
-            <option value="">Không</option>
-            <option v-for="k in Object.keys(params)" :key="k" :value="k">{{ k }}</option>
-          </select>
+          <SelectMenu id="st-mapp" :model-value="step.map_param ?? ''" :options="mapParamOptions" @update:model-value="setMap($event, 'map_param')" />
         </div>
       </div>
     </section>
@@ -229,9 +232,6 @@ function remove(): void {
   font-size: var(--fs-body);
   min-height: 30px;
   padding: 5px 9px;
-}
-select.field {
-  appearance: auto;
 }
 .field.mono {
   font-size: 12px;

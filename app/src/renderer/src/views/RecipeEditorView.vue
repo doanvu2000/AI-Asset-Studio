@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { onKeyStroke, useDebounceFn } from '@vueuse/core'
 import type { Connection } from '@vue-flow/core'
@@ -61,7 +61,7 @@ const plain = (d: RecipeDoc): RecipeDoc => JSON.parse(JSON.stringify(d)) as Reci
 
 const BLANK: RecipeDoc = {
   id: 'recipe-moi',
-  name: 'Recipe mới',
+  name: 'Quy trình mới',
   description: '',
   inputs: { prompt: { type: 'text', label: 'Prompt' } },
   steps: [],
@@ -80,7 +80,8 @@ async function load(): Promise<void> {
         base.name = `${base.name ?? from} (bản sao)`
       }
       doc.value = base
-      savedJson.value = ''
+      // An untouched new doc (or copy) is not a change worth guarding; Save stays enabled via source === 'new'.
+      savedJson.value = JSON.stringify(base)
       source.value = 'new'
       hasBuiltin.value = false
     } else {
@@ -274,9 +275,9 @@ function autoLayout(): void {
   fitKey.value = `layout:${Date.now()}`
 }
 
-async function save(): Promise<void> {
+async function save(stayOnPage = true): Promise<boolean> {
   const d = doc.value
-  if (!d || saving.value) return
+  if (!d || saving.value) return false
   saving.value = true
   try {
     const res = await api().saveRecipe(d.id, { doc: plain(d) })
@@ -284,15 +285,17 @@ async function save(): Promise<void> {
     issues.value = res.issues ?? []
     source.value = res.source
     hasBuiltin.value = res.has_builtin
-    toasts.push(res.source === 'override' ? 'Đã lưu bản của bạn (bản gốc vẫn giữ nguyên)' : 'Đã lưu recipe', 'success', 2600)
+    toasts.push(res.source === 'override' ? 'Đã lưu bản của bạn (bản gốc vẫn giữ nguyên)' : 'Đã lưu quy trình', 'success', 2600)
     void recipes.load(true)
-    if (isNew.value || d.id !== props.id) {
+    if (stayOnPage && (isNew.value || d.id !== props.id)) {
       loadedId.value = d.id
       await router.replace(`/recipes/${encodeURIComponent(d.id)}`)
     }
+    return true
   } catch (e) {
     if (e instanceof ApiError && e.issues.length) issues.value = e.issues
     toasts.error(e, 'Chưa lưu được')
+    return false
   } finally {
     saving.value = false
   }
@@ -316,7 +319,7 @@ async function revert(): Promise<void> {
       savedJson.value = ''
       await load()
     } else {
-      toasts.push('Đã xoá recipe', 'info')
+      toasts.push('Đã xoá quy trình', 'info')
       savedJson.value = doc.value ? JSON.stringify(doc.value) : ''
       await router.push('/recipes')
     }
@@ -330,25 +333,54 @@ function typingTarget(e: KeyboardEvent): boolean {
   return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)
 }
 onKeyStroke(['Delete', 'Backspace'], (e) => {
-  if (typingTarget(e)) return
+  if (typingTarget(e) || leaveAsk.value) return
   if (selectedEdge.value) deleteEdge(selectedEdge.value)
   else if (selStep.value) deleteStep(selStep.value.id)
 })
 onKeyStroke('s', (e) => {
-  if (!(e.ctrlKey || e.metaKey)) return
+  if (!(e.ctrlKey || e.metaKey) || leaveAsk.value) return
   e.preventDefault()
   void save()
 })
 
+const leaveAsk = shallowRef<((leave: boolean) => void) | null>(null)
+const sheetSave = ref<HTMLButtonElement | null>(null)
+const sheetStay = ref<HTMLButtonElement | null>(null)
 onBeforeRouteLeave((to) => {
   if (!dirty.value || saving.value) return true
   if (to.params.id && to.params.id === doc.value?.id) return true
-  return window.confirm('Recipe có thay đổi chưa lưu. Rời trang và bỏ thay đổi?')
+  leaveAsk.value?.(false)
+  return new Promise<boolean>((resolve) => {
+    leaveAsk.value = resolve
+    void nextTick(() => (sheetSave.value && !sheetSave.value.disabled ? sheetSave.value : sheetStay.value)?.focus())
+  })
 })
+function answerLeave(leave: boolean): void {
+  const resolve = leaveAsk.value
+  leaveAsk.value = null
+  resolve?.(leave)
+}
+async function saveAndLeave(): Promise<void> {
+  if (await save(false)) answerLeave(true)
+}
+function onSheetKey(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    e.preventDefault()
+    answerLeave(false)
+  } else if (e.key === 'Tab') {
+    const btns = [...(e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('button:not(:disabled)')]
+    const i = btns.indexOf(document.activeElement as HTMLButtonElement)
+    const next = btns[(i + (e.shiftKey ? -1 : 1) + btns.length) % btns.length]
+    if (next) {
+      e.preventDefault()
+      next.focus()
+    }
+  }
+}
 
 const sourceLabel: Record<RecipeSource | 'new', string> = {
   builtin: 'Bản gốc',
-  user: 'Recipe của bạn',
+  user: 'Quy trình của bạn',
   override: 'Bản của bạn (đè bản gốc)',
   new: 'Chưa lưu'
 }
@@ -357,9 +389,9 @@ const subtitle = computed(() => (doc.value ? `${doc.value.id} · ${sourceLabel[s
 
 <template>
   <div class="view">
-    <PageHeader :title="doc?.name || doc?.id || 'Recipe'" :subtitle="subtitle">
+    <PageHeader :title="doc?.name || doc?.id || 'Quy trình'" :subtitle="subtitle">
       <template #leading>
-        <RouterLink to="/recipes" class="btn btn-plain btn-icon" aria-label="Về danh sách recipe"><ArrowLeft /></RouterLink>
+        <RouterLink to="/recipes" class="btn btn-plain btn-icon" aria-label="Về danh sách quy trình"><ArrowLeft /></RouterLink>
       </template>
       <span class="vstate" :class="{ bad: errors.length, warn: !errors.length && warnings.length }" aria-live="polite">
         <LoaderCircle v-if="validating" class="spin" :size="14" />
@@ -373,19 +405,19 @@ const subtitle = computed(() => (doc.value ? `${doc.value.id} · ${sourceLabel[s
         <component :is="source === 'override' ? RotateCcw : Trash2" />
         {{ confirmRevert ? 'Bấm lần nữa' : source === 'override' ? 'Khôi phục gốc' : 'Xoá' }}
       </button>
-      <button class="btn btn-primary" :disabled="!doc || saving || (!dirty && source !== 'new') || errors.length > 0" :title="errors.length ? 'Sửa lỗi trước khi lưu' : 'Ctrl + S'" @click="save">
+      <button class="btn btn-primary" :disabled="!doc || saving || (!dirty && source !== 'new') || errors.length > 0" :title="errors.length ? 'Sửa lỗi trước khi lưu' : 'Ctrl + S'" @click="save()">
         <LoaderCircle v-if="saving" class="spin" />
         <Save v-else />
         Lưu
       </button>
     </PageHeader>
 
-    <EmptyState v-if="loadError" :icon="CircleAlert" title="Không mở được recipe" :text="loadError">
+    <EmptyState v-if="loadError" :icon="CircleAlert" title="Không mở được quy trình" :text="loadError">
       <button class="btn" @click="load">Thử lại</button>
     </EmptyState>
 
     <div v-else class="editor">
-      <section class="stage" aria-label="Sơ đồ recipe">
+      <section class="stage" aria-label="Sơ đồ quy trình">
         <FlowCanvas
           v-if="doc"
           id="recipe-editor"
@@ -430,6 +462,29 @@ const subtitle = computed(() => (doc.value ? `${doc.value.id} · ${sourceLabel[s
         </Transition>
       </aside>
     </div>
+
+    <Teleport to="body">
+      <Transition name="sheet">
+        <div v-if="leaveAsk" class="sheet-scrim" @mousedown.self="answerLeave(false)">
+          <div class="sheet" role="alertdialog" aria-modal="true" aria-labelledby="leave-title" aria-describedby="leave-text" @keydown="onSheetKey">
+            <span class="sheet-ic" aria-hidden="true"><TriangleAlert :size="22" /></span>
+            <h2 id="leave-title" class="sheet-title">Lưu thay đổi của “{{ doc?.name || doc?.id }}”?</h2>
+            <p id="leave-text" class="sheet-text">
+              {{ errors.length ? `Quy trình còn ${errors.length} lỗi nên chưa lưu được. Ở lại để sửa, hoặc bỏ thay đổi.` : 'Nếu không lưu, các thay đổi vừa làm sẽ mất.' }}
+            </p>
+            <div class="sheet-actions">
+              <button type="button" class="btn btn-danger" @click="answerLeave(true)">Bỏ thay đổi</button>
+              <span class="spacer" />
+              <button ref="sheetStay" type="button" class="btn" @click="answerLeave(false)">Ở lại</button>
+              <button ref="sheetSave" type="button" class="btn btn-primary" :disabled="errors.length > 0 || saving" @click="saveAndLeave">
+                <LoaderCircle v-if="saving" class="spin" />
+                Lưu
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -537,6 +592,85 @@ const subtitle = computed(() => (doc.value ? `${doc.value.id} · ${sourceLabel[s
   transform: translateX(8px);
 }
 .swap-leave-to {
+  opacity: 0;
+}
+.sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 72px 16px 16px;
+  background: var(--scrim, rgba(0, 0, 0, 0.4));
+}
+.sheet {
+  width: min(420px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 22px 20px 16px;
+  border-radius: var(--r-xl);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-3), var(--hairline);
+  text-align: center;
+}
+.sheet-ic {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 4px;
+  border-radius: 50%;
+  color: var(--st-waiting);
+  background: var(--st-waiting-soft);
+}
+.sheet-title {
+  margin: 0;
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.sheet-text {
+  margin: 0;
+  font-size: var(--fs-callout);
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.sheet-actions {
+  justify-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.sheet-actions .spacer {
+  flex: 1;
+  min-width: 16px;
+}
+.sheet-actions .btn-primary {
+  min-width: 72px;
+}
+.sheet-enter-active {
+  transition: opacity var(--t-base) var(--ease-out);
+}
+.sheet-enter-active .sheet {
+  transition:
+    transform var(--t-base) var(--ease-spring),
+    opacity var(--t-base) var(--ease-out);
+}
+.sheet-leave-active {
+  transition: opacity var(--t-fast) var(--ease-in);
+}
+.sheet-enter-from {
+  opacity: 0;
+}
+.sheet-enter-from .sheet {
+  opacity: 0;
+  transform: translateY(-16px) scale(0.98);
+}
+.sheet-leave-to {
   opacity: 0;
 }
 .fade-enter-active,

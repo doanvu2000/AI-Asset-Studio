@@ -124,8 +124,8 @@ export function buildEditorGraph(
     const c = (d.get(id) ?? 0) + 1
     ;(columns[c] ??= []).push(id)
   }
-  for (let i = 0; i < columns.length; i++) columns[i] ??= []
   columns[maxDepth + 2] = [OUTPUTS_NODE]
+  for (let i = 0; i < columns.length; i++) columns[i] ??= []
   const auto = autoPositions(columns)
   const saved = doc.ui?.positions ?? {}
   const pos = (id: string): { x: number; y: number } => {

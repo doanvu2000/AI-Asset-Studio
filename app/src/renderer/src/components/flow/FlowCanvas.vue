@@ -2,13 +2,15 @@
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
-import { nextTick, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
 import { VueFlow, useVueFlow, type Connection, type Edge, type EdgeMouseEvent, type Node, type NodeDragEvent, type NodeMouseEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { Controls } from '@vue-flow/controls'
 import { MiniMap } from '@vue-flow/minimap'
 import StepNode from './StepNode.vue'
 import IoNode from './IoNode.vue'
+import type { StepStatus } from '@/api/types'
 import type { IoNodeData, StepNodeData } from '@/composables/graph'
 
 const props = withDefaults(defineProps<{ id: string; nodes: Node[]; edges: Edge[]; editable?: boolean; fitKey?: string; minimap?: boolean; focusId?: string | null }>(), {
@@ -23,31 +25,74 @@ const emit = defineEmits<{
   edgeClick: [id: string]
   paneClick: []
   dragStop: [positions: Array<{ id: string; x: number; y: number }>]
+  resize: [size: { width: number; height: number }]
 }>()
 
 const { fitView, getNodes, getViewport, setViewport, setCenter, dimensions, onNodesInitialized } = useVueFlow(props.id)
-const MIN_READABLE_ZOOM = 0.8
+// Below MIN_FIT_ZOOM node text is unreadable; such graphs anchor left at LONG_GRAPH_ZOOM and the user pans.
+const MIN_FIT_ZOOM = 0.45
+const LONG_GRAPH_ZOOM = 0.6
+const FIT_PADDING = 0.2
+const MINIMAP_MIN_NODES = 13
 
-// Long linear recipes fit only at an unreadable zoom; then keep a readable zoom and start from the left end instead.
+const root = ref<HTMLElement | null>(null)
+const size = ref({ width: 0, height: 0 })
+// vue-flow's SVG layers compute NaN patterns/viewBoxes at 0×0 (hidden view, pane mid-resize), so they wait for a real size.
+const ready = computed(() => size.value.width > 0 && size.value.height > 0)
+const showMinimap = computed(() => props.minimap && ready.value && props.nodes.length >= MINIMAP_MIN_NODES)
+
 async function frame(duration = 280): Promise<void> {
-  await fitView({ padding: 0.14, duration: 0, maxZoom: 1.05 })
-  const v = getViewport()
   const nodes = getNodes.value
-  if (v.zoom >= MIN_READABLE_ZOOM || !nodes.length) {
-    if (duration) await fitView({ padding: 0.14, duration, maxZoom: 1.05 })
+  if (!ready.value || !nodes.length) return
+  await fitView({ padding: FIT_PADDING, duration: 0, maxZoom: 1.05 })
+  const v = getViewport()
+  if (v.zoom >= MIN_FIT_ZOOM) {
+    if (duration) await fitView({ padding: FIT_PADDING, duration, maxZoom: 1.05 })
     return
   }
   const minX = Math.min(...nodes.map((n) => n.position.x))
   const minY = Math.min(...nodes.map((n) => n.position.y))
   const maxY = Math.max(...nodes.map((n) => n.position.y + (n.dimensions.height || 0)))
-  const zoom = MIN_READABLE_ZOOM
+  const zoom = LONG_GRAPH_ZOOM
   await setViewport({ x: 40 - minX * zoom, y: dimensions.value.height / 2 - ((minY + maxY) / 2) * zoom, zoom }, { duration })
 }
+
+let raf = 0
+function frameNextPaint(duration = 0): void {
+  cancelAnimationFrame(raf)
+  raf = requestAnimationFrame(() => void frame(duration))
+}
+onBeforeUnmount(() => cancelAnimationFrame(raf))
+
+let initialized = false
+useResizeObserver(root, (entries) => {
+  const r = entries[0]?.contentRect
+  if (!r) return
+  const width = Math.round(r.width)
+  const height = Math.round(r.height)
+  if (width === size.value.width && height === size.value.height) return
+  size.value = { width, height }
+  emit('resize', { width, height })
+  if (initialized) frameNextPaint()
+})
+
+onNodesInitialized(() => {
+  if (initialized) return
+  initialized = true
+  frameNextPaint()
+})
+watch(
+  () => props.fitKey,
+  async () => {
+    await nextTick()
+    frameNextPaint(280)
+  }
+)
 
 watch(
   () => props.focusId,
   async (id) => {
-    if (!id) return
+    if (!id || !ready.value) return
     await nextTick()
     const n = getNodes.value.find((x) => x.id === id)
     if (!n) return
@@ -61,19 +106,42 @@ watch(
   }
 )
 
-let framed = false
-onNodesInitialized(() => {
-  if (framed) return
-  framed = true
-  void frame(0)
-})
-watch(
-  () => props.fitKey,
-  async () => {
-    await nextTick()
-    requestAnimationFrame(() => void frame())
+defineExpose({ fit: (animate = true): void => frameNextPaint(animate ? 280 : 0) })
+
+function edgeTone(s: StepStatus): string {
+  switch (s) {
+    case 'succeeded':
+    case 'cached':
+      return 'done'
+    case 'running':
+    case 'waiting_resource':
+      return 'flow'
+    case 'awaiting_human':
+      return 'human'
+    case 'failed':
+      return 'fail'
+    case 'skipped':
+    case 'cancelled':
+      return 'muted'
+    default:
+      return ''
   }
-)
+}
+
+// A connector says whether work has reached its target, so run edges take the TARGET step's status.
+const shownEdges = computed<Edge[]>(() => {
+  const status = new Map<string, StepStatus>()
+  for (const n of props.nodes) {
+    const st = n.type === 'step' ? (n.data as StepNodeData).step?.status : undefined
+    if (st) status.set(n.id, st)
+  }
+  if (!status.size) return props.edges
+  return props.edges.map((e) => {
+    const st = status.get(e.target)
+    if (!st) return e
+    return { ...e, class: edgeTone(st), animated: st === 'running' || st === 'waiting_resource' }
+  })
+})
 
 const laneColor: Record<string, string> = {
   gpu: 'var(--lane-gpu)',
@@ -95,11 +163,11 @@ function onDragStop(e: NodeDragEvent): void {
 </script>
 
 <template>
-  <div class="canvas" :class="{ editable }">
+  <div ref="root" class="canvas" :class="{ editable }">
     <VueFlow
       :id="id"
       :nodes="nodes"
-      :edges="edges"
+      :edges="shownEdges"
       :nodes-draggable="editable"
       :nodes-connectable="editable"
       :elements-selectable="false"
@@ -120,9 +188,19 @@ function onDragStop(e: NodeDragEvent): void {
       <template #node-io="p">
         <IoNode :data="p.data as IoNodeData" />
       </template>
-      <Background :gap="18" :size="1.4" pattern-color="var(--canvas-dot)" />
-      <Controls :show-interactive="false" position="bottom-right" />
-      <MiniMap v-if="minimap" pannable zoomable position="top-right" :width="150" :height="96" :node-color="miniColor" :node-border-radius="6" mask-color="color-mix(in srgb, var(--bg-content) 70%, transparent)" />
+      <Background v-if="ready" :gap="18" :size="1.4" pattern-color="var(--canvas-dot)" />
+      <Controls v-if="ready" :show-interactive="false" position="bottom-right" />
+      <MiniMap
+        v-if="showMinimap"
+        pannable
+        zoomable
+        position="top-right"
+        :width="150"
+        :height="96"
+        :node-color="miniColor"
+        :node-border-radius="6"
+        mask-color="color-mix(in srgb, var(--bg-content) 70%, transparent)"
+      />
     </VueFlow>
   </div>
 </template>
@@ -152,6 +230,16 @@ function onDragStop(e: NodeDragEvent): void {
 .canvas :deep(.vue-flow__edge.flow .vue-flow__edge-path) {
   stroke: var(--st-running);
 }
+.canvas :deep(.vue-flow__edge.human .vue-flow__edge-path) {
+  stroke: var(--st-human);
+}
+.canvas :deep(.vue-flow__edge.fail .vue-flow__edge-path) {
+  stroke: var(--st-fail);
+}
+.canvas :deep(.vue-flow__edge.muted .vue-flow__edge-path) {
+  stroke: var(--separator-strong);
+  stroke-dasharray: 3 4;
+}
 .canvas :deep(.vue-flow__edge.picked .vue-flow__edge-path) {
   stroke: var(--st-fail);
   stroke-width: 2.4;
@@ -163,8 +251,8 @@ function onDragStop(e: NodeDragEvent): void {
   fill: var(--bg-content);
 }
 .canvas :deep(.vue-flow__edge-text) {
-  fill: var(--text-3);
-  font-size: 10px;
+  fill: var(--text-2);
+  font-size: var(--fs-caption);
   font-family: var(--mono);
 }
 .canvas :deep(.vue-flow__connection-path) {

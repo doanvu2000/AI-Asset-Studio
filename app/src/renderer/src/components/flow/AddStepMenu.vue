@@ -156,7 +156,7 @@ h4 {
 }
 .it-kind {
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: var(--fs-caption);
   color: var(--text-3);
 }
 .empty {
