@@ -216,3 +216,20 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 - [x] Art style D đã thay: 18 webp nền trong suốt (12+1 recipe 192px, 5 empty/onboarding 352px), cắt sát nội dung;
   `recipe-sprite-8dir-2d-prompt` có art riêng. app-icon giữ nguyên. Chụp mock Tạo mới sáng/tối OK.
   pytest 249/4 skip, typecheck sạch. Mockup chọn style: `.planning/style-mockup/index.html`. TẤT CẢ CHƯA commit.
+- [x] 2026-10-19 02:19 Commit `254a327`. Handoff mới: `.planning/HANDOFF-2026-10-19-0219.md` (thay 2316).
+- [ ] 2026-10-19 (session mới, chủ nhân đi ngủ, cho tự build + test, chia subagent). Đang: subagent làm mẫu nhanh cho
+  chế độ nhiều prompt + ước lượng thời gian trên thẻ Tạo mới; live R7 (`scratchpad 5e0b94bb/r7`); build core PyInstaller.
+  Sau đó: typecheck/pytest → build app → chờ Portable thoát rồi chép.
+- [x] Build core PyInstaller OK (`core/dist/studio-core`). Live R7 reviewer mới (`scratchpad 5e0b94bb/r7`): 2 vòng
+  (6 → 8 đạt), 91s, $0.26, rương đẹp → xác nhận ít vòng hơn. Đang live R5-mv (`scratchpad 5e0b94bb/r5mv`) xem ảnh render MeshReport.
+- [x] Subagent xong: mẫu nhanh chế độ Nhiều prompt (chip chủ đề "Thêm dòng", phong cách "Cả lô" nối sau khi dịch;
+  `assets/quickPrompts.ts` dùng chung) + ước lượng thời gian thẻ Tạo mới (trung vị ≤20 lượt xong gần nhất, mock có số).
+  Kiểm CDP mock OK (`scratchpad 5e0b94bb/new.png`, `batch.png`). typecheck sạch, pytest 249/4 skip. CHƯA commit.
+- [x] Build app `app/release/0.1.0/win-unpacked` (kèm core mới). Chép Portable bị khoá: 8 `studio-core.exe` MCP từ
+  Portable đang chạy (GUI không chạy). Script `.planning/update-portable.ps1` (`-Wait` chờ rồi chép); đang chạy nền chờ.
+- [x] Live R5-mv hiệp sĩ (`scratchpad 5e0b94bb/r5mv`): 336s, views 3/3 đạt lần 1, mesh.checked lần 1 Khớp 93%
+  (97/94/97/93), sheet 8 hướng đẹp. App dev trên data thật: khối "Kiểm tra mesh" hiện ảnh render 4 góc + % (đã thấy live).
+- [ ] Chép Portable: vòng chờ `update-portable.ps1 -Wait` đang chạy nền (chặn bởi 8 studio-core.exe MCP). Nếu phiên
+  này đóng, vòng chờ chết → chủ nhân đóng app + các phiên Claude/Codex rồi chạy
+  `powershell -ExecutionPolicy Bypass -File L:\AI\AI-Asset-Studio\.planning\update-portable.ps1`.
+  Thay đổi phiên này CHƯA commit (QuickPrompts, NewRunView, mock server, assets/quickPrompts.ts, update-portable.ps1).

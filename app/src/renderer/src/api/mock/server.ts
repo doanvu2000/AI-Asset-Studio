@@ -381,7 +381,7 @@ export class MockCore implements StudioApi, EventStream {
         run.status = 'awaiting_human'
         return
       }
-      t += 3 + Math.random() * 40
+      t += s.lane === 'gpu' || s.lane === 'blender' ? 50 + Math.random() * 90 : 3 + Math.random() * 25
       s.status = 'succeeded'
       s.ended_at = t
       s.progress = 1

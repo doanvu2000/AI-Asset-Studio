@@ -1,39 +1,15 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { QUICK_STYLES, QUICK_SUBJECTS } from '@/assets/quickPrompts'
 
-// Labels are Vietnamese for the user; the text sent to the models stays English, which they follow far better.
-const SUBJECTS: ReadonlyArray<readonly [string, string]> = [
-  ['Cây cối', 'a stylized tree with lush foliage, whole tree from roots to crown'],
-  ['Bụi cỏ & hoa', 'a small bush with flowers and grass tufts'],
-  ['Đá', 'a cluster of mossy rocks and boulders'],
-  ['Pha lê', 'a glowing crystal cluster ore deposit'],
-  ['Nhà cửa', 'a small house with roof, door and windows'],
-  ['Vũ khí', 'a single ornate sword'],
-  ['Rương báu', 'a treasure chest'],
-  ['Bình thuốc', 'a potion bottle with glowing liquid'],
-  ['Thùng & hộp', 'a wooden barrel and crate prop'],
-  ['Nhân vật', 'a full-body hero character standing'],
-  ['Quái vật', 'a monster creature, full body'],
-  ['Linh thú', 'a mythical beast companion, full body']
-]
-const STYLES: ReadonlyArray<readonly [string, string]> = [
-  ['Trung cổ', 'medieval fantasy style, weathered wood, iron and stone, earthy colors'],
-  ['Anime', 'anime style, cel shading, clean lineart, vibrant colors'],
-  ['Tu tiên', 'xianxia cultivation fantasy style, ancient Chinese aesthetic, jade and gold, flowing silk, ethereal spiritual glow'],
-  ['Nhật cổ', 'feudal Japan style, lacquered wood, paper and bronze details'],
-  ['Chibi', 'chibi style, cute big-head proportions'],
-  ['Hoạt hình', 'stylized hand-painted cartoon style of a mobile game'],
-  ['Pixel art', 'pixel art style, crisp pixels, limited palette'],
-  ['Low-poly', 'low-poly 3D style, flat shaded facets'],
-  ['Dark fantasy', 'dark fantasy style, gothic, desaturated, ominous'],
-  ['Sci-fi', 'sci-fi style, sleek metal with neon accents']
-]
-
-const props = defineProps<{ modelValue: string }>()
-const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
+// In batch mode the text is one prompt per line: a subject chip appends a line and the style is one shared suffix
+// the caller appends to every line at run time, so it never has to be found and rewritten inside each line.
+const props = defineProps<{ modelValue: string; batch?: boolean; batchStyle?: string | null }>()
+const emit = defineEmits<{ 'update:modelValue': [value: string]; 'update:batchStyle': [value: string | null] }>()
 
 const subject = ref<string | null>(null)
 const style = ref<string | null>(null)
+const activeStyle = computed(() => (props.batch ? (props.batchStyle ?? null) : style.value))
 
 // Chips edit only their own part: the subject is the leading clause, the style the trailing one, so text the
 // user typed in between survives switching chips.
@@ -45,13 +21,22 @@ function compose(nextSubject: string | null, nextStyle: string | null): string {
 }
 
 function pickSubject(text: string): void {
+  if (props.batch) {
+    const cur = props.modelValue.replace(/\s+$/, '')
+    emit('update:modelValue', cur ? `${cur}\n${text}` : text)
+    return
+  }
   const next = subject.value === text ? null : text
   emit('update:modelValue', compose(next, style.value))
   subject.value = next
 }
 
 function pickStyle(text: string): void {
-  const next = style.value === text ? null : text
+  const next = activeStyle.value === text ? null : text
+  if (props.batch) {
+    emit('update:batchStyle', next)
+    return
+  }
   emit('update:modelValue', compose(subject.value, next))
   style.value = next
 }
@@ -59,16 +44,16 @@ function pickStyle(text: string): void {
 
 <template>
   <div class="qp">
-    <div class="row" role="group" aria-label="Chủ đề mẫu">
-      <span class="caption lbl">Chủ đề</span>
+    <div class="row" role="group" :aria-label="batch ? 'Thêm dòng theo chủ đề' : 'Chủ đề mẫu'">
+      <span class="caption lbl">{{ batch ? 'Thêm dòng' : 'Chủ đề' }}</span>
       <div class="chips">
       <button
-        v-for="[vi, en] in SUBJECTS"
+        v-for="[vi, en] in QUICK_SUBJECTS"
         :key="vi"
         type="button"
         class="chip"
-        :class="{ on: subject === en }"
-        :aria-pressed="subject === en"
+        :class="{ on: !batch && subject === en }"
+        :aria-pressed="batch ? undefined : subject === en"
         :title="en"
         @click="pickSubject(en)"
       >
@@ -76,16 +61,16 @@ function pickStyle(text: string): void {
       </button>
       </div>
     </div>
-    <div class="row" role="group" aria-label="Phong cách mẫu">
-      <span class="caption lbl">Phong cách</span>
+    <div class="row" role="group" :aria-label="batch ? 'Phong cách cho cả lô' : 'Phong cách mẫu'">
+      <span class="caption lbl">{{ batch ? 'Cả lô' : 'Phong cách' }}</span>
       <div class="chips">
       <button
-        v-for="[vi, en] in STYLES"
+        v-for="[vi, en] in QUICK_STYLES"
         :key="vi"
         type="button"
         class="chip"
-        :class="{ on: style === en }"
-        :aria-pressed="style === en"
+        :class="{ on: activeStyle === en }"
+        :aria-pressed="activeStyle === en"
         :title="en"
         @click="pickStyle(en)"
       >

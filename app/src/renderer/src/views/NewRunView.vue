@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, BookOpen, Languages, Layers, LoaderCircle, Play } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, BookOpen, Languages, Layers, LoaderCircle, Play, Timer } from '@lucide/vue'
 import type { BlobRef, RecipeInfo, RecipeInputSpec } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import LaneTag from '@/components/LaneTag.vue'
@@ -12,12 +12,15 @@ import BlobDropZone from '@/components/BlobDropZone.vue'
 import PresetSelect from '@/components/PresetSelect.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import { useRecipes } from '@/stores/recipes'
+import { useRuns } from '@/stores/runs'
 import { api, useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { stepName } from '@/composables/format'
 import { RECIPE_GROUP_LABEL, RECOMMENDED_RECIPES, recipeGroup, recipePitch, type RecipeGroup } from '@/assets/art'
+import { quickStyleLabel } from '@/assets/quickPrompts'
 
 const recipes = useRecipes()
+const runs = useRuns()
 const conn = useConnection()
 const toasts = useToasts()
 const router = useRouter()
@@ -67,6 +70,32 @@ const flow = (r: RecipeInfo): string => [...new Set(r.steps.map((s) => stepName(
 const asksPick = (r: RecipeInfo): boolean => r.steps.some((s) => s.kind === 'gate.pick')
 const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((l) => l && l !== 'none'))]
 
+// Median, not mean: wall time includes how long a gate waited for the user, and one overnight wait would skew it.
+const ETA_SAMPLE = 20
+const eta = computed(() => {
+  const byRecipe = new Map<string, number[]>()
+  for (const r of runs.runList) {
+    if (r.status !== 'succeeded' || !r.ended_at) continue
+    let arr = byRecipe.get(r.recipe_id)
+    if (!arr) byRecipe.set(r.recipe_id, (arr = []))
+    if (arr.length < ETA_SAMPLE) arr.push(r.ended_at - r.created_at)
+  }
+  const out = new Map<string, { sec: number; n: number }>()
+  for (const [id, arr] of byRecipe) {
+    const s = arr.sort((a, b) => a - b)
+    const mid = Math.floor(s.length / 2)
+    out.set(id, { sec: s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2, n: s.length })
+  }
+  return out
+})
+function etaLabel(id: string): string | null {
+  const sec = eta.value.get(id)?.sec
+  if (sec === undefined) return null
+  if (sec < 45) return 'Dưới 1 phút'
+  const m = Math.max(1, Math.round(sec / 60))
+  return m < 60 ? `~${m} phút` : `~${Math.floor(m / 60)} giờ${m % 60 ? ` ${m % 60} phút` : ''}`
+}
+
 type FieldValue = string | number | boolean
 const values = reactive<Record<string, FieldValue>>({})
 const blobs = reactive<Record<string, BlobRef[]>>({})
@@ -87,6 +116,8 @@ const varyBy = ref<VaryBy>('prompts')
 const varying = computed(() => (mode.value !== 'batch' ? null : ((varyBy.value === 'prompts' ? textInputs : fileInputs).value[0] ?? null)))
 const batchLines = ref('')
 const batchFiles = ref<BlobRef[]>([])
+const batchStyle = ref<string | null>(null)
+const withBatchStyle = (text: string): string => (batchStyle.value ? `${text.replace(/[,\s]+$/, '')}, ${batchStyle.value}` : text)
 const unit = computed(() => (textInputs.value.length ? 'prompt' : 'file'))
 
 watch(
@@ -192,11 +223,13 @@ async function submit(): Promise<void> {
     const textKeys = Object.keys(inputs).filter((k) => r.inputs[k]?.type === 'text' && hasVi(inputs[k]))
     const items = batchItems.value
     const itemKey = varying.value
-    const batchTexts = mode.value === 'batch' && itemKey && varyBy.value === 'prompts' ? items.map((it) => String(it.inputs[itemKey])) : []
+    const promptBatch = mode.value === 'batch' && !!itemKey && varyBy.value === 'prompts'
+    const batchTexts = promptBatch ? items.map((it) => String(it.inputs[itemKey!])) : []
     const english = await toEnglish([...textKeys.map((k) => String(inputs[k])), ...batchTexts])
     textKeys.forEach((k, i) => (inputs[k] = english[i]))
-    const itemsEn = batchTexts.length
-      ? items.map((it, i) => ({ ...it, inputs: { ...it.inputs, [itemKey!]: english[textKeys.length + i] } }))
+    // The shared style is already English, so it goes on after translation rather than through it.
+    const itemsEn = promptBatch
+      ? items.map((it, i) => ({ ...it, inputs: { ...it.inputs, [itemKey!]: withBatchStyle(english[textKeys.length + i] ?? batchTexts[i]!) } }))
       : items
     if (mode.value === 'batch') {
       const res = await api().startBatch({
@@ -319,8 +352,15 @@ ${r.description}`" @click="pick(r.id)">
                 <span class="rcard-text">
                   <span class="headline rcard-name">{{ r.name }}</span>
                   <span class="callout rcard-flow">{{ recipePitch(r.id) ?? flow(r) }}</span>
-                  <span v-if="asksPick(r) || RECOMMENDED_RECIPES.has(r.id)" class="caption rcard-note">
+                  <span v-if="asksPick(r) || RECOMMENDED_RECIPES.has(r.id) || etaLabel(r.id)" class="caption rcard-note">
                     <span v-if="RECOMMENDED_RECIPES.has(r.id)" class="rec">Khuyên dùng</span>
+                    <span
+                      v-if="etaLabel(r.id)"
+                      class="eta num"
+                      :title="`Thời gian giữa của ${eta.get(r.id)?.n} lượt chạy xong gần nhất, gồm cả lúc chờ bạn duyệt`"
+                    >
+                      <Timer :size="12" aria-hidden="true" />{{ etaLabel(r.id) }}
+                    </span>
                     <template v-if="asksPick(r)">Có bước bạn chọn ảnh</template>
                   </span>
                   <span class="rcard-lanes">
@@ -373,6 +413,12 @@ ${r.description}`" @click="pick(r.id)">
               {{ varyBy === 'prompts' ? `${label(varying, selected.inputs[varying]!)}, mỗi dòng một lượt` : 'File, mỗi file một lượt' }}
             </label>
             <div class="f-control">
+              <QuickPrompts
+                v-if="varyBy === 'prompts' && QUICK_INPUTS.has(varying)"
+                v-model="batchLines"
+                v-model:batch-style="batchStyle"
+                batch
+              />
               <textarea
                 v-if="varyBy === 'prompts'"
                 id="in-batch"
@@ -390,6 +436,9 @@ ${r.description}`" @click="pick(r.id)">
               <p class="caption count">
                 <Layers :size="13" />
                 <span class="num"><TweenNumber :value="batchItems.length" :duration="200" /> lượt chạy</span>
+                <span v-if="varyBy === 'prompts' && batchStyle" :title="batchStyle">
+                  · mỗi prompt thêm phong cách {{ quickStyleLabel(batchStyle) }}
+                </span>
               </p>
             </div>
           </div>
@@ -581,8 +630,9 @@ ${r.description}`" @click="pick(r.id)">
 }
 .rcard-note {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 2px 8px;
   color: var(--text-3);
 }
 .rec {
@@ -593,6 +643,13 @@ ${r.description}`" @click="pick(r.id)">
   font-weight: 600;
   color: var(--accent);
   background: var(--accent-soft);
+}
+.eta {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
 }
 .rcard-lanes {
   display: flex;
