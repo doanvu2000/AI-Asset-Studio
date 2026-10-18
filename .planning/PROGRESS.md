@@ -36,7 +36,10 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 7. [x] 1 core / data dir (`7c0d955`): spawn lock, serve thoát mã 3 nếu đã có core, app + MCP attach qua lock. pytest 159.
    Mở: `npm run typecheck` (web) có lỗi sẵn ở ws.ts, StatusGlyph.vue, NewRunView.vue, TS6307 preload/types.ts.
 8. [ ] Agent: P6 flow editor (Vue Flow), API kinds/validate/save recipe, batch, preset export Unity/Godot.
-9. [ ] Sau đó: E2E GPU qua MCP (R1, R5); P5 Spine (cần workflow SAM3.1 — R&D); P7 đóng gói.
+9. [x] R5 live lại @1024/512: 192s (TRELLIS 119s). Mặt trước tốt; lưng có texture "mặt ma" (TRELLIS bịa mặt sau từ 1 ảnh)
+   → cải tiến sau: thêm ảnh mặt sau (Qwen) làm input đa góc nếu workflow hỗ trợ.
+10. [x] E2E GPU qua MCP: `claude -p` (sonnet) chạy R1 auto_first → final.png 66.5s; core MCP tự tắt, lock xoá.
+11. [ ] P5 Spine (SAM3.1 workflow — R&D) · P7 đóng gói (sau P6 vì cùng package.json).
 
 ## Nhật ký
 
