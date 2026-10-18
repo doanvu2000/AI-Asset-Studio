@@ -11,6 +11,11 @@ const bridge: StudioBridge = {
     void ipcRenderer.invoke('studio:coreStatus').then(cb)
     return () => ipcRenderer.removeListener('studio:coreStatus', listener)
   },
+  log: (level, message) => ipcRenderer.send('studio:log', level, message),
+  diagInfo: () => ipcRenderer.invoke('studio:diagInfo'),
+  copyDiagnostics: (payload) => ipcRenderer.invoke('studio:copyDiagnostics', payload),
+  exportDiagnostics: (payload) => ipcRenderer.invoke('studio:exportDiagnostics', payload),
+  openLogsDir: () => ipcRenderer.invoke('studio:openLogsDir'),
   platform: process.platform
 }
 

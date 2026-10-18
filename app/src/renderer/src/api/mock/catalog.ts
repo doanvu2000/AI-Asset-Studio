@@ -167,10 +167,10 @@ export function mockValidate(doc: RecipeDoc, kinds: KindInfo[]): RecipeIssue[] {
 }
 
 export const MOCK_TOOLS: ToolPath[] = [
-  { key: 'comfy_dir', label: 'Thư mục ComfyUI', kind: 'dir', path: 'L:\AI\setup\comfyUI', exists: true, ok: true, version: 'ComfyUI 0.41.0', detail: null },
-  { key: 'comfy_python', label: 'Python của ComfyUI', kind: 'file', path: 'L:\AI\setup\comfyUI\.venv\Scripts\python.exe', exists: true, ok: true, version: 'Python 3.12.10', detail: null },
-  { key: 'comfy_models_dir', label: 'Thư mục model', kind: 'dir', path: 'F:\work\AI\comfyUI_models', exists: true, ok: true, version: null, detail: '14 thư mục con' },
-  { key: 'comfy_workflows_dir', label: 'Thư mục workflow', kind: 'dir', path: 'L:\AI\setup\workflows', exists: true, ok: true, version: null, detail: '9 workflow' },
-  { key: 'blender_exe', label: 'Blender', kind: 'file', path: 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe', exists: true, ok: true, version: 'Blender 5.2.0', detail: null },
-  { key: 'codex_exe', label: 'Codex CLI', kind: 'file', path: 'C:\Users\mock\AppData\Roaming\npm\codex.exe', exists: false, ok: false, version: null, detail: 'Không tìm thấy file' }
+  { key: 'comfy_dir', label: 'Thư mục ComfyUI', kind: 'dir', path: 'L:\\AI\\setup\\comfyUI', exists: true, ok: true, version: 'ComfyUI 0.41.0', detail: null },
+  { key: 'comfy_python', label: 'Python của ComfyUI', kind: 'file', path: 'L:\\AI\\setup\\comfyUI\\.venv\\Scripts\\python.exe', exists: true, ok: true, version: 'Python 3.12.10', detail: null },
+  { key: 'comfy_models_dir', label: 'Thư mục model', kind: 'dir', path: 'F:\\work\\AI\\comfyUI_models', exists: true, ok: true, version: null, detail: '14 thư mục con' },
+  { key: 'comfy_workflows_dir', label: 'Thư mục workflow', kind: 'dir', path: 'L:\\AI\\setup\\workflows', exists: true, ok: true, version: null, detail: '9 workflow' },
+  { key: 'blender_exe', label: 'Blender', kind: 'file', path: 'C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe', exists: true, ok: true, version: 'Blender 5.2.0', detail: null },
+  { key: 'codex_exe', label: 'Codex CLI', kind: 'file', path: 'C:\\Users\\mock\\AppData\\Roaming\\npm\\codex.exe', exists: false, ok: false, version: null, detail: 'Không tìm thấy file' }
 ]

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { LoaderCircle } from '@lucide/vue'
+import { ClipboardCopy, LoaderCircle } from '@lucide/vue'
 import { ART } from '@/assets/art'
 import { useConnection } from '@/stores/connection'
+import { useDiagnosticsActions } from '@/composables/diagnostics'
 
 const conn = useConnection()
+const diag = useDiagnosticsActions()
 
 const banner = computed(() => {
   const c = conn.core
@@ -31,6 +33,11 @@ const banner = computed(() => {
         <span>{{ banner.text }}</span>
         <pre v-if="banner.detail" class="detail selectable">{{ banner.detail }}</pre>
       </div>
+      <button v-if="diag.available" class="logs" :disabled="!!diag.busy.value" @click="diag.copyLogs">
+        <LoaderCircle v-if="diag.busy.value === 'copy'" class="spin" :size="13" />
+        <ClipboardCopy v-else :size="13" />
+        Copy nhật ký
+      </button>
     </div>
   </Transition>
 </template>
@@ -68,6 +75,29 @@ const banner = computed(() => {
   font-size: 11px;
   white-space: pre-wrap;
   color: var(--text-2);
+}
+.logs {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--t-fast);
+}
+.logs:hover {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.logs:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 .art {
   flex: none;

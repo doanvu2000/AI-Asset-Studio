@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { LoaderCircle } from '@lucide/vue'
+import { ClipboardCopy, LoaderCircle } from '@lucide/vue'
 import { ART } from '@/assets/art'
 import { useConnection } from '@/stores/connection'
+import { useDiagnosticsActions } from '@/composables/diagnostics'
 
 const conn = useConnection()
+const diag = useDiagnosticsActions()
 
 const info = computed(() => {
   const c = conn.core
@@ -26,6 +28,11 @@ const info = computed(() => {
       {{ info.text }}
     </p>
     <pre v-if="conn.core.detail" class="detail selectable">{{ conn.core.detail }}</pre>
+    <button v-if="diag.available" class="btn logs" :disabled="!!diag.busy.value" @click="diag.copyLogs">
+      <LoaderCircle v-if="diag.busy.value === 'copy'" class="spin" />
+      <ClipboardCopy v-else />
+      Copy nhật ký
+    </button>
   </div>
 </template>
 
@@ -71,6 +78,9 @@ const info = computed(() => {
   color: var(--text-2);
   background: var(--bg-sunken);
   box-shadow: var(--hairline);
+}
+.logs {
+  margin-top: 12px;
 }
 .spin {
   animation: spin 1s linear infinite;

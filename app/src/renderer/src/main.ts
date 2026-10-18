@@ -6,6 +6,9 @@ import { createPinia } from 'pinia'
 import { autoAnimatePlugin } from '@formkit/auto-animate/vue'
 import App from './App.vue'
 import { router } from './router'
+import { installDevlog } from './composables/devlog'
+
+installDevlog()
 
 const params = new URLSearchParams(location.search)
 document.documentElement.dataset.vibrancy = params.get('vibrancy') === '1' ? '1' : '0'

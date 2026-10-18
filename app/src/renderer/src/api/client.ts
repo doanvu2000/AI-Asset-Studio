@@ -22,6 +22,8 @@ import type {
   VersionRow,
   VersionStatus
 } from './types'
+import type { CoreDiagnostics } from '../../../preload/types'
+import { devlog } from '@/composables/devlog'
 
 export class ApiError extends Error {
   constructor(
@@ -69,6 +71,7 @@ export interface StudioApi {
   deletePreset(id: string): Promise<void>
   toolPaths(versions?: boolean): Promise<ToolPaths>
   saveToolPaths(paths: Partial<Record<ToolKey, string>>): Promise<ToolPaths>
+  diagnostics(): Promise<CoreDiagnostics>
 }
 
 export type RecipeBody = { yaml: string } | { doc: RecipeDoc }
@@ -91,7 +94,8 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
         headers: body instanceof FormData ? auth : { ...auth, 'Content-Type': 'application/json' },
         body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body)
       })
-    } catch {
+    } catch (e) {
+      devlog('warn', `api ${method} ${path} → network: ${(e as Error).message}`)
       throw new ApiError('network', 'Không kết nối được tới core', 0)
     }
     if (!res.ok) {
@@ -106,6 +110,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
       } catch {
         /* non-JSON error body */
       }
+      devlog('warn', `api ${method} ${path} → ${res.status} ${code}: ${message}`)
       throw new ApiError(code, message, res.status, issues)
     }
     if (res.status === 204) return undefined as T
@@ -145,6 +150,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     savePreset: (p) => call('PUT', `/api/presets/${enc(p.id)}`, p),
     deletePreset: (id) => call('DELETE', `/api/presets/${enc(id)}`),
     toolPaths: (versions = true) => call('GET', `/api/settings/tools${query({ versions: versions ? undefined : 'false' })}`),
-    saveToolPaths: (paths) => call('PUT', '/api/settings/tools', { paths })
+    saveToolPaths: (paths) => call('PUT', '/api/settings/tools', { paths }),
+    diagnostics: () => call('GET', '/api/diagnostics')
   }
 }

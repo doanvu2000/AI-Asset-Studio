@@ -128,6 +128,12 @@ class SqliteRepo:
             [StepStatus(s).value for s in statuses])
         return [_STEPS.decode(r) for r in rows]
 
+    async def recent_failed_steps(self, limit: int = 20) -> list[StepRow]:
+        rows = await self.db.fetchall(
+            "SELECT * FROM steps WHERE status = ? ORDER BY COALESCE(ended_at, started_at, 0) DESC LIMIT ?",
+            (StepStatus.FAILED.value, limit))
+        return [_STEPS.decode(r) for r in rows]
+
     async def cache_get(self, key: str) -> Outputs | None:
         row = await self.db.fetchone('SELECT outputs FROM cache WHERE "key" = ?', (key,))
         if row is None:

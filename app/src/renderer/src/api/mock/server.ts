@@ -1,5 +1,6 @@
 import { ApiError, type ListRunsQuery, type RecipeBody, type StudioApi } from '../client'
 import { FrameBatcher, type EventSink, type EventStream } from '../ws'
+import type { CoreDiagnostics } from '../../../../preload/types'
 import {
   STEP_DONE_OK,
   type BatchCreateBody,
@@ -862,6 +863,36 @@ export class MockCore implements StudioApi, EventStream {
   async toolPaths(): Promise<ToolPaths> {
     await sleep(140)
     return { tools: clone(this.tools), settings_file: 'C:\\Users\\mock\\AppData\\Roaming\\AI Asset Studio\\data\\settings.json' }
+  }
+
+  async diagnostics(): Promise<CoreDiagnostics> {
+    await this.ready
+    await sleep(160)
+    const data = 'C:\\Users\\mock\\AppData\\Roaming\\AI Asset Studio\\data'
+    const failed = [...this.steps.values()]
+      .filter((s) => s.status === 'failed')
+      .sort((a, b) => (b.ended_at ?? 0) - (a.ended_at ?? 0))
+      .slice(0, 20)
+    return {
+      generated_at: now(),
+      core: { version: 'mock', pid: 4242, started_at: now() - 3600, frozen: false, python: '3.13.5', executable: 'mock\\python.exe', platform: 'Windows-11-mock' },
+      data_dir: data,
+      settings_file: `${data}\\settings.json`,
+      tools: this.tools.map((t) => ({ key: t.key, label: t.label, path: t.path, exists: t.exists, ok: t.ok, detail: t.detail })),
+      resources: clone([...this.resourcesMap.values()]),
+      counts: { recipes: this.builtins.size + this.userRecipes.size, kinds: MOCK_KINDS.length },
+      failed_steps: failed.map((s) => ({
+        run_id: s.run_id,
+        step_id: s.id,
+        key: s.key,
+        kind: s.kind,
+        attempt: s.attempt,
+        code: s.error?.code ?? null,
+        message: s.error?.message ?? '',
+        ended_at: s.ended_at ?? null
+      })),
+      logs: [{ name: 'comfyui.log', path: `${data}\\logs\\comfyui.log`, bytes: 2048, modified: now(), lines: ['[mock] ComfyUI started', '[mock] Prompt executed in 3.2 seconds'] }]
+    }
   }
 
   async saveToolPaths(paths: Partial<Record<ToolKey, string>>): Promise<ToolPaths> {

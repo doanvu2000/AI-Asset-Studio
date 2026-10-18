@@ -5,6 +5,7 @@ import { createMockTransport, createRealTransport, MOCK, type Transport } from '
 import type { SocketState } from '@/api/ws'
 import type { StudioApi } from '@/api/client'
 import { applyEvents, resyncAll } from './events'
+import { devlog } from '@/composables/devlog'
 
 export const useConnection = defineStore('connection', () => {
   const core = ref<CoreStatus>({ state: 'starting', attempt: 0 })
@@ -23,7 +24,10 @@ export const useConnection = defineStore('connection', () => {
       resync: () => {
         void resyncAll().then(() => (lastSync.value = Date.now()))
       },
-      state: (s) => (socket.value = s)
+      state: (s) => {
+        if (s !== socket.value) devlog(s === 'open' || s === 'connecting' ? 'info' : 'warn', `socket ${socket.value} → ${s}`)
+        socket.value = s
+      }
     })
   }
 

@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { EventEmitter } from 'node:events'
 import type { CoreConnection, CoreStatus } from '../preload/types'
+import { redact } from './devlog'
 
 const READY_PREFIX = 'STUDIO_CORE_READY '
 const READY_TIMEOUT_MS = 20_000
@@ -76,6 +77,11 @@ export class CoreSupervisor extends EventEmitter {
 
   constructor(private readonly opts: CoreOptions) {
     super()
+  }
+
+  /** Tokens that must never reach a log file. */
+  get secrets(): string[] {
+    return [this.ownToken, this.token]
   }
 
   get current(): CoreStatus {
@@ -152,6 +158,7 @@ export class CoreSupervisor extends EventEmitter {
     this.attachWatch = setInterval(() => {
       if (!pidAlive(pid)) this.onAttachedLost()
     }, ATTACH_WATCH_MS)
+    this.emit('log', 'info', `attached to running core pid ${pid} at ${baseUrl}`)
     this.setStatus({ state: 'ready', attempt: this.status.attempt + 1, baseUrl, pid, attached: true })
     return true
   }
@@ -183,6 +190,7 @@ export class CoreSupervisor extends EventEmitter {
     }
     this.setStatus({ state: 'starting', attempt })
     this.stderrTail = []
+    this.emit('log', 'info', `spawn ${command} ${args.join(' ')} (cwd ${this.coreDir})`)
 
     const child = spawn(command, args, {
       cwd: this.coreDir,
@@ -208,6 +216,7 @@ export class CoreSupervisor extends EventEmitter {
       while ((nl = buf.indexOf('\n')) >= 0) {
         const line = buf.slice(0, nl).trim()
         buf = buf.slice(nl + 1)
+        if (line) this.emit('output', 'out', line)
         if (line.startsWith(READY_PREFIX) && this.status.state === 'starting') {
           clearTimeout(timeout)
           this.onReadyLine(line.slice(READY_PREFIX.length), attempt)
@@ -215,15 +224,30 @@ export class CoreSupervisor extends EventEmitter {
       }
     })
     child.stderr?.setEncoding('utf8')
+    let errBuf = ''
     child.stderr?.on('data', (chunk: string) => {
-      for (const l of chunk.split(/\r?\n/)) if (l.trim()) this.stderrTail.push(l)
+      errBuf += chunk
+      const lines = errBuf.split(/\r?\n/)
+      errBuf = lines.pop() ?? ''
+      for (const l of lines) {
+        if (!l.trim()) continue
+        this.stderrTail.push(l)
+        this.emit('output', 'err', l)
+      }
       if (this.stderrTail.length > 40) this.stderrTail.splice(0, this.stderrTail.length - 40)
     })
     child.on('error', (err) => {
+      this.emit('log', 'error', `core process error: ${err.message}`)
       this.lastMessage = err.message
     })
     child.on('exit', (code) => {
       clearTimeout(timeout)
+      if (errBuf.trim()) {
+        this.stderrTail.push(errBuf)
+        this.emit('output', 'err', errBuf)
+      }
+      errBuf = ''
+      this.emit('log', code === 0 || this.stopping ? 'info' : 'warn', `core pid ${child.pid ?? '?'} exited with code ${code ?? '?'}`)
       if (this.child !== child) return
       this.child = null
       if (this.stopping) {
@@ -258,7 +282,7 @@ export class CoreSupervisor extends EventEmitter {
     this.failures += 1
     this.readyAt = 0
     const delay = Math.min(BACKOFF_MAX_MS, 1000 * 2 ** (this.failures - 1))
-    const tail = this.stderrTail.slice(-6).join('\n')
+    const tail = redact(this.stderrTail.slice(-6).join('\n'), this.secrets)
     this.setStatus({
       state: 'restarting',
       attempt: this.status.attempt,
