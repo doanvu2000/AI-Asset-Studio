@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ART } from '@/assets/art'
-import { ExternalLink } from '@lucide/vue'
+import { ExternalLink, Plus } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import BlobThumb from '@/components/BlobThumb.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -73,7 +73,10 @@ function instruction(g: GateItem): string {
 <template>
   <div class="view">
     <PageHeader title="Cần duyệt" :subtitle="gates.count ? `${gates.count} bước đang chờ` : 'Không có gì đang chờ'" />
-    <EmptyState v-if="!current" class="gates-empty" :art="ART.emptyGates" :art-size="176" title="Hộp duyệt trống" text="Khi một lượt chạy cần bạn chọn ảnh hoặc duyệt, nó sẽ xuất hiện ở đây." />
+    <EmptyState v-if="!current" class="gates-empty" :art="ART.emptyGates" :art-size="176" title="Hộp duyệt trống" text="Khi một lượt chạy cần bạn chọn ảnh hoặc duyệt, nó sẽ xuất hiện ở đây.">
+      <RouterLink to="/runs" class="btn">Xem lượt chạy</RouterLink>
+      <RouterLink to="/new" class="btn btn-primary"><Plus /> Tạo asset mới</RouterLink>
+    </EmptyState>
     <div v-else class="split">
       <aside class="queue" aria-label="Danh sách chờ duyệt" :style="{ '--pane-w': `${queueW}px` }">
         <TransitionGroup name="q" tag="div" class="q-list">

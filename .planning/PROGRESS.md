@@ -235,3 +235,13 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   Thay đổi phiên này CHƯA commit (QuickPrompts, NewRunView, mock server, assets/quickPrompts.ts, update-portable.ps1).
 - [x] Commit `b0d277b`. Chủ nhân tắt studio-core MCP → Portable đã chép bản mới 02:37 (core + app, gồm mesh.checked,
   dịch VI→EN, theme, art D, mẫu nhanh lô, ETA). MCP asset-studio các phiên cần khởi động lại phiên.
+- [ ] 2026-10-19 (session mới, chủ nhân chọn "#1 + #2"): (1) app-icon style D — Codex sinh 3 phương án
+  (a tile tím / b tile giấy / c tự do) vào `scratchpad 81b71353/icon/` (`icon_d.py`), chờ chủ nhân chọn rồi
+  `app/scripts/gen-art.py icon` → resources/icon.png/.ico/tray.png + app-icon.webp. (2) rà UI-AUDIT còn sót.
+- [x] App icon style D: chủ nhân chọn B (tile giấy kem, pha lê tím trên đe) → `gen-art.py icon` ra
+  `app/resources/icon.png/.ico/tray.png` + `assets/art/app-icon.webp` 64px (4 góc trong suốt). Ảnh gốc + so sánh:
+  `scratchpad 81b71353/icon/`, `icon_compare.png`. `art-manifest.json` vẫn ghi prompt cũ (art D sinh bằng `icon_d.py`/`art_d.py`).
+- [x] Rà UI-AUDIT: mục 1–28 đã có trong code (soát lại: thuật ngữ, tìm/lọc thư viện, phím ←/→ lightbox, badge "Của tôi",
+  `--st-pending-text`, tooltip phím tắt sidebar, prompt ở hộp duyệt, lưới auto-fill). Chỉ thiếu CTA ở empty state
+  Cần duyệt → thêm "Xem lượt chạy" + "Tạo asset mới". Codex lệch trạng thái §6 chỉ có ở mock (core cùng dựa `codex_exe`).
+  typecheck sạch. CHƯA commit; Portable chưa có icon mới (cần build lại).
