@@ -119,7 +119,8 @@ def test_spine_export_is_valid_and_reassembles(built: dict) -> None:
     slots = [s["name"] for s in doc["slots"]]
     assert slots == [p["name"] for p in built["layers"]["parts"]]
     assert set(doc["skins"][0]["attachments"]) == set(slots)
-    assert set(doc["animations"]) == {"idle", "relax"}
+    assert set(doc["animations"]) == {"idle", "relax", "walk", "attack", "hurt", "jump"}
+    assert set(doc["animations"]["hurt"]["slots"]) == set(slots)
     lines = res["atlas"].splitlines()
     assert lines[0] == "hero.png" and lines[1].startswith("size:") and lines[3] == "pma:false"
     regions = dict(zip(lines[4::2], lines[5::2]))
@@ -140,6 +141,25 @@ def test_animation_moves_arms_but_not_feet(built: dict) -> None:
     down = np.asarray(sp.compose(doc, regions, origin, (W, H), "relax", 1.2))
     assert (down[150:185, 400:470, 3] > 0).mean() < (setup[150:185, 400:470, 3] > 0).mean() * 0.5
     assert np.abs(down[475:490].astype(int) - setup[475:490].astype(int)).mean() < 1
+
+
+def test_walk_lifts_one_leg_and_attack_swings_right_arm(built: dict) -> None:
+    layers = [sp.Layer(e["name"], c, tuple(e["offset"])) for c, e in zip(built["crops"], built["layers"]["parts"])]
+    doc, _ = sp.build_skeleton(layers, {k: tuple(v) for k, v in built["layers"]["joints"].items()},
+                               tuple(built["layers"]["origin"]), "x")
+    def tip(anim: str | None, t: float, bone: str) -> np.ndarray:
+        m, p = sp.world_transforms(doc, anim, t)[bone]
+        length = next(b.get("length", 0) for b in doc["bones"] if b["name"] == bone)
+        return p + m @ np.array([length, 0.0])
+    rest = {s: tip(None, 0, f"foot_{s}") for s in "lr"}
+    l_up = tip("walk", 0.25, "foot_l")[1] - rest["l"][1]
+    r_up = tip("walk", 0.25, "foot_r")[1] - rest["r"][1]
+    assert l_up > 5 and l_up > r_up + 5
+    swing_r = np.linalg.norm(tip("attack", 0.3, "hand_r") - tip("attack", 0.0, "hand_r"))
+    swing_l = np.linalg.norm(tip("attack", 0.3, "hand_l") - tip("attack", 0.0, "hand_l"))
+    assert swing_r > 3 * swing_l
+    hip_y = [sp.world_transforms(doc, "jump", t)["hip"][1][1] for t in (0.0, 0.5)]
+    assert hip_y[1] - hip_y[0] > 20
 
 
 def test_merge_joints_validates_and_unswaps(built: dict) -> None:

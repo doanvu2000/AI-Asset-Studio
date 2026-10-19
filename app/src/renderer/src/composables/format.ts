@@ -98,6 +98,7 @@ const KIND_NAMES: Record<string, string> = {
   'codex.image': 'Sinh ảnh (Codex)',
   'claude.task': 'Claude phân tích',
   'blender.render_dirs': 'Render các hướng',
+  'blender.animate_dirs': 'Dựng xương + đi bộ (Blender)',
   'op.trim_pad_resize': 'Cắt viền & căn cỡ',
   'op.sheet': 'Ghép sprite sheet',
   'op.mirror_dirs': 'Lật thành 8 hướng',
@@ -192,6 +193,7 @@ const KIND_SHORT: Record<string, string> = {
   'claude.procedural_3d': 'Dựng 3D bằng code',
   'blender.cleanup': 'Dọn mesh',
   'blender.render_dirs': 'Render các hướng',
+  'blender.animate_dirs': 'Dựng xương + đi bộ',
   'blender.script': 'Chạy script Blender',
   'blender.agent': 'Blender tự động'
 }
@@ -211,7 +213,20 @@ export function stepLabel(kindOrId: string, fallbackId?: string): string {
 
 /** stepLabel for a StepRow / RecipeStepInfo-like object. */
 export function stepName(step: { kind: string; key?: string; id?: string }): string {
-  return stepLabel(step.kind, step.key ?? step.id)
+  const id = step.key ?? step.id ?? ''
+  if (STEP_ID_OVERRIDES[id]) return STEP_ID_OVERRIDES[id]
+  // Recipes that repeat a branch for the back view prefix those step ids with `back_`.
+  if (id.startsWith('back_')) return `${stepLabel(step.kind, id.slice(5))} · mặt sau`
+  return stepLabel(step.kind, id)
+}
+
+// Step ids whose kind is reused for a different purpose than its default name says.
+const STEP_ID_OVERRIDES: Record<string, string> = {
+  front: 'Render mặt trước',
+  joints: 'Claude chấm khớp',
+  anim_down: 'Thu nhỏ khung đi bộ',
+  walk: 'Ghép sheet đi bộ',
+  back_view: 'Sinh mặt sau'
 }
 
 const ERROR_LABELS: Record<string, string> = {

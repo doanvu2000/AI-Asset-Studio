@@ -1,11 +1,13 @@
 """Live E2E for R6 spine-character: spawn core, run through both gates, print step timings, dump outputs.
 
 Usage: python scripts/e2e_r6.py <data_dir> [prompt] [pick_index] [rig: claude|auto]
+R6_RECIPE=spine-character-mv also exercises the back-view branch (its steps are dumped with a back_ prefix).
 Outputs land in <data_dir>/r6_out/: Spine files, setup-pose render, animation frames, part/segment previews.
 """
 import asyncio
 import io
 import json
+import os
 import secrets
 import sys
 import time
@@ -29,7 +31,9 @@ async def dump(c: httpx.AsyncClient, run_id: str, out: Path) -> None:
     async def blob(ref: dict) -> bytes:
         return (await c.get(f"/api/blobs/{ref['hash']}")).content
 
-    for key, names in SAVE.items():
+    for key, names in [*SAVE.items(), *((f"back_{k}", v) for k, v in SAVE.items())]:
+        if key not in steps:
+            continue
         for n in names:
             for i, ref in enumerate(steps[key]["outputs"].get(n, [])):
                 fname = f"{key}_{n}_{i}_{ref.get('name') or 'blob'}"
@@ -66,7 +70,7 @@ async def main(data_dir: Path, prompt: str, pick: int, rig: str) -> None:
     try:
         async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}", headers=h, timeout=120) as c, \
                 websockets.connect(f"ws://127.0.0.1:{port}/ws?t={token}", max_size=None) as ws:
-            r = await c.post("/api/runs", json={"recipe_id": "spine-character", "title": "e2e spine",
+            r = await c.post("/api/runs", json={"recipe_id": os.environ.get("R6_RECIPE", "spine-character"), "title": "e2e spine",
                                                 "inputs": {"prompt": prompt, "name": "hero", "rig": rig}})
             assert r.is_success, r.text
             run_id = r.json()["run_id"]

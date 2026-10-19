@@ -500,10 +500,231 @@ def run_script(p, emit):
     return result
 
 
+# bone, parent, head joint, tail joint (joints are the 19-point schema Claude marks on the front render)
+RIG_BONES = (
+    ("spine", None, "pelvis", "neck"),
+    ("head", "spine", "neck", "head_top"),
+    *((f"pelvis_{s}", None, "pelvis", f"hip_{s}") for s in "lr"),
+    *((f"thigh_{s}", f"pelvis_{s}", f"hip_{s}", f"knee_{s}") for s in "lr"),
+    *((f"shin_{s}", f"thigh_{s}", f"knee_{s}", f"ankle_{s}") for s in "lr"),
+    *((f"foot_{s}", f"shin_{s}", f"ankle_{s}", f"foot_tip_{s}") for s in "lr"),
+    *((f"collar_{s}", "spine", "neck", f"shoulder_{s}") for s in "lr"),
+    *((f"upper_arm_{s}", f"collar_{s}", f"shoulder_{s}", f"elbow_{s}") for s in "lr"),
+    *((f"forearm_{s}", f"upper_arm_{s}", f"elbow_{s}", f"wrist_{s}") for s in "lr"),
+    *((f"hand_{s}", f"forearm_{s}", f"wrist_{s}", f"hand_tip_{s}") for s in "lr"),
+)
+
+
+def joints_to_world(joints, verts, p):
+    """Front render pixels -> world. x/z come from the ortho camera; depth is the mesh's median y near that point."""
+    w = float(p["image_w"])
+    scale = float(p["ortho_scale"]) / w
+    px, py = (float(c) * w / float(p["render_res"]) for c in p["pivot"])
+    height = float(verts[:, 2].max() - verts[:, 2].min()) or 1.0
+    out = {}
+    for name, (jx, jy) in joints.items():
+        x, z = (float(jx) - px) * scale, (py - float(jy)) * scale
+        near = verts[(np.abs(verts[:, 2] - z) < 0.04 * height) & (np.abs(verts[:, 0] - x) < 0.06 * height)]
+        y = float(np.median(near[:, 1])) if len(near) >= 8 else float(np.median(verts[:, 1]))
+        out[name] = Vector((x, y, z))
+    return out
+
+
+def build_armature(scene, pts):
+    data = bpy.data.armatures.new("rig")
+    arm = bpy.data.objects.new("rig", data)
+    scene.collection.objects.link(arm)
+    bpy.context.view_layer.objects.active = arm
+    arm.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    for name, parent, a, b in RIG_BONES:
+        eb = data.edit_bones.new(name)
+        eb.head, eb.tail = pts[a], pts[b]
+        if (eb.tail - eb.head).length < 1e-4:
+            eb.tail = eb.head + Vector((0, 0, 0.01))
+        eb.roll = 0.0
+        if parent:
+            eb.parent = data.edit_bones[parent]
+    bpy.ops.object.mode_set(mode="OBJECT")
+    return arm
+
+
+def _parent(objs, arm, kind):
+    bpy.ops.object.select_all(action="DESELECT")
+    for o in objs:
+        o.select_set(True)
+    arm.select_set(True)
+    bpy.context.view_layer.objects.active = arm
+    bpy.ops.object.parent_set(type=kind)
+
+
+def _weighted(o):
+    if not len(o.vertex_groups):
+        return False
+    n = len(o.data.vertices)
+    return sum(1 for v in o.data.vertices if len(v.groups)) > 0.95 * n
+
+
+def _distance_weights(meshes, arm):
+    """Inverse-distance skinning to the two nearest bone segments. Generated meshes are rarely watertight, which
+    makes Blender's bone heat fail outright, and envelopes leave far vertices (capes, shields) unweighted."""
+    bones = [b for b in arm.data.bones if b.use_deform]
+    heads = np.array([b.head_local for b in bones], dtype=np.float32)
+    tails = np.array([b.tail_local for b in bones], dtype=np.float32)
+    seg = tails - heads
+    seg_len2 = np.maximum((seg ** 2).sum(1), 1e-12)
+    inv = np.array(arm.matrix_world.inverted(), dtype=np.float32)
+    for o in meshes:
+        n = len(o.data.vertices)
+        co = np.empty(n * 3, dtype=np.float32)
+        o.data.vertices.foreach_get("co", co)
+        m = np.array(o.matrix_world, dtype=np.float32)
+        pts = co.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3]
+        pts = pts @ inv[:3, :3].T + inv[:3, 3]
+        t = np.clip(((pts[:, None, :] - heads[None]) * seg[None]).sum(2) / seg_len2[None], 0.0, 1.0)
+        d = np.linalg.norm(pts[:, None, :] - (heads[None] + t[..., None] * seg[None]), axis=2)
+        near = np.argsort(d, axis=1)[:, :2]
+        dn = np.take_along_axis(d, near, axis=1)
+        w = 1.0 / np.maximum(dn, 1e-5) ** 4
+        w /= w.sum(1, keepdims=True)
+        o.vertex_groups.clear()
+        groups = [o.vertex_groups.new(name=b.name) for b in bones]
+        for i in range(n):
+            for k in range(2):
+                if w[i, k] > 0.01:
+                    groups[near[i, k]].add([i], float(w[i, k]), "REPLACE")
+        # Neighbouring robe/cape vertices can land on opposite legs and tear apart mid-stride; smoothing along the
+        # surface turns that seam into a stretch.
+        bpy.ops.object.select_all(action="DESELECT")
+        o.select_set(True)
+        bpy.context.view_layer.objects.active = o
+        try:
+            bpy.ops.object.vertex_group_smooth(group_select_mode="ALL", factor=0.5, repeat=12)
+            bpy.ops.object.vertex_group_normalize_all(lock_active=False)
+        except RuntimeError as e:
+            print(f"weight smooth skipped: {e}", flush=True)
+
+
+def _unbind(meshes):
+    for o in meshes:
+        o.vertex_groups.clear()
+        for m in [m for m in o.modifiers if m.type == "ARMATURE"]:
+            o.modifiers.remove(m)
+
+
+def bind_mesh(meshes, arm, height):
+    """Bone heat when Blender can solve it, else distance skinning. Returns which one held."""
+    _parent(meshes, arm, "ARMATURE_AUTO")
+    if all(_weighted(o) for o in meshes):
+        return "auto"
+    _unbind(meshes)
+    _distance_weights(meshes, arm)
+    _parent(meshes, arm, "ARMATURE")
+    return "distance"
+
+
+def walk_pose(phase, height):
+    """Bone -> (world axis, degrees) plus root drop for one walk phase; forward is -Y (the model faces the camera)."""
+    s = math.sin(phase)
+    c = math.cos(phase)
+    pose = {}
+    for side, sign in (("l", 1.0), ("r", -1.0)):
+        swing = sign * s
+        pose[f"thigh_{side}"] = ("X", -28.0 * swing)
+        pose[f"shin_{side}"] = ("X", 40.0 * max(0.0, sign * c))
+        pose[f"foot_{side}"] = ("X", -12.0 * max(0.0, sign * c))
+        pose[f"upper_arm_{side}"] = ("X", 22.0 * swing)
+        pose[f"forearm_{side}"] = ("X", -15.0 - 10.0 * max(0.0, swing))
+    pose["spine"] = ("Z", 4.0 * s)
+    drop = -0.025 * height * abs(c)
+    return pose, drop
+
+
+def apply_pose(arm, pose, drop):
+    """Rotations are about world axes through each bone's rest head, composed down the chain."""
+    deltas = {}
+    for name, parent, _, _ in RIG_BONES:
+        bone = arm.data.bones[name]
+        parent_delta = deltas.get(parent, Matrix.Translation((0, 0, drop)))
+        axis, deg = pose.get(name, ("X", 0.0))
+        head = bone.head_local
+        local = Matrix.Translation(head) @ Matrix.Rotation(math.radians(deg), 4, axis) @ Matrix.Translation(-head)
+        deltas[name] = parent_delta @ local
+        pb = arm.pose.bones[name]
+        pb.matrix = deltas[name] @ bone.matrix_local
+        bpy.context.view_layer.update()
+
+
+def animate_dirs(p, emit):
+    t0 = time.perf_counter()
+    reset()
+    scene = bpy.context.scene
+    meshes = import_glb(p["glb"])
+    pivot = bpy.data.objects.new("pivot", None)
+    scene.collection.objects.link(pivot)
+    v = world_verts(meshes)
+    lo, hi = v.min(0), v.max(0)
+    foot = Vector(((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2]))
+    for o in [o for o in scene.objects if o.parent is None and o is not pivot]:
+        o.location -= foot
+    bpy.context.view_layer.update()
+    v = world_verts(meshes)
+    height = float(v[:, 2].max() - v[:, 2].min())
+    pts = joints_to_world(p["joints"], v, p)
+    arm = build_armature(scene, pts)
+    weights = bind_mesh(meshes, arm, height)
+    arm.parent = pivot
+
+    frames_n = max(2, int(p.get("frames", 8)))
+    elev = math.radians(p.get("elevation", 30))
+    # Limbs swing past the rest silhouette, so the shared ortho box gets extra margin over render_dirs.
+    r = float(np.sqrt((v[:, :2] ** 2).sum(1)).max()) * 1.3
+    zmin, zmax = float(v[:, 2].min()), float(v[:, 2].max())
+    vlo = zmin * math.cos(elev) - r * math.sin(elev) - 0.03 * height
+    vhi = zmax * math.cos(elev) + r * math.sin(elev)
+    ortho = max(2 * r, vhi - vlo) * p.get("margin", 1.05)
+    vmid = (vlo + vhi) / 2
+    cam_data = bpy.data.cameras.new("cam")
+    cam_data.type = "ORTHO"
+    cam_data.ortho_scale = ortho
+    cam = bpy.data.objects.new("cam", cam_data)
+    scene.collection.objects.link(cam)
+    fwd = Vector((0, math.cos(elev), -math.sin(elev)))
+    up = Vector((0, math.sin(elev), math.cos(elev)))
+    cam.location = up * vmid - fwd * (r + zmax + 10)
+    cam.rotation_euler = (math.pi / 2 - elev, 0, 0)
+    cam_data.clip_end = (r + zmax) * 4 + 20
+    scene.camera = cam
+    add_lights(scene, p)
+    supersample = max(1, int(p.get("supersample", 1)))
+    res = int(p.get("res", 512)) * supersample
+    configure_output(scene, p, res)
+
+    out_dir = p["out_dir"]
+    os.makedirs(out_dir, exist_ok=True)
+    angles = render_angles(int(p.get("count", 8)), False)
+    frames = []
+    total = frames_n * len(angles)
+    for fi in range(frames_n):
+        pose, drop = walk_pose(2 * math.pi * fi / frames_n, height)
+        apply_pose(arm, pose, drop)
+        for a in angles:
+            pivot.rotation_euler = (0, 0, math.radians(-a))
+            scene.render.filepath = os.path.join(out_dir, f"dir_{round(a):03d}_f{fi:02d}.png")
+            bpy.ops.render.render(write_still=True)
+            frames.append({"angle": a, "frame": fi, "file": scene.render.filepath})
+            emit({"event": "progress", "value": len(frames), "max": total, "label": f"{round(a)}° · khung {fi + 1}"})
+    return {"total_s": round(time.perf_counter() - t0, 2), "engine": scene.render.engine, "ortho_scale": round(ortho, 4),
+            "res": res, "supersample": supersample, "elevation": p.get("elevation", 30), "frames": frames,
+            "frames_per_dir": frames_n, "weights": weights, "height": round(height, 4),
+            "pivot": [res / 2, res * (0.5 + vmid / ortho)]}
+
+
 HANDLERS = {
     "ping": lambda p, emit: {"blender": bpy.app.version_string, "pid": os.getpid(), "engines": engine_ids()},
     "warmup": warmup,
     "render_dirs": render_dirs,
+    "animate_dirs": animate_dirs,
     "cleanup": cleanup,
     "script": run_script,
 }

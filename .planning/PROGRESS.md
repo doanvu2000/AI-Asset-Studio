@@ -260,3 +260,27 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   (2) Lô không còn giới hạn 500 lượt: `GET /api/runs?batched=true|batch_id=` (json_extract `$meta.batch_id`, limit ≤2000);
   app nạp thêm lượt thuộc lô khi load list, BatchDetail nạp riêng theo batch_id.
   pytest 251/4 skip, typecheck sạch. CHƯA commit; Portable cần build lại core (PyInstaller) + app.
+- [x] Commit + push `core+app: keep YAML comments…`. Build core (PyInstaller) + app. Tự test bản đóng gói (bản sao
+  `scratchpad 81b71353/pkg` + data R6): PUT recipe sprite-8dir-3d-mv giữ 5 comment (ruamel có trong bản frozen), xoá lại
+  OK; lô thử 3 lượt (recipe CPU `batch-test`) → `?batch_id`/`?batched` đúng, màn Hàng loạt + chi tiết lô hiển thị đúng.
+  Portable: app đã chép 11:3x; core bị 12 studio-core.exe MCP khoá → `update-portable.ps1 -Wait` chạy nền. Nếu phiên đóng
+  trước khi chép xong: tắt các phiên Claude/Codex rồi chạy
+  `powershell -ExecutionPolicy Bypass -File L:\AI\AI-Asset-Studio\.planning\update-portable.ps1`.
+- [ ] 2026-10-19 Animation (plan `.planning/PLAN-anim.md`, chủ nhân chọn cả 3, cho tự chạy GPU):
+  A xong: `ops/spine.py` `animations()` 6 clip (idle, relax, walk, attack, hurt+nháy đỏ slot, jump), hướng chi tính từ
+  pose gốc; anim_frames 8 khung. Live R6 (`scratchpad 81b71353/r6b`) 118s, problems [].
+  C xong code: worker `animate_dirs` (khớp 2D mặt trước → 3D, armature 22 xương, bone heat → nếu fail thì skinning
+  theo khoảng cách + smooth weight, walk procedural, render N khung × 8 hướng), executor `blender.animate_dirs`, recipe
+  `sprite-8dir-walk`. Bone heat của Blender FAIL với mesh TRELLIS (kể cả proxy voxel / scale ×100) → dùng distance.
+  Test nhánh trên mesh hiệp sĩ cũ (`scratchpad 81b71353/walk4`): 27s, sheet đi bộ 8×8 bước rõ.
+  B: recipe `spine-character-mv` (Qwen mặt sau → nhánh back_* → export `swap_sides`), đang live (`r6mv`).
+  App: art D 2 recipe mới, pitch, nhãn bước (front/joints/walk, back_* "· mặt sau"). pytest 253/4, typecheck sạch.
+- [x] Animation xong cả 3 (CHƯA commit):
+  B live `spine-character-mv` (`scratchpad 81b71353/r6mv`) 197s, 18/18 bước, 2 bộ Spine problems []; mặt sau
+  `swap_sides` đúng (attack vung tay phải giải phẫu). App: khối Kết quả có nút "Mặt trước / Mặt sau" (và
+  "Đứng yên / Đi bộ" cho recipe walk), nút Xuất theo bộ đang chọn; viewer Spine 6 anim OK (CDP).
+  C live trọn `sprite-8dir-walk` (`scratchpad 81b71353/walkfull`, pháp sư chibi): 428s, anim 10.7s (distance
+  weights), sheet đi bộ 8×8 đạt; viewer sprite phát đúng 8 hàng × 8 khung.
+  Còn mở: miếng giáp vai Spine đứng yên khi hạ tay (lộ ở walk/hurt); hàng sheet đi bộ ghi "Hàng 1..8" chưa tên hướng;
+  bone heat Blender không dùng được với mesh TRELLIS (đã thay bằng distance skinning).
+  pytest 253/4, typecheck sạch.

@@ -252,3 +252,52 @@ def test_render_dirs_emits_pivot_meta(tmp_path: Path) -> None:
         assert info["pivot"] == [4, 6.5] and info["width"] == 8 and info["angles"] == [0, 45]
 
     asyncio.run(go())
+
+
+JOINTS = ("head_top neck pelvis shoulder_l elbow_l wrist_l hand_tip_l shoulder_r elbow_r wrist_r hand_tip_r "
+          "hip_l knee_l ankle_l foot_tip_l hip_r knee_r ankle_r foot_tip_r").split()
+
+
+class FakeAnimBlender:
+    version = "5.2"
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def call(self, cmd: str, params: dict[str, Any], on_event: Any = None, timeout: float = 0) -> Any:
+        self.calls.append((cmd, params))
+        frames = []
+        for f in range(params["frames"]):
+            for a in (0, 45, 90, 135, 180, 225, 270, 315):
+                p = Path(params["out_dir"]) / f"dir_{a:03d}_f{f:02d}.png"
+                Image.new("RGBA", (8, 8), (a, f, 0, 255)).save(p)
+                frames.append({"angle": a, "frame": f, "file": str(p)})
+        return {"frames": frames, "frames_per_dir": params["frames"], "res": 512, "elevation": 30,
+                "ortho_scale": 2.0, "pivot": [256, 400], "weights": "distance", "engine": "BLENDER_EEVEE",
+                "total_s": 1.0}
+
+
+def test_animate_dirs_executor_orders_direction_major(tmp_path: Path) -> None:
+    from studio_core.adapters.blender import BlenderAnimateDirsExecutor
+
+    async def go() -> None:
+        ctx = FakeCtx(tmp_path)
+        mesh = await ctx.blobs.put_bytes(make_glb(), name="m.glb", mime="model/gltf-binary")
+        joints = await ctx.blobs.put_bytes(json.dumps({"joints": {j: [10, 20] for j in JOINTS}}).encode(),
+                                           name="result.json", mime="application/json")
+        front = await ctx.blobs.put_bytes(json.dumps({"pivot": [256, 480], "width": 512, "height": 512,
+                                                      "ortho_scale": 1.3}).encode(), name="render.json",
+                                          mime="application/json")
+        fake = FakeAnimBlender()
+        ex = BlenderAnimateDirsExecutor(Settings(data_dir=tmp_path), fake)  # type: ignore[arg-type]
+        res = await ex.run(ctx, {"frames": 3}, {"mesh": [mesh], "joints": [joints], "front": [front]})
+        cmd, params = fake.calls[0]
+        assert cmd == "animate_dirs" and params["image_w"] == 512 and params["ortho_scale"] == 1.3
+        names = [r.name for r in res.outputs["images"]]
+        assert names[:4] == ["dir_000_f00.png", "dir_000_f01.png", "dir_000_f02.png", "dir_045_f00.png"]
+        assert len(names) == 24 and res.meta["weights"] == "distance"
+        bad = await ctx.blobs.put_bytes(b'{"joints": {"neck": [1, 2]}}', name="j.json", mime="application/json")
+        with pytest.raises(StepError, match="19-joint"):
+            await ex.run(ctx, {"frames": 3}, {"mesh": [mesh], "joints": [bad], "front": [front]})
+
+    asyncio.run(go())

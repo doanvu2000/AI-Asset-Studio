@@ -196,6 +196,15 @@ def merge_fills(layers: list[sp.Layer], hole_meta: list[dict[str, Any]], holes: 
     return merged
 
 
+def swap_side(name: str) -> str:
+    """Joint/part names follow image sides; a back view shows the character's left on the image left."""
+    if name.endswith("_l"):
+        return name[:-2] + "_r"
+    if name.endswith("_r"):
+        return name[:-2] + "_l"
+    return name
+
+
 def run_export(original: Image.Image | None, layers: list[sp.Layer], meta: dict[str, Any], name: str,
                with_anim: bool, padding: int) -> dict[str, Any]:
     joints = {k: tuple(v) for k, v in meta["joints"].items()}
@@ -221,7 +230,9 @@ def run_export(original: Image.Image | None, layers: list[sp.Layer], meta: dict[
     if with_anim:
         w, h = size
         mw, mh = int(w * 0.2), int(h * 0.1)
-        cells = [("idle", 0.5), ("idle", 1.5), ("relax", 0.6), ("relax", 1.2)]
+        anims = doc.get("animations") or {}
+        cells = [c for c in (("idle", 0.5), ("relax", 1.2), ("walk", 0.25), ("walk", 0.75), ("attack", 0.27),
+                             ("attack", 0.45), ("hurt", 0.1), ("jump", 0.5)) if c[0] in anims]
         frames = Image.new("RGBA", ((w + 2 * mw) * len(cells), h + 2 * mh), (236, 236, 240, 255))
         for i, (a, t) in enumerate(cells):
             f = sp.compose(doc, region_imgs, origin, (w + 2 * mw, h + 2 * mh), a, t, (mw, mh))
@@ -259,6 +270,9 @@ class SpineExport(OpExecutor):
         if inputs.get("image"):
             original = (await _load(ctx, inputs["image"][0])).convert("RGBA")
         name = str(params.get("name") or "character").strip().replace(" ", "_") or "character"
+        if params.get("swap_sides"):
+            layers = [sp.Layer(swap_side(l.name), l.image, l.offset) for l in layers]
+            meta = {**meta, "joints": {swap_side(k): v for k, v in meta["joints"].items()}}
         res = await asyncio.to_thread(run_export, original, layers, meta, name, bool(params.get("animations", True)),
                                       int(params.get("padding", 2)))
         if res["report"]["problems"]:

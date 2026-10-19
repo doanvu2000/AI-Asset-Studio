@@ -1,0 +1,216 @@
+id: sprite-8dir-walk
+name: Sprite 8 hướng + đi bộ (3D)
+description: >-
+  Như Sprite 8 hướng multi-view, thêm anim đi bộ: render mặt trước thẳng → Claude chấm 19 khớp → Blender dựng xương,
+  gán weight tự động, chu kỳ đi bộ N khung → render N khung × 8 hướng → sheet đi bộ (hàng = hướng, cột = khung)
+  bên cạnh sheet đứng yên. Tốn RAM (~28 GB đỉnh).
+inputs:
+  prompt: {type: text, label: Prompt}
+  elevation: {type: int, default: 30, options: [30, 45, 60, 90], label: Góc nghiêng}
+  res: {type: int, default: 256, options: [64, 128, 256, 512], label: Kích thước frame}
+  mirror: {type: bool, default: false, label: Lật gương (5 hướng → 8)}
+  faces: {type: int, default: 30000, min: 2000, max: 200000, label: Số mặt}
+  preset: {type: preset, default: studio, label: Preset xuất}
+  review_views: {type: bool, default: false, label: Duyệt tay 3 góc Qwen}
+  consistency_check: {type: bool, default: true, label: Claude kiểm tra góc khớp mặt trước}
+  walk_frames: {type: int, default: 8, options: [6, 8, 12], label: Số khung đi bộ}
+steps:
+  - id: concept
+    kind: comfy.t2i_zimage_turbo
+    params: {"57:27.text": "${inputs.prompt}, single full-body character, front view facing the camera, standing upright, whole figure visible head to feet, isolated on plain white background, centered, game asset",
+             "57:13.batch_size": 4}
+  - id: pick
+    kind: gate.pick
+    in: {images: concept.images}
+    params: {k: 1}
+  - id: views
+    kind: views.qwen_checked
+    in: {image: pick.images}
+    # "Camera 90° to the right" shows the character's left side (faces image-left), matching rig azimuth 90.
+    # Qwen sometimes returns a side view as the front lying down; such views are regenerated, then dropped
+    # (their Pixal3D slot unlinked) rather than allowed to wreck the mesh.
+    params:
+      views:
+        - {name: left, output: "376", prompt_key: "427:271:253.prompt", slot: "330.left",
+           prompt: "Rotate the camera 90 degrees to the right.",
+           expect: "side view of the character's LEFT side; the character faces image-left"}
+        - {name: back, output: "379", prompt_key: "427:296:278.prompt", slot: "330.back",
+           prompt: "Rotate the camera 180 degrees to show the back view.",
+           expect: "back view; the face is not visible"}
+        - {name: right, output: "381", prompt_key: "427:371:353.prompt", slot: "330.right",
+           prompt: "Rotate the camera 90 degrees to the left.",
+           expect: "side view of the character's RIGHT side; the character faces image-right"}
+      attempts: 3
+      on_fail: drop
+      consistency: "${inputs.consistency_check}"
+  - id: check
+    kind: gate.approve
+    in: {images: views.images}
+    params: {enabled: "${inputs.review_views}"}
+  # Same views, different seed: clean mesh or shredded fragments. Rendered back and compared to the views,
+  # a mismatch is regenerated.
+  - id: mesh
+    kind: mesh.checked
+    in: {image: [pick.images, check.images]}
+    params: {workflow: img2mesh_trellis2_mv_textured, attempts: 3, min_iou: 0.75,
+             azimuths: {"122.image": 0, "401.image": 90, "402.image": 180, "403.image": 270},
+             "186.target_face_count": "${inputs.faces}", "288.value": 2048, "94.target_resolution": 1024, "241.resolution": 512,
+             _drop_inputs: "${steps.views.report.drop_inputs}", _restart_before: true, _timeout_s: 900}
+  - id: cleanup
+    kind: blender.cleanup
+    in: {mesh: mesh.meshes}
+    params: {target_faces: "${inputs.faces}", height: 1.0, origin: feet, upright: none}
+  - id: render
+    kind: blender.render_dirs
+    in: {mesh: cleanup.meshes}
+    params: {count: 8, elevation: "${inputs.elevation}", res: "${inputs.res}", supersample: 2, mirror: "${inputs.mirror}"}
+  - id: dirs
+    kind: op.mirror_dirs
+    in: {images: render.images}
+    params: {count: 8}
+  - id: down
+    kind: op.downscale
+    in: {images: dirs.images}
+    params: {factor: 2, resample: box}
+  - id: sheet
+    kind: op.sheet
+    in: {images: down.images, pivot: render.meta}
+    params: {cols: 8, order: [0, 45, 90, 135, 180, 225, 270, 315], preset: "${inputs.preset}"}
+  # Joints are marked on a straight-on render so pixels map back onto the mesh's front plane.
+  - id: front
+    kind: blender.render_dirs
+    in: {mesh: cleanup.meshes}
+    params: {count: 1, elevation: 0, res: 512, supersample: 1}
+  - id: joints
+    kind: claude.task
+    in: {images: front.images}
+    params:
+      model: opus
+      max_turns: 2
+      _auto_retry: 1
+      system: You place joints for a 3D skeleton on a front orthographic render of a game character. Coordinates are image pixels, origin top-left, x right, y down. The character faces the viewer, so its left side (suffix _l) is on the IMAGE RIGHT.
+      prompt: |
+        Image size: 512 x 512. Return every joint on its real anatomical pivot: top of the head, base of the neck, pelvis center between the hips, shoulder ball, elbow bend, wrist, fingertips, hip socket, knee, ankle, toe tip. Joints must stay inside their limb's silhouette; for a limb hidden behind clothing, place it where the limb would be.
+      schema:
+        type: object
+        properties:
+          joints:
+            type: object
+            properties:
+              head_top:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              neck:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              pelvis:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              shoulder_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              elbow_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              wrist_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              hand_tip_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              shoulder_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              elbow_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              wrist_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              hand_tip_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              hip_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              knee_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              ankle_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              foot_tip_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              hip_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              knee_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              ankle_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              foot_tip_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+            required: [head_top, neck, pelvis, shoulder_l, elbow_l, wrist_l, hand_tip_l, shoulder_r, elbow_r, wrist_r, hand_tip_r,
+              hip_l, knee_l, ankle_l, foot_tip_l, hip_r, knee_r, ankle_r, foot_tip_r]
+          notes: {type: string}
+        required: [joints, notes]
+  - id: anim
+    kind: blender.animate_dirs
+    in: {mesh: cleanup.meshes, joints: joints.json, front: front.meta}
+    params: {frames: "${inputs.walk_frames}", count: 8, elevation: "${inputs.elevation}", res: "${inputs.res}", supersample: 2}
+  - id: anim_down
+    kind: op.downscale
+    in: {images: anim.images}
+    params: {factor: 2, resample: box}
+  - id: walk
+    kind: op.sheet
+    in: {images: anim_down.images, pivot: anim.meta}
+    params: {cols: "${inputs.walk_frames}"}
+outputs:
+  final: sheet.sheet
+  meta: sheet.meta
+  frames: down.images
+  walk: walk.sheet
+  walk_meta: walk.meta

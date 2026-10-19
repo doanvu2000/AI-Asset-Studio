@@ -138,41 +138,117 @@ def atlas_text(page: str, w: int, h: int, regions: list[tuple[str, int, int, int
     return "\n".join(lines) + "\n"
 
 
-def animations(bone_names: set[str]) -> dict[str, Any]:
-    """Deterministic loops: `idle` (breathe + sway) and `relax` (arms T-pose -> down -> back) to expose joints."""
-    def timeline(duration: float, steps: int, kind: str, fn: Any) -> list[dict[str, Any]]:
+def animations(bones: list[Bone], height: float) -> dict[str, Any]:
+    """Deterministic clips for a front-view rig: loops `idle`, `relax`, `walk`; one-shots `attack`, `hurt`, `jump`.
+    Limb directions come from the setup pose (which image side each limb sits on), never from an assumed sign."""
+    by = {b.name: b for b in bones}
+    h = height or 300.0
+    pelvis_x = by["torso"].world_pos[0] if "torso" in by else 0.0
+
+    def side_of(s: str) -> float:
+        b = by.get(f"upper_arm_{s}")
+        if b is None:
+            return 1.0 if s == "l" else -1.0
+        return 1.0 if b.world_pos[0] >= pelvis_x else -1.0
+
+    side = {s: side_of(s) for s in "lr"}
+    clips: dict[str, dict[str, Any]] = {}
+
+    def add(clip: str, bone: str, kind: str, fn: Any, duration: float, steps: int) -> None:
+        if bone not in by:
+            return
         keys = []
         for i in range(steps + 1):
-            t = round(duration * i / steps, 4)
-            v = fn(i / steps * 2 * math.pi)
+            u = i / steps
+            t = round(duration * u, 4)
+            v = fn(u)
             if kind == "rotate":
-                keys.append({"time": t, "value": round(v, 3)})
+                keys.append({"time": t, "value": round(float(v), 3)})
             else:
-                keys.append({"time": t, "x": round(v[0], 4), "y": round(v[1], 4)})
-        return keys
+                keys.append({"time": t, "x": round(float(v[0]), 4), "y": round(float(v[1]), 4)})
+        clips.setdefault(clip, {}).setdefault(bone, {})[kind] = keys
 
-    idle: dict[str, Any] = {}
+    def ease(*pts: tuple[float, float]) -> Any:
+        def f(u: float) -> float:
+            for (u0, v0), (u1, v1) in zip(pts, pts[1:]):
+                if u <= u1:
+                    k = (u - u0) / ((u1 - u0) or 1.0)
+                    return v0 + (v1 - v0) * (1 - math.cos(math.pi * k)) / 2
+            return pts[-1][1]
+        return f
+
+    def wave(u: float, phase: float = 0.0) -> float:
+        return math.sin(2 * math.pi * u + phase)
+
+    def in_hip(dx: float, dy: float) -> tuple[float, float]:
+        """Leg bones translate in hip space; hip points up the spine, so a world offset must be rotated into it."""
+        par = by["hip"].world_rot if "hip" in by else 0.0
+        x, y = _rot(-par) @ np.array([dx, dy])
+        return float(x), float(y)
+
+    def down(s: str, deg: float) -> float:
+        """Arm rotation that lowers a T-pose arm by `deg` (clockwise on the +x side)."""
+        return -side[s] * deg
+
+    rest = 62.0
+
     d, n = 2.0, 8
+    add("idle", "torso", "rotate", lambda u: 1.2 * wave(u), d, n)
+    add("idle", "torso", "scale", lambda u: (1.0, 1.0 + 0.015 * wave(u)), d, n)
+    add("idle", "hip", "translate", lambda u: (0.0, -1.5 * (1 - math.cos(2 * math.pi * u)) / 2), d, n)
+    add("idle", "head", "rotate", lambda u: -2.0 * wave(u, 0.6), d, n)
+    for s in "lr":
+        add("idle", f"upper_arm_{s}", "rotate", lambda u, s=s: down(s, -3.0 * wave(u)), d, n)
+        add("idle", f"lower_arm_{s}", "rotate", lambda u, s=s: down(s, -4.0 * wave(u, -0.8)), d, n)
 
-    def add(anim: dict[str, Any], bone: str, kind: str, fn: Any, duration: float, steps: int) -> None:
-        if bone in bone_names:
-            anim.setdefault(bone, {})[kind] = timeline(duration, steps, kind, fn)
+    d, n = 2.4, 12
+    for s in "lr":
+        add("relax", f"upper_arm_{s}", "rotate", lambda u, s=s: down(s, 60.0 * (1 - math.cos(2 * math.pi * u)) / 2), d, n)
+        add("relax", f"lower_arm_{s}", "rotate", lambda u, s=s: down(s, 12.0 * (1 - math.cos(2 * math.pi * u)) / 2), d, n)
+        add("relax", f"hand_{s}", "rotate", lambda u, s=s: down(s, 8.0 * (1 - math.cos(2 * math.pi * u)) / 2), d, n)
+    add("relax", "head", "rotate", lambda u: 4.0 * wave(u), d, n)
 
-    add(idle, "torso", "rotate", lambda a: 1.2 * math.sin(a), d, n)
-    add(idle, "torso", "scale", lambda a: (1.0, 1.0 + 0.015 * math.sin(a)), d, n)
-    add(idle, "hip", "translate", lambda a: (0.0, -1.5 * (1 - math.cos(a)) / 2), d, n)
-    add(idle, "head", "rotate", lambda a: -2.0 * math.sin(a + 0.6), d, n)
-    for s, sign in (("l", -1), ("r", 1)):
-        add(idle, f"upper_arm_{s}", "rotate", lambda a, g=sign: g * 3.0 * math.sin(a), d, n)
-        add(idle, f"lower_arm_{s}", "rotate", lambda a, g=sign: g * 4.0 * math.sin(a - 0.8), d, n)
-    relax: dict[str, Any] = {}
-    d2, n2 = 2.4, 12
-    for s, sign in (("l", -1), ("r", 1)):
-        add(relax, f"upper_arm_{s}", "rotate", lambda a, g=sign: g * 60.0 * (1 - math.cos(a)) / 2, d2, n2)
-        add(relax, f"lower_arm_{s}", "rotate", lambda a, g=sign: g * 12.0 * (1 - math.cos(a)) / 2, d2, n2)
-        add(relax, f"hand_{s}", "rotate", lambda a, g=sign: g * 8.0 * (1 - math.cos(a)) / 2, d2, n2)
-    add(relax, "head", "rotate", lambda a: 4.0 * math.sin(a), d2, n2)
-    return {"idle": {"bones": idle}, "relax": {"bones": relax}}
+    # Front view: stepping is depth, so a walk reads as a bob, alternating leg lifts and a small arm swing.
+    d, n = 1.0, 16
+    add("walk", "hip", "translate",
+        lambda u: (0.008 * h * wave(u), -0.02 * h * (1 - math.cos(4 * math.pi * u)) / 2), d, n)
+    add("walk", "torso", "rotate", lambda u: 2.0 * wave(u), d, n)
+    add("walk", "head", "rotate", lambda u: -1.5 * wave(u), d, n)
+    for s, ph in (("l", 0.0), ("r", math.pi)):
+        add("walk", f"thigh_{s}", "translate", lambda u, ph=ph: in_hip(0.0, 0.045 * h * max(0.0, wave(u, ph))), d, n)
+        add("walk", f"thigh_{s}", "rotate", lambda u, s=s, ph=ph: side[s] * 4.0 * max(0.0, wave(u, ph)), d, n)
+        add("walk", f"upper_arm_{s}", "rotate", lambda u, s=s, ph=ph: down(s, rest + 6.0 * wave(u, ph + math.pi)), d, n)
+        add("walk", f"lower_arm_{s}", "rotate", lambda u, s=s: down(s, 8.0), d, n)
+
+    d, n = 0.9, 18
+    g = side["r"]
+    add("attack", "upper_arm_r", "rotate", ease((0, down("r", rest)), (0.3, down("r", -50)), (0.5, down("r", 85)),
+                                                (1, down("r", rest))), d, n)
+    add("attack", "lower_arm_r", "rotate", ease((0, down("r", 8)), (0.3, down("r", -25)), (0.5, down("r", 5)),
+                                                (1, down("r", 8))), d, n)
+    add("attack", "upper_arm_l", "rotate", ease((0, down("l", rest)), (0.4, down("l", rest - 8)), (1, down("l", rest))),
+        d, n)
+    add("attack", "torso", "rotate", ease((0, 0), (0.3, -g * 4), (0.5, g * 6), (1, 0)), d, n)
+    hip_x = ease((0, 0), (0.3, -g * 0.01 * h), (0.5, g * 0.025 * h), (1, 0))
+    add("attack", "hip", "translate", lambda u: (hip_x(u), 0.0), d, n)
+
+    d, n = 0.6, 12
+    add("hurt", "torso", "rotate", ease((0, 0), (0.15, 8), (1, 0)), d, n)
+    add("hurt", "head", "rotate", ease((0, 0), (0.15, 12), (1, 0)), d, n)
+    knock = ease((0, 0), (0.15, -0.02 * h), (1, 0))
+    add("hurt", "hip", "translate", lambda u: (knock(u), 0.0), d, n)
+    for s in "lr":
+        add("hurt", f"upper_arm_{s}", "rotate", ease((0, down(s, rest)), (0.15, down(s, 35)), (1, down(s, rest))), d, n)
+
+    d, n = 1.0, 20
+    rise = ease((0, 0), (0.18, -0.05 * h), (0.5, 0.2 * h), (0.82, 0), (0.9, -0.03 * h), (1, 0))
+    add("jump", "hip", "translate", lambda u: (0.0, rise(u)), d, n)
+    for s in "lr":
+        add("jump", f"upper_arm_{s}", "rotate", ease((0, down(s, rest)), (0.18, down(s, 75)), (0.5, down(s, -20)),
+                                                     (0.82, down(s, rest)), (1, down(s, rest))), d, n)
+        add("jump", f"thigh_{s}", "rotate", ease((0, 0), (0.5, side[s] * 8), (0.82, 0), (1, 0)), d, n)
+
+    return {name: {"bones": tl} for name, tl in clips.items()}
 
 
 @dataclass
@@ -220,7 +296,11 @@ def build_skeleton(layers: list[Layer], joints: dict[str, Point], origin: Point,
         "skins": [{"name": "default", "attachments": attachments}],
     }
     if with_animations:
-        doc["animations"] = animations({b.name for b in bones})
+        anims = animations(bones, max(ys) - min(ys))
+        if "hurt" in anims:
+            flash = [{"time": 0, "color": "ffffffff"}, {"time": 0.08, "color": "ff7070ff"}, {"time": 0.3, "color": "ffffffff"}]
+            anims["hurt"]["slots"] = {s["name"]: {"rgba": flash} for s in slots}
+        doc["animations"] = anims
     import hashlib
     doc["skeleton"]["hash"] = base64.b64encode(
         hashlib.sha1(json.dumps(doc, sort_keys=True).encode()).digest()).decode()[:11]

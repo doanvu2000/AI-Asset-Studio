@@ -17,6 +17,8 @@ import spriteGlb from './recipe-sprite-8dir-glb.webp'
 import prop3d from './recipe-prop-3d.webp'
 import procedural3d from './recipe-procedural-3d.webp'
 import spineCharacter from './recipe-spine-character.webp'
+import spineCharacterMv from './recipe-spine-character-mv.webp'
+import spriteWalk from './recipe-sprite-8dir-walk.webp'
 
 export const ART = { appIcon, emptyRuns, emptyGates, emptyGallery, coreDisconnected, gettingStarted } as const
 
@@ -32,9 +34,11 @@ const RECIPE_ART: Record<string, string> = {
   'sprite-8dir-3d-brief': sprite3dBrief,
   'sprite-8dir-3d-mv': sprite3dMv,
   'sprite-8dir-glb': spriteGlb,
+  'sprite-8dir-walk': spriteWalk,
   'prop-3d': prop3d,
   'procedural-3d': procedural3d,
-  'spine-character': spineCharacter
+  'spine-character': spineCharacter,
+  'spine-character-mv': spineCharacterMv
 }
 
 export function recipeArt(id: string): string | undefined {
@@ -55,7 +59,9 @@ const RECIPE_PITCH: Record<string, string> = {
   'sprite-8dir-glb': 'Mesh GLB có sẵn → sprite sheet 8 hướng',
   'prop-3d': 'Prompt → vật phẩm 3D (GLB có texture)',
   'procedural-3d': 'Ý tưởng → Claude dựng 3D low-poly bằng code → GLB',
-  'spine-character': 'Prompt → nhân vật Spine 4.2 có xương + anim (thử nghiệm)'
+  'sprite-8dir-walk': 'Prompt → sprite 8 hướng + sheet đi bộ 8 hướng, dựng qua mesh 3D',
+  'spine-character': 'Prompt → nhân vật Spine 4.2 có xương + 6 anim (thử nghiệm)',
+  'spine-character-mv': 'Prompt → 2 bộ Spine mặt trước + mặt sau, cùng 6 anim (thử nghiệm)'
 }
 
 export function recipePitch(id: string): string | undefined {

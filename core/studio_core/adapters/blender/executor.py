@@ -101,6 +101,83 @@ class BlenderRenderDirsExecutor:
             "blender_version": self.blender.version})
 
 
+async def _json_in(ctx: StepContext, inputs: Outputs, port: str) -> dict[str, Any]:
+    refs = inputs.get(port, [])
+    if len(refs) != 1:
+        raise StepError("blender_bad_input", f"expected exactly 1 '{port}' json, got {len(refs)}")
+    try:
+        return json.loads(await asyncio.to_thread(ctx.blobs.path(refs[0].hash).read_bytes))
+    except ValueError as e:
+        raise StepError("blender_bad_input", f"'{port}' is not JSON: {e}") from e
+
+
+class BlenderAnimateDirsExecutor:
+    """Rigs the mesh from 2D joints marked on a front render (`front` = that render's render.json) and renders a
+    walk cycle: images are direction-major (all frames of 0°, then 45°, …) so op.sheet with cols=frames lays rows
+    out as directions."""
+    kind = "blender.animate_dirs"
+    lane = Lane.BLENDER
+    version = "1"
+
+    def __init__(self, settings: Settings, blender: BlenderResource, comfy: ComfyResource | None = None):
+        self.settings = settings
+        self.blender = blender
+        self.required_resource = blender
+        self.comfy = comfy
+
+    def cacheable(self, params: dict[str, Any]) -> bool:
+        return True
+
+    def cache_material(self, params: dict[str, Any]) -> str:
+        return worker_hash()
+
+    async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        mesh = _single_mesh(inputs)
+        joints_doc = await _json_in(ctx, inputs, "joints")
+        front = await _json_in(ctx, inputs, "front")
+        joints = joints_doc.get("joints", joints_doc)
+        if not isinstance(joints, dict) or len(joints) < 19:
+            raise StepError("blender_bad_input", "joints json needs the 19-joint schema")
+        t0 = time.perf_counter()
+        glb = ctx.job_dir / "mesh.glb"
+        out_dir = ctx.job_dir / "anim"
+
+        def stage() -> None:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ctx.blobs.path(mesh.hash), glb)
+
+        await asyncio.to_thread(stage)
+        p = render_params(params)
+        if p["engine"] == "CYCLES" and self.comfy is not None:
+            await self.comfy.free()
+
+        def on_event(ev: dict[str, Any]) -> None:
+            ctx.progress(ev.get("value", 0), ev.get("max", 1), ev.get("label"))
+
+        ctx.progress(0, 1, "blender")
+        size = joints_doc.get("size") or [front["width"], front["height"]]
+        res = await self.blender.call("animate_dirs", {
+            **p, "glb": str(glb), "out_dir": str(out_dir), "frames": int(params.get("frames", 8)),
+            "joints": joints, "image_w": float(size[0]), "render_res": float(front["width"]),
+            "pivot": front["pivot"], "ortho_scale": front["ortho_scale"]},
+            on_event=on_event, timeout=float(params.get("_timeout_s", 1800)))
+        frames = sorted(res["frames"], key=lambda f: (f["angle"], f["frame"]))
+        images = []
+        for f in frames:
+            images.append(await ctx.blobs.put_file(
+                Path(f["file"]), name=f"dir_{round(f['angle']):03d}_f{f['frame']:02d}.png", mime="image/png"))
+        pivot = [round(x, 2) for x in res["pivot"]]
+        angles = sorted({f["angle"] for f in frames})
+        info = {"pivot": pivot, "width": res["res"], "height": res["res"], "angles": angles,
+                "frames_per_dir": res["frames_per_dir"], "elevation": res["elevation"],
+                "ortho_scale": res["ortho_scale"], "units_per_px": round(res["ortho_scale"] / res["res"], 6)}
+        meta_ref = await ctx.blobs.put_bytes(json.dumps(info, indent=2).encode(), name="anim.json",
+                                             mime="application/json")
+        return StepResult(outputs={"images": images, "meta": [meta_ref]}, meta={
+            **info, "weights": res["weights"], "engine": res["engine"], "render_s": res["total_s"],
+            "seconds": round(time.perf_counter() - t0, 2), "blender_version": self.blender.version})
+
+
 class BlenderCleanupExecutor:
     kind = "blender.cleanup"
     lane = Lane.BLENDER

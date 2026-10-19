@@ -263,13 +263,41 @@ const bundleStepId = computed(() => {
   const ok = steps.value.filter((s) => s.status === 'succeeded' || s.status === 'cached')
   return (BUNDLE_KINDS.map((k) => ok.find((s) => s.kind === k)).find(Boolean) ?? finalStep.value).id
 })
-const hero = computed(() => {
+// A run can finish with more than one deliverable worth showing: front + back rigs (`back_*` ports on the final
+// gate) or a still sheet plus a walk sheet.
+const heroVariants = computed(() => {
   const s = finalStep.value
-  if (!s) return null
-  const blobs = Object.values(s.outputs).flat()
-  const lead = blobs.find(isImage) ?? blobs[0]
-  const view = featuredAsset(blobs) ?? (lead ? viewsFor(lead, blobs)[0] : undefined)
-  return view ? { view, step: s } : null
+  if (!s) return []
+  const ports = Object.entries(s.outputs)
+  if (ports.some(([k]) => k.startsWith('back_'))) {
+    return [
+      { label: 'Mặt trước', step: s, blobs: ports.filter(([k]) => !k.startsWith('back_')).flatMap(([, v]) => v) },
+      { label: 'Mặt sau', step: s, blobs: ports.filter(([k]) => k.startsWith('back_')).flatMap(([, v]) => v), bundle: 'back_export' }
+    ]
+  }
+  const ok = (key: string) => steps.value.find((x) => x.key === key && (x.status === 'succeeded' || x.status === 'cached'))
+  const still = ok('sheet')
+  const walk = ok('walk')
+  if (still && walk && walk.kind === 'op.sheet') {
+    return [
+      { label: 'Đứng yên', step: still, blobs: Object.values(still.outputs).flat() },
+      { label: 'Đi bộ', step: walk, blobs: Object.values(walk.outputs).flat(), bundle: 'walk' }
+    ]
+  }
+  return [{ label: '', step: s, blobs: Object.values(s.outputs).flat() }]
+})
+const heroPick = ref(0)
+watch(() => props.id, () => (heroPick.value = 0))
+const heroBundleId = computed(() => {
+  const v = heroVariants.value[heroPick.value] as { bundle?: string } | undefined
+  return (v?.bundle && steps.value.find((x) => x.key === v.bundle)?.id) || bundleStepId.value
+})
+const hero = computed(() => {
+  const v = heroVariants.value[Math.min(heroPick.value, heroVariants.value.length - 1)]
+  if (!v) return null
+  const lead = v.blobs.find(isImage) ?? v.blobs[0]
+  const view = featuredAsset(v.blobs) ?? (lead ? viewsFor(lead, v.blobs)[0] : undefined)
+  return view ? { view, step: v.step } : null
 })
 
 const runVersions = computed(() => versions.list.filter((v) => v.run_id === props.id))
@@ -413,7 +441,7 @@ function segTitle(s: StepRow): string {
       <section v-if="sel" class="inspector scroll">
         <motion.section
           v-if="hero"
-          :key="hero.view.blob.hash"
+          :key="hero.step.run_id"
           class="hero"
           aria-label="Kết quả"
           :initial="heroOrigin ? false : { opacity: 0, y: 10 }"
@@ -423,6 +451,19 @@ function segTitle(s: StepRow): string {
           <div class="hero-head">
             <h2 class="section-label">Kết quả</h2>
             <span class="caption">{{ stepName(hero.step) }}</span>
+            <div v-if="heroVariants.length > 1" class="seg hero-seg" role="radiogroup" aria-label="Phiên bản kết quả">
+              <button
+                v-for="(v, i) in heroVariants"
+                :key="v.label"
+                type="button"
+                role="radio"
+                :aria-checked="heroPick === i"
+                :class="{ on: heroPick === i }"
+                @click="heroPick = i"
+              >
+                {{ v.label }}
+              </button>
+            </div>
           </div>
           <div :ref="onHeroStage" class="hero-stage card">
             <AssetViewer :key="hero.view.blob.hash" :view="hero.view" />
@@ -433,7 +474,7 @@ function segTitle(s: StepRow): string {
               :filename="heroVersion ? exportName(heroVersion) : (hero.view.blob.name ?? undefined)"
               :run-id="id"
               :version-id="heroVersion?.id"
-              :step-id="bundleStepId"
+              :step-id="heroBundleId"
             />
             <span class="spacer" />
             <Transition name="fade" mode="out-in">
@@ -792,6 +833,10 @@ function segTitle(s: StepRow): string {
   display: flex;
   align-items: baseline;
   gap: 10px;
+}
+.hero-seg {
+  margin-left: auto;
+  align-self: center;
 }
 .hero-stage {
   height: clamp(320px, 52vh, 560px);
