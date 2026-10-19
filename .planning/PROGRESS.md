@@ -245,3 +245,18 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   `--st-pending-text`, tooltip phím tắt sidebar, prompt ở hộp duyệt, lưới auto-fill). Chỉ thiếu CTA ở empty state
   Cần duyệt → thêm "Xem lượt chạy" + "Tạo asset mới". Codex lệch trạng thái §6 chỉ có ở mock (core cùng dựa `codex_exe`).
   typecheck sạch. CHƯA commit; Portable chưa có icon mới (cần build lại).
+- [x] Commit + push `app: style-D app icon…`. Build app (core không đổi) → chép Portable 07:34 trừ `resources\core`
+  (11 studio-core.exe MCP đang giữ; core bản cũ = bản mới nên không cần chép).
+- [ ] 2026-10-19 07:4x "làm tiếp việc còn lại": tồn đọng code thấp giá trị → KHÔNG làm: comment YAML mất khi lưu
+  recipe từ editor (chỉ 3 recipe gốc có comment, cần thêm ruamel + build lại core); lô chỉ tính 500 lượt gần nhất
+  (Portable mới có 1 lượt). Đang live R6 (`scratchpad 81b71353/r6`, GPU rảnh) để kiểm Spine viewer trên core thật.
+- [x] Live R6 (`scratchpad 81b71353/r6`): 177s, 19 xương / 15 slot, tư thế gốc IoU 0.9997, Claude bones $0.065.
+  App dev trên data thật: Spine viewer render đúng, chuyển idle/relax OK, nút xuất đủ → Spine viewer đã kiểm với core thật.
+  Còn mở (cần chủ nhân): mở JSON Spine trong Spine Editor; thử tay Portable (kéo file, taskbar, Notification).
+- [x] Chủ nhân bảo làm 2 tồn đọng:
+  (1) Lưu recipe từ editor giữ comment YAML: `engine/library.py` `merge_text` (ruamel round-trip, gộp doc mới vào text
+  cũ; list step khớp theo id, comment giữa các step gán lại theo item). Thêm dep `ruamel-yaml`. Giới hạn: flow map viết
+  nhiều dòng bị gộp 1 dòng (nghĩa không đổi). Kiểm 13 recipe gốc: giữ đủ comment, round-trip bằng nhau.
+  (2) Lô không còn giới hạn 500 lượt: `GET /api/runs?batched=true|batch_id=` (json_extract `$meta.batch_id`, limit ≤2000);
+  app nạp thêm lượt thuộc lô khi load list, BatchDetail nạp riêng theo batch_id.
+  pytest 251/4 skip, typecheck sạch. CHƯA commit; Portable cần build lại core (PyInstaller) + app.

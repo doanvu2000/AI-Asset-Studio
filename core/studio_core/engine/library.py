@@ -1,6 +1,7 @@
 """Built-in recipes (read-only, shipped with core) plus user recipes in <data>/recipes that shadow them by id."""
 from __future__ import annotations
 
+import io
 import logging
 import os
 import uuid
@@ -8,6 +9,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
+from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
 from ..contracts import ExecutorRegistry
 from .kinds import CATALOG, comfy_entries
@@ -31,6 +34,47 @@ def dump_yaml(doc: dict[str, Any]) -> str:
 
 def to_text(raw: str | dict[str, Any]) -> str:
     return raw if isinstance(raw, str) else dump_yaml(raw)
+
+
+def _merge(old: Any, new: Any) -> Any:
+    """Writes `new` into the round-trip node `old` in place where shapes match, so comments and flow style survive."""
+    if isinstance(old, CommentedMap) and isinstance(new, dict):
+        for k in [k for k in old if k not in new]:
+            del old[k]
+        for k, v in new.items():
+            old[k] = _merge(old[k], v) if k in old else v
+        return old
+    if isinstance(old, CommentedSeq) and isinstance(new, list):
+        # Steps are matched by id so a reordered or inserted step keeps the comments of the others.
+        by_id = {o["id"]: o for o in old if isinstance(o, CommentedMap) and "id" in o}
+        # ruamel keys comments between items by index; re-key them to the item they precede.
+        notes = {id(old[i]): c for i, c in old.ca.items.items() if isinstance(i, int) and i < len(old)}
+        items = []
+        for i, v in enumerate(new):
+            prev = by_id.get(v.get("id")) if isinstance(v, dict) and by_id else (old[i] if i < len(old) else None)
+            items.append(_merge(prev, v) if prev is not None else v)
+        old[:] = items
+        old.ca.items.clear()
+        old.ca.items.update({j: notes[id(x)] for j, x in enumerate(items) if id(x) in notes})
+        return old
+    return old if isinstance(old, type(new)) and old == new else new
+
+
+def merge_text(prev_text: str, doc: dict[str, Any]) -> str:
+    """Applies an editor doc on top of the recipe's current YAML, keeping its comments and layout."""
+    rt = YAML()
+    rt.width = 4096
+    rt.preserve_quotes = True
+    rt.indent(mapping=2, sequence=4, offset=2)
+    try:
+        tree = rt.load(prev_text)
+    except Exception:
+        return dump_yaml(doc)
+    if not isinstance(tree, CommentedMap):
+        return dump_yaml(doc)
+    buf = io.StringIO()
+    rt.dump(_merge(tree, doc), buf)
+    return buf.getvalue()
 
 
 def issue(message: str, step: str | None = None, level: str = "error", field: str | None = None) -> dict[str, Any]:

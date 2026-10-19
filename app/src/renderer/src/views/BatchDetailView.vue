@@ -33,6 +33,14 @@ const HOLDER = 'batch'
 const held = new Set<string>()
 
 watch(
+  () => [conn.transport, props.id] as const,
+  ([t, id]) => {
+    if (t) void runs.loadBatch(id).catch(() => undefined)
+  },
+  { immediate: true }
+)
+
+watch(
   () => [conn.transport, batch.value?.runs.map((r) => r.id).join(',')] as const,
   ([t]) => {
     if (!t || !batch.value) return

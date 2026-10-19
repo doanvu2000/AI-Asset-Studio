@@ -112,3 +112,11 @@ async def test_run_preview_hashes_pick_latest_image_output(repo: SqliteRepo) -> 
     got = await repo.run_preview_hashes(["ra", "rb", "rc", "rd", "zz"])
     assert got == {"ra": "3" * 64, "rb": "4" * 64, "rd": "5" * 64}
     assert await repo.run_preview_hashes([]) == {}
+
+
+async def test_list_runs_batch_filters(repo: SqliteRepo) -> None:
+    for i, batch in enumerate(["b1", None, "b2", "b1"]):
+        params = {"$meta": {"batch_id": batch}} if batch else {}
+        await repo.create_run(RunRow(id=f"r{i}", recipe_id="x", recipe_hash="h", created_at=float(i), params=params))
+    assert [r.id for r in await repo.list_runs(batched=True)] == ["r3", "r2", "r0"]
+    assert [r.id for r in await repo.list_runs(batch_id="b1")] == ["r3", "r0"]

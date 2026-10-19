@@ -48,8 +48,8 @@ class FakeRepo:
         r = self.runs.get(run_id)
         return r.model_copy(deep=True) if r else None
 
-    async def list_runs(self, limit: int = 50, before: float | None = None,
-                        status: RunStatus | None = None) -> list[RunRow]:
+    async def list_runs(self, limit: int = 50, before: float | None = None, status: RunStatus | None = None,
+                        batch_id: str | None = None, batched: bool = False) -> list[RunRow]:
         rows = [r for r in self.runs.values() if status is None or r.status == status]
         return [r.model_copy(deep=True) for r in rows][:limit]
 

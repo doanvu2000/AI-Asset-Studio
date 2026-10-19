@@ -135,8 +135,12 @@ export const useRuns = defineStore('runs', () => {
 
   async function loadList(): Promise<void> {
     try {
-      const rows = await api().listRuns({ limit: 500 })
-      for (const row of rows) runs.value.set(row.id, row)
+      // Batches are grouped from loaded runs, so batch runs older than the recent window are fetched separately.
+      const [recent, batched] = await Promise.all([
+        api().listRuns({ limit: 500 }),
+        api().listRuns({ batched: true, limit: 2000 })
+      ])
+      for (const row of [...batched, ...recent]) runs.value.set(row.id, row)
       triggerRef(runs)
       listError.value = null
     } catch (e) {
@@ -144,6 +148,12 @@ export const useRuns = defineStore('runs', () => {
     } finally {
       listLoaded.value = true
     }
+  }
+
+  async function loadBatch(batchId: string): Promise<void> {
+    const rows = await api().listRuns({ batch_id: batchId, limit: 2000 })
+    for (const row of rows) runs.value.set(row.id, row)
+    triggerRef(runs)
   }
 
   async function fetchDetail(id: string): Promise<void> {
@@ -198,6 +208,7 @@ export const useRuns = defineStore('runs', () => {
     stepsOf,
     begin,
     loadList,
+    loadBatch,
     loadDetail,
     reloadDetails,
     closeDetail,

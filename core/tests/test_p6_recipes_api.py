@@ -154,3 +154,33 @@ async def test_save_new_user_recipe_and_reject_invalid(ctx) -> None:
     r = await client.delete("/api/recipes/mine", headers=AUTH)
     assert r.json()["restored_builtin"] is False
     assert (await client.get("/api/recipes/mine", headers=AUTH)).status_code == 404
+
+
+COMMENTED = """# Demo recipe, notes kept by the editor.
+id: demo
+name: Demo
+inputs:
+  image: {type: image}
+  size: {type: int, default: 64}  # pixels
+steps:
+  # Fit first so the sheet is square.
+  - {id: fit, kind: op.trim_pad_resize, in: {images: inputs.image}, params: {size: "${inputs.size}"}}
+outputs:
+  final: fit.images
+"""
+
+
+async def test_save_doc_keeps_yaml_comments(ctx) -> None:
+    _, client, settings = ctx
+    (settings.recipes_dir / "demo.yaml").write_text(COMMENTED, encoding="utf-8")
+    doc = (await client.get("/api/recipes/demo", headers=AUTH)).json()["doc"]
+    doc["name"] = "Demo 2"
+    doc["steps"][0]["params"]["size"] = 128
+    doc["ui"] = {"positions": {"fit": [1, 2]}}
+    assert (await client.put("/api/recipes/demo", json={"doc": doc}, headers=AUTH)).status_code == 200
+    text = (settings.user_recipes_dir / "demo.yaml").read_text(encoding="utf-8")
+    for note in ("# Demo recipe, notes kept by the editor.", "# pixels", "# Fit first so the sheet is square."):
+        assert note in text
+    saved = yaml.safe_load(text)
+    assert saved["name"] == "Demo 2" and saved["steps"][0]["params"]["size"] == 128
+    assert saved["ui"] == {"positions": {"fit": [1, 2]}}

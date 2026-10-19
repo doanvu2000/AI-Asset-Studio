@@ -40,6 +40,8 @@ export interface ListRunsQuery {
   limit?: number
   before?: number
   status?: RunStatus
+  batch_id?: string
+  batched?: boolean
 }
 
 export interface StudioApi {
@@ -127,7 +129,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     stopResource: (name) => call('POST', `/api/resources/${enc(name)}/stop`),
     recipes: () => call('GET', '/api/recipes'),
     startRun: (body) => call('POST', '/api/runs', body),
-    listRuns: (q = {}) => call('GET', `/api/runs${query({ limit: q.limit, before: q.before, status: q.status })}`),
+    listRuns: (q = {}) => call('GET', `/api/runs${query({ limit: q.limit, before: q.before, status: q.status, batch_id: q.batch_id, batched: q.batched ? 'true' : undefined })}`),
     getRun: (id) => call('GET', `/api/runs/${enc(id)}`),
     cancelRun: (id) => call('POST', `/api/runs/${enc(id)}/cancel`),
     retryStep: (id) => call('POST', `/api/steps/${enc(id)}/retry`),

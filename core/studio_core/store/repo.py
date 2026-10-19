@@ -63,6 +63,7 @@ _STEPS = _Table("steps", StepRow, {"deps", "params", "inputs", "outputs", "error
 _VERSIONS = _Table("versions", VersionRow, {"blob"})
 _BLOBS = _Table("blobs", BlobRow, set(), pk="hash")
 _OUTPUTS: TypeAdapter[Outputs] = TypeAdapter(Outputs)
+_BATCH_ID = """json_extract(params, '$."$meta".batch_id')"""
 
 
 class SqliteRepo:
@@ -87,10 +88,15 @@ class SqliteRepo:
         row = await self.db.fetchone("SELECT * FROM runs WHERE id = ?", (run_id,))
         return _RUNS.decode(row) if row else None
 
-    async def list_runs(self, limit: int = 50, before: float | None = None,
-                        status: RunStatus | None = None) -> list[RunRow]:
+    async def list_runs(self, limit: int = 50, before: float | None = None, status: RunStatus | None = None,
+                        batch_id: str | None = None, batched: bool = False) -> list[RunRow]:
         where: list[str] = []
         params: list[Any] = []
+        if batch_id is not None:
+            where.append(f"{_BATCH_ID} = ?")
+            params.append(batch_id)
+        elif batched:
+            where.append(f"{_BATCH_ID} IS NOT NULL")
         if before is not None:
             where.append("created_at < ?")
             params.append(before)
