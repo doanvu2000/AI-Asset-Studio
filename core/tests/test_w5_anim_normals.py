@@ -106,6 +106,15 @@ async def test_mirror_flips_normal_x(ctx: FakeCtx, reg: ExecutorRegistry) -> Non
     assert load(ctx, plain.outputs["images"][5]).getpixel((0, 0))[0] == 40
 
 
+async def test_normal_sheet_has_distinct_names(ctx: FakeCtx, reg: ExecutorRegistry) -> None:
+    refs = [await put_img(ctx, Image.new("RGBA", (4, 4), (128, 128, 255, 255)), f"n{i}.png") for i in range(2)]
+    res = await reg.resolve("op.sheet").run(ctx, {"normal": True}, {"images": refs})
+    assert res.outputs["sheet"][0].name == "sheet_normal.png"
+    assert res.outputs["meta"][0].name == "sheet_normal.json"
+    plain = await reg.resolve("op.sheet").run(ctx, {}, {"images": refs})
+    assert plain.outputs["sheet"][0].name == "sheet.png"
+
+
 class FakeBlender:
     version = "fake"
 

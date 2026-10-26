@@ -312,8 +312,13 @@ class Sheet(OpExecutor):
         if preset is not None and named is not None:
             annotate_sheet_meta(meta, named, preset)
             sheet_name = f"{params.get('asset') or 'sprite'}_sheet.png"
+        meta_name = "sheet.json"
+        if meta.get("normal"):
+            # Viewers and the gallery tell normal maps apart from the color sheet by file name.
+            sheet_name = sheet_name.replace(".png", "_normal.png")
+            meta_name = "sheet_normal.json"
         sheet_ref = await _put_png(ctx, sheet, sheet_name)
-        meta_ref = await ctx.blobs.put_bytes(json.dumps(meta, indent=2).encode(), name="sheet.json",
+        meta_ref = await ctx.blobs.put_bytes(json.dumps(meta, indent=2).encode(), name=meta_name,
                                              mime="application/json")
         ctx.progress(1.0)
         return StepResult(outputs={"sheet": [sheet_ref], "meta": [meta_ref]}, meta=meta)
