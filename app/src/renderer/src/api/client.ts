@@ -35,7 +35,8 @@ export class ApiError extends Error {
     readonly code: string,
     message: string,
     readonly status: number,
-    readonly issues: RecipeIssue[] = []
+    readonly issues: RecipeIssue[] = [],
+    readonly detail: Record<string, unknown> = {}
   ) {
     super(message)
   }
@@ -133,16 +134,18 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
       let code = `http_${res.status}`
       let message = res.statusText || 'Lỗi không rõ'
       let issues: RecipeIssue[] = []
+      let detail: Record<string, unknown> = {}
       try {
         const err = (await res.json()) as ApiErrorBody
         code = err.error?.code ?? code
         message = err.error?.message ?? message
         issues = err.error?.issues ?? []
+        detail = err.error?.detail ?? {}
       } catch {
         /* non-JSON error body */
       }
       devlog('warn', `api ${method} ${path} → ${res.status} ${code}: ${message}`)
-      throw new ApiError(code, message, res.status, issues)
+      throw new ApiError(code, message, res.status, issues, detail)
     }
     if (res.status === 204) return undefined as T
     try {

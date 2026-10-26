@@ -51,8 +51,13 @@ export function outputBlobs(outputs: Record<string, BlobRef[]>): BlobRef[] {
   return Object.values(outputs).flat()
 }
 
-// No `_n` suffix rule: direction frames are named `<asset>_N.png` and would read as normal maps.
-export const isNormalBlob = (b: BlobRef): boolean => normalHashes.has(b.hash) || /(^|_)normal(_|$)/.test(stem(b))
+// Only the core's normal frame names (`dir_000_n`, `walk_dir_000_f00_n_down_n`): `<asset>_N.png` frames stay color.
+export const isNormalBlob = (b: BlobRef): boolean =>
+  normalHashes.has(b.hash) || /(^|_)normal(_|$)/.test(stem(b)) || /(^|_)dir_\d{3}(_.*)?_n$/.test(stem(b))
+
+/** Same pixel size, so a normal sheet can stand in for the color one frame by frame. */
+export const sameSize = (a: BlobRef, b: BlobRef): boolean =>
+  !!a.width && !!a.height && a.width === b.width && a.height === b.height
 
 // op.sheet names its meta "sheet.json" ("sheet_normal.json" for normal maps); the image is "sheet.png" or
 // "<asset>_sheet.png" (+ "_normal").
@@ -86,7 +91,7 @@ function spritePair(blob: BlobRef, all: BlobRef[]): { sheet: BlobRef; meta: Blob
   }
   const meta = isSheetMeta(blob) ? blob : all.find(isSheetMeta)
   const sheet = isSheetImage(blob) ? blob : all.find(isSheetImage)
-  const normal = all.find(isNormalSheet)
+  const normal = sheet && all.find((b) => isNormalSheet(b) && sameSize(b, sheet))
   return meta && sheet ? { sheet, meta, ...(normal ? { normal } : {}) } : null
 }
 
@@ -118,8 +123,11 @@ export function featuredAsset(blobs: BlobRef[]): AssetView | null {
   if (spine) return { kind: 'spine', blob: spine.skeleton, spine }
   const sheet = all.find(isSheetImage)
   const meta = all.find(isSheetMeta)
+  if (sheet && meta) {
+    const normal = all.find((b) => isNormalSheet(b) && sameSize(b, sheet))
+    return { kind: 'sprite', blob: sheet, sheet, meta, ...(normal ? { normal } : {}) }
+  }
   const normal = all.find(isNormalSheet)
-  if (sheet && meta) return { kind: 'sprite', blob: sheet, sheet, meta, ...(normal ? { normal } : {}) }
   const nmeta = all.find(isNormalMeta)
   if (normal && nmeta) return { kind: 'sprite', blob: normal, sheet: normal, meta: nmeta }
   return null
@@ -136,8 +144,9 @@ export function featuredAcross(groups: BlobRef[][]): AssetView | null {
     const f = featuredAsset(g)
     if (f && (!best || rank(f) < rank(best))) best = f
   }
-  if (best?.kind === 'sprite' && !best.normal && rank(best) === 2) {
-    const normal = groups.flat().find(isNormalSheet)
+  const color = best?.sheet
+  if (best?.kind === 'sprite' && color && !best.normal && rank(best) === 2) {
+    const normal = groups.flat().find((b) => isNormalSheet(b) && sameSize(b, color))
     if (normal) best = { ...best, normal }
   }
   return best

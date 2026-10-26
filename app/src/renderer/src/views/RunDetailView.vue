@@ -14,7 +14,7 @@ import AssetViewer from '@/components/viewers/AssetViewer.vue'
 import AssetActions from '@/components/AssetActions.vue'
 import ViewsReport from '@/components/ViewsReport.vue'
 import MeshReport from '@/components/MeshReport.vue'
-import { featuredAsset, isImage, isNormalBlob, outputBlobs, viewsFor, type AssetView } from '@/components/viewers/detect'
+import { featuredAsset, isImage, isNormalBlob, outputBlobs, sameSize, viewsFor, type AssetView } from '@/components/viewers/detect'
 import Lightbox from '@/components/Lightbox.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -246,8 +246,14 @@ function selectByKey(key: string): void {
   if (s) select(s)
 }
 
+// Pass-through normal steps (ndirs, ndown, anim_ndown) carry neither a param nor normal-looking names on every
+// frame (unmirrored frames keep the render's names), so the key pairing with a same-kind color step decides.
+const colorKeyOf = (key: string): string => key.replace(/_normal$/, '').replace(/(^|_)n([^_]+)$/, '$1$2')
 const isNormalStep = (s: StepRow): boolean => {
-  if (s.params.normal === true) return true
+  if (s.params.normal === true || s.meta?.normal === true) return true
+  const ck = colorKeyOf(s.key)
+  if (ck !== s.key && steps.value.some((x) => x.key === ck && x.kind === s.kind)) return true
+  if (Object.keys(s.inputs).some((p) => /^normal(_|$)/.test(p))) return true
   const blobs = outputBlobs(s.outputs)
   return blobs.length > 0 && blobs.every(isNormalBlob)
 }
@@ -258,8 +264,9 @@ function normalPartner(s: StepRow): BlobRef | undefined {
   return p ? (p.outputs.sheet ?? outputBlobs(p.outputs)).find(isImage) : undefined
 }
 function withNormal(view: AssetView | null | undefined, s: StepRow): AssetView | null {
-  if (!view || view.kind !== 'sprite' || view.normal) return view ?? null
-  const normal = normalPartner(s)
+  if (!view || view.kind !== 'sprite' || view.normal || !view.sheet) return view ?? null
+  const n = normalPartner(s)
+  const normal = n && sameSize(n, view.sheet) ? n : undefined
   return normal ? { ...view, normal } : view
 }
 
@@ -296,11 +303,11 @@ const heroVariants = computed(() => {
   }
   const ok = (key: string) => steps.value.find((x) => x.key === key && (x.status === 'succeeded' || x.status === 'cached'))
   const still = ok('sheet')
-  const walk = ok('walk')
+  const walk = ok('walk') ?? ok('anim_sheet')
   if (still && walk && walk.kind === 'op.sheet') {
     return [
       { label: 'Đứng yên', step: still, blobs: outputBlobs(still.outputs) },
-      { label: 'Đi bộ', step: walk, blobs: outputBlobs(walk.outputs), bundle: 'walk' }
+      { label: walk.key === 'walk' ? 'Đi bộ' : 'Hoạt ảnh', step: walk, blobs: outputBlobs(walk.outputs), bundle: walk.key }
     ]
   }
   return [{ label: '', step: s, blobs: outputBlobs(s.outputs) }]

@@ -202,7 +202,7 @@ export interface RunDetail {
 }
 
 export interface ApiErrorBody {
-  error: { code: string; message: string; issues?: RecipeIssue[] }
+  error: { code: string; message: string; issues?: RecipeIssue[]; detail?: Record<string, unknown> }
 }
 
 export interface StartRunBody {

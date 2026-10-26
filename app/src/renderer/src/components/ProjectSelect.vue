@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 import { FolderKanban } from '@lucide/vue'
 import { NO_PROJECT } from '@/api/types'
 import { useProjects } from '@/stores/projects'
@@ -11,19 +11,40 @@ defineProps<{ id?: string; allLabel?: string; label?: string }>()
 const projects = useProjects()
 const conn = useConnection()
 
-watch(
-  () => conn.transport,
-  (t) => t && !projects.loaded && void projects.load().catch(() => undefined),
-  { immediate: true }
-)
+const RETRY = '__retry'
+const failed = computed(() => !!projects.error && !projects.loaded)
+function retry(): void {
+  if (conn.transport && !projects.loaded && !projects.loading) void projects.load().catch(() => undefined)
+}
+watch(() => conn.transport, retry, { immediate: true })
+function onChange(e: Event): void {
+  const el = e.target as HTMLSelectElement
+  if (el.value !== RETRY) return void (model.value = el.value)
+  el.value = model.value
+  retry()
+}
 </script>
 
 <template>
-  <label class="proj-select" :class="{ on: model !== 'all' && model !== NO_PROJECT }">
+  <label
+    class="proj-select"
+    :class="{ on: model !== 'all' && model !== NO_PROJECT, err: failed }"
+    :title="failed ? `Không tải được danh sách dự án: ${projects.error}` : undefined"
+  >
     <FolderKanban :size="14" aria-hidden="true" class="ic" />
-    <select :id="id" class="sel" :value="model" :aria-label="label ?? 'Dự án'" @change="model = ($event.target as HTMLSelectElement).value">
+    <select
+      :id="id"
+      class="sel"
+      :value="model"
+      :aria-label="label ?? 'Dự án'"
+      :aria-invalid="failed || undefined"
+      @mousedown="failed && retry()"
+      @keydown.space="failed && retry()"
+      @change="onChange"
+    >
       <option v-if="allLabel" value="all">{{ allLabel }}</option>
       <option :value="NO_PROJECT">Không thuộc dự án</option>
+      <option v-if="failed" :value="RETRY">Không tải được dự án · Thử lại</option>
       <option v-for="p in projects.list" :key="p.id" :value="p.id">{{ p.name }}</option>
       <option v-if="model !== 'all' && model !== NO_PROJECT && !projects.list.some((p) => p.id === model)" :value="model">
         {{ projects.byId(model)?.name ?? 'Dự án đã lưu trữ' }}
@@ -53,6 +74,12 @@ watch(
   left: 9px;
   color: var(--text-3);
   pointer-events: none;
+}
+.proj-select.err {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger) 55%, transparent);
+}
+.err .ic {
+  color: var(--danger);
 }
 .on .ic {
   color: var(--accent);

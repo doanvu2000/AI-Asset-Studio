@@ -62,7 +62,9 @@ export function useAssetFile() {
 
   async function saveBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts?: EngineExportOptions): Promise<void> {
     const dest = await run('bundle', () => bridge!.saveBundle(stepId, preset, name, engine, opts), 'Không xuất được thư mục')
-    if (dest) toasts.push(`Đã xuất thư mục ${baseName(dest)}`, 'success', 3200)
+    if (!dest) return
+    toasts.push(`Đã xuất thư mục ${baseName(dest.path)}`, 'success', 3200)
+    if (dest.leftover) toasts.push(`Chưa xoá được thư mục cũ ${dest.leftover} — có thể xoá tay khi rảnh`, 'info', 8000)
   }
 
   async function revealBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts?: EngineExportOptions): Promise<void> {

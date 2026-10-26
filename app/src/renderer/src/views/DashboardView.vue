@@ -96,10 +96,16 @@ async function toggle(name: string, start: boolean): Promise<void> {
   try {
     await resources.toggle(name, start)
   } catch (e) {
-    const busy = !start && (e as ApiError).status === 409
-    if (!busy) return toasts.error(e, start ? 'Không bật được' : 'Không tắt được')
-    if (!window.confirm(`${RESOURCE_LABEL[name] ?? name} đang render, dừng ngay?
-Bước đang chạy sẽ bị ngắt và phải chạy lại.`)) return
+    const err = e as ApiError
+    if (start || err.status !== 409) return toasts.error(e, start ? 'Không bật được' : 'Không tắt được')
+    const label = RESOURCE_LABEL[name] ?? name
+    const ask =
+      err.detail?.status === 'starting'
+        ? `${label} đang khởi động, dừng ngay?
+Lần khởi động này sẽ bị huỷ.`
+        : `${label} đang chạy job, dừng ngay?
+Bước đang chạy sẽ bị ngắt và phải chạy lại.`
+    if (!window.confirm(ask)) return
     try {
       await resources.toggle(name, false, true)
     } catch (e2) {

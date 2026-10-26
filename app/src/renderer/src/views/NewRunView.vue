@@ -73,13 +73,15 @@ const projectId = computed<string>(() => {
   return projects.activeId ?? NO_PROJECT
 })
 const project = computed(() => projects.byId(projectId.value))
+// The list may have failed to load; the core still knows the project, so the choice is not dropped.
+const runProjectId = computed(() => project.value?.id ?? (projectId.value !== NO_PROJECT ? projectId.value : undefined))
 function setProject(id: string): void {
   projects.setActive(id)
   void router.replace({ query: { ...route.query, project: id === NO_PROJECT ? undefined : id } })
 }
 watch(
   () => conn.transport,
-  (t) => t && !projects.loaded && void projects.load().catch(() => undefined),
+  (t) => t && !projects.loaded && !projects.loading && void projects.load().catch(() => undefined),
   { immediate: true }
 )
 
@@ -255,7 +257,7 @@ function validate(name: string, spec: RecipeInputSpec): boolean {
 // Why the run button is disabled, said next to it instead of a silently dimmed button.
 const blockReason = computed<string | null>(() => {
   if (!conn.transport) return 'Đang chờ kết nối tới core'
-  if (projectId.value !== NO_PROJECT && !projects.loaded) return 'Đang tải dự án'
+  if (projectId.value !== NO_PROJECT && !projects.loaded && !projects.error) return 'Đang tải dự án'
   const r = selected.value
   if (!r) return null
   if (mode.value === 'batch') {
@@ -313,14 +315,14 @@ async function submit(): Promise<void> {
         items: itemsEn,
         inputs,
         title: title.value.trim() || `${r.name} × ${batchItems.value.length}`,
-        project_id: project.value?.id
+        project_id: runProjectId.value
       })
       toasts.push(`Đã tạo ${res.run_ids.length} lượt chạy`, 'success', 2600)
       batchLines.value = ''
       batchFiles.value = []
       await router.push(`/batch/${res.batch_id}`)
     } else {
-      const { run_id } = await api().startRun({ recipe_id: r.id, inputs, title: title.value.trim() || title0, project_id: project.value?.id })
+      const { run_id } = await api().startRun({ recipe_id: r.id, inputs, title: title.value.trim() || title0, project_id: runProjectId.value })
       toasts.push('Đã bắt đầu chạy', 'success', 2500)
       await router.push(`/runs/${run_id}`)
     }

@@ -106,7 +106,7 @@ export interface AssetBridge {
   startDrag(hash: string, name?: string): void
   /** Folder exports of a whole step (Spine json+atlas+png, sprite sheet repacked for an engine preset). */
   bundleOptions(stepId: string): Promise<BundleOptions>
-  saveBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts?: EngineExportOptions): Promise<string | null>
+  saveBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts?: EngineExportOptions): Promise<{ path: string; leftover?: string } | null>
   revealBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts?: EngineExportOptions): Promise<void>
 }
 

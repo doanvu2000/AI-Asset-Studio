@@ -84,6 +84,18 @@ interface MockRecipe {
 
 const LANE_LIMITS: Record<Lane, number> = { gpu: 1, blender: 1, cloud: 3, cpu: 4, none: Infinity }
 
+// Mirrors the core recipes: normal steps are optional pass-throughs that come back empty when normals are off.
+function normalChain(prefix: string, frames: string, pivot: string, mirror: boolean): MockStepDef[] {
+  const src = mirror ? `${prefix}ndirs` : frames.split('.')[0]!
+  return [
+    ...(mirror
+      ? [{ id: `${prefix}ndirs`, kind: 'op.mirror_dirs', lane: 'cpu' as Lane, deps: [frames.split('.')[0]!], in: { images: frames }, params: () => ({ count: 8, normal: true, optional: true }), raw: { count: 8, normal: true, optional: true } }]
+      : []),
+    { id: `${prefix}ndown`, kind: 'op.downscale', lane: 'cpu', deps: [src], in: { images: mirror ? `${src}.images` : frames }, params: () => ({ factor: 2, resample: 'box', normal: true, optional: true }), raw: { factor: 2, resample: 'box', normal: true, optional: true } },
+    { id: `${prefix}nsheet`, kind: 'op.sheet', lane: 'cpu', deps: [`${prefix}ndown`], in: { images: `${prefix}ndown.images`, pivot }, params: () => ({ cols: 8, normal: true, optional: true }), raw: { cols: 8, normal: true, optional: true } }
+  ]
+}
+
 const RECIPES: MockRecipe[] = [
   {
     info: {
@@ -181,9 +193,33 @@ const RECIPES: MockRecipe[] = [
       { id: 'mesh', kind: 'comfy.img2mesh_trellis2_textured', lane: 'gpu', deps: ['pick'], in: { image: 'pick.images' } },
       { id: 'cleanup', kind: 'blender.cleanup', lane: 'blender', deps: ['mesh'], in: { mesh: 'mesh.meshes' } },
       { id: 'render', kind: 'blender.render_dirs', lane: 'blender', deps: ['cleanup'], in: { mesh: 'cleanup.meshes' }, params: () => ({ count: 8, elevation: 30, res: 256 }) },
+      { id: 'dirs', kind: 'op.mirror_dirs', lane: 'cpu', deps: ['render'], in: { images: 'render.images' }, params: () => ({ count: 8 }) },
+      { id: 'down', kind: 'op.downscale', lane: 'cpu', deps: ['dirs'], params: () => ({ factor: 2, resample: 'box' }) },
+      { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['down'], in: { images: 'down.images', pivot: 'render.meta' }, params: (i) => ({ cols: 8, preset: i.preset }), raw: { cols: 8, preset: '${inputs.preset}' } },
+      ...normalChain('', 'render.normal_frames', 'render.meta', true)
+    ]
+  },
+  {
+    info: {
+      id: 'sprite-8dir-anim',
+      name: 'Sprite 8 hướng có hoạt ảnh (3D)',
+      description: 'Text → mesh → render 8 hướng (sheet đứng yên) + Blender hoạt ảnh đi bộ 8 hướng → sheet hoạt ảnh (+ normal map)',
+      hash: 'b3c0an1m8d',
+      inputs: { prompt: { type: 'text', label: 'Prompt', required: true }, preset: { type: 'preset', default: 'godot', label: 'Preset xuất' } },
+      steps: []
+    },
+    defs: [
+      { id: 'concept', kind: 'comfy.t2i_zimage_turbo', lane: 'gpu', deps: [] },
+      { id: 'pick', kind: 'gate.pick', lane: 'none', deps: ['concept'], params: () => ({ k: 1 }) },
+      { id: 'mesh', kind: 'comfy.img2mesh_trellis2_textured', lane: 'gpu', deps: ['pick'], in: { image: 'pick.images' } },
+      { id: 'cleanup', kind: 'blender.cleanup', lane: 'blender', deps: ['mesh'], in: { mesh: 'mesh.meshes' } },
+      { id: 'render', kind: 'blender.render_dirs', lane: 'blender', deps: ['cleanup'], in: { mesh: 'cleanup.meshes' }, params: () => ({ count: 8, elevation: 30, res: 256 }) },
       { id: 'down', kind: 'op.downscale', lane: 'cpu', deps: ['render'], params: () => ({ factor: 2, resample: 'box' }) },
       { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['down'], in: { images: 'down.images', pivot: 'render.meta' }, params: (i) => ({ cols: 8, preset: i.preset }), raw: { cols: 8, preset: '${inputs.preset}' } },
-      { id: 'nsheet', kind: 'op.sheet', lane: 'cpu', deps: ['down'], in: { images: 'down.images', pivot: 'render.meta' }, params: () => ({ cols: 8, normal: true }), raw: { cols: 8, normal: true } }
+      { id: 'anim', kind: 'blender.animate_dirs', lane: 'blender', deps: ['cleanup'], in: { mesh: 'cleanup.meshes' }, params: () => ({ frames: 8, count: 8 }) },
+      { id: 'anim_down', kind: 'op.downscale', lane: 'cpu', deps: ['anim'], in: { images: 'anim.images' }, params: () => ({ factor: 2, resample: 'box' }) },
+      { id: 'anim_sheet', kind: 'op.sheet', lane: 'cpu', deps: ['anim_down'], in: { images: 'anim_down.images', pivot: 'anim.meta' }, params: () => ({}) },
+      ...normalChain('anim_', 'anim.normal_frames', 'anim.meta', false)
     ]
   },
   {
@@ -248,7 +284,7 @@ const RAW_PARAMS: Record<string, Record<string, unknown>> = {
 
 function docOf(r: MockRecipe): RecipeDoc {
   if (r.doc) return structuredClone(r.doc)
-  const last = [...r.defs].reverse().find((d) => d.raw?.normal !== true)!
+  const last = [...r.defs].reverse().find((d) => d.raw?.normal !== true && d.raw?.optional !== true)!
   return {
     id: r.info.id,
     name: r.info.name,
@@ -399,6 +435,14 @@ export class MockCore implements StudioApi, EventStream {
     }
   }
 
+  private renamed(list: BlobRef[], name: (i: number) => string): BlobRef[] {
+    return list.map((b, i) => {
+      const ref: BlobRef = { ...b, hash: hex(), name: name(i) }
+      this.blobs.set(ref.hash, { url: this.blobUrl(b.hash), seed: this.seedOf(b.hash), ref })
+      return ref
+    })
+  }
+
   private meshReport(): BlobRef {
     const report = { attempts: [{ attempt: 1, hash: 'mock', error: 'blender_crashed' }], min_iou: 0.6, checked: true, passed: false, skipped: true, status: 'skipped' }
     return this.putBlob(new Blob([JSON.stringify(report)], { type: 'application/json' }), 'mesh_report.json')
@@ -541,14 +585,52 @@ export class MockCore implements StudioApi, EventStream {
     const propOuts: Record<string, Outputs> = { concept: { images: pool.slice(6, 10) }, pick: { images: [pool[6]!] }, mesh: { meshes: [x.glb] }, cleanup: { meshes: [x.glb] }, validate: { meshes: [x.glb] }, turntable: { images: pool.slice(0, 6) } }
     this.seedShowcase('prop-3d', 'Bệ pha lê', t0 - 900, propOuts, [x.glb])
     const walk = await this.walkOutputs()
+    const dirName = (suffix: string) => (i: number) => `dir_${String(i * 45).padStart(3, '0')}${suffix}.png`
+    const colorDirs = this.renamed(pool.slice(0, 8), dirName(''))
+    const normalDirs = this.renamed(pool.slice(0, 8), dirName('_n'))
+    const smallNormals = this.renamed(normalDirs, dirName('_n_down_n'))
     this.seedShowcase(
       'sprite-8dir-3d',
       'Hiệp sĩ đi bộ (3 clip + normal)',
       t0 - 1200,
-      { concept: { images: pool.slice(10, 14) }, pick: { images: [pool[10]!] }, mesh: { meshes: [x.glb], report: [this.meshReport()] }, cleanup: { meshes: [x.glb] }, render: { images: pool.slice(0, 8) }, down: { images: pool.slice(0, 8) }, sheet: walk.color, nsheet: walk.normal },
+      {
+        concept: { images: pool.slice(10, 14) },
+        pick: { images: [pool[10]!] },
+        mesh: { meshes: [x.glb], report: [this.meshReport()] },
+        cleanup: { meshes: [x.glb] },
+        render: { images: colorDirs.slice(0, 5), normal_frames: normalDirs.slice(0, 5) },
+        dirs: { images: colorDirs },
+        down: { images: colorDirs },
+        sheet: walk.color,
+        ndirs: { images: normalDirs },
+        ndown: { images: smallNormals },
+        nsheet: walk.normal
+      },
       [...Object.values(walk.color).flat(), ...Object.values(walk.normal).flat()]
     )
-    this.seedShowcase('sprite-8dir-3d', 'Hiệp sĩ 8 hướng', t0 - 1500, { concept: { images: pool.slice(10, 14) }, pick: { images: [pool[10]!] }, mesh: { meshes: [x.glb] }, cleanup: { meshes: [x.glb] }, render: { images: pool.slice(0, 8) }, down: { images: pool.slice(0, 8) }, sheet: { sheet: [x.sheet], meta: [x.sheetMeta] } }, [x.sheet, x.sheetMeta])
+    this.seedShowcase('sprite-8dir-3d', 'Hiệp sĩ 8 hướng', t0 - 1500, { concept: { images: pool.slice(10, 14) }, pick: { images: [pool[10]!] }, mesh: { meshes: [x.glb] }, cleanup: { meshes: [x.glb] }, render: { images: pool.slice(0, 8) }, dirs: { images: pool.slice(0, 8) }, down: { images: pool.slice(0, 8) }, sheet: { sheet: [x.sheet], meta: [x.sheetMeta] } }, [x.sheet, x.sheetMeta])
+    const animFrames = (suffix: string) => this.renamed(pool.slice(0, 8), (i) => `walk_dir_${String(i * 45).padStart(3, '0')}_f00${suffix}.png`)
+    const animNormals = animFrames('_n')
+    this.seedShowcase(
+      'sprite-8dir-anim',
+      'Hiệp sĩ hoạt ảnh (sheet tĩnh + đi bộ + normal)',
+      t0 - 1350,
+      {
+        concept: { images: pool.slice(10, 14) },
+        pick: { images: [pool[10]!] },
+        mesh: { meshes: [x.glb] },
+        cleanup: { meshes: [x.glb] },
+        render: { images: colorDirs },
+        down: { images: colorDirs },
+        sheet: { sheet: [x.sheet], meta: [x.sheetMeta] },
+        anim: { images: animFrames(''), normal_frames: animNormals },
+        anim_down: { images: animFrames('') },
+        anim_sheet: walk.color,
+        anim_ndown: { images: this.renamed(animNormals, (i) => `walk_dir_${String(i * 45).padStart(3, '0')}_f00_n_down_n.png`) },
+        anim_nsheet: walk.normal
+      },
+      [x.sheet, x.sheetMeta, ...Object.values(walk.color).flat(), ...Object.values(walk.normal).flat()]
+    )
     const spineOuts: Record<string, Outputs> = { concept: { images: pool.slice(2, 6) }, pick: { images: [pool[2]!] }, rmbg: { images: [pool[2]!] }, parts: { preview: [pool[3]!] }, layers: { preview: [pool[4]!] }, export: { skeleton: [x.skeleton], atlas: [x.atlas], texture: [x.texture], preview: [x.setup] } }
     this.seedShowcase('spine-character', 'Hiệp sĩ Spine', t0 - 2100, spineOuts, [x.skeleton, x.atlas, x.texture, x.setup])
     this.seedShowcase('spine-character', 'Hiệp sĩ Spine (chờ duyệt)', t0 - 300, spineOuts, [], 'approve')
@@ -776,6 +858,11 @@ export class MockCore implements StudioApi, EventStream {
     const run = this.runs.get(s.run_id)!
     const inImgs = s.inputs.images ?? []
     const size = Number(run.inputs.size ?? run.inputs.res ?? 512)
+    // Normals are off in live mock runs; optional normal steps pass through empty like the core does.
+    if (s.params.optional === true) {
+      await sleep(150)
+      return {}
+    }
 
     if (s.kind === 'comfy.t2i_zimage_turbo') {
       const count = Number(run.inputs.count ?? 4)

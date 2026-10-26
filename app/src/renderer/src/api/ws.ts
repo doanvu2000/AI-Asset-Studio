@@ -20,6 +20,8 @@ export interface EventStream {
 export class FrameBatcher {
   private queue: StudioEvent[] = []
   private scheduled = false
+  private raf = 0
+  private timer = 0
 
   constructor(private readonly flush: (events: StudioEvent[]) => void) {}
 
@@ -29,12 +31,15 @@ export class FrameBatcher {
     this.scheduled = true
     const run = (): void => this.flushNow()
     // rAF stops while the window is hidden (tray); the timer keeps events flowing there.
-    if (!document.hidden) requestAnimationFrame(run)
-    window.setTimeout(run, document.hidden ? 16 : 250)
+    if (!document.hidden) this.raf = requestAnimationFrame(run)
+    this.timer = window.setTimeout(run, document.hidden ? 16 : 250)
   }
 
   flushNow(): void {
     this.scheduled = false
+    cancelAnimationFrame(this.raf)
+    window.clearTimeout(this.timer)
+    this.raf = this.timer = 0
     const q = this.queue
     this.queue = []
     if (q.length) this.flush(q)

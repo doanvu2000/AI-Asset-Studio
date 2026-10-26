@@ -424,15 +424,16 @@ async function renameRetry(from: string, to: string): Promise<void> {
     try {
       return await rename(from, to)
     } catch (e) {
-      if (i >= 4 || !['EPERM', 'EBUSY', 'EACCES'].includes(errCode(e) ?? '')) throw e
-      await new Promise((r) => setTimeout(r, 100))
+      if (i >= 5 || !['EPERM', 'EBUSY', 'EACCES'].includes(errCode(e) ?? '')) throw e
+      await new Promise((r) => setTimeout(r, 100 * 2 ** i))
     }
   }
 }
 
 // cp() merges into an existing folder, leaving stale clips/.meta from an earlier export; copy aside, then swap.
 // The old folder is only deleted once the new one is in place, so a failed swap never loses both copies.
-async function replaceDir(src: string, dest: string): Promise<void> {
+/** Resolves to a leftover `.old-*` folder path when the swap worked but the previous copy could not be deleted. */
+async function replaceDir(src: string, dest: string): Promise<string | undefined> {
   const tag = randomBytes(4).toString('hex')
   const tmp = `${dest}.tmp-${tag}`
   const old = `${dest}.old-${tag}`
@@ -456,12 +457,24 @@ async function replaceDir(src: string, dest: string): Promise<void> {
     await renameRetry(tmp, dest)
   } catch (err) {
     if (moved) {
-      await renameRetry(old, dest).catch((e: Error) => devlog.app('error', `restore ${old} → ${dest} failed: ${e.message}`))
-      if (existsSync(dest)) await rm(tmp, { recursive: true, force: true }).catch(() => undefined)
+      const restored = await renameRetry(old, dest).then(
+        () => true,
+        (e: Error) => (devlog.app('error', `restore ${old} → ${dest} failed: ${e.message}`), false)
+      )
+      if (!restored) {
+        throw new Error(
+          `Không thay được thư mục và không khôi phục được bản cũ (${(err as Error).message}). Bản cũ nằm ở ${old}, bản mới ở ${tmp}`
+        )
+      }
+      await rm(tmp, { recursive: true, force: true }).catch(() => undefined)
     } else await rm(tmp, { recursive: true, force: true }).catch(() => undefined)
     throw err
   }
-  if (moved) await rm(old, { recursive: true, force: true, maxRetries: 5 }).catch((e: Error) => devlog.app('warn', `could not remove ${old}: ${e.message}`))
+  if (!moved) return undefined
+  return rm(old, { recursive: true, force: true, maxRetries: 5 }).then(
+    () => undefined,
+    (e: Error) => (devlog.app('warn', `could not remove ${old}: ${e.message}`), old)
+  )
 }
 
 function registerAssetIpc(): void {
@@ -517,9 +530,9 @@ function registerAssetIpc(): void {
       const r = owner ? await dialog.showMessageBox(owner, ask) : await dialog.showMessageBox(ask)
       if (r.response !== 0) return null
     }
-    await replaceDir(b.dir, dest)
+    const leftover = await replaceDir(b.dir, dest)
     devlog.app('info', `exported step ${stepId} (${eng ?? b.preset ?? 'raw'}, ${b.files} files) → ${dest}`)
-    return dest
+    return leftover ? { path: dest, leftover } : { path: dest }
   })
   handle('studio:asset:revealBundle', async (_e, stepId, preset, name, engine, opts) => {
     const b = await assets.exportBundle(checkStep(stepId), checkPreset(preset), checkName(name), checkEngine(engine), checkEngineOptions(opts))

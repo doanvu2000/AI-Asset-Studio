@@ -72,6 +72,10 @@ export const MOCK_KINDS: KindInfo[] = [
     mirror: bool(false, 'Lật gương (5 hướng → 8)'),
     engine: choice(['BLENDER_EEVEE', 'CYCLES', 'BLENDER_WORKBENCH'], 'BLENDER_EEVEE', 'Engine')
   }),
+  k('blender.animate_dirs', 'blender', 'Hoạt ảnh các hướng', { mesh: 'mesh' }, { images: 'image[]', normal_frames: 'image[]', meta: 'json' }, {
+    frames: int(8, 'Số khung', { min: 2, max: 32 }),
+    count: int(8, 'Số hướng', { options: [4, 8, 16] })
+  }),
   k('comfy.t2i_zimage_turbo', 'gpu', 'Sinh ảnh (Z-Image)', {}, { images: 'image[]' }, { '57:27.text': text('CLIP Text Encode (Prompt)', { multiline: true, node: true }), ...COMFY_OPTS }, true),
   k('comfy.remove_bg_birefnet', 'gpu', 'Tách nền (BiRefNet)', { image: 'image' }, { images: 'image[]' }, { ...COMFY_OPTS }, true),
   k('comfy.i23d_hunyuan', 'gpu', 'Dựng mesh (Hunyuan3D)', { image: 'image' }, { meshes: 'mesh' }, { ...COMFY_OPTS }, true),

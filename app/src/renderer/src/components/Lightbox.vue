@@ -87,8 +87,7 @@ useEventListener(
     if (!props.blob) return
     const t = e.target as HTMLElement | null
     // Teleported popups (export BundleMenu) handle their own keys, Escape included.
-    const foreign = !!t && t !== document.body && t !== document.documentElement && !scrim.value?.contains(t)
-    if (foreign || t?.closest('[role="menu"]')) return
+    if (t?.closest('[role="menu"], [data-popup]')) return
     if (trap.onTab(e)) return
     if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return
     // A focused viewer (sprite sheet) owns only its playback keys; A/R/Esc keep working after clicking it.
