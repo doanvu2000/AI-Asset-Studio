@@ -14,8 +14,9 @@ _RESERVED_IDS = {0, TEXTURE_FILE_ID, CLIP_FILE_ID, CONTROLLER_FILE_ID, 21300000}
 HEADER = "%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n"
 
 
-def guid(asset: str, rel: str) -> str:
-    return stable_hex("unity", asset, rel)
+def guid(uid: str, asset: str, rel: str) -> str:
+    """Seeded by the source step id too: two runs exporting the same asset name must not share GUIDs in one project."""
+    return stable_hex("unity", uid, asset, rel) if uid else stable_hex("unity", asset, rel)
 
 
 def file_id(*parts: str) -> int:
@@ -496,16 +497,16 @@ README_SHEET = """- {asset}.png: sprite sheet đã cắt sẵn (Sprite Mode Mult
 
 
 def export(src: Source) -> Files:
-    a = src.asset
+    a, u = src.asset, src.uid
     files: Files = []
     notes: list[str] = []
     if src.sheet is not None and src.meta is not None:
-        lay = layout(src.meta, src.clip_hint)
+        lay = layout(src.meta, src.clip_hint, directional_rows=src.directional_rows)
         pixel = src.is_pixel()
         notes.append(README_SHEET.format(asset=a, ppu=_f(src.ppu)))
         tex_rel, normal_rel = f"{a}.png", f"{a}_normal.png"
-        tex_guid = guid(a, tex_rel)
-        normal_guid = guid(a, normal_rel) if src.normal is not None else None
+        tex_guid = guid(u, a, tex_rel)
+        normal_guid = guid(u, a, normal_rel) if src.normal is not None else None
         size = (lay.width, lay.height)
         files += [(tex_rel, src.sheet),
                   (f"{tex_rel}.meta", texture_meta(a, tex_guid, lay, size, src.ppu, pixel, normal_guid).encode())]
@@ -516,19 +517,19 @@ def export(src: Source) -> Files:
             notes.append(f"- {normal_rel}: normal map, đã gắn làm secondary texture _NormalMap (URP 2D Light).")
         ctrl_guid = None
         if lay.tracks:
-            clip_guids = {t.name: guid(a, f"Animations/{t.name}.anim") for t in lay.tracks}
+            clip_guids = {t.name: guid(u, a, f"Animations/{t.name}.anim") for t in lay.tracks}
             for t in lay.tracks:
                 rel = f"Animations/{t.name}.anim"
                 files += [(rel, anim_clip(a, tex_guid, t).encode()),
                           (f"{rel}.meta", native_meta(clip_guids[t.name], CLIP_FILE_ID).encode())]
             ctrl_rel = f"{a}.controller"
-            ctrl_guid = guid(a, ctrl_rel)
+            ctrl_guid = guid(u, a, ctrl_rel)
             files += [(ctrl_rel, controller(a, a, lay, clip_guids).encode()),
                       (f"{ctrl_rel}.meta", native_meta(ctrl_guid, CONTROLLER_FILE_ID).encode())]
         if lay.cells:
             pf_rel = f"{a}.prefab"
             files += [(pf_rel, prefab(a, a, lay, tex_guid, src.ppu, ctrl_guid).encode()),
-                      (f"{pf_rel}.meta", prefab_meta(guid(a, pf_rel)).encode())]
+                      (f"{pf_rel}.meta", prefab_meta(guid(u, a, pf_rel)).encode())]
     if src.spine_json is not None and src.spine_atlas is not None:
         stem = Path(src.spine_json[0]).stem
         files += [(f"Spine/{stem}.json", src.spine_json[1]), (f"Spine/{stem}.atlas.txt", src.spine_atlas[1])]

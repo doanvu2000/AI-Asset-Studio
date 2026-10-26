@@ -47,21 +47,85 @@ def _read_meta(step: StepRow, blobs: BlobStore, key: str = "meta") -> dict[str, 
     return meta if isinstance(meta, dict) and meta.get("frame_w") and meta.get("frame_h") else None
 
 
+_PAIR_KEYS = ("frame_w", "frame_h", "cols", "rows", "count", "padding", "width", "height", "order")
+
+
 def _same_grid(a: dict[str, Any], b: dict[str, Any]) -> bool:
-    return all(a.get(k) == b.get(k) for k in ("frame_w", "frame_h", "cols", "rows"))
+    return all(a.get(k) == b.get(k) for k in _PAIR_KEYS)
+
+
+def _normal_keys(key: str) -> set[str]:
+    return {key.replace("sheet", "nsheet"), f"n{key}", f"{key}_normal"} - {key}
+
+
+def _same_lineage(a: StepRow, b: StepRow) -> bool:
+    pa, pb = a.inputs.get("pivot") or [], b.inputs.get("pivot") or []
+    return bool(pa) and [r.hash for r in pa] == [r.hash for r in pb]
 
 
 def _normal_sheet(step: StepRow, meta: dict[str, Any], siblings: list[StepRow], blobs: BlobStore) -> Path | None:
     if step.outputs.get("normal_sheet"):
         return blobs.path(step.outputs["normal_sheet"][0].hash)
-    matches = []
+    cands = []
     for s in siblings:
         m = _read_meta(s, blobs)
         if s.id != step.id and s.outputs.get("sheet") and m and m.get("normal") and _same_grid(m, meta):
-            matches.append(s)
-    # A run can hold a normal sheet per animated sheet; the one named after this step is the pair.
-    matches.sort(key=lambda s: (step.key not in s.key, s.key))
-    return blobs.path(matches[0].outputs["sheet"][0].hash) if matches else None
+            cands.append(s)
+    named = [s for s in cands if s.key in _normal_keys(step.key)]
+    lineage = [s for s in cands if _same_lineage(s, step)]
+    pick = named[:1] or (lineage if len(lineage) == 1 else [])
+    return blobs.path(pick[0].outputs["sheet"][0].hash) if pick else None
+
+
+def _from_animate_dirs(step: StepRow, siblings: list[StepRow]) -> bool:
+    by_key = {s.key: s for s in siblings}
+    todo, seen = list(step.deps), set()
+    while todo:
+        k = todo.pop()
+        if k in seen or k not in by_key:
+            continue
+        seen.add(k)
+        if by_key[k].kind == "blender.animate_dirs":
+            return True
+        todo.extend(by_key[k].deps)
+    return False
+
+
+def _unique(name: str, seen: set[str]) -> str:
+    stem, ext = os.path.splitext(name)
+    n = 2
+    while name.lower() in seen:
+        name, n = f"{stem}-{n}{ext}", n + 1
+    seen.add(name.lower())
+    return name
+
+
+def _atlas_pages(atlas: Path) -> list[str]:
+    """Spine atlas page names: the first line of the file and of every block after a blank line."""
+    try:
+        lines = atlas.read_text(encoding="utf-8-sig", errors="replace").splitlines()
+    except OSError:
+        return []
+    pages, fresh = [], True
+    for line in lines:
+        if not line.strip():
+            fresh = True
+        elif fresh:
+            pages.append(line.strip())
+            fresh = False
+    return pages
+
+
+def _page_names(refs: list[BlobRef], atlas: Path) -> list[str]:
+    pages = {p.lower(): p for p in _atlas_pages(atlas)}
+    names, seen = [], set()
+    for r in refs:
+        safe = safe_filename(None, r)
+        want = pages.get(safe.lower()) or (next(iter(pages.values())) if len(pages) == 1 == len(refs) else None)
+        # safe_filename lowercases the extension; the atlas must find "Hero.PNG" byte for byte.
+        ok = want is not None and safe_filename(want, r).lower() == want.lower()
+        names.append(_unique(want if ok and want else safe, seen))
+    return names
 
 
 def _is_glb(ref: BlobRef) -> bool:
@@ -70,7 +134,8 @@ def _is_glb(ref: BlobRef) -> bool:
 
 def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asset: str, ppu: float = 100.0,
                   pixel: bool | None = None) -> Source:
-    src = Source(asset=asset, clip_hint=step.key, ppu=ppu, pixel=pixel)
+    src = Source(asset=asset, uid=step.id, clip_hint=step.key, ppu=ppu, pixel=pixel,
+                 directional_rows=_from_animate_dirs(step, siblings))
     meta = _read_meta(step, blobs)
     if meta is not None and step.outputs.get("sheet") and not meta.get("normal"):
         src.sheet, src.meta = blobs.path(step.outputs["sheet"][0].hash), meta
@@ -79,13 +144,15 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
     if sk and atlas:
         src.spine_json = (safe_filename(None, sk[0]), blobs.path(sk[0].hash))
         src.spine_atlas = (safe_filename(None, atlas[0]), blobs.path(atlas[0].hash))
-        src.spine_pages = [(safe_filename(None, r), blobs.path(r.hash)) for r in step.outputs.get("texture") or []]
-    seen: set[str] = set()
+        pages = step.outputs.get("texture") or []
+        src.spine_pages = list(zip(_page_names(pages, src.spine_atlas[1]), (blobs.path(r.hash) for r in pages)))
+    hashes: set[str] = set()
+    names: set[str] = set()
     for refs in step.outputs.values():
         for r in refs:
-            if _is_glb(r) and r.hash not in seen:
-                seen.add(r.hash)
-                src.glb.append((safe_filename(None, r), blobs.path(r.hash)))
+            if _is_glb(r) and r.hash not in hashes:
+                hashes.add(r.hash)
+                src.glb.append((_unique(safe_filename(None, r), names), blobs.path(r.hash)))
     return src
 
 

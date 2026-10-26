@@ -7,10 +7,11 @@ from pathlib import Path
 import yaml
 from PIL import Image
 
-from studio_core.contracts import Lane, RunRow, StepRow, StepStatus
+from studio_core.contracts import BlobRef, Lane, RunRow, StepRow, StepStatus
 from studio_core.export import godot, unity
 from studio_core.export.sheet import direction_vector, layout
 from studio_core.export.source import Source
+from studio_core.store.bundle import engine_source
 
 from test_api_basic import AUTH, app_ctx  # noqa: F401  (fixture reuse)
 
@@ -71,7 +72,7 @@ def test_layout_static_eight_dirs_and_legacy_walk() -> None:
     lay = layout(column, clip_hint="sheet")
     assert [t.name for t in lay.tracks][:2] == ["idle_S", "idle_SW"] and lay.tracks[1].cells[0].y == 20
     legacy = {"frame_w": 16, "frame_h": 20, "cols": 6, "rows": 8, "count": 48, "order": list(range(48))}
-    lay = layout(legacy, clip_hint="walk")
+    lay = layout(legacy, clip_hint="walk", directional_rows=True)
     assert [t.name for t in lay.tracks][:2] == ["walk_S", "walk_SW"] and len(lay.tracks[0].cells) == 6
     assert lay.pivot == (8, 20)
 
@@ -201,3 +202,91 @@ async def test_api_engine_export_spine(app_ctx) -> None:  # noqa: F811
     assert names == ["README.txt", "Spine/hero.atlas.txt", "Spine/hero.json", "Spine/hero.png"]
     g = (await client.post("/api/steps/spine-1/export", json={"engine": "godot"}, headers=AUTH)).json()
     assert any(p.endswith("hero.spine-json") for p in g["files"])
+
+
+def test_layout_plain_grid_is_not_legacy_walk() -> None:
+    vfx = {"frame_w": 64, "frame_h": 64, "cols": 4, "rows": 4, "count": 16, "order": list(range(16))}
+    lay = layout(vfx, clip_hint="sheet")
+    assert lay.tracks == [] and [c.name for c in lay.cells][:2] == ["frame_0", "frame_1"] and len(lay.cells) == 16
+    assert len(layout({**vfx, "frames_per_dir": 4}).tracks) == 4
+
+
+def test_unity_guid_seeded_by_source_uid(tmp_path: Path) -> None:
+    def tex_guid(uid: str) -> str:
+        src = _source(tmp_path)
+        src.uid = uid
+        return yaml.safe_load(_files(unity.export(src))["Knight.png.meta"])["guid"]
+    assert tex_guid("step-a") == tex_guid("step-a") != tex_guid("step-b")
+
+
+def test_godot_helper_angles_follow_layout(tmp_path: Path) -> None:
+    angles = [i * 22.5 for i in range(16)]
+    meta = {"frame_w": 16, "frame_h": 16, "cols": 2, "rows": 16, "count": 32, "row_angles": angles}
+    gd = _files(godot.export(Source(asset="Bat", sheet=_png(tmp_path, "b.png", (32, 256)), meta=meta)))
+    helper = gd["asset_studio_sprite.gd"].decode()
+    assert "angle_difference" not in helper and "wrapf(" in helper
+    consts = re.search(r"const DIR_ANGLES := \{(.*)\}", helper).group(1)
+    assert consts.count(":") == 16 and '"A022": 22.5' in consts and '"S": 0.0' in consts
+    plain = _files(godot.export(_source(tmp_path)))["asset_studio_sprite.gd"].decode()
+    assert '"S": 0.0, "SW": 45.0' in plain and '"SE": 315.0}' in plain
+
+
+class _Blobs:
+    def __init__(self, root: Path) -> None:
+        self.root, self.n = root, 0
+
+    def put(self, data: bytes, name: str, mime: str) -> BlobRef:
+        self.n += 1
+        h = f"{self.n:064x}"
+        (self.root / h).write_bytes(data)
+        return BlobRef(hash=h, mime=mime, size=len(data), name=name)
+
+    def path(self, h: str) -> Path:
+        return self.root / h
+
+
+def _row(key: str, kind: str, outputs, deps=(), inputs=None) -> StepRow:
+    return StepRow(id=f"id-{key}", run_id="r", key=key, kind=kind, lane=Lane.CPU, status=StepStatus.SUCCEEDED,
+                   deps=list(deps), inputs=inputs or {}, outputs=outputs)
+
+
+def _sheet_row(b: _Blobs, key: str, pivot: BlobRef | None = None, deps=(), **meta) -> StepRow:
+    m = b.put(json.dumps(_meta(**meta)).encode(), "sheet.json", "application/json")
+    png = b.put(key.encode(), "sheet.png", "image/png")
+    return _row(key, "op.sheet", {"sheet": [png], "meta": [m]}, deps, {"pivot": [pivot]} if pivot else None)
+
+
+def test_normal_sheet_pairs_by_key_or_lineage_only(tmp_path: Path) -> None:
+    b = _Blobs(tmp_path)
+    piv = b.put(b"{}", "meta.json", "application/json")
+    sheet = _sheet_row(b, "anim_sheet", piv)
+    decoy = _sheet_row(b, "other_nsheet", normal=True)
+    pair = _sheet_row(b, "anim_nsheet", normal=True)
+    padded = _sheet_row(b, "anim_nsheet", normal=True, padding=2)
+    got = lambda sibs: engine_source(sheet, [sheet, *sibs], b, "A").normal  # noqa: E731
+    assert got([decoy, pair]) == b.path(pair.outputs["sheet"][0].hash)
+    assert got([decoy]) is None and got([padded]) is None
+    kin = _sheet_row(b, "whatever", piv, normal=True)
+    assert got([decoy, kin]) == b.path(kin.outputs["sheet"][0].hash)
+    assert got([kin, _sheet_row(b, "again", piv, normal=True)]) is None
+
+
+def test_legacy_rows_only_from_animate_dirs(tmp_path: Path) -> None:
+    b = _Blobs(tmp_path)
+    anim = _row("anim", "blender.animate_dirs", {})
+    down = _row("anim_down", "op.downscale", {}, ["anim"])
+    sheet = _sheet_row(b, "walk", deps=["anim_down"])
+    assert engine_source(sheet, [anim, down, sheet], b, "A").directional_rows
+    assert not engine_source(sheet, [sheet], b, "A").directional_rows
+
+
+def test_engine_names_dedupe_and_spine_page_case(tmp_path: Path) -> None:
+    b = _Blobs(tmp_path)
+    outs = {"skeleton": [b.put(b"{}", "Hero.json", "application/json")],
+            "atlas": [b.put(b"\nHero.PNG\nsize: 4,4\nfilter: Linear,Linear\nhead\n  bounds: 0,0,4,4\n",
+                            "Hero.atlas", "text/plain")],
+            "texture": [b.put(_bytes_png(), "Hero.PNG", "image/png")],
+            "glb": [b.put(b"a", "Hero.glb", "model/gltf-binary"), b.put(b"b", "hero.GLB", "model/gltf-binary")]}
+    src = engine_source(_row("spine", "op.spine_export", outs), [], b, "Hero")
+    assert [n for n, _ in src.spine_pages] == ["Hero.PNG"]
+    assert [n for n, _ in src.glb] == ["Hero.glb", "hero-2.glb"]

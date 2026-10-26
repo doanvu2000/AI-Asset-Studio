@@ -76,15 +76,15 @@ class Layout:
         return list(dict.fromkeys(t.clip for t in self.tracks))
 
 
-def _directional(angles: list[Any]) -> bool:
+def _directional(angles: list[Any], compass_only: bool = True) -> bool:
     try:
         vals = [round(float(a)) % 360 for a in angles]
     except (TypeError, ValueError):
         return False
-    return bool(vals) and len(set(vals)) == len(vals) and all(v in ANGLE_COMPASS for v in vals)
+    return bool(vals) and len(set(vals)) == len(vals) and (not compass_only or all(v in ANGLE_COMPASS for v in vals))
 
 
-def layout(meta: dict[str, Any], clip_hint: str = "anim", fps: float = 8.0) -> Layout:
+def layout(meta: dict[str, Any], clip_hint: str = "anim", fps: float = 8.0, directional_rows: bool = False) -> Layout:
     fw, fh = int(meta["frame_w"]), int(meta["frame_h"])
     cols, rows = int(meta.get("cols") or 1), int(meta.get("rows") or 1)
     pad = int(meta.get("padding") or 0)
@@ -131,12 +131,14 @@ def layout(meta: dict[str, Any], clip_hint: str = "anim", fps: float = 8.0) -> L
         for i, angle in enumerate(per_cell):
             r, c = divmod(i, cols)
             add_track("idle", float(angle), [cell(f"idle_{compass(angle)}_0", r, c)], fps, True)
-    elif isinstance(row_angles, list) and len(row_angles) == rows and _directional(row_angles):
+    elif isinstance(row_angles, list) and len(row_angles) == rows and _directional(row_angles, compass_only=False):
         for row, angle in enumerate(row_angles):
             d = compass(angle)
             add_track(clip_hint, angle, [cell(f"{clip_hint}_{d}_{f}", row, f) for f in range(cols)], fps, True)
-    elif rows in (4, 8, 16) and cols > 1 and count == rows * cols:
+    elif ((directional_rows or meta.get("frames_per_dir")) and rows in (4, 8, 16) and cols > 1
+          and count == rows * cols):
         # Legacy animate_dirs sheets carry no row_angles: rows are evenly spaced directions starting at 0°.
+        # Plain grids (VFX flipbooks) share the shape, so only trust it when lineage says so.
         for row in range(rows):
             angle = row * 360 / rows
             d = compass(angle)

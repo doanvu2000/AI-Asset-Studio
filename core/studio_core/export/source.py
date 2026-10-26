@@ -11,10 +11,12 @@ Files = list[tuple[str, bytes | Path]]
 class Source:
     """What one step hands an engine exporter; every field is optional except the asset name."""
     asset: str
+    uid: str = ""
     sheet: Path | None = None
     meta: dict[str, Any] | None = None
     normal: Path | None = None
     clip_hint: str = "anim"
+    directional_rows: bool = False
     glb: list[tuple[str, Path]] = field(default_factory=list)
     spine_json: tuple[str, Path] | None = None
     spine_atlas: tuple[str, Path] | None = None

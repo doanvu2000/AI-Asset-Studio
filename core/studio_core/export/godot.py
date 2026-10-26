@@ -66,7 +66,7 @@ def scene(name: str, lay: Layout, frames_file: str, pixel: bool) -> str:
 HELPER = """extends AnimatedSprite2D
 ## face("walk", velocity) plays <clip>_<dir> for the closest exported direction (S = facing down the screen).
 
-const DIR_ANGLES := {"S": 0.0, "SW": 45.0, "W": 90.0, "NW": 135.0, "N": 180.0, "NE": 225.0, "E": 270.0, "SE": 315.0}
+const DIR_ANGLES := {__DIR_ANGLES__}
 
 
 func face(clip: String, direction: Vector2) -> void:
@@ -79,13 +79,20 @@ func face(clip: String, direction: Vector2) -> void:
 		var anim_name := "%s_%s" % [clip, dir_name]
 		if not sprite_frames.has_animation(anim_name):
 			continue
-		var diff := absf(angle_difference(deg_to_rad(angle), deg_to_rad(DIR_ANGLES[dir_name])))
+		var diff := absf(wrapf(angle - DIR_ANGLES[dir_name], -180.0, 180.0))
 		if diff < best_diff:
 			best_diff = diff
 			best = anim_name
 	if best != "" and animation != best:
 		play(best)
 """
+
+
+def helper(lay: Layout) -> str:
+    angles = {t.dir: t.angle % 360 for t in reversed(lay.tracks)}
+    pairs = ", ".join(f'"{d}": {_num(a)}' for d, a in sorted(angles.items(), key=lambda kv: kv[1]))
+    return HELPER.replace("__DIR_ANGLES__", pairs)
+
 
 README_HEAD = "{asset} — xuất từ AI Asset Studio cho Godot 4. Chép cả thư mục này vào project (res://...).\n\n"
 README_SHEET = """- {asset}.tres: SpriteFrames, animation <clip>_<hướng> (S, SW, W, NW, N, NE, E, SE; S = quay mặt xuống
@@ -99,7 +106,7 @@ def export(src: Source) -> Files:
     files: Files = []
     notes: list[str] = []
     if src.sheet is not None and src.meta is not None:
-        lay = layout(src.meta, src.clip_hint)
+        lay = layout(src.meta, src.clip_hint, directional_rows=src.directional_rows)
         tex, normal = f"{a}.png", (f"{a}_normal.png" if src.normal is not None else None)
         files.append((tex, src.sheet))
         notes.append(README_SHEET.format(asset=a))
@@ -108,7 +115,7 @@ def export(src: Source) -> Files:
             notes.append(f"- {normal}: normal map, gắn qua CanvasTexture nên sprite nhận ánh sáng Light2D.")
         files += [(f"{a}.tres", sprite_frames(lay, tex, normal).encode()),
                   (f"{a}.tscn", scene(a, lay, f"{a}.tres", src.is_pixel()).encode()),
-                  ("asset_studio_sprite.gd", HELPER.encode())]
+                  ("asset_studio_sprite.gd", helper(lay).encode())]
     if src.spine_json is not None and src.spine_atlas is not None:
         stem = Path(src.spine_json[0]).stem
         files += [(f"Spine/{stem}.spine-json", src.spine_json[1]), (f"Spine/{stem}.atlas", src.spine_atlas[1])]
