@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef, triggerRef } from 'vue'
 import type { BlobRef, GateAwaitingData, GateResolution, StepRow } from '@/api/types'
-import { api } from './connection'
+import { api, flushEvents } from './connection'
 import { useRuns } from './runs'
 
 export interface GateItem {
@@ -83,6 +83,7 @@ export const useGates = defineStore('gates', () => {
   }
 
   async function load(): Promise<void> {
+    flushEvents()
     const live = new Map<string, GateItem | null>()
     inflight.add(live)
     try {

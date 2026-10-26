@@ -40,6 +40,7 @@ interface SheetMeta {
   row_angles?: Array<number | string>
   angles?: Array<number | string>
   clips?: ClipMeta[]
+  normal?: boolean
 }
 interface Frame {
   x: number
@@ -435,6 +436,10 @@ watch(
           >
             <LoaderCircle v-if="normalState === 'loading'" class="spin" />
             <span v-else class="nm-ic" aria-hidden="true" />
+            <span v-if="!compact">Normal</span>
+          </button>
+          <button v-else-if="meta.normal" class="vw-btn" aria-pressed="true" disabled title="Sheet này là normal map">
+            <span class="nm-ic" aria-hidden="true" />
             <span v-if="!compact">Normal</span>
           </button>
           <button class="vw-btn" :aria-pressed="pivot" title="Hiện pivot" aria-label="Hiện pivot" :disabled="!meta.pivot" @click="pivot = !pivot"><Crosshair /></button>

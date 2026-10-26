@@ -30,7 +30,8 @@ const gates = useGates()
 const router = useRouter()
 
 const batch = computed(() => batches.byId(props.id))
-const HOLDER = 'batch'
+// Per instance, so a closing view's late release never drops the holder of the view replacing it.
+const HOLDER = `batch:${Math.random().toString(36).slice(2)}`
 const held = new Set<string>()
 
 watch(
@@ -55,8 +56,10 @@ watch(
     const fresh = batch.value.runs.map((r) => r.id).filter((id) => !held.has(id))
     for (const id of fresh) held.add(id)
     void settlePool(fresh, DETAIL_CONCURRENCY, async (id) => {
+      if (!held.has(id)) return
       try {
         await runs.loadDetail(id, HOLDER)
+        if (!held.has(id)) runs.closeDetail(id, HOLDER)
       } catch {
         runs.closeDetail(id, HOLDER)
         held.delete(id)

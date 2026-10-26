@@ -181,7 +181,13 @@ function createWindow(): void {
   const wc = win.webContents
   wc.on('did-fail-load', (_e, code, desc, url) => devlog.app('error', `renderer load failed ${code} ${desc} ${url}`))
   wc.on('preload-error', (_e, path, err) => devlog.app('error', `preload ${path}: ${err.stack ?? err.message}`))
-  wc.on('render-process-gone', (_e, d) => devlog.app('error', `renderer gone: ${d.reason} (exit ${d.exitCode})`))
+  wc.on('render-process-gone', (_e, d) => {
+    rendererDirty = false
+    devlog.app('error', `renderer gone: ${d.reason} (exit ${d.exitCode})`)
+  })
+  wc.on('did-start-navigation', (d) => {
+    if (d.isMainFrame && !d.isSameDocument) rendererDirty = false
+  })
   wc.on('unresponsive', () => devlog.app('warn', 'renderer unresponsive'))
   if (isDev) {
     win.webContents.on('console-message', (e) => {
@@ -399,26 +405,63 @@ function dragIcon(file: string, mime: string): Electron.NativeImage {
   return nativeImage.createFromPath(appIconPath).resize({ width: 48 })
 }
 
-async function occupied(path: string): Promise<boolean> {
+const errCode = (e: unknown): string | undefined => (e as NodeJS.ErrnoException | null)?.code
+
+async function destState(path: string): Promise<'empty' | 'dir' | 'file'> {
   try {
     const st = await lstat(path)
-    return !st.isDirectory() || (await readdir(path)).length > 0
-  } catch {
-    return false
+    if (!st.isDirectory()) return 'file'
+    return (await readdir(path)).length > 0 ? 'dir' : 'empty'
+  } catch (e) {
+    if (errCode(e) === 'ENOENT') return 'empty'
+    throw new Error(`Không đọc được thư mục đích: ${(e as Error).message}`)
+  }
+}
+
+// Explorer, antivirus or an open editor briefly lock folders on Windows.
+async function renameRetry(from: string, to: string): Promise<void> {
+  for (let i = 0; ; i++) {
+    try {
+      return await rename(from, to)
+    } catch (e) {
+      if (i >= 4 || !['EPERM', 'EBUSY', 'EACCES'].includes(errCode(e) ?? '')) throw e
+      await new Promise((r) => setTimeout(r, 100))
+    }
   }
 }
 
 // cp() merges into an existing folder, leaving stale clips/.meta from an earlier export; copy aside, then swap.
+// The old folder is only deleted once the new one is in place, so a failed swap never loses both copies.
 async function replaceDir(src: string, dest: string): Promise<void> {
-  const tmp = `${dest}.tmp-${randomBytes(4).toString('hex')}`
+  const tag = randomBytes(4).toString('hex')
+  const tmp = `${dest}.tmp-${tag}`
+  const old = `${dest}.old-${tag}`
   try {
     await cp(src, tmp, { recursive: true })
-    await rm(dest, { recursive: true, force: true })
-    await rename(tmp, dest)
   } catch (err) {
     await rm(tmp, { recursive: true, force: true }).catch(() => undefined)
     throw err
   }
+  let moved = false
+  try {
+    await renameRetry(dest, old)
+    moved = true
+  } catch (e) {
+    if (errCode(e) !== 'ENOENT') {
+      await rm(tmp, { recursive: true, force: true }).catch(() => undefined)
+      throw e
+    }
+  }
+  try {
+    await renameRetry(tmp, dest)
+  } catch (err) {
+    if (moved) {
+      await renameRetry(old, dest).catch((e: Error) => devlog.app('error', `restore ${old} → ${dest} failed: ${e.message}`))
+      if (existsSync(dest)) await rm(tmp, { recursive: true, force: true }).catch(() => undefined)
+    } else await rm(tmp, { recursive: true, force: true }).catch(() => undefined)
+    throw err
+  }
+  if (moved) await rm(old, { recursive: true, force: true, maxRetries: 5 }).catch((e: Error) => devlog.app('warn', `could not remove ${old}: ${e.message}`))
 }
 
 function registerAssetIpc(): void {
@@ -460,14 +503,16 @@ function registerAssetIpc(): void {
     const parent = res.canceled ? undefined : res.filePaths[0]
     if (!parent) return null
     const dest = join(parent, basename(b.dir))
-    if (await occupied(dest)) {
+    const state = await destState(dest)
+    if (state === 'file') throw new Error(`Đã có một tệp (không phải thư mục) tên “${basename(dest)}” ở ${parent} — đổi tên hoặc chọn nơi khác`)
+    if (state === 'dir') {
       const ask: Electron.MessageBoxOptions = {
-        type: 'question',
+        type: 'warning',
         buttons: ['Thay thư mục cũ', 'Huỷ'],
-        defaultId: 0,
+        defaultId: 1,
         cancelId: 1,
         message: `Thay thư mục cũ “${basename(dest)}”?`,
-        detail: 'Thư mục này đã có tệp. Thay thế sẽ xoá bản xuất cũ để không lẫn tệp .anim / .meta của lần trước.'
+        detail: `Mọi tệp trong ${dest} sẽ bị xoá và thay bằng bản xuất mới (để không lẫn tệp .anim / .meta của lần trước).`
       }
       const r = owner ? await dialog.showMessageBox(owner, ask) : await dialog.showMessageBox(ask)
       if (r.response !== 0) return null

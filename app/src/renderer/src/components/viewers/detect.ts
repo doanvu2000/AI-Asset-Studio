@@ -51,12 +51,15 @@ export function outputBlobs(outputs: Record<string, BlobRef[]>): BlobRef[] {
   return Object.values(outputs).flat()
 }
 
-const isNormal = (b: BlobRef): boolean => normalHashes.has(b.hash) || /(^|_)normal(_|$)|_n$/.test(stem(b))
+// No `_n` suffix rule: direction frames are named `<asset>_N.png` and would read as normal maps.
+export const isNormalBlob = (b: BlobRef): boolean => normalHashes.has(b.hash) || /(^|_)normal(_|$)/.test(stem(b))
 
-// op.sheet always names its meta "sheet.json"; the sheet image is "sheet.png" or "<asset>_sheet.png".
-const isSheetMeta = (b: BlobRef): boolean => isJson(b) && stem(b) === 'sheet' && !isNormal(b)
-const isSheetImage = (b: BlobRef): boolean => isImage(b) && /(^|_)sheet$/.test(stem(b)) && !isNormal(b)
-const isNormalSheet = (b: BlobRef): boolean => isImage(b) && isNormal(b) && (normalHashes.has(b.hash) || /sheet/.test(stem(b)))
+// op.sheet names its meta "sheet.json" ("sheet_normal.json" for normal maps); the image is "sheet.png" or
+// "<asset>_sheet.png" (+ "_normal").
+const isSheetMeta = (b: BlobRef): boolean => isJson(b) && stem(b) === 'sheet' && !isNormalBlob(b)
+const isSheetImage = (b: BlobRef): boolean => isImage(b) && /(^|_)sheet$/.test(stem(b)) && !isNormalBlob(b)
+const isNormalSheet = (b: BlobRef): boolean => isImage(b) && isNormalBlob(b) && (normalHashes.has(b.hash) || /sheet/.test(stem(b)))
+const isNormalMeta = (b: BlobRef): boolean => isJson(b) && isNormalBlob(b) && /sheet/.test(stem(b))
 
 function uniq(list: BlobRef[]): BlobRef[] {
   const seen = new Set<string>()
@@ -75,6 +78,12 @@ export function spineSet(blobs: BlobRef[]): SpineSet | null {
 }
 
 function spritePair(blob: BlobRef, all: BlobRef[]): { sheet: BlobRef; meta: BlobRef; normal?: BlobRef } | null {
+  // A normal sheet opened on its own plays with its own meta; it has the same layout as the color sheet.
+  if (isNormalSheet(blob) || isNormalMeta(blob)) {
+    const sheet = isNormalSheet(blob) ? blob : all.find(isNormalSheet)
+    const meta = isNormalMeta(blob) ? blob : all.find(isNormalMeta)
+    if (sheet && meta) return { sheet, meta }
+  }
   const meta = isSheetMeta(blob) ? blob : all.find(isSheetMeta)
   const sheet = isSheetImage(blob) ? blob : all.find(isSheetImage)
   const normal = all.find(isNormalSheet)
@@ -111,7 +120,27 @@ export function featuredAsset(blobs: BlobRef[]): AssetView | null {
   const meta = all.find(isSheetMeta)
   const normal = all.find(isNormalSheet)
   if (sheet && meta) return { kind: 'sprite', blob: sheet, sheet, meta, ...(normal ? { normal } : {}) }
+  const nmeta = all.find(isNormalMeta)
+  if (normal && nmeta) return { kind: 'sprite', blob: normal, sheet: normal, meta: nmeta }
   return null
+}
+
+const FEATURE_RANK: Partial<Record<ViewKind, number>> = { glb: 0, spine: 1, sprite: 2 }
+const rank = (f: AssetView): number => (f.kind === 'sprite' && f.sheet && isNormalBlob(f.sheet) ? 3 : FEATURE_RANK[f.kind]!)
+
+/** `featuredAsset` over several steps' outputs: a sheet only pairs with the meta of its own step, while the
+ * normal toggle may come from a sibling step (`nsheet` next to `sheet`). */
+export function featuredAcross(groups: BlobRef[][]): AssetView | null {
+  let best: AssetView | null = null
+  for (const g of groups) {
+    const f = featuredAsset(g)
+    if (f && (!best || rank(f) < rank(best))) best = f
+  }
+  if (best?.kind === 'sprite' && !best.normal && rank(best) === 2) {
+    const normal = groups.flat().find(isNormalSheet)
+    if (normal) best = { ...best, normal }
+  }
+  return best
 }
 
 export type FileBadge = 'glb' | 'spine' | 'json' | 'atlas' | 'html' | 'text' | 'file'

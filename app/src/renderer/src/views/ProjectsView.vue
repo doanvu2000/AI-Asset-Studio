@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArchiveRestore, FolderKanban, FolderPlus, LoaderCircle, Palette, RotateCw } from '@lucide/vue'
-import type { ProjectWithSummary } from '@/api/types'
+import type { ProjectRow } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import BlobImage from '@/components/BlobImage.vue'
@@ -70,7 +70,7 @@ async function create(): Promise<void> {
   }
 }
 
-async function restore(p: ProjectWithSummary): Promise<void> {
+async function restore(p: ProjectRow): Promise<void> {
   try {
     await projects.patch(p.id, { archived: false })
     toasts.push(`Đã khôi phục ${p.name}`, 'success', 2400)
@@ -79,7 +79,7 @@ async function restore(p: ProjectWithSummary): Promise<void> {
   }
 }
 
-function styleTags(p: ProjectWithSummary): string[] {
+function styleTags(p: ProjectRow): string[] {
   const s = normalizeStyle(p.style)
   const out: string[] = []
   if (s.prompt_prefix.trim() || s.prompt_suffix.trim()) out.push('Phong cách')
@@ -89,8 +89,9 @@ function styleTags(p: ProjectWithSummary): string[] {
   if (s.palette_image || s.pixel?.palette) out.push('Bảng màu')
   return out
 }
-const drafts = (p: ProjectWithSummary): number => p.summary?.versions.draft ?? 0
-const active = (p: ProjectWithSummary): number => (p.summary?.runs.running ?? 0) + (p.summary?.runs.awaiting_human ?? 0)
+const sum = (p: ProjectRow) => projects.summaryOf(p.id)
+const drafts = (p: ProjectRow): number => sum(p)?.versions.draft ?? 0
+const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?.runs.awaiting_human ?? 0)
 </script>
 
 <template>
@@ -146,7 +147,7 @@ const active = (p: ProjectWithSummary): number => (p.summary?.runs.running ?? 0)
       <div v-else v-auto-animate class="grid">
         <article v-for="p in rows" :key="p.id" class="pcard card" :class="{ archived: p.archived, current: projects.activeId === p.id }">
           <RouterLink :to="`/projects/${p.id}`" class="cover" :aria-label="`Mở dự án ${p.name}`">
-            <BlobImage v-if="p.summary?.cover_hash" :hash="p.summary.cover_hash" :size="384" />
+            <BlobImage v-if="sum(p)?.cover_hash" :hash="sum(p)!.cover_hash!" :size="384" />
             <span v-else class="cover-empty"><Palette :size="28" :stroke-width="1.5" /></span>
             <span v-if="projects.activeId === p.id" class="cur-tag">Đang chọn</span>
           </RouterLink>
@@ -159,11 +160,11 @@ const active = (p: ProjectWithSummary): number => (p.summary?.runs.running ?? 0)
             <dl class="stats">
               <div>
                 <dt class="caption">Lượt chạy</dt>
-                <dd class="num"><TweenNumber :value="p.summary?.runs_total ?? 0" /></dd>
+                <dd class="num"><TweenNumber :value="sum(p)?.runs_total ?? 0" /></dd>
               </div>
               <div>
                 <dt class="caption">Đã duyệt</dt>
-                <dd class="num ok"><TweenNumber :value="p.summary?.approved_versions ?? 0" /></dd>
+                <dd class="num ok"><TweenNumber :value="sum(p)?.approved_versions ?? 0" /></dd>
               </div>
               <div>
                 <dt class="caption">Nháp</dt>
@@ -172,7 +173,7 @@ const active = (p: ProjectWithSummary): number => (p.summary?.runs.running ?? 0)
             </dl>
             <p class="foot caption">
               <span v-if="active(p)" class="live"><span class="dot" /> {{ active(p) }} đang chạy ·</span>
-              <span>Hoạt động <RelTime :ts="Math.max(p.summary?.last_activity ?? 0, p.updated_at)" /></span>
+              <span>Hoạt động <RelTime :ts="Math.max(sum(p)?.last_activity ?? 0, p.updated_at)" /></span>
               <button v-if="p.archived" type="button" class="btn btn-plain small restore" @click="restore(p)"><ArchiveRestore :size="14" /> Khôi phục</button>
             </p>
           </div>

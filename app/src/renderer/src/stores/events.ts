@@ -37,8 +37,11 @@ export function applyEvents(events: StudioEvent[]): void {
         break
       case 'run.updated':
         if (e.run_id) {
-          tx.runPatch(e.run_id, e.data as unknown as RunUpdatedData)
-          touchProject(runs.runs.get(e.run_id)?.project_id)
+          const prev = runs.runs.get(e.run_id)
+          const patch = e.data as unknown as RunUpdatedData
+          tx.runPatch(e.run_id, patch)
+          // Summary counts only move with status; progress-only patches would refetch it every frame.
+          if (patch.status && patch.status !== prev?.status) touchProject(prev?.project_id)
         }
         break
       case 'step.updated': {
@@ -59,10 +62,13 @@ export function applyEvents(events: StudioEvent[]): void {
       case 'gate.awaiting':
         if (e.step_id) gates.onAwaiting(e.step_id, e.run_id, e.data as unknown as GateAwaitingData)
         break
-      case 'version.updated':
-        versions.upsert(e.data as unknown as VersionRow)
-        touchProject((e.data as unknown as VersionRow).project_id)
+      case 'version.updated': {
+        const v = e.data as unknown as VersionRow
+        const prev = versions.map.get(v.id)
+        versions.upsert(v)
+        if (!prev || prev.status !== v.status) touchProject(v.project_id)
         break
+      }
       case 'project.updated':
         projects.upsert(e.data as unknown as ProjectRow)
         break

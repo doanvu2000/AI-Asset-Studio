@@ -12,6 +12,8 @@ export interface EventSink {
 export interface EventStream {
   start(sink: EventSink): void
   stop(): void
+  /** Delivers queued events now instead of on the next frame. */
+  flush(): void
 }
 
 // Collapses bursts of WS events into one store update per animation frame.
@@ -25,12 +27,17 @@ export class FrameBatcher {
     this.queue.push(e)
     if (this.scheduled) return
     this.scheduled = true
-    requestAnimationFrame(() => {
-      this.scheduled = false
-      const q = this.queue
-      this.queue = []
-      if (q.length) this.flush(q)
-    })
+    const run = (): void => this.flushNow()
+    // rAF stops while the window is hidden (tray); the timer keeps events flowing there.
+    if (!document.hidden) requestAnimationFrame(run)
+    window.setTimeout(run, document.hidden ? 16 : 250)
+  }
+
+  flushNow(): void {
+    this.scheduled = false
+    const q = this.queue
+    this.queue = []
+    if (q.length) this.flush(q)
   }
 }
 
@@ -61,6 +68,15 @@ export class StudioSocket implements EventStream {
     this.batcher = new FrameBatcher((events) => sink.batch(events))
     this.stopped = false
     this.connect()
+  }
+
+  flush(): void {
+    this.batcher?.flushNow()
+  }
+
+  private resync(): void {
+    this.batcher?.flushNow()
+    this.sink?.resync()
   }
 
   stop(): void {
@@ -134,7 +150,7 @@ export class StudioSocket implements EventStream {
   // Browsers hide the HTTP status of a rejected WS handshake, so probe auth over plain HTTP.
   private async checkAuth(): Promise<boolean> {
     try {
-      const res = await fetch(`${this.baseUrl}/api/runs?limit=1`, { headers: { Authorization: `Bearer ${this.token}` } })
+      const res = await fetch(`${this.baseUrl}/api/runs?limit=1`, { headers: { Authorization: `Bearer ${this.token}` }, signal: AbortSignal.timeout(5000) })
       return res.status === 401 || res.status === 403
     } catch {
       return false
@@ -164,7 +180,7 @@ export class StudioSocket implements EventStream {
       if (this.ws !== ws || !this.resuming) return
       this.endResume()
       this.lastSeq = Math.max(this.lastSeq, this.maxSeen)
-      this.sink?.resync()
+      this.resync()
     }, RESUME_WATCHDOG_MS)
   }
 
@@ -172,19 +188,19 @@ export class StudioSocket implements EventStream {
     this.endResume()
     if (this.lastSeq === 0) {
       this.lastSeq = serverSeq
-      this.sink?.resync()
+      this.resync()
       return
     }
     if (serverSeq < this.lastSeq) {
       this.lastSeq = serverSeq
-      this.sink?.resync()
+      this.resync()
       return
     }
     if (serverSeq > this.lastSeq) {
       // Ring buffer holds 1000 events; a larger gap cannot be replayed faithfully.
       if (serverSeq - this.lastSeq > 900) {
         this.lastSeq = serverSeq
-        this.sink?.resync()
+        this.resync()
       } else {
         this.startResume(ws)
         ws.send(JSON.stringify({ op: 'resume', after_seq: this.lastSeq }))

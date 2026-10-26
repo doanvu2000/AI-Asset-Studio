@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef, triggerRef } from 'vue'
 import type { VersionRow } from '@/api/types'
-import { api } from './connection'
+import { settlePool } from '@/composables/pool'
+import { api, flushEvents } from './connection'
 
 // Generator output names like "1074.png", "00012_.png" or a bare hash say nothing about the asset.
 const MEANINGLESS = /^(?:[\d_\-\s]+|[0-9a-f]{12,})$/i
@@ -30,6 +31,8 @@ export const useVersions = defineStore('versions', () => {
   let dirty = false
   // Ids upserted by live events while a snapshot is in flight; their current row is newer than the snapshot's.
   const inflight = new Set<Set<string>>()
+  // Bumped on every write so a failed optimistic update only reverts when nothing newer landed meanwhile.
+  const writes = new Map<string, number>()
 
   const list = computed(() => [...map.value.values()].sort((a, b) => b.created_at - a.created_at))
   const draftCount = computed(() => list.value.filter((v) => v.status === 'draft').length)
@@ -41,6 +44,7 @@ export const useVersions = defineStore('versions', () => {
 
   function upsert(v: VersionRow): void {
     map.value.set(v.id, v)
+    writes.set(v.id, (writes.get(v.id) ?? 0) + 1)
     for (const t of inflight) t.add(v.id)
     dirty = true
   }
@@ -51,6 +55,7 @@ export const useVersions = defineStore('versions', () => {
   }
 
   async function load(): Promise<void> {
+    flushEvents()
     const live = new Set<string>()
     inflight.add(live)
     try {
@@ -77,10 +82,11 @@ export const useVersions = defineStore('versions', () => {
     if (!prev) return
     upsert({ ...prev, status: action === 'approve' ? 'approved' : 'rejected' })
     commit()
+    const mine = writes.get(id)
     try {
       upsert(await api().setVersionStatus(id, action))
     } catch (e) {
-      upsert(prev)
+      if (writes.get(id) === mine) upsert(prev)
       throw e
     } finally {
       commit()
@@ -89,7 +95,7 @@ export const useVersions = defineStore('versions', () => {
 
   /** One asset can span several versions (Spine skeleton + atlas + texture); they are reviewed together. */
   async function setStatusMany(ids: string[], action: 'approve' | 'reject'): Promise<void> {
-    const results = await Promise.allSettled(ids.map((id) => setStatus(id, action)))
+    const results = await settlePool(ids, 4, (id) => setStatus(id, action))
     const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
     if (failed) throw failed.reason
   }

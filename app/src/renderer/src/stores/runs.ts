@@ -178,8 +178,12 @@ export const useRuns = defineStore('runs', () => {
     triggerRef(runs)
   }
 
+  // Live events keep a loaded project's runs current, so reopening its page within a minute skips the 2000-row fetch.
+  const projectFetched = new Map<string, number>()
   async function loadProject(projectId: string): Promise<void> {
+    if (Date.now() - (projectFetched.get(projectId) ?? 0) < 60_000) return
     const rows = await api().listRuns({ project_id: projectId, limit: 2000 })
+    projectFetched.set(projectId, Date.now())
     for (const row of rows) runs.value.set(row.id, row)
     triggerRef(runs)
   }

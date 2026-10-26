@@ -193,7 +193,18 @@ function seedFromProject(): void {
     values[name] = f ? (isNum(spec.type) ? Number(f.value) : (f.value as FieldValue)) : defaultOf(spec)
   }
 }
+// Values equal to the recipe default were not real choices; under another project they must not block its style.
+watch(projectId, () => {
+  const r = selected.value
+  if (!r) return
+  for (const name of [...touched]) {
+    const spec = r.inputs[name]
+    if (spec && !isBlob(spec.type) && values[name] === defaultOf(spec)) touched.delete(name)
+  }
+  seedFromProject()
+})
 watch(fillByKey, () => seedFromProject(), { immediate: true })
+const emptyFallsBack = (name: string): boolean => !!project.value && fillByKey.value.has(name) && touched.has(name) && values[name] === ''
 
 function resetToProject(name: string): void {
   touched.delete(name)
@@ -231,7 +242,7 @@ function errorFor(name: string, spec: RecipeInputSpec): string | null {
     if (spec.type === 'int' && !Number.isInteger(v)) return 'Nhập số nguyên'
     return null
   }
-  if (spec.type === 'text' && spec.required !== false && spec.default === undefined && !String(values[name] ?? '').trim())
+  if (spec.type === 'text' && spec.required !== false && spec.default === undefined && !fillByKey.value.has(name) && !String(values[name] ?? '').trim())
     return 'Không được để trống'
   return null
 }
@@ -244,6 +255,7 @@ function validate(name: string, spec: RecipeInputSpec): boolean {
 // Why the run button is disabled, said next to it instead of a silently dimmed button.
 const blockReason = computed<string | null>(() => {
   if (!conn.transport) return 'Đang chờ kết nối tới core'
+  if (projectId.value !== NO_PROJECT && !projects.loaded) return 'Đang tải dự án'
   const r = selected.value
   if (!r) return null
   if (mode.value === 'batch') {
@@ -260,7 +272,7 @@ const blockReason = computed<string | null>(() => {
 function collectInputs(): Record<string, unknown> {
   const inputs: Record<string, unknown> = {}
   for (const [name, spec] of fields.value) {
-    if (project.value && fillByKey.value.has(name) && !touched.has(name)) continue
+    if (project.value && fillByKey.value.has(name) && (!touched.has(name) || emptyFallsBack(name))) continue
     if (isBlob(spec.type)) {
       const refs = blobs[name] ?? []
       if (refs.length) inputs[name] = spec.type === 'images' ? refs.map((b) => b.hash) : refs[0]!.hash
@@ -643,6 +655,7 @@ ${r.description}`" @click="pick(r.id)">
                 Để trống: dùng ảnh của dự án {{ project?.name }}
               </p>
               <p v-if="errors[name]" class="err" role="alert">{{ errors[name] }}</p>
+              <p v-else-if="emptyFallsBack(name)" class="caption help">Để trống: dùng giá trị của dự án {{ project?.name }}</p>
               <p v-else-if="spec.help" class="caption help">{{ spec.help }}</p>
             </div>
           </div>

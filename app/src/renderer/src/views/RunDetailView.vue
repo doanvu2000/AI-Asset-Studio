@@ -14,7 +14,7 @@ import AssetViewer from '@/components/viewers/AssetViewer.vue'
 import AssetActions from '@/components/AssetActions.vue'
 import ViewsReport from '@/components/ViewsReport.vue'
 import MeshReport from '@/components/MeshReport.vue'
-import { featuredAsset, isImage, outputBlobs, viewsFor } from '@/components/viewers/detect'
+import { featuredAsset, isImage, isNormalBlob, outputBlobs, viewsFor, type AssetView } from '@/components/viewers/detect'
 import Lightbox from '@/components/Lightbox.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -246,23 +246,40 @@ function selectByKey(key: string): void {
   if (s) select(s)
 }
 
+const isNormalStep = (s: StepRow): boolean => {
+  if (s.params.normal === true) return true
+  const blobs = outputBlobs(s.outputs)
+  return blobs.length > 0 && blobs.every(isNormalBlob)
+}
+// Normal-map sheets run as their own step keyed after the color one: sheet → nsheet, anim_sheet → anim_nsheet.
+function normalPartner(s: StepRow): BlobRef | undefined {
+  const keys = [s.key.replace(/(^|_)([^_]+)$/, '$1n$2'), `${s.key}_normal`]
+  const p = steps.value.find((x) => keys.includes(x.key) && STEP_DONE_OK.has(x.status) && isNormalStep(x))
+  return p ? (p.outputs.sheet ?? outputBlobs(p.outputs)).find(isImage) : undefined
+}
+function withNormal(view: AssetView | null | undefined, s: StepRow): AssetView | null {
+  if (!view || view.kind !== 'sprite' || view.normal) return view ?? null
+  const normal = normalPartner(s)
+  return normal ? { ...view, normal } : view
+}
+
 const lightbox = ref<BlobRef | null>(null)
 const selBlobs = computed(() => (sel.value ? [...Object.values(sel.value.outputs), ...Object.values(sel.value.inputs)].flat() : []))
 const selFeatured = computed(() => {
   const s = sel.value
   if (!s || selAwaiting.value || hero.value?.step.id === s.id) return null
-  return STEP_DONE_OK.has(s.status) ? featuredAsset(outputBlobs(s.outputs)) : null
+  return STEP_DONE_OK.has(s.status) ? withNormal(featuredAsset(outputBlobs(s.outputs)), s) : null
 })
 
 const finalStep = computed(() =>
   run.value?.status === 'succeeded'
-    ? [...steps.value].reverse().find((s) => (s.status === 'succeeded' || s.status === 'cached') && Object.values(s.outputs).some((v) => v.length))
+    ? [...steps.value].reverse().find((s) => STEP_DONE_OK.has(s.status) && Object.values(s.outputs).some((v) => v.length) && !isNormalStep(s))
     : undefined
 )
 const BUNDLE_KINDS = ['op.sheet', 'op.spine_export']
 const bundleStepId = computed(() => {
   if (!finalStep.value) return undefined
-  const ok = steps.value.filter((s) => s.status === 'succeeded' || s.status === 'cached')
+  const ok = steps.value.filter((s) => (s.status === 'succeeded' || s.status === 'cached') && !isNormalStep(s))
   return (BUNDLE_KINDS.map((k) => ok.find((s) => s.kind === k)).find(Boolean) ?? finalStep.value).id
 })
 // A run can finish with more than one deliverable worth showing: front + back rigs (`back_*` ports on the final
@@ -298,7 +315,7 @@ const hero = computed(() => {
   const v = heroVariants.value[Math.min(heroPick.value, heroVariants.value.length - 1)]
   if (!v) return null
   const lead = v.blobs.find(isImage) ?? v.blobs[0]
-  const view = featuredAsset(v.blobs) ?? (lead ? viewsFor(lead, v.blobs)[0] : undefined)
+  const view = withNormal(featuredAsset(v.blobs) ?? (lead ? viewsFor(lead, v.blobs)[0] : undefined), v.step)
   return view ? { view, step: v.step } : null
 })
 
@@ -358,7 +375,6 @@ function segTitle(s: StepRow): string {
         {{ recipeName }} · {{ absoluteTime(run.created_at) }} ·
         <ElapsedTimer v-if="active" :from="run.created_at" />
         <span v-else-if="run.ended_at" class="num">{{ humanDuration(run.ended_at - run.created_at) }}</span>
-        <template v-if="runProject"> · {{ runProject.applied ? `Đã áp từ dự án: ${runProject.applied}` : 'Dự án không áp thêm gì' }}</template>
       </template>
       <RouterLink
         v-if="runProject"
@@ -368,6 +384,7 @@ function segTitle(s: StepRow): string {
       >
         <FolderKanban :size="13" aria-hidden="true" />
         <span class="pb-name">{{ runProject.name }}</span>
+        <span v-if="runProject.applied" class="pb-applied num">· áp {{ runProject.applied.split(', ').length }}</span>
       </RouterLink>
       <div class="seg" role="radiogroup" aria-label="Kiểu xem">
         <button type="button" role="radio" :aria-checked="viewMode === 'list'" :class="{ on: viewMode === 'list' }" title="Danh sách bước" @click="setMode('list')"><List :size="14" /> Danh sách</button>
@@ -1167,5 +1184,10 @@ function segTitle(s: StepRow): string {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.pb-applied {
+  flex: none;
+  font-weight: 500;
+  opacity: 0.75;
 }
 </style>

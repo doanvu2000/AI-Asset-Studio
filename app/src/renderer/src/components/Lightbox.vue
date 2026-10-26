@@ -85,11 +85,14 @@ useEventListener(
   'keydown',
   (e: KeyboardEvent) => {
     if (!props.blob) return
-    if (trap.onTab(e)) return
     const t = e.target as HTMLElement | null
+    // Teleported popups (export BundleMenu) handle their own keys, Escape included.
+    const foreign = !!t && t !== document.body && t !== document.documentElement && !scrim.value?.contains(t)
+    if (foreign || t?.closest('[role="menu"]')) return
+    if (trap.onTab(e)) return
     if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return
-    // A focused viewer (sprite sheet) owns the arrow keys for its own frames and rows.
-    if (e.key !== 'Escape' && t?.closest('[data-own-keys]')) return
+    // A focused viewer (sprite sheet) owns only its playback keys; A/R/Esc keep working after clicking it.
+    if (t?.closest('[data-own-keys]') && (e.key.startsWith('Arrow') || e.key === ' ' || e.key === 'n' || e.key === 'N')) return
     const plainKey = !e.ctrlKey && !e.metaKey && !e.altKey
     if (e.key === 'Escape') emit('close')
     else if (e.key === 'ArrowLeft' && canNav.value) step(-1)

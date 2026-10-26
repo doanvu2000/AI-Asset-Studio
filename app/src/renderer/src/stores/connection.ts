@@ -60,6 +60,11 @@ export function api(): StudioApi {
   return t.api
 }
 
+/** Applies WS events still waiting for the next frame, so a snapshot fetched after this is never older than them. */
+export function flushEvents(): void {
+  useConnection().transport?.stream.flush()
+}
+
 export function blobUrl(hash: string): string {
   return useConnection().transport?.api.blobUrl(hash) ?? ''
 }

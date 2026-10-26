@@ -14,7 +14,7 @@ import CompareView, { type CompareItem } from '@/components/CompareView.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import RelTime from '@/components/RelTime.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
-import { featuredAsset, isAtlas, isImage, isJson } from '@/components/viewers/detect'
+import { featuredAcross, isAtlas, isImage, isJson, type AssetView } from '@/components/viewers/detect'
 import { useAssetFile } from '@/composables/assetFile'
 import { relativeTime } from '@/composables/format'
 import { settlePool } from '@/composables/pool'
@@ -69,8 +69,7 @@ const TYPE_TEXT: Record<AssetType, string> = { '2d': '2D', '3d': '3D', sprite: '
 
 const isTechnical = (b: BlobRef): boolean => isJson(b) || isAtlas(b)
 
-function classify(blobs: BlobRef[], recipeId: string): AssetType {
-  const f = featuredAsset(blobs)
+function classify(f: AssetView | null, recipeId: string): AssetType {
   if (f?.kind === 'spine' || /spine/.test(recipeId)) return 'spine'
   if (f?.kind === 'sprite' || /sprite/.test(recipeId)) return 'sprite'
   if (f?.kind === 'glb' || /3d/.test(recipeId)) return '3d'
@@ -107,8 +106,9 @@ const groups = computed<AssetGroup[]>(() => {
     const run = runInfo.value.get(first.run_id)
     const recipeId = run?.recipeId ?? ''
     const recipe = recipes.byId(recipeId)?.name ?? ''
-    const blobs = list.map((v) => v.blob)
-    const featured = featuredAsset(blobs)
+    const bySteps = new Map<string, BlobRef[]>()
+    for (const v of list) bySteps.set(v.step_id, [...(bySteps.get(v.step_id) ?? []), v.blob])
+    const featured = featuredAcross([...bySteps.values()])
     const byBlob = (h: string | undefined): VersionRow | undefined => list.find((v) => v.blob.hash === h)
     const images = list.filter((v) => isImage(v.blob))
     const cover = images.find((v) => /preview|render|front/i.test(v.blob.name ?? '')) ?? (featured?.kind === 'glb' ? undefined : byBlob(featured?.kind === 'spine' ? featured.spine?.texture.hash : featured?.blob.hash)) ?? images[0] ?? list.find((v) => !isTechnical(v.blob)) ?? first
@@ -121,7 +121,7 @@ const groups = computed<AssetGroup[]>(() => {
       versions: list,
       cover,
       lead: byBlob(featured?.blob.hash) ?? cover,
-      type: classify(blobs, recipeId),
+      type: classify(featured, recipeId),
       status: groupStatus(list),
       technical: list.every((v) => isTechnical(v.blob)),
       created_at: Math.max(...list.map((v) => v.created_at)),
@@ -318,6 +318,10 @@ const compareItems = computed<CompareItem[] | null>(() => {
   if (!keys) return null
   const list = keys.map((k) => groups.value.find((g) => g.key === k)).filter((g): g is AssetGroup => !!g)
   return list.length === 2 ? list.map(itemOf) : null
+})
+// A compared group can vanish (filtered out, deleted); without the reset the grid's shortcuts stay blocked.
+watch(compareItems, (items) => {
+  if (!items && compareKeys.value) compareKeys.value = null
 })
 function openCompare(): void {
   if (selectedGroups.value.length === 2) compareKeys.value = selectedGroups.value.map((g) => g.key)

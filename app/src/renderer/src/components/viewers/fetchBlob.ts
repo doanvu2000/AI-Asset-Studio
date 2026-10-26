@@ -22,7 +22,9 @@ export function blobText(hash: string): Promise<string> {
     }
   )
   texts.set(hash, p)
-  p.catch(() => texts.delete(hash))
+  p.catch(() => {
+    if (texts.get(hash) === p) texts.delete(hash)
+  })
   while (texts.size > CACHE_MAX) texts.delete(texts.keys().next().value!)
   return p
 }

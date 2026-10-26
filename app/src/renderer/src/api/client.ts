@@ -145,7 +145,13 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
       throw new ApiError(code, message, res.status, issues)
     }
     if (res.status === 204) return undefined as T
-    return (await res.json()) as T
+    try {
+      return (await res.json()) as T
+    } catch (e) {
+      // The abort signal also covers the body stream, so a slow body surfaces here, not in fetch().
+      if ((e as Error).name === 'TimeoutError') throw new ApiError('timeout', 'Core phản hồi quá lâu, thử lại sau', 0)
+      throw new ApiError('bad_response', 'Core trả về dữ liệu không đọc được', res.status)
+    }
   }
 
   const enc = encodeURIComponent
@@ -156,7 +162,13 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     stopResource: (name, force) => call('POST', `/api/resources/${enc(name)}/stop${force ? '?force=true' : ''}`, undefined, SLOW_TIMEOUT_MS),
     recipes: () => call('GET', '/api/recipes'),
     startRun: (body) => call('POST', '/api/runs', body, SLOW_TIMEOUT_MS),
-    listRuns: (q = {}) => call('GET', `/api/runs${query({ limit: q.limit, before: q.before, status: q.status, batch_id: q.batch_id, batched: q.batched ? 'true' : undefined, project_id: q.project_id })}`),
+    listRuns: (q = {}) =>
+      call(
+        'GET',
+        `/api/runs${query({ limit: q.limit, before: q.before, status: q.status, batch_id: q.batch_id, batched: q.batched ? 'true' : undefined, project_id: q.project_id })}`,
+        undefined,
+        q.batched || (q.limit ?? 0) > 500 ? SLOW_TIMEOUT_MS : TIMEOUT_MS
+      ),
     getRun: (id) => call('GET', `/api/runs/${enc(id)}`),
     cancelRun: (id) => call('POST', `/api/runs/${enc(id)}/cancel`),
     retryStep: (id) => call('POST', `/api/steps/${enc(id)}/retry`),

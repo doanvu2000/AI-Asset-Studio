@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef, triggerRef } from 'vue'
-import type { ProjectCreateBody, ProjectPatchBody, ProjectRow, ProjectWithSummary } from '@/api/types'
+import type { ProjectCreateBody, ProjectPatchBody, ProjectRow, ProjectSummary, ProjectWithSummary } from '@/api/types'
 import { NO_PROJECT } from '@/api/types'
 import { api } from './connection'
 
 const ACTIVE_KEY = 'studio.project.active'
-const SUMMARY_DEBOUNCE_MS = 800
+const SUMMARY_DEBOUNCE_MS = 2000
 
 function readActive(): string | null {
   try {
@@ -16,7 +16,9 @@ function readActive(): string | null {
 }
 
 export const useProjects = defineStore('projects', () => {
-  const map = shallowRef(new Map<string, ProjectWithSummary>())
+  const map = shallowRef(new Map<string, ProjectRow>())
+  // Kept apart from the rows so a count refresh never changes a project object (forms watch those).
+  const summaries = shallowRef(new Map<string, ProjectSummary>())
   const loaded = ref(false)
   const archivedLoaded = ref(false)
   const error = ref<string | null>(null)
@@ -30,11 +32,21 @@ export const useProjects = defineStore('projects', () => {
   const archived = computed(() => all.value.filter((p) => p.archived))
   const active = computed(() => (activeId.value ? map.value.get(activeId.value) : undefined))
 
-  function lastActivity(p: ProjectWithSummary): number {
-    return Math.max(p.summary?.last_activity ?? 0, p.updated_at)
+  function lastActivity(p: ProjectRow): number {
+    return Math.max(summaries.value.get(p.id)?.last_activity ?? 0, p.updated_at)
   }
 
-  function byId(id: string | null | undefined): ProjectWithSummary | undefined {
+  function summaryOf(id: string): ProjectSummary | undefined {
+    return summaries.value.get(id)
+  }
+
+  function rowOf(p: ProjectWithSummary): ProjectRow {
+    const { summary, ...row } = p
+    if (summary) summaries.value.set(p.id, summary)
+    return row
+  }
+
+  function byId(id: string | null | undefined): ProjectRow | undefined {
     return id && id !== NO_PROJECT ? map.value.get(id) : undefined
   }
 
@@ -49,8 +61,8 @@ export const useProjects = defineStore('projects', () => {
   }
 
   function upsert(p: ProjectRow): void {
-    const cur = map.value.get(p.id)
-    map.value.set(p.id, { ...p, summary: cur?.summary })
+    map.value.set(p.id, rowOf(p))
+    if (p.archived && activeId.value === p.id) setActive(null)
     dirty = true
   }
 
@@ -64,10 +76,15 @@ export const useProjects = defineStore('projects', () => {
       const rows = await api().projects({ archived: !!opts.archived })
       const next = new Map(map.value)
       for (const [id, p] of next) if (p.archived === !!opts.archived) next.delete(id)
-      for (const p of rows) next.set(p.id, p)
+      for (const p of rows) next.set(p.id, rowOf(p))
       map.value = next
+      triggerRef(summaries)
       if (opts.archived) archivedLoaded.value = true
-      else loaded.value = true
+      else {
+        loaded.value = true
+        const a = activeId.value ? next.get(activeId.value) : undefined
+        if (activeId.value && (!a || a.archived)) setActive(null)
+      }
       error.value = null
     } catch (e) {
       error.value = (e as Error).message
@@ -75,17 +92,19 @@ export const useProjects = defineStore('projects', () => {
     }
   }
 
-  async function refresh(id: string): Promise<ProjectWithSummary | undefined> {
+  async function refresh(id: string): Promise<ProjectRow | undefined> {
     const [row, summary] = await Promise.all([api().getProject(id), api().projectSummary(id)])
-    map.value.set(id, { ...row, summary })
+    map.value.set(id, rowOf({ ...row, summary }))
     triggerRef(map)
+    triggerRef(summaries)
     return map.value.get(id)
   }
 
   /** Runs/versions of these projects changed; their summary counts are refetched shortly, coalesced. */
   function touch(ids: Iterable<string>): void {
     for (const id of ids) if (map.value.has(id)) staleSummaries.add(id)
-    if (!staleSummaries.size || summaryTimer) return
+    if (!staleSummaries.size) return
+    clearTimeout(summaryTimer)
     summaryTimer = setTimeout(() => {
       summaryTimer = undefined
       const ids = [...staleSummaries]
@@ -94,10 +113,9 @@ export const useProjects = defineStore('projects', () => {
         api()
           .projectSummary(id)
           .then((summary) => {
-            const cur = map.value.get(id)
-            if (!cur) return
-            map.value.set(id, { ...cur, summary })
-            triggerRef(map)
+            if (!map.value.has(id)) return
+            summaries.value.set(id, summary)
+            triggerRef(summaries)
           })
           .catch(() => undefined)
       }
@@ -126,5 +144,5 @@ export const useProjects = defineStore('projects', () => {
     return p
   }
 
-  return { map, all, list, archived, active, activeId, loaded, archivedLoaded, error, byId, setActive, upsert, commit, load, refresh, touch, create, patch, archive }
+  return { map, all, list, archived, active, activeId, loaded, archivedLoaded, error, byId, summaryOf, setActive, upsert, commit, load, refresh, touch, create, patch, archive }
 })

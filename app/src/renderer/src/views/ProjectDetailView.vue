@@ -55,11 +55,12 @@ interface Draft {
   description: string
   style: ProjectStyle
   pixelOn: boolean
-  pixel: Required<{ [K in keyof PixelStyle]: NonNullable<PixelStyle[K]> }>
-  defaults: Array<{ key: string; value: string }>
+  // null = not locked: the recipe's own default applies.
+  pixel: { [K in keyof PixelStyle]-?: Exclude<PixelStyle[K], undefined> }
+  defaults: Array<{ id: number; key: string; value: string }>
 }
 
-const PIXEL_DEFAULT = { size: 64, palette: 'auto', colors: 16, outline: 'dark', dither: 'none' }
+let rowSeq = 0
 const PIXEL_SIZES = [32, 48, 64, 96, 128]
 const PIXEL_COLORS = [8, 12, 16, 24, 32]
 const PALETTES = ['auto', 'pico8', 'sweetie16', 'db16', 'db32', 'endesga32']
@@ -82,8 +83,14 @@ function toDraft(): Draft | null {
     description: p.description,
     style,
     pixelOn: !!style.pixel,
-    pixel: { ...PIXEL_DEFAULT, ...Object.fromEntries(Object.entries(style.pixel ?? {}).filter(([, v]) => v !== null && v !== undefined)) },
-    defaults: Object.entries(style.inputs).map(([key, value]) => ({ key, value: typeof value === 'string' ? value : JSON.stringify(value) }))
+    pixel: {
+      size: style.pixel?.size ?? null,
+      palette: style.pixel?.palette ?? null,
+      colors: style.pixel?.colors ?? null,
+      outline: style.pixel?.outline ?? null,
+      dither: style.pixel?.dither ?? null
+    },
+    defaults: Object.entries(style.inputs).map(([key, value]) => ({ id: ++rowSeq, key, value: typeof value === 'string' ? value : JSON.stringify(value) }))
   }
 }
 
@@ -99,10 +106,16 @@ function resetDraft(): void {
   referenceBlob.value = asRef(draft.value?.style.reference_image ?? null)
   baseline.value = draft.value ? JSON.stringify(payload()) : ''
 }
-// A WS update for this project replaces the form only while the user has nothing unsaved.
-watch(project, (p, prev) => {
-  if (!p) return
-  if (!draft.value || !prev || prev.id !== p.id || !dirty.value) resetDraft()
+// A WS update for this project replaces the form only while the user has nothing unsaved; summary refreshes
+// and other identity-only changes leave the form alone.
+const projectSig = computed(() => {
+  const p = project.value
+  return p ? JSON.stringify([p.id, p.updated_at, p.name, p.description, p.style]) : ''
+})
+watch(projectSig, (sig, prevSig) => {
+  if (!sig) return
+  const sameId = !!prevSig && JSON.parse(prevSig)[0] === project.value?.id
+  if (!draft.value || !sameId || !dirty.value) resetDraft()
 }, { immediate: true })
 
 function parseValue(raw: string): unknown {
@@ -207,7 +220,7 @@ const inputNames = computed(() => {
   return [...m].sort((a, b) => a[0].localeCompare(b[0]))
 })
 function addDefault(): void {
-  draft.value?.defaults.push({ key: '', value: '' })
+  draft.value?.defaults.push({ id: ++rowSeq, key: '', value: '' })
 }
 function removeDefault(i: number): void {
   draft.value?.defaults.splice(i, 1)
@@ -217,7 +230,7 @@ type Tab = 'style' | 'runs' | 'gallery'
 const tab = ref<Tab>('style')
 const projectRuns = computed(() => runs.runList.filter((r) => r.project_id === props.id))
 const projectVersions = computed(() => versions.list.filter((v) => v.project_id === props.id && v.status !== 'rejected'))
-const summary = computed(() => project.value?.summary)
+const summary = computed(() => projects.summaryOf(props.id))
 
 const isActive = computed(() => projects.activeId === props.id)
 function toggleActive(): void {
@@ -367,22 +380,27 @@ function newAsset(): void {
                   <div v-if="draft.pixelOn" class="pixel-grid">
                     <span class="caption">Cỡ (px)</span>
                     <div class="segmented small" role="radiogroup" aria-label="Cỡ pixel art">
+                      <button type="button" role="radio" :aria-checked="draft.pixel.size === null" :class="{ on: draft.pixel.size === null }" title="Dùng mặc định của quy trình" @click="draft.pixel.size = null">Không khoá</button>
                       <button v-for="o in PIXEL_SIZES" :key="o" type="button" role="radio" class="num" :aria-checked="draft.pixel.size === o" :class="{ on: draft.pixel.size === o }" @click="draft.pixel.size = o">{{ o }}</button>
                     </div>
                     <span class="caption">Số màu</span>
                     <div class="segmented small" role="radiogroup" aria-label="Số màu">
+                      <button type="button" role="radio" :aria-checked="draft.pixel.colors === null" :class="{ on: draft.pixel.colors === null }" title="Dùng mặc định của quy trình" @click="draft.pixel.colors = null">Không khoá</button>
                       <button v-for="o in PIXEL_COLORS" :key="o" type="button" role="radio" class="num" :aria-checked="draft.pixel.colors === o" :class="{ on: draft.pixel.colors === o }" @click="draft.pixel.colors = o">{{ o }}</button>
                     </div>
                     <span class="caption">Bảng màu</span>
                     <div class="segmented small" role="radiogroup" aria-label="Bảng màu">
+                      <button type="button" role="radio" :aria-checked="draft.pixel.palette === null" :class="{ on: draft.pixel.palette === null }" title="Dùng mặc định của quy trình" @click="draft.pixel.palette = null">Không khoá</button>
                       <button v-for="o in PALETTES" :key="o" type="button" role="radio" :aria-checked="draft.pixel.palette === o" :class="{ on: draft.pixel.palette === o }" @click="draft.pixel.palette = o">{{ o === 'auto' ? 'Tự động' : o }}</button>
                     </div>
                     <span class="caption">Viền</span>
                     <div class="segmented small" role="radiogroup" aria-label="Viền ngoài">
+                      <button type="button" role="radio" :aria-checked="draft.pixel.outline === null" :class="{ on: draft.pixel.outline === null }" title="Dùng mặc định của quy trình" @click="draft.pixel.outline = null">Không khoá</button>
                       <button v-for="[o, l] in OUTLINES" :key="o" type="button" role="radio" :aria-checked="draft.pixel.outline === o" :class="{ on: draft.pixel.outline === o }" @click="draft.pixel.outline = o">{{ l }}</button>
                     </div>
                     <span class="caption">Dither</span>
                     <div class="segmented small" role="radiogroup" aria-label="Dither">
+                      <button type="button" role="radio" :aria-checked="draft.pixel.dither === null" :class="{ on: draft.pixel.dither === null }" title="Dùng mặc định của quy trình" @click="draft.pixel.dither = null">Không khoá</button>
                       <button v-for="[o, l] in DITHERS" :key="o" type="button" role="radio" :aria-checked="draft.pixel.dither === o" :class="{ on: draft.pixel.dither === o }" @click="draft.pixel.dither = o">{{ l }}</button>
                     </div>
                   </div>
@@ -413,7 +431,7 @@ function newAsset(): void {
               <span class="f-label">Đầu vào mặc định</span>
               <div class="f-control">
                 <div v-auto-animate class="defaults">
-                  <div v-for="(row, i) in draft.defaults" :key="i" class="def-row">
+                  <div v-for="(row, i) in draft.defaults" :key="row.id" class="def-row">
                     <input v-model="row.key" class="field mono" list="p-input-names" placeholder="tên đầu vào, vd elevation" :aria-label="`Tên đầu vào ${i + 1}`" spellcheck="false" :aria-invalid="dupKeys.has(row.key.trim())" />
                     <input v-model="row.value" class="field mono" placeholder="giá trị, vd 45" :aria-label="`Giá trị ${i + 1}`" spellcheck="false" />
                     <button type="button" class="btn btn-plain btn-icon" :aria-label="`Bỏ dòng ${i + 1}`" @click="removeDefault(i)"><X /></button>

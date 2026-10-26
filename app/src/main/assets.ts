@@ -103,7 +103,8 @@ export class AssetExporter {
 
   async exportBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts: EngineExportOptions = {}): Promise<ExportedBundle> {
     const body = { preset: preset ?? null, name: name ?? null, engine: engine ?? null, ...(engine ? opts : {}) }
-    const out = await this.call<ExportedBundle>(`steps/${stepId}/export`, body, 120_000)
+    // Engine exports re-pack every sheet (pixel filter, normal maps), well past a plain copy on big runs.
+    const out = await this.call<ExportedBundle>(`steps/${stepId}/export`, body, engine ? 600_000 : 120_000)
     if (typeof out.dir !== 'string' || !(await inside(this.root, out.dir))) throw new Error('core trả đường dẫn ngoài thư mục xuất')
     return { dir: out.dir, name: String(out.name), preset: out.preset ?? null, files: Array.isArray(out.files) ? out.files.length : 0 }
   }

@@ -182,7 +182,8 @@ const RECIPES: MockRecipe[] = [
       { id: 'cleanup', kind: 'blender.cleanup', lane: 'blender', deps: ['mesh'], in: { mesh: 'mesh.meshes' } },
       { id: 'render', kind: 'blender.render_dirs', lane: 'blender', deps: ['cleanup'], in: { mesh: 'cleanup.meshes' }, params: () => ({ count: 8, elevation: 30, res: 256 }) },
       { id: 'down', kind: 'op.downscale', lane: 'cpu', deps: ['render'], params: () => ({ factor: 2, resample: 'box' }) },
-      { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['down'], in: { images: 'down.images', pivot: 'render.meta' }, params: (i) => ({ cols: 8, preset: i.preset }), raw: { cols: 8, preset: '${inputs.preset}' } }
+      { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['down'], in: { images: 'down.images', pivot: 'render.meta' }, params: (i) => ({ cols: 8, preset: i.preset }), raw: { cols: 8, preset: '${inputs.preset}' } },
+      { id: 'nsheet', kind: 'op.sheet', lane: 'cpu', deps: ['down'], in: { images: 'down.images', pivot: 'render.meta' }, params: () => ({ cols: 8, normal: true }), raw: { cols: 8, normal: true } }
     ]
   },
   {
@@ -247,7 +248,7 @@ const RAW_PARAMS: Record<string, Record<string, unknown>> = {
 
 function docOf(r: MockRecipe): RecipeDoc {
   if (r.doc) return structuredClone(r.doc)
-  const last = r.defs[r.defs.length - 1]!
+  const last = [...r.defs].reverse().find((d) => d.raw?.normal !== true)!
   return {
     id: r.info.id,
     name: r.info.name,
@@ -345,8 +346,13 @@ export class MockCore implements StudioApi, EventStream {
     sink.state('connecting')
     void this.ready.then(() => {
       sink.state('open')
+      this.flush()
       sink.resync()
     })
+  }
+
+  flush(): void {
+    this.batcher?.flushNow()
   }
 
   stop(): void {
@@ -382,16 +388,14 @@ export class MockCore implements StudioApi, EventStream {
     return ref
   }
 
-  private async walkOutputs(): Promise<Outputs> {
+  private async walkOutputs(): Promise<{ color: Outputs; normal: Outputs }> {
     const w = await renderWalkSheet()
     const json = (o: unknown): Blob => new Blob([JSON.stringify(o, null, 1)], { type: 'application/json' })
     const mw = w.meta.width as number
     const mh = w.meta.height as number
     return {
-      sheet: [this.putBlob(w.color, 'knight_walk_sheet.png', mw, mh)],
-      meta: [this.putBlob(json(w.meta), 'sheet.json')],
-      normal_sheet: [this.putBlob(w.normal, 'knight_walk_normal_sheet.png', mw, mh)],
-      normal_meta: [this.putBlob(json(w.normalMeta), 'normal_sheet.json')]
+      color: { sheet: [this.putBlob(w.color, 'knight_walk_sheet.png', mw, mh)], meta: [this.putBlob(json(w.meta), 'sheet.json')] },
+      normal: { sheet: [this.putBlob(w.normal, 'knight_walk_sheet_normal.png', mw, mh)], meta: [this.putBlob(json(w.normalMeta), 'sheet_normal.json')] }
     }
   }
 
@@ -447,7 +451,8 @@ export class MockCore implements StudioApi, EventStream {
     run.status = 'succeeded'
     run.ended_at = t
     for (const b of publish) {
-      const v: VersionRow = { id: uid('ver'), project_id: 'default', asset_name: title, run_id: run.id, step_id: steps[steps.length - 1]!.id, blob: b, status: 'draft', created_at: t }
+      const from = [...steps].reverse().find((s) => Object.values(s.outputs).some((l) => l.some((x) => x.hash === b.hash))) ?? steps[steps.length - 1]!
+      const v: VersionRow = { id: uid('ver'), project_id: 'default', asset_name: title, run_id: run.id, step_id: from.id, blob: b, status: 'draft', created_at: t }
       this.versionMap.set(v.id, v)
     }
   }
@@ -540,8 +545,8 @@ export class MockCore implements StudioApi, EventStream {
       'sprite-8dir-3d',
       'Hiệp sĩ đi bộ (3 clip + normal)',
       t0 - 1200,
-      { concept: { images: pool.slice(10, 14) }, pick: { images: [pool[10]!] }, mesh: { meshes: [x.glb], report: [this.meshReport()] }, cleanup: { meshes: [x.glb] }, render: { images: pool.slice(0, 8) }, down: { images: pool.slice(0, 8) }, sheet: walk },
-      Object.values(walk).flat()
+      { concept: { images: pool.slice(10, 14) }, pick: { images: [pool[10]!] }, mesh: { meshes: [x.glb], report: [this.meshReport()] }, cleanup: { meshes: [x.glb] }, render: { images: pool.slice(0, 8) }, down: { images: pool.slice(0, 8) }, sheet: walk.color, nsheet: walk.normal },
+      [...Object.values(walk.color).flat(), ...Object.values(walk.normal).flat()]
     )
     this.seedShowcase('sprite-8dir-3d', 'Hiệp sĩ 8 hướng', t0 - 1500, { concept: { images: pool.slice(10, 14) }, pick: { images: [pool[10]!] }, mesh: { meshes: [x.glb] }, cleanup: { meshes: [x.glb] }, render: { images: pool.slice(0, 8) }, down: { images: pool.slice(0, 8) }, sheet: { sheet: [x.sheet], meta: [x.sheetMeta] } }, [x.sheet, x.sheetMeta])
     const spineOuts: Record<string, Outputs> = { concept: { images: pool.slice(2, 6) }, pick: { images: [pool[2]!] }, rmbg: { images: [pool[2]!] }, parts: { preview: [pool[3]!] }, layers: { preview: [pool[4]!] }, export: { skeleton: [x.skeleton], atlas: [x.atlas], texture: [x.texture], preview: [x.setup] } }
@@ -840,6 +845,7 @@ export class MockCore implements StudioApi, EventStream {
       this.checkCancel(s)
       this.progress(s, i, steps, s.kind.split('.')[1] ?? s.kind)
     }
+    if (s.params.normal === true) return {}
     const sample = this.sampleOutputs(s.kind)
     if (sample) return sample
     const out: BlobRef[] = []
