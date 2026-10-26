@@ -79,3 +79,21 @@ async def test_claude_task_times_out(tmp_path: Path) -> None:
     with pytest.raises(StepError) as ei:
         await ask(hang, {"_timeout_s": 0.05}, "hi", str(tmp_path))
     assert ei.value.code == "claude_timeout" and ei.value.retryable
+
+
+async def test_zero_timeout_means_no_inner_limit(tmp_path: Path, monkeypatch) -> None:
+    import asyncio
+
+    from studio_core.adapters import claude
+    from studio_core.adapters.claude import ask
+
+    limits = []
+    real = asyncio.timeout
+    monkeypatch.setattr(asyncio, "timeout", lambda d: limits.append(d) or real(d))
+
+    async def ok(content: list[dict[str, Any]], options: Any) -> ClaudeReply:
+        return ClaudeReply(None, "hi", {})
+
+    for p in ({"_timeout_s": 0}, {"_timeout_s": None}, {}):
+        await ask(ok, p, "hi", str(tmp_path))
+    assert limits == [None, None, claude.DEFAULT_TIMEOUT_S]

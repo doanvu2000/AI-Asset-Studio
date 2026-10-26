@@ -166,8 +166,9 @@ class Procedural3DExecutor:
         render = {"count": int(params.get("views", 6)), "res": int(params.get("res", 256)),
                   "elevation": params.get("elevation", 20), "engine": "BLENDER_EEVEE"}
         code_q = {"model": params.get("code_model") or DEFAULT_MODEL, "max_turns": 2, "system": CODE_SYSTEM,
-                  "schema": CODE_SCHEMA}
-        qa_q = {"model": params.get("qa_model") or DEFAULT_MODEL, "max_turns": 2, "system": QA_SYSTEM, "schema": QA_SCHEMA}
+                  "schema": CODE_SCHEMA, "_timeout_s": 600}
+        qa_q = {"model": params.get("qa_model") or DEFAULT_MODEL, "max_turns": 2, "system": QA_SYSTEM, "schema": QA_SCHEMA,
+                "_timeout_s": 300}
         cwd = str(ctx.job_dir)
         await asyncio.to_thread(ctx.job_dir.mkdir, parents=True, exist_ok=True)
         t0 = time.perf_counter()

@@ -169,18 +169,29 @@ def normal_pass(scene, mat):
             set_engine(scene, prev[4])
 
 
-def render_still(scene, path, normal_mat=None):
-    """Colour frame at `path`; with a normal material also `<stem>_n.png`. Returns the normal path or None."""
-    scene.render.filepath = path
-    bpy.ops.render.render(write_still=True)
-    if normal_mat is None:
-        return None
-    npath = path[:-4] + "_n.png"
-    with normal_pass(scene, normal_mat):
-        scene.render.filepath = npath
+def render_shots(scene, shots, normal_mat, emit):
+    """Each shot is (path, setup, label); renders colour frames, then `<stem>_n.png` normal frames in a second pass so
+    a Workbench job switches engine once instead of twice per frame. Returns per-shot (seconds, normal path or None)."""
+    passes = 2 if normal_mat is not None else 1
+    total, done = len(shots) * passes, 0
+    out = []
+    for path, setup, label in shots:
+        setup()
+        scene.render.filepath = path
+        t = time.perf_counter()
         bpy.ops.render.render(write_still=True)
-    scene.render.filepath = path
-    return npath
+        out.append([round(time.perf_counter() - t, 3), None])
+        done += 1
+        emit({"event": "progress", "value": done, "max": total, "label": label})
+    if normal_mat is not None:
+        with normal_pass(scene, normal_mat):
+            for rec, (path, setup, label) in zip(out, shots):
+                setup()
+                rec[1] = scene.render.filepath = path[:-4] + "_n.png"
+                bpy.ops.render.render(write_still=True)
+                done += 1
+                emit({"event": "progress", "value": done, "max": total, "label": f"normal · {label}"})
+    return out
 
 
 def render_angles(count, mirror):
@@ -237,15 +248,12 @@ def render_dirs(p, emit):
     os.makedirs(out_dir, exist_ok=True)
     angles = render_angles(int(p.get("count", 8)), bool(p.get("mirror")))
     nmat = normal_material(cam) if p.get("normals") else None
-    frames = []
-    for i, a in enumerate(angles):
-        pivot.rotation_euler = (0, 0, math.radians(-a))
-        path = os.path.join(out_dir, f"dir_{round(a):03d}.png")
-        t = time.perf_counter()
-        npath = render_still(scene, path, nmat)
-        frames.append({"angle": a, "file": path, "s": round(time.perf_counter() - t, 3),
-                       **({"normal": npath} if npath else {})})
-        emit({"event": "progress", "value": i + 1, "max": len(angles), "label": f"{round(a)}°"})
+    def turn(a):
+        return lambda: setattr(pivot, "rotation_euler", (0, 0, math.radians(-a)))
+
+    shots = [(os.path.join(out_dir, f"dir_{round(a):03d}.png"), turn(a), f"{round(a)}°") for a in angles]
+    frames = [{"angle": a, "file": path, "s": s, **({"normal": npath} if npath else {})}
+              for a, (path, _, _), (s, npath) in zip(angles, shots, render_shots(scene, shots, nmat, emit))]
     return {"import_s": round(t_import, 2), "total_s": round(time.perf_counter() - t0, 2),
             "engine": scene.render.engine, "ortho_scale": round(ortho, 4), "radius": round(r, 4),
             "height": round(zmax - zmin, 4), "verts": int(len(v)), "res": res, "supersample": supersample,
@@ -858,21 +866,27 @@ def animate_dirs(p, emit):
     os.makedirs(out_dir, exist_ok=True)
     angles = render_angles(int(p.get("count", 8)), False)
     nmat = normal_material(cam) if p.get("normals") else None
-    frames = []
-    total = sum(max(2, int(c["frames"])) for c in clips) * len(angles)
+    posed = {}
+
+    def setup(name, fi, n, loop, a):
+        def go():
+            if posed.get("key") != (name, fi):
+                apply_pose(arm, *clip_pose(name, fi, n, loop, height))
+                posed["key"] = (name, fi)
+            pivot.rotation_euler = (0, 0, math.radians(-a))
+        return go
+
+    shots, info = [], []
     for clip in clips:
         name, n = clip["name"], max(2, int(clip["frames"]))
         for fi in range(n):
-            pose, drop = clip_pose(name, fi, n, bool(clip.get("loop", True)), height)
-            apply_pose(arm, pose, drop)
             for a in angles:
-                pivot.rotation_euler = (0, 0, math.radians(-a))
                 path = os.path.join(out_dir, f"{name}_dir_{round(a):03d}_f{fi:02d}.png")
-                npath = render_still(scene, path, nmat)
-                frames.append({"clip": name, "angle": a, "frame": fi, "file": path,
-                               **({"normal": npath} if npath else {})})
-                emit({"event": "progress", "value": len(frames), "max": total,
-                      "label": f"{name} · {round(a)}° · khung {fi + 1}"})
+                shots.append((path, setup(name, fi, n, bool(clip.get("loop", True)), a),
+                              f"{name} · {round(a)}° · khung {fi + 1}"))
+                info.append({"clip": name, "angle": a, "frame": fi, "file": path})
+    frames = [{**rec, **({"normal": npath} if npath else {})}
+              for rec, (_, npath) in zip(info, render_shots(scene, shots, nmat, emit))]
     return {"total_s": round(time.perf_counter() - t0, 2), "engine": scene.render.engine, "ortho_scale": round(ortho, 4),
             "res": res, "supersample": supersample, "elevation": p.get("elevation", 30), "frames": frames,
             "frames_per_dir": max(int(c["frames"]) for c in clips), "weights": weights, "height": round(height, 4),

@@ -130,11 +130,19 @@ async def test_comfy_vram_freed_before_check_render(tmp_path: Path) -> None:
     reg = ExecutorRegistry()
     reg.register(gen)
     ex = CheckedMeshExecutor(reg.resolve, Comfy(), Blender())
+    ex.vram_free_mb = lambda: 1500
     ctx = FakeCtx(tmp_path)
     images = [await ctx.blobs.put_bytes(png(figure(width=w)), name=f"{i}.png")
               for i, w in enumerate((120, 70, 120, 70))]
     res = await ex.run(ctx, {"workflow": "fake_mesh", "azimuths": AZIMUTHS}, {"image": images})
     assert order == ["free", "render"] and res.meta["check"] == "passed"
+
+    order.clear()
+    gen.script = [False, True]
+    gen.calls.clear()
+    ex.vram_free_mb = lambda: 20000
+    res = await ex.run(ctx, {"workflow": "fake_mesh", "azimuths": AZIMUTHS}, {"image": images})
+    assert order == ["render", "render"], "plenty of VRAM: keep the mesh model loaded between attempts"
 
 
 async def test_unmapped_images_not_scored(tmp_path: Path) -> None:

@@ -90,12 +90,22 @@ def _median_cut(lab: np.ndarray, w: np.ndarray, k: int) -> np.ndarray:
     return np.array([np.average(lab[b], axis=0, weights=w[b]) for b in boxes])
 
 
+def _codes(rgb: np.ndarray) -> np.ndarray:
+    px = np.asarray(rgb, np.uint8).reshape(-1, 3).astype(np.int32)
+    return (px[:, 0] << 16) | (px[:, 1] << 8) | px[:, 2]
+
+
+def _decode(codes: np.ndarray) -> np.ndarray:
+    return np.stack([(codes >> 16) & 255, (codes >> 8) & 255, codes & 255], 1).astype(np.uint8)
+
+
 def kmeans_palette(rgb: np.ndarray, k: int, iters: int = 16) -> np.ndarray:
     """k colors (uint8 RGB) for the given pixels; median-cut seeded Lloyd in OKLab, so no RNG is involved."""
     px = np.asarray(rgb, np.uint8).reshape(-1, 3)
     if len(px) == 0:
         return np.zeros((1, 3), np.uint8)
-    uniq, counts = np.unique(px, axis=0, return_counts=True)
+    codes, counts = np.unique(_codes(px), return_counts=True)
+    uniq = _decode(codes)
     if len(uniq) <= k:
         return uniq
     lab = to_oklab(uniq)
@@ -104,11 +114,11 @@ def kmeans_palette(rgb: np.ndarray, k: int, iters: int = 16) -> np.ndarray:
     cent = _median_cut(lab, w, k)
     for _ in range(iters):
         lbl = _nearest(lab, cent)
+        sw = np.bincount(lbl, weights=w, minlength=len(cent))
+        sums = np.stack([np.bincount(lbl, weights=w * lab[:, c], minlength=len(cent)) for c in range(3)], 1)
         new = cent.copy()
-        for j in range(len(cent)):
-            m = lbl == j
-            if m.any():
-                new[j] = np.average(lab[m], axis=0, weights=w[m])
+        has = sw > 0
+        new[has] = sums[has] / sw[has, None]
         if np.allclose(new, cent, atol=1e-6):
             break
         cent = new
@@ -119,8 +129,14 @@ def kmeans_palette(rgb: np.ndarray, k: int, iters: int = 16) -> np.ndarray:
 
 
 def _nearest(lab: np.ndarray, pal_lab: np.ndarray) -> np.ndarray:
-    d = ((lab[:, None, :] - pal_lab[None, :, :]) ** 2).sum(-1)
-    return d.argmin(1)
+    # |x|^2 is constant per row, so argmin of |p|^2 - 2x.p matches the full distance; chunks bound memory.
+    x, p = np.asarray(lab, np.float64).reshape(-1, 3), np.asarray(pal_lab, np.float64)
+    pp = (p * p).sum(1)
+    out = np.empty(len(x), np.int64)
+    step = max(1024, (1 << 22) // max(1, len(p)))
+    for s in range(0, len(x), step):
+        out[s:s + step] = (pp - 2.0 * (x[s:s + step] @ p.T)).argmin(1)
+    return out
 
 
 @dataclass
@@ -176,20 +192,30 @@ def _despeckle(idx: np.ndarray, pal_lab: np.ndarray, tol: float) -> None:
     """Single pixels whose color no 8-neighbor shares are merged into the dominant neighbor if it is similar."""
     neigh = np.stack([_shift(idx, dy, dx, -1) for dy, dx in _N8])
     lone = (idx >= 0) & (neigh != idx).all(0)
-    for y, x in zip(*np.nonzero(lone)):
-        ns = neigh[:, y, x]
-        ns = ns[ns >= 0]
-        if len(ns) < 3:
-            continue
-        vals, cnt = np.unique(ns, return_counts=True)
-        best = vals[np.lexsort((((pal_lab[vals] - pal_lab[idx[y, x]]) ** 2).sum(1), -cnt))[0]]
-        if np.sqrt(((pal_lab[best] - pal_lab[idx[y, x]]) ** 2).sum()) < tol:
-            idx[y, x] = best
+    ys, xs = np.nonzero(lone)
+    if not len(ys):
+        return
+    ns = neigh[:, ys, xs].T
+    valid = ns >= 0
+    keep = valid.sum(1) >= 3
+    ns, valid, ys, xs = ns[keep], valid[keep], ys[keep], xs[keep]
+    if not len(ys):
+        return
+    centre = idx[ys, xs]
+    cnt = ((ns[:, :, None] == ns[:, None, :]) & valid[:, None, :]).sum(2)
+    dist = ((pal_lab[np.maximum(ns, 0)] - pal_lab[centre][:, None]) ** 2).sum(2)
+    # Most shared neighbor wins, then the closest color, then the lowest index (the old per-pixel lexsort order).
+    cnt = np.where(valid, cnt, -1)
+    rows = np.repeat(np.arange(len(ys)), ns.shape[1])
+    order = np.lexsort((ns.ravel(), dist.ravel(), -cnt.ravel(), rows))
+    best = ns.ravel()[order[::ns.shape[1]]]
+    close = np.sqrt(((pal_lab[best] - pal_lab[centre]) ** 2).sum(1)) < tol
+    idx[ys[close], xs[close]] = best[close]
 
 
-def _dark_map(pal: np.ndarray, synthesize: bool = True) -> tuple[np.ndarray, np.ndarray]:
-    """For each palette entry, a darker entry of similar hue; synthesizes extra colors (auto palettes only) when
-    the palette has none, otherwise falls back to its darkest entry."""
+def _dark_map(pal: np.ndarray, synthesize: bool = True, budget: int | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """For each palette entry, a darker entry of similar hue; synthesizes extra colors (auto palettes only, at most
+    `budget` of them) when the palette has none, otherwise falls back to its darkest entry."""
     lab = to_oklab(pal)
     extra: list[np.ndarray] = []
     out = np.zeros(len(pal), np.int64)
@@ -211,9 +237,13 @@ def _dark_map(pal: np.ndarray, synthesize: bool = True) -> tuple[np.ndarray, np.
     ext = from_oklab(np.array(extra))
     # Different targets can round to one color; dedupe so the palette lists each outline color once.
     uniq, inv = np.unique(ext, axis=0, return_inverse=True)
+    inv = inv.reshape(-1)
+    if budget is not None and len(uniq) > budget:
+        uniq = kmeans_palette(uniq, max(1, budget))
+        inv = _nearest(to_oklab(ext), to_oklab(uniq))
     for i in range(len(out)):
         if out[i] >= len(pal):
-            out[i] = len(pal) + int(inv.reshape(-1)[out[i] - len(pal)])
+            out[i] = len(pal) + int(inv[out[i] - len(pal)])
     return out, uniq
 
 
@@ -226,55 +256,76 @@ def _preset_palette(name: str, colors: int | None, samples: np.ndarray) -> np.nd
     return pal
 
 
-def pixel_art(frames: Sequence[Image.Image], size: int | None = 64, factor: float | None = None,
-              colors: int = 16, palette: str = "auto", palette_image: Image.Image | None = None,
-              outline: str = "dark", alpha_threshold: int = 128, dither: str = "none",
-              dither_strength: float = 0.6, cleanup: bool = True) -> PixelResult:
-    if not frames:
-        raise ValueError("no frames")
+@dataclass
+class PixelPlan:
+    pal: np.ndarray
+    pal_lab: np.ndarray
+    full: np.ndarray
+    out_lines: np.ndarray
+    dark: np.ndarray | None
+    line_rgb: tuple[int, int, int] | None
+    spread: float
+    cleanup: bool
+    scale: float
+    source: str
+
+
+def check_params(colors: int, palette: str, dither: str) -> None:
     if not 2 <= int(colors) <= 256:
         raise ValueError("colors must be within 2..256")
     if dither not in DITHERS:
         raise ValueError(f"dither must be one of {DITHERS}")
     if palette != "auto" and palette not in PALETTES:
         raise ValueError(f"unknown palette '{palette}'; use {PALETTE_CHOICES}")
+
+
+def pixel_scale(frames: Sequence[Image.Image], size: int | None, factor: float | None) -> float:
+    if not frames:
+        raise ValueError("no frames")
     canvas = max(max(f.width, f.height) for f in frames)
     if factor:
         if factor < 1:
             raise ValueError("factor must be >= 1")
-        scale = 1.0 / float(factor)
-    elif size:
+        return 1.0 / float(factor)
+    if size:
         if size < 4:
             raise ValueError("size must be >= 4")
-        scale = min(1.0, float(size) / canvas)
-    else:
-        raise ValueError("give size or factor")
+        return min(1.0, float(size) / canvas)
+    raise ValueError("give size or factor")
 
-    smalls = [_downsample(f, scale) for f in frames]
-    masks = []
-    for arr in smalls:
-        solid = arr[..., 3] >= alpha_threshold
-        if cleanup:
-            clean = _clean_mask(solid)
-            _fill_holes_rgb(arr[..., :3], solid, clean)
-            solid = clean
-        masks.append(solid)
-    samples = np.concatenate([a[..., :3][m] for a, m in zip(smalls, masks)]) if any(m.any() for m in masks) \
+
+def shrink(img: Image.Image, scale: float, alpha_threshold: int = 128,
+           cleanup: bool = True) -> tuple[np.ndarray, np.ndarray]:
+    arr = _downsample(img, scale)
+    solid = arr[..., 3] >= alpha_threshold
+    if cleanup:
+        clean = _clean_mask(solid)
+        _fill_holes_rgb(arr[..., :3], solid, clean)
+        solid = clean
+    return arr, solid
+
+
+def plan_palette(smalls: Sequence[tuple[np.ndarray, np.ndarray]], scale: float, colors: int = 16,
+                 palette: str = "auto", palette_image: Image.Image | None = None, outline: str = "dark",
+                 dither: str = "none", dither_strength: float = 0.6, cleanup: bool = True) -> PixelPlan:
+    colors = int(colors)
+    samples = np.concatenate([a[..., :3][m] for a, m in smalls]) if any(m.any() for _, m in smalls) \
         else np.zeros((0, 3), np.uint8)
-
+    # Synthesized outline darks share the colour budget, so `colors` stays a hard cap.
+    n_dark = max(1, colors // 4) if outline == "dark" else 0
     if palette_image is not None:
         ref = np.array(palette_image.convert("RGBA"))
-        pal, source = kmeans_palette(ref[..., :3][ref[..., 3] >= 128], int(colors)), "image"
+        pal, source = kmeans_palette(ref[..., :3][ref[..., 3] >= 128], colors), "image"
     elif palette != "auto":
-        pal, source = _preset_palette(palette, int(colors), samples), palette
+        pal, source = _preset_palette(palette, colors, samples), palette
     else:
-        pal, source = kmeans_palette(samples, int(colors)), "auto"
+        pal, source = kmeans_palette(samples, colors - n_dark), "auto"
 
     out_lines: np.ndarray = np.zeros((0, 3), np.uint8)
     dark = None
     line_rgb = None
     if outline == "dark":
-        dark, out_lines = _dark_map(pal, synthesize=source == "auto")
+        dark, out_lines = _dark_map(pal, synthesize=source == "auto", budget=colors - len(pal))
     elif outline not in ("none", "", None):
         line_rgb = parse_hex(outline)
     full = np.concatenate([pal, out_lines]) if len(out_lines) else pal
@@ -284,44 +335,65 @@ def pixel_art(frames: Sequence[Image.Image], size: int | None = 64, factor: floa
         d = np.sqrt(((pal_lab[:, None] - pal_lab[None]) ** 2).sum(-1))
         np.fill_diagonal(d, np.inf)
         spread = float(np.median(d.min(1))) * float(dither_strength)
+    return PixelPlan(pal, pal_lab, full, out_lines, dark, line_rgb, spread, cleanup, scale, source)
 
-    result: list[Image.Image] = []
-    for arr, solid in zip(smalls, masks):
-        h, w = solid.shape
-        lab = to_oklab(arr[..., :3].reshape(-1, 3)).reshape(h, w, 3)
-        if spread:
+
+def quantize(plan: PixelPlan, arr: np.ndarray, solid: np.ndarray) -> Image.Image:
+    pal, pal_lab = plan.pal, plan.pal_lab
+    h, w = solid.shape
+    idx = np.full((h, w), -1, np.int64)
+    if solid.any():
+        if plan.spread:
+            lab = to_oklab(arr[..., :3][solid])
             # Threshold map is indexed by canvas position, so the pattern stays put across frames.
-            yy, xx = np.mgrid[0:h, 0:w]
-            lab[..., 0] += (_BAYER4[yy % 4, xx % 4] - 0.5) * spread
-        idx = np.full((h, w), -1, np.int64)
-        if solid.any():
-            idx[solid] = _nearest(lab[solid], pal_lab)
-        if cleanup and not spread:
-            _despeckle(idx, pal_lab, 0.18)
-        out = np.zeros((h, w, 4), np.uint8)
-        out[solid, :3] = pal[idx[solid]]
-        out[solid, 3] = 255
-        if dark is not None or line_rgb is not None:
-            ring = ~solid & np.any([_shift(solid, dy, dx, False) for dy, dx in _N4], axis=0)
-            if dark is not None:
-                # Lightest touching color picks the hue: the render already darkens silhouette edges (AO), which would
-                # otherwise turn every line black.
-                neigh = np.stack([_shift(idx, dy, dx, -1) for dy, dx in _N4])
-                lum = np.where(neigh >= 0, pal_lab[np.maximum(neigh, 0), 0], np.inf)
-                src = np.take_along_axis(neigh, np.where(np.isinf(lum), -np.inf, lum).argmax(0)[None], 0)[0]
-                out[ring, :3] = full[dark[src[ring]]]
-            else:
-                out[ring, :3] = line_rgb
-            out[ring, 3] = 255
-        result.append(Image.fromarray(out, "RGBA"))
+            yy, xx = np.nonzero(solid)
+            lab[:, 0] += (_BAYER4[yy % 4, xx % 4] - 0.5) * plan.spread
+            idx[solid] = _nearest(lab, pal_lab)
+        else:
+            codes, inv = np.unique(_codes(arr[..., :3][solid]), return_inverse=True)
+            idx[solid] = _nearest(to_oklab(_decode(codes)), pal_lab)[inv.reshape(-1)]
+    if plan.cleanup and not plan.spread:
+        _despeckle(idx, pal_lab, 0.18)
+    out = np.zeros((h, w, 4), np.uint8)
+    out[solid, :3] = pal[idx[solid]]
+    out[solid, 3] = 255
+    if plan.dark is not None or plan.line_rgb is not None:
+        ring = ~solid & np.any([_shift(solid, dy, dx, False) for dy, dx in _N4], axis=0)
+        if plan.dark is not None:
+            # Lightest touching color picks the hue: the render already darkens silhouette edges (AO), which would
+            # otherwise turn every line black.
+            neigh = np.stack([_shift(idx, dy, dx, -1) for dy, dx in _N4])
+            lum = np.where(neigh >= 0, pal_lab[np.maximum(neigh, 0), 0], np.inf)
+            src = np.take_along_axis(neigh, np.where(np.isinf(lum), -np.inf, lum).argmax(0)[None], 0)[0]
+            out[ring, :3] = plan.full[plan.dark[src[ring]]]
+        else:
+            out[ring, :3] = plan.line_rgb
+        out[ring, 3] = 255
+    return Image.fromarray(out, "RGBA")
 
-    used = sorted({tuple(int(v) for v in c) for f in result for c in np.array(f)[np.array(f)[..., 3] > 0][:, :3]},
-                  key=lambda c: float(to_oklab(np.array([c]))[0, 0]))
-    lines = [tuple(int(v) for v in c) for c in out_lines] + ([line_rgb] if line_rgb else [])
-    pal_list = [tuple(int(v) for v in c) for c in pal] + [c for c in lines if c not in map(tuple, pal.tolist())]
-    return PixelResult(frames=result, palette=[c for c in pal_list if c in set(used)] or pal_list,
-                       outline_colors=[c for c in lines if c in set(used)], size=result[0].size, scale=scale,
-                       source=source)
+
+def finish(plan: PixelPlan, result: list[Image.Image]) -> PixelResult:
+    codes = [_codes(a[a[..., 3] > 0][:, :3]) for a in (np.array(f) for f in result)]
+    used = {tuple(int(v) for v in c) for c in _decode(np.unique(np.concatenate(codes)))} if codes else set()
+    lines = [tuple(int(v) for v in c) for c in plan.out_lines] + ([plan.line_rgb] if plan.line_rgb else [])
+    pal_list = [tuple(int(v) for v in c) for c in plan.pal]
+    pal_list += [c for c in lines if c not in set(pal_list)]
+    return PixelResult(frames=result, palette=[c for c in pal_list if c in used] or pal_list,
+                       outline_colors=[c for c in lines if c in used], size=result[0].size, scale=plan.scale,
+                       source=plan.source)
+
+
+def pixel_art(frames: Sequence[Image.Image], size: int | None = 64, factor: float | None = None,
+              colors: int = 16, palette: str = "auto", palette_image: Image.Image | None = None,
+              outline: str = "dark", alpha_threshold: int = 128, dither: str = "none",
+              dither_strength: float = 0.6, cleanup: bool = True) -> PixelResult:
+    if not frames:
+        raise ValueError("no frames")
+    check_params(colors, palette, dither)
+    scale = pixel_scale(frames, size, factor)
+    smalls = [shrink(f, scale, alpha_threshold, cleanup) for f in frames]
+    plan = plan_palette(smalls, scale, colors, palette, palette_image, outline, dither, dither_strength, cleanup)
+    return finish(plan, [quantize(plan, arr, solid) for arr, solid in smalls])
 
 
 def _opt_int(v: Any) -> int | None:
@@ -333,28 +405,45 @@ class PixelArt(OpExecutor):
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = _images_in(inputs)
-        imgs = []
-        for i, ref in enumerate(refs):
+        total = len(refs) * 3 + 1
+
+        def tick(done: int, label: str) -> None:
             if ctx.cancelled.is_set():
                 raise asyncio.CancelledError
+            ctx.progress(done, total, label=label)
+
+        imgs = []
+        for i, ref in enumerate(refs):
+            tick(i, "load")
             imgs.append(await _load(ctx, ref))
-            ctx.progress(i + 1, len(refs) * 2, label="load")
         pal_refs = inputs.get("palette_image") or []
         pal_img = await _load(ctx, pal_refs[0]) if pal_refs else None
         factor = params.get("factor")
+        colors, palette = int(params.get("colors") or 16), str(params.get("palette") or "auto")
+        dither, cleanup = str(params.get("dither") or "none"), bool(params.get("cleanup", True))
         try:
-            res = await asyncio.to_thread(
-                pixel_art, imgs, size=_opt_int(params.get("size", 64)), factor=float(factor) if factor else None,
-                colors=int(params.get("colors") or 16), palette=str(params.get("palette") or "auto"),
-                palette_image=pal_img, outline=str(params.get("outline") or "none"),
-                alpha_threshold=int(params.get("alpha_threshold", 128)), dither=str(params.get("dither") or "none"),
-                dither_strength=float(params.get("dither_strength", 0.6)), cleanup=bool(params.get("cleanup", True)))
+            check_params(colors, palette, dither)
+            scale = pixel_scale(imgs, _opt_int(params.get("size", 64)), float(factor) if factor else None)
+            smalls = []
+            for i, img in enumerate(imgs):
+                tick(len(refs) + i, "shrink")
+                smalls.append(await asyncio.to_thread(shrink, img, scale, int(params.get("alpha_threshold", 128)),
+                                                      cleanup))
+            tick(len(refs) * 2, "palette")
+            plan = await asyncio.to_thread(
+                plan_palette, smalls, scale, colors, palette, pal_img, str(params.get("outline") or "none"), dither,
+                float(params.get("dither_strength", 0.6)), cleanup)
         except ValueError as e:
             raise StepError("op_bad_params", str(e)) from e
+        frames = []
+        for i, (arr, solid) in enumerate(smalls):
+            tick(len(refs) * 2 + 1 + i, "quantize")
+            frames.append(await asyncio.to_thread(quantize, plan, arr, solid))
+        res = await asyncio.to_thread(finish, plan, frames)
         out: list[BlobRef] = []
-        for i, (ref, img) in enumerate(zip(refs, res.frames)):
-            out.append(await _put_png(ctx, img, ref.name or f"img{i:02d}.png"))
-            ctx.progress(len(refs) + i + 1, len(refs) * 2, label="save")
+        for ref, img in zip(refs, res.frames):
+            out.append(await _put_png(ctx, img, ref.name or f"img{len(out):02d}.png"))
+        ctx.progress(total, total, label="save")
         info = res.palette_json()
         pal_ref = await ctx.blobs.put_bytes(json.dumps(info, indent=1).encode(), name="palette.json",
                                             mime="application/json")

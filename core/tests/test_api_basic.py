@@ -233,3 +233,24 @@ async def test_stop_busy_resource_is_refused(app_ctx: tuple[FastAPI, httpx.Async
     assert resp.status_code == 409 and resp.json()["error"]["code"] == "resource_busy" and r.stopped == 0
     resp = await client.post("/api/resources/blender/stop?force=true", headers=AUTH)
     assert resp.status_code == 200 and r.stopped == 1
+
+
+async def test_stop_starting_resource_is_refused(app_ctx: tuple[FastAPI, httpx.AsyncClient, StubEngine]) -> None:
+    from studio_core.contracts import ResourceHealth
+
+    app, client, _ = app_ctx
+
+    class Starting:
+        name = "comfyui"
+        stopped = 0
+
+        async def health(self) -> ResourceHealth:
+            return ResourceHealth(name=self.name, status="starting")
+
+        async def stop(self) -> None:
+            self.stopped += 1
+
+    r = Starting()
+    app.state.resources = {**app.state.resources, "comfyui": r}
+    resp = await client.post("/api/resources/comfyui/stop", headers=AUTH)
+    assert resp.status_code == 409 and resp.json()["error"]["code"] == "resource_busy" and r.stopped == 0

@@ -269,3 +269,28 @@ def test_p4_recipes_load_and_resolve(tmp_path: Path) -> None:
     assert r7.resolve_params(r7.step("validate"), v7)["require_textures"] is False
     with pytest.raises(ValueError):
         r7.coerce_inputs({"idea": "barrel", "rounds": 4})
+
+
+async def test_blender_agent_uses_its_own_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    limits: list[float | None] = []
+    real = asyncio.timeout
+
+    def spy(delay: float | None) -> Any:
+        limits.append(delay)
+        return real(delay)
+
+    monkeypatch.setattr(asyncio, "timeout", spy)
+
+    async def quick(content: list[dict[str, Any]], options: Any) -> ClaudeReply:
+        return ClaudeReply({"summary": "", "exported": False, "objects": []}, "", {})
+
+    await BlenderAgentExecutor(Settings(), quick).run(FakeCtx(tmp_path), {"task": "t", "require_mesh": False}, {})
+    assert limits == [900.0]
+
+    async def hang(content: list[dict[str, Any]], options: Any) -> ClaudeReply:
+        await asyncio.sleep(10)
+        raise AssertionError
+
+    with pytest.raises(StepError) as ei:
+        await BlenderAgentExecutor(Settings(), hang).run(FakeCtx(tmp_path), {"task": "t", "timeout_s": 0.05}, {})
+    assert ei.value.code == "blender_agent_timeout" and ei.value.retryable

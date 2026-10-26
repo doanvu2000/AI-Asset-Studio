@@ -78,8 +78,10 @@ class BlenderAgentExecutor:
             prompt += f"\n\nStart by importing this GLB into your collection: {src}"
         cmd, args = (str(params["mcp_command"]), list(params.get("mcp_args") or [])) if params.get("mcp_command") \
             else mcp_command()
+        timeout_s = float(params.get("timeout_s", 900))
         q = {"model": params.get("model") or DEFAULT_MODEL, "max_turns": int(params.get("max_turns", 40)),
-             "system": SYSTEM.format(collection=collection, out=str(out)), "schema": RESULT_SCHEMA}
+             "system": SYSTEM.format(collection=collection, out=str(out)), "schema": RESULT_SCHEMA,
+             "_timeout_s": timeout_s}
         servers = {MCP_NAME: {"type": "stdio", "command": cmd, "args": args}}
         t0 = time.perf_counter()
         if self._lock.locked():
@@ -87,10 +89,11 @@ class BlenderAgentExecutor:
         async with self._lock:
             ctx.progress(0, 1, "agent")
             try:
-                async with asyncio.timeout(float(params.get("timeout_s", 900))):
-                    reply = await ask(self.query, q, prompt, str(ctx.job_dir), mcp_servers=servers,
-                                      allowed_tools=allowed_tools(params.get("tools")))
-            except TimeoutError as e:
+                reply = await ask(self.query, q, prompt, str(ctx.job_dir), mcp_servers=servers,
+                                  allowed_tools=allowed_tools(params.get("tools")))
+            except StepError as e:
+                if e.code != "claude_timeout":
+                    raise
                 raise StepError("blender_agent_timeout", "agent exceeded its time limit", retryable=True) from e
         result = reply.structured if isinstance(reply.structured, dict) else {"summary": reply.text}
         outputs: Outputs = {"json": [await put_json(ctx, result, "agent.json")]}

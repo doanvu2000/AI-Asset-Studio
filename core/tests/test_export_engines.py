@@ -290,3 +290,21 @@ def test_engine_names_dedupe_and_spine_page_case(tmp_path: Path) -> None:
     src = engine_source(_row("spine", "op.spine_export", outs), [], b, "Hero")
     assert [n for n, _ in src.spine_pages] == ["Hero.PNG"]
     assert [n for n, _ in src.glb] == ["Hero.glb", "hero-2.glb"]
+
+
+def test_sheet_meta_only_for_plain_eight_dir_sheets(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from studio_core.store.bundle import sheet_meta
+
+    def step(meta: dict) -> SimpleNamespace:
+        p = tmp_path / f"m{len(list(tmp_path.iterdir()))}.json"
+        p.write_text(json.dumps(meta), encoding="utf-8")
+        return SimpleNamespace(kind="op.sheet", outputs={"meta": [BlobRef(hash=str(p), mime="application/json",
+                                                                          size=0)]})
+
+    blobs = SimpleNamespace(path=Path)
+    base = {"frame_w": 16, "frame_h": 16, "order": ANGLES, "frames": [f"h{i}" for i in range(8)]}
+    assert sheet_meta(step(base), blobs) is not None
+    assert sheet_meta(step({**base, "frames": [*base["frames"][:7], None]}), blobs) is None
+    assert sheet_meta(step({**base, "clips": [{"name": "walk", "row0": 0, "rows": 8, "frames": 1}]}), blobs) is None

@@ -145,3 +145,16 @@ def test_catalog_pixel_preset_and_recipes():
     for rid in ("sprite-8dir-pixel", "sprite-8dir-3d-pixel"):
         _, issues = validate((RECIPES / f"{rid}.yaml").read_text(encoding="utf-8"), None)
         assert [i for i in issues if i.get("level") == "error"] == [], (rid, issues)
+
+
+def test_dark_outline_counts_toward_colors():
+    noisy = []
+    for i, f in enumerate(frames(4)):
+        a = np.array(f).astype(np.int16)
+        a[..., :3] += np.random.default_rng(i).integers(-30, 30, a[..., :3].shape, dtype=np.int16)
+        noisy.append(Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), "RGBA"))
+    for colors in (2, 4, 16, 32):
+        res = pixel_art(noisy, size=96, colors=colors, outline="dark")
+        used = set().union(*(colors_of(f) for f in res.frames))
+        assert len(res.palette) <= colors and len(used) <= colors, (colors, len(res.palette), len(used))
+        assert res.outline_colors

@@ -85,7 +85,7 @@ CATALOG: dict[str, P] = {
                                "outline": _text(label="Màu viền (#rrggbb)")}},
     "op.pixel_art": {"label": "Pixel art (bảng màu chung)", "in": {"images": "image[]", "palette_image": "image"},
                      "out": {"images": "image[]", "palette": "json", "swatch": "image"},
-                     "params": {"size": _int(64, min=8, max=1024, label="Cỡ khung (px, cạnh dài)"),
+                     "params": {"size": _int(64, min=8, max=512, label="Cỡ khung (px, cạnh dài)"),
                                 "factor": _float(min=1, max=32, label="Hoặc chia nhỏ theo hệ số", advanced=True),
                                 "colors": _int(16, min=2, max=256, label="Số màu"),
                                 "palette": _enum(PALETTE_CHOICES, "auto", label="Bảng màu"),

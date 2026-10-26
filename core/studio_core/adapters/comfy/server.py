@@ -235,5 +235,5 @@ class ComfyResource:
         if self.status == "up" and self.client:
             try:
                 await self.client.free()
-            except httpx.HTTPError as e:
+            except (httpx.HTTPError, RuntimeError) as e:
                 log.warning("comfy /free failed: %r", e)

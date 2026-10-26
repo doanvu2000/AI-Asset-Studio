@@ -33,6 +33,8 @@ def sheet_meta(step: StepRow, blobs: BlobStore) -> dict[str, Any] | None:
     frames, order = meta.get("frames"), meta.get("order")
     if not isinstance(frames, list) or not isinstance(order, list) or len(frames) != 8 or len(order) != 8:
         return None
+    if meta.get("clips") or any(f is None for f in frames):
+        return None
     return meta
 
 

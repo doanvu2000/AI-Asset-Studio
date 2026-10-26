@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -22,6 +24,21 @@ from .executor import _drop_inputs
 DEFAULT_MIN_IOU = 0.75
 ON_FAIL = ("best", "fail")
 CHECK_KEYS = {"workflow", "attempts", "min_iou", "azimuths", "on_fail", "check_res"}
+# A 256px EEVEE check render needs well under 1 GB; below this the resident mesh model is unloaded first.
+VRAM_FREE_MIN_MB = 3072
+
+
+def vram_free_mb() -> int | None:
+    exe = shutil.which("nvidia-smi")
+    if not exe:
+        return None
+    try:
+        out = subprocess.run([exe, "--query-gpu=memory.free", "--format=csv,noheader,nounits"], capture_output=True,
+                             text=True, timeout=5, creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == "win32"
+                             else 0).stdout
+        return min(int(v) for v in out.split())
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
 
 
 def _sil(path: Any) -> Any:
@@ -39,6 +56,7 @@ class CheckedMeshExecutor:
         self.resolve = resolve
         self.required_resource = resource
         self.blender = blender
+        self.vram_free_mb = vram_free_mb
 
     def cacheable(self, params: dict[str, Any]) -> bool:
         return False
@@ -70,10 +88,12 @@ class CheckedMeshExecutor:
             shutil.copyfile(ctx.blobs.path(mesh.hash), glb)
 
         await asyncio.to_thread(stage)
-        # The mesh model stays resident in ComfyUI; Blender's GPU render would otherwise fight it for VRAM.
+        # The mesh model stays resident in ComfyUI; freeing it every attempt would reload it for each regeneration.
         free = getattr(self.required_resource, "free", None)
         if free is not None:
-            await free()
+            mb = await asyncio.to_thread(self.vram_free_mb)
+            if mb is None or mb < VRAM_FREE_MIN_MB:
+                await free()
         r = await self.blender.call("render_dirs", {"glb": str(glb), "out_dir": str(work / "frames"), "count": 4,
                                                     "elevation": 0, "res": res, "engine": "BLENDER_EEVEE"},
                                     timeout=300)
@@ -146,7 +166,7 @@ class CheckedMeshExecutor:
         assert best is not None
         skipped = check and any(t.get("error") for t in tries)
         passed = not check or any(t.get("ok") for t in tries)
-        status = "off" if not check else "skipped" if skipped else "passed" if passed else "failed"
+        status = "off" if not check else "passed" if passed else "skipped" if skipped else "failed"
         report = {"attempts": tries, "min_iou": min_iou, "checked": check, "passed": passed, "skipped": skipped,
                   "status": status, "chosen": best[1].hash, "regenerated": len(tries) - 1, "on_fail": on_fail}
         if status == "failed" and on_fail == "fail":
