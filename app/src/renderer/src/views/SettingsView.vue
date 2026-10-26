@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { onBeforeRouteLeave, useRoute } from 'vue-router'
 import { ArrowDown, ArrowUp, Copy, FolderCog, Lock, LoaderCircle, Plus, Save, ScrollText, SunMoon, Trash2 } from '@lucide/vue'
 import type { Compass, ExportPreset } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
@@ -8,6 +8,7 @@ import DiagnosticsPanel from '@/components/DiagnosticsPanel.vue'
 import ToolPathsPanel from '@/components/ToolPathsPanel.vue'
 import ResizeHandle from '@/components/ResizeHandle.vue'
 import { usePaneWidth } from '@/composables/paneSize'
+import { useUnsavedChanges } from '@/composables/unsaved'
 import { THEME_OPTIONS, useTheme } from '@/composables/theme'
 import { usePresets } from '@/stores/catalog'
 import { useConnection } from '@/stores/connection'
@@ -62,8 +63,17 @@ watch(
 )
 const readonly = computed(() => !!draft.value?.builtin)
 const dirty = computed(() => isNew.value || (!!draft.value && !!selected.value && JSON.stringify(draft.value) !== JSON.stringify(selected.value)))
+const unsaved = computed(() => dirty.value && !readonly.value && !saving.value)
+useUnsavedChanges(unsaved)
+
+function confirmDrop(): boolean {
+  if (!unsaved.value) return true
+  return window.confirm(`Preset “${draft.value?.name || draft.value?.id}” có thay đổi chưa lưu. Bỏ các thay đổi này?`)
+}
+onBeforeRouteLeave(() => confirmDrop())
 
 function pick(id: string): void {
+  if (id !== draft.value?.id && !confirmDrop()) return
   pane.value = null
   isNew.value = false
   error.value = null
@@ -83,6 +93,7 @@ function duplicate(): void {
 }
 
 function blank(): void {
+  if (!confirmDrop()) return
   draft.value = {
     id: 'preset-moi',
     name: 'Preset mới',

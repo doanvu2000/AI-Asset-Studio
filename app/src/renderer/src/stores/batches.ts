@@ -38,7 +38,6 @@ export const useBatches = defineStore('batches', () => {
   const runs = useRuns()
 
   const list = computed<Batch[]>(() => {
-    void runs.steps
     const groups = new Map<string, RunRow[]>()
     for (const r of runs.runList) {
       const id = runMeta(r).batch_id
@@ -83,7 +82,6 @@ export const useBatches = defineStore('batches', () => {
 
   // One column per recipe step: how far the whole batch has advanced through that stage.
   function stages(b: Batch): StageColumn[] {
-    void runs.steps
     const cols = new Map<string, StageColumn>()
     for (const r of b.runs) {
       for (const s of runs.stepsOf(r.id)) {

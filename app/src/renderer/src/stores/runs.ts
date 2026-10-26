@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
-import { computed, ref, shallowRef, triggerRef } from 'vue'
+import { computed, ref, shallowRef, triggerRef, type Ref } from 'vue'
 import type { LogData, PreviewData, ProgressData, RunRow, RunUpdatedData, StepRow } from '@/api/types'
-import { RUN_ACTIVE } from '@/api/types'
+import { RUN_ACTIVE, STEP_TERMINAL } from '@/api/types'
 import { api } from './connection'
 
 export interface LogLine extends LogData {
@@ -9,6 +9,8 @@ export interface LogLine extends LogData {
 }
 
 const LOG_CAP = 200
+// Logs stay readable after a step ends, but only for the most recent steps so long sessions don't grow without bound.
+const LOG_STEPS_MAX = 150
 
 function firstImage(s: StepRow): string | null {
   for (const blobs of Object.values(s.outputs ?? {})) {
@@ -20,7 +22,11 @@ function firstImage(s: StepRow): string | null {
 
 export const useRuns = defineStore('runs', () => {
   const runs = shallowRef(new Map<string, RunRow>())
-  const steps = shallowRef(new Map<string, StepRow>())
+  const stepStore = new Map<string, StepRow>()
+  const steps = shallowRef(stepStore)
+  // Per-run revision so a step event re-renders only views of that run instead of every stepsOf() caller.
+  const runRevs = new Map<string, Ref<number>>()
+  const touchedRuns = new Set<string>()
   const progress = shallowRef(new Map<string, ProgressData>())
   const previews = shallowRef(new Map<string, string>())
   const logs = shallowRef(new Map<string, LogLine[]>())
@@ -39,8 +45,9 @@ export const useRuns = defineStore('runs', () => {
   const awaitingRuns = computed(() => runList.value.filter((r) => r.status === 'awaiting_human'))
 
   function putStep(s: StepRow): void {
-    const prev = steps.value.get(s.id)
-    steps.value.set(s.id, s)
+    const prev = stepStore.get(s.id)
+    stepStore.set(s.id, s)
+    touchedRuns.add(s.run_id)
     let ids = stepIdsByRun.get(s.run_id)
     if (!ids) stepIdsByRun.set(s.run_id, (ids = new Set()))
     ids.add(s.id)
@@ -49,14 +56,26 @@ export const useRuns = defineStore('runs', () => {
       const cur = outputImages.value.get(s.run_id)
       if (!cur || cur.order <= s.order) outputImages.value.set(s.run_id, { order: s.order, hash: img })
     }
-    if (prev && (prev.attempt !== s.attempt || (prev.status !== 'running' && s.status === 'running'))) {
+    if (STEP_TERMINAL.has(s.status) || (prev && (prev.attempt !== s.attempt || (prev.status !== 'running' && s.status === 'running')))) {
       progress.value.delete(s.id)
       previews.value.delete(s.id)
     }
   }
 
+  function revOf(runId: string): Ref<number> {
+    let r = runRevs.get(runId)
+    if (!r) runRevs.set(runId, (r = ref(0)))
+    return r
+  }
+
+  function bumpTouched(): void {
+    for (const id of touchedRuns) revOf(id).value++
+    touchedRuns.clear()
+  }
+
   function stepsOf(runId: string): StepRow[] {
-    const map = steps.value
+    void revOf(runId).value
+    const map = stepStore
     const ids = stepIdsByRun.get(runId)
     if (!ids) return []
     const out: StepRow[] = []
@@ -117,7 +136,9 @@ export const useRuns = defineStore('runs', () => {
         const arr = logs.value.get(id) ?? []
         arr.push({ ...d, ts })
         if (arr.length > LOG_CAP) arr.splice(0, arr.length - LOG_CAP)
+        logs.value.delete(id)
         logs.value.set(id, arr.slice())
+        while (logs.value.size > LOG_STEPS_MAX) logs.value.delete(logs.value.keys().next().value!)
         l = true
       },
       commit() {
@@ -125,6 +146,7 @@ export const useRuns = defineStore('runs', () => {
         if (s) {
           triggerRef(steps)
           triggerRef(outputImages)
+          bumpTouched()
         }
         if (p) triggerRef(progress)
         if (v) triggerRef(previews)
@@ -163,6 +185,9 @@ export const useRuns = defineStore('runs', () => {
     triggerRef(runs)
     triggerRef(steps)
     triggerRef(outputImages)
+    triggerRef(progress)
+    triggerRef(previews)
+    bumpTouched()
   }
 
   async function loadDetail(id: string, holder = 'detail'): Promise<void> {

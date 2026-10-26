@@ -13,6 +13,8 @@ export interface AssetView {
   blob: BlobRef
   sheet?: BlobRef
   meta?: BlobRef
+  /** Normal-map sheet with the same layout as `sheet` (meta contract: output `normal_sheet`). */
+  normal?: BlobRef
   spine?: SpineSet
 }
 
@@ -39,9 +41,22 @@ export const isAtlas = (b: BlobRef): boolean => ext(b) === 'atlas'
 const isTextual = (b: BlobRef): boolean =>
   isJson(b) || isAtlas(b) || b.mime.startsWith('text/') || ['txt', 'yaml', 'yml', 'md', 'py', 'log'].includes(ext(b))
 
+// Output ports only exist on step rows; blobs listed from them remember which ones are normal maps.
+const normalHashes = new Set<string>()
+const NORMAL_PORT = /^normal(_|$)/
+
+/** Flattens a step's outputs, noting blobs on `normal_*` ports so name-agnostic detection still works. */
+export function outputBlobs(outputs: Record<string, BlobRef[]>): BlobRef[] {
+  for (const [port, list] of Object.entries(outputs)) if (NORMAL_PORT.test(port)) for (const b of list) normalHashes.add(b.hash)
+  return Object.values(outputs).flat()
+}
+
+const isNormal = (b: BlobRef): boolean => normalHashes.has(b.hash) || /(^|_)normal(_|$)|_n$/.test(stem(b))
+
 // op.sheet always names its meta "sheet.json"; the sheet image is "sheet.png" or "<asset>_sheet.png".
-const isSheetMeta = (b: BlobRef): boolean => isJson(b) && stem(b) === 'sheet'
-const isSheetImage = (b: BlobRef): boolean => isImage(b) && /(^|_)sheet$/.test(stem(b))
+const isSheetMeta = (b: BlobRef): boolean => isJson(b) && stem(b) === 'sheet' && !isNormal(b)
+const isSheetImage = (b: BlobRef): boolean => isImage(b) && /(^|_)sheet$/.test(stem(b)) && !isNormal(b)
+const isNormalSheet = (b: BlobRef): boolean => isImage(b) && isNormal(b) && (normalHashes.has(b.hash) || /sheet/.test(stem(b)))
 
 function uniq(list: BlobRef[]): BlobRef[] {
   const seen = new Set<string>()
@@ -59,10 +74,11 @@ export function spineSet(blobs: BlobRef[]): SpineSet | null {
   return skeleton && texture ? { skeleton, atlas, texture } : null
 }
 
-function spritePair(blob: BlobRef, all: BlobRef[]): { sheet: BlobRef; meta: BlobRef } | null {
+function spritePair(blob: BlobRef, all: BlobRef[]): { sheet: BlobRef; meta: BlobRef; normal?: BlobRef } | null {
   const meta = isSheetMeta(blob) ? blob : all.find(isSheetMeta)
   const sheet = isSheetImage(blob) ? blob : all.find(isSheetImage)
-  return meta && sheet ? { sheet, meta } : null
+  const normal = all.find(isNormalSheet)
+  return meta && sheet ? { sheet, meta, ...(normal ? { normal } : {}) } : null
 }
 
 /** Views that make sense for `blob`, best first; `siblings` are blobs produced alongside it (same step or run). */
@@ -74,7 +90,7 @@ export function viewsFor(blob: BlobRef, siblings: BlobRef[] = []): AssetView[] {
   const spine = spineSet(all)
   const inSpine = !!spine && [spine.skeleton, spine.atlas, spine.texture].some((b) => b.hash === blob.hash)
   const pair = spritePair(blob, all)
-  const inSprite = !!pair && (pair.sheet.hash === blob.hash || pair.meta.hash === blob.hash)
+  const inSprite = !!pair && (pair.sheet.hash === blob.hash || pair.meta.hash === blob.hash || pair.normal?.hash === blob.hash)
 
   if (spine && (inSpine || blob.mime === 'text/html')) out.push({ kind: 'spine', blob, spine })
   if (pair && inSprite) out.push({ kind: 'sprite', blob, ...pair })
@@ -93,7 +109,8 @@ export function featuredAsset(blobs: BlobRef[]): AssetView | null {
   if (spine) return { kind: 'spine', blob: spine.skeleton, spine }
   const sheet = all.find(isSheetImage)
   const meta = all.find(isSheetMeta)
-  if (sheet && meta) return { kind: 'sprite', blob: sheet, sheet, meta }
+  const normal = all.find(isNormalSheet)
+  if (sheet && meta) return { kind: 'sprite', blob: sheet, sheet, meta, ...(normal ? { normal } : {}) }
   return null
 }
 

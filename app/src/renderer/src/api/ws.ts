@@ -35,12 +35,15 @@ export class FrameBatcher {
 }
 
 const BACKOFF = [300, 600, 1200, 2500, 5000, 8000]
+const RESUME_WATCHDOG_MS = 3000
 
 export class StudioSocket implements EventStream {
   private ws: WebSocket | null = null
   private lastSeq = 0
   // Live events can arrive between hello and the resume replay; drop them until the replay catches up.
   private resuming = false
+  private resumeTimer: number | undefined
+  private maxSeen = 0
   private attempts = 0
   private neverOpened = 0
   private timer: number | undefined
@@ -63,6 +66,7 @@ export class StudioSocket implements EventStream {
   stop(): void {
     this.stopped = true
     window.clearTimeout(this.timer)
+    this.endResume()
     this.ws?.close()
     this.ws = null
     this.sink?.state('closed')
@@ -94,8 +98,9 @@ export class StudioSocket implements EventStream {
       }
       if (typeof ev.seq !== 'number' || ev.seq <= this.lastSeq) return
       if (this.resuming) {
+        this.maxSeen = Math.max(this.maxSeen, ev.seq)
         if (ev.seq !== this.lastSeq + 1) return
-        this.resuming = false
+        this.endResume()
       }
       this.lastSeq = ev.seq
       this.batcher?.push(ev as StudioEvent)
@@ -110,9 +115,11 @@ export class StudioSocket implements EventStream {
     ws.onclose = () => {
       if (this.ws !== ws || this.stopped) return
       this.ws = null
+      this.endResume()
       if (!opened) this.neverOpened += 1
       if (this.neverOpened >= 3) {
         void this.checkAuth().then((bad) => {
+          if (this.stopped) return
           if (bad) {
             this.stopped = true
             this.sink?.state('auth_error')
@@ -142,8 +149,27 @@ export class StudioSocket implements EventStream {
     this.timer = window.setTimeout(() => this.connect(), delay)
   }
 
-  private onHello(ws: WebSocket, serverSeq: number): void {
+  private endResume(): void {
     this.resuming = false
+    window.clearTimeout(this.resumeTimer)
+    this.resumeTimer = undefined
+  }
+
+  // A replay that never starts (lost resume op, server already trimmed the ring) would swallow every live event.
+  private startResume(ws: WebSocket): void {
+    this.resuming = true
+    this.maxSeen = this.lastSeq
+    window.clearTimeout(this.resumeTimer)
+    this.resumeTimer = window.setTimeout(() => {
+      if (this.ws !== ws || !this.resuming) return
+      this.endResume()
+      this.lastSeq = Math.max(this.lastSeq, this.maxSeen)
+      this.sink?.resync()
+    }, RESUME_WATCHDOG_MS)
+  }
+
+  private onHello(ws: WebSocket, serverSeq: number): void {
+    this.endResume()
     if (this.lastSeq === 0) {
       this.lastSeq = serverSeq
       this.sink?.resync()
@@ -160,7 +186,7 @@ export class StudioSocket implements EventStream {
         this.lastSeq = serverSeq
         this.sink?.resync()
       } else {
-        this.resuming = true
+        this.startResume(ws)
         ws.send(JSON.stringify({ op: 'resume', after_seq: this.lastSeq }))
       }
     }

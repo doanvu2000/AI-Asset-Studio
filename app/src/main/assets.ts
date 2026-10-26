@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import { isAbsolute, join, relative } from 'node:path'
 import type { CoreSupervisor } from './core'
-import type { BundleOptions, ExportedAsset, ExportedBundle } from '../preload/types'
+import type { BundleEngine, BundleOptions, ExportedAsset, ExportedBundle } from '../preload/types'
 
 const HASH_RE = /^[0-9a-f]{64}$/
 const STEP_RE = /^[\w-]{1,80}$/
@@ -16,6 +16,11 @@ export function checkStep(v: unknown): string {
 export function checkPreset(v: unknown): string | undefined {
   if (v === undefined || v === null || v === '') return undefined
   if (typeof v !== 'string' || !PRESET_RE.test(v)) throw new Error('invalid preset id')
+  return v
+}
+export function checkEngine(v: unknown): BundleEngine | undefined {
+  if (v === undefined || v === null || v === '') return undefined
+  if (v !== 'unity' && v !== 'godot') throw new Error('invalid engine')
   return v
 }
 const NAME_MAX = 200
@@ -80,8 +85,9 @@ export class AssetExporter {
     return this.call<BundleOptions>(`steps/${stepId}/export`)
   }
 
-  async exportBundle(stepId: string, preset?: string, name?: string): Promise<ExportedBundle> {
-    const out = await this.call<ExportedBundle>(`steps/${stepId}/export`, { preset: preset ?? null, name: name ?? null }, 120_000)
+  async exportBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine): Promise<ExportedBundle> {
+    const body = { preset: preset ?? null, name: name ?? null, engine: engine ?? null }
+    const out = await this.call<ExportedBundle>(`steps/${stepId}/export`, body, 120_000)
     if (typeof out.dir !== 'string' || !(await inside(this.root, out.dir))) throw new Error('core trả đường dẫn ngoài thư mục xuất')
     return { dir: out.dir, name: String(out.name), preset: out.preset ?? null, files: Array.isArray(out.files) ? out.files.length : 0 }
   }

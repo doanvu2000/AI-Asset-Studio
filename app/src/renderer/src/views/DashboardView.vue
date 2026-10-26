@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, watch } from 'vue'
 import { ArrowRight, ChevronRight, Plus, Search } from '@lucide/vue'
+import type { ApiError } from '@/api/client'
 import PageHeader from '@/components/PageHeader.vue'
 import ResourceCard from '@/components/ResourceCard.vue'
 import RunRowItem from '@/components/RunRowItem.vue'
@@ -89,11 +90,21 @@ onBeforeUnmount(() => {
   held.clear()
 })
 
+const RESOURCE_LABEL: Record<string, string> = { comfyui: 'ComfyUI', blender: 'Blender', codex: 'Codex', claude: 'Claude' }
+
 async function toggle(name: string, start: boolean): Promise<void> {
   try {
     await resources.toggle(name, start)
   } catch (e) {
-    toasts.error(e, start ? 'Không bật được' : 'Không tắt được')
+    const busy = !start && (e as ApiError).status === 409
+    if (!busy) return toasts.error(e, start ? 'Không bật được' : 'Không tắt được')
+    if (!window.confirm(`${RESOURCE_LABEL[name] ?? name} đang render, dừng ngay?
+Bước đang chạy sẽ bị ngắt và phải chạy lại.`)) return
+    try {
+      await resources.toggle(name, false, true)
+    } catch (e2) {
+      toasts.error(e2, 'Không tắt được')
+    }
   }
 }
 </script>

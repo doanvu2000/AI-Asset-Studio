@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, shallowRef, triggerRef } from 'vue'
+import { computed, ref, shallowRef, triggerRef } from 'vue'
 import type { BlobRef, GateAwaitingData, GateResolution, StepRow } from '@/api/types'
 import { api } from './connection'
 import { useRuns } from './runs'
@@ -39,14 +39,26 @@ export function gateFromStep(step: StepRow, prev?: GateItem): GateItem {
 
 export const useGates = defineStore('gates', () => {
   const items = shallowRef(new Map<string, GateItem>())
+  const loaded = ref(false)
+  const error = ref<string | null>(null)
   let dirty = false
+  // Live events that land while a snapshot is in flight are newer than it; null marks a gate that went away.
+  const inflight = new Set<Map<string, GateItem | null>>()
+
+  function track(id: string): void {
+    for (const t of inflight) t.set(id, items.value.get(id) ?? null)
+  }
 
   const list = computed(() => [...items.value.values()].sort((a, b) => a.since - b.since))
   const count = computed(() => items.value.size)
 
   function onStep(step: StepRow): void {
     if (step.status === 'awaiting_human') items.value.set(step.id, gateFromStep(step, items.value.get(step.id)))
-    else if (!items.value.delete(step.id)) return
+    else if (!items.value.delete(step.id)) {
+      track(step.id)
+      return
+    }
+    track(step.id)
     dirty = true
   }
 
@@ -61,6 +73,7 @@ export const useGates = defineStore('gates', () => {
       candidates: d.candidates ?? [],
       since: prev?.since ?? Date.now() / 1000
     })
+    track(stepId)
     dirty = true
   }
 
@@ -70,21 +83,38 @@ export const useGates = defineStore('gates', () => {
   }
 
   async function load(): Promise<void> {
-    const rows = await api().gates()
-    const next = new Map<string, GateItem>()
-    for (const s of rows) next.set(s.id, gateFromStep(s, items.value.get(s.id)))
-    items.value = next
+    const live = new Map<string, GateItem | null>()
+    inflight.add(live)
+    try {
+      const rows = await api().gates()
+      const next = new Map<string, GateItem>()
+      for (const s of rows) next.set(s.id, gateFromStep(s, items.value.get(s.id)))
+      for (const [id, g] of live) {
+        if (g) next.set(id, g)
+        else next.delete(id)
+      }
+      items.value = next
+      loaded.value = true
+      error.value = null
+    } catch (e) {
+      error.value = (e as Error).message
+      throw e
+    } finally {
+      inflight.delete(live)
+    }
   }
 
   async function resolve(stepId: string, res: GateResolution): Promise<void> {
     const prev = items.value.get(stepId)
     items.value.delete(stepId)
+    track(stepId)
     triggerRef(items)
     try {
       await api().resolveGate(stepId, res)
     } catch (e) {
       if (prev) {
         items.value.set(stepId, prev)
+        track(stepId)
         triggerRef(items)
       }
       throw e
@@ -107,5 +137,5 @@ export const useGates = defineStore('gates', () => {
     await api().retryStep(src.id)
   }
 
-  return { items, list, count, onStep, onAwaiting, commit, load, resolve, sourceStep, regenerate }
+  return { items, loaded, error, list, count, onStep, onAwaiting, commit, load, resolve, sourceStep, regenerate }
 })

@@ -29,8 +29,9 @@ const bridge: StudioBridge = {
     copyPath: (hash, name) => ipcRenderer.invoke('studio:asset:copyPath', hash, name),
     startDrag: (hash, name) => ipcRenderer.send('studio:asset:drag', hash, name),
     bundleOptions: (stepId) => ipcRenderer.invoke('studio:asset:bundleOptions', stepId),
-    saveBundle: (stepId, preset, name) => ipcRenderer.invoke('studio:asset:saveBundle', stepId, preset, name),
-    revealBundle: (stepId, preset, name) => ipcRenderer.invoke('studio:asset:revealBundle', stepId, preset, name)
+    saveBundle: (stepId, preset, name, engine) => ipcRenderer.invoke('studio:asset:saveBundle', stepId, preset, name, engine),
+    revealBundle: (stepId, preset, name, engine) =>
+      ipcRenderer.invoke('studio:asset:revealBundle', stepId, preset, name, engine)
   },
   setProgress: (value, mode) => ipcRenderer.send('studio:setProgress', value, mode),
   notify: (n) => ipcRenderer.send('studio:notify', n),
@@ -39,6 +40,7 @@ const bridge: StudioBridge = {
     ipcRenderer.on('studio:navigate', listener)
     return () => ipcRenderer.removeListener('studio:navigate', listener)
   },
+  setDirty: (dirty) => ipcRenderer.send('studio:dirty', dirty === true),
   platform: process.platform
 }
 

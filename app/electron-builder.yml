@@ -38,3 +38,12 @@ nsis:
   # User data (%APPDATA%\AI Asset Studio\data) holds runs and blobs; never wipe it on uninstall.
   deleteAppDataOnUninstall: false
 npmRebuild: false
+# Flipped by electron-builder itself (bundled @electron/fuses) before signing. The core is a PyInstaller exe,
+# not a forked Node, so runAsNode can go; asar integrity stays off until Windows integrity resources are verified.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false

@@ -51,6 +51,7 @@ export function useShellIntegration(): void {
   const label = (r: RunRow): string => r.title || recipes.byId(r.recipe_id)?.name || 'Lượt chạy'
   const seen = new Map<string, RunStatus>()
   let primed = false
+  let primedAt = 0
   let pending: Array<{ run: RunRow; status: RunStatus }> = []
   let timer = 0
 
@@ -86,9 +87,12 @@ export function useShellIntegration(): void {
       for (const r of list) {
         const prev = seen.get(r.id)
         seen.set(r.id, r.status)
-        if (!primed || prev === undefined || prev === r.status || !NOTIFY_ON.has(r.status)) continue
+        // A fully cached run can be created and finish within one event frame, so it is first seen already done.
+        const bornDone = prev === undefined && r.created_at >= primedAt
+        if (!primed || (prev === undefined && !bornDone) || prev === r.status || !NOTIFY_ON.has(r.status)) continue
         pending.push({ run: r, status: r.status })
       }
+      if (!primed) primedAt = Date.now() / 1000
       primed = true
       if (pending.length) {
         window.clearTimeout(timer)

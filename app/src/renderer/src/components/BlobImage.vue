@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ImageOff } from '@lucide/vue'
-import { blobUrl, thumbUrl } from '@/stores/connection'
+import { blobUrl, thumbUrl, useConnection } from '@/stores/connection'
 
 const props = withDefaults(defineProps<{ hash: string; size?: number; alt?: string; full?: boolean; contain?: boolean }>(), {
   size: 256,
@@ -13,8 +13,10 @@ const props = withDefaults(defineProps<{ hash: string; size?: number; alt?: stri
 // Thumbnails can 503/422 while the core is still generating them; degrade to the original, then a placeholder.
 const stage = ref<0 | 1 | 2>(props.full ? 1 : 0)
 const loaded = ref(false)
+const conn = useConnection()
+// A restarted core listens on a new port; images that failed against the old one must retry from scratch.
 watch(
-  () => props.hash,
+  [() => props.hash, () => conn.transport],
   () => {
     stage.value = props.full ? 1 : 0
     loaded.value = false

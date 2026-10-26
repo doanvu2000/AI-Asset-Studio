@@ -49,6 +49,8 @@ export interface StudioBridge {
   /** Shown only while the window is not focused; clicking it focuses the app and navigates to `route`. */
   notify(n: AppNotification): void
   onNavigate(cb: (route: string) => void): () => void
+  /** Unsaved edits in the renderer; main asks before quitting while this is set. */
+  setDirty(dirty: boolean): void
   platform: string
 }
 
@@ -104,9 +106,12 @@ export interface AssetBridge {
   startDrag(hash: string, name?: string): void
   /** Folder exports of a whole step (Spine json+atlas+png, sprite sheet repacked for an engine preset). */
   bundleOptions(stepId: string): Promise<BundleOptions>
-  saveBundle(stepId: string, preset?: string, name?: string): Promise<string | null>
-  revealBundle(stepId: string, preset?: string, name?: string): Promise<void>
+  saveBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine): Promise<string | null>
+  revealBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine): Promise<void>
 }
+
+/** Drop-in folder for a game engine: sliced sheet + clips + controller/scene, Spine and GLB copied by convention. */
+export type BundleEngine = 'unity' | 'godot'
 
 export interface BundleOptions {
   step_id: string
@@ -115,6 +120,7 @@ export interface BundleOptions {
   sprite_sheet: boolean
   /** Preset the recipe already packed the sheet with, if any. */
   preset: string | null
+  engines?: BundleEngine[]
 }
 
 export interface ExportedBundle {

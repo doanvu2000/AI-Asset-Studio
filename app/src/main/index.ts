@@ -9,7 +9,7 @@ import appIconPath from '../../resources/icon.png?asset'
 import winIconPath from '../../resources/icon.ico?asset'
 import { CoreSupervisor } from './core'
 import { deviceInfo } from './device'
-import { AssetExporter, checkHash, checkName, checkPreset, checkStep } from './assets'
+import { AssetExporter, checkEngine, checkHash, checkName, checkPreset, checkStep } from './assets'
 import { Devlog, listLogs, RateLimiter, type LogLevel } from './devlog'
 import { buildBundle, buildReport, parsePayload, REPORT_MAX_CHARS } from './diagnostics'
 import type { AppNotification, DiagInfo, PickPathOptions, ProgressMode, ThemeMode } from '../preload/types'
@@ -58,6 +58,26 @@ let win: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
 let coreStopped = false
+let rendererDirty = false
+
+function confirmDiscard(): boolean {
+  if (!rendererDirty) return true
+  if (win?.isMinimized()) win.restore()
+  if (win && !win.isVisible()) win.show()
+  const opts: Electron.MessageBoxSyncOptions = {
+    type: 'warning',
+    title: 'AI Asset Studio',
+    message: 'Có thay đổi chưa lưu',
+    detail: 'Quy trình hoặc preset đang sửa chưa được lưu. Thoát bây giờ sẽ mất các thay đổi đó.',
+    buttons: ['Ở lại', 'Bỏ thay đổi và thoát'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true
+  }
+  const ok = (win ? dialog.showMessageBoxSync(win, opts) : dialog.showMessageBoxSync(opts)) === 1
+  if (ok) rendererDirty = false
+  return ok
+}
 
 function csp(): string {
   const local = 'http://127.0.0.1:* ws://127.0.0.1:*'
@@ -404,8 +424,9 @@ function registerAssetIpc(): void {
     return a.path
   })
   handle('studio:asset:bundleOptions', (_e, stepId) => assets.bundleOptions(checkStep(stepId)))
-  handle('studio:asset:saveBundle', async (e, stepId, preset, name) => {
-    const b = await assets.exportBundle(checkStep(stepId), checkPreset(preset), checkName(name))
+  handle('studio:asset:saveBundle', async (e, stepId, preset, name, engine) => {
+    const eng = checkEngine(engine)
+    const b = await assets.exportBundle(checkStep(stepId), checkPreset(preset), checkName(name), eng)
     const opts: Electron.OpenDialogOptions = {
       title: `Chọn nơi lưu thư mục “${b.name}”`,
       defaultPath: app.getPath('downloads'),
@@ -417,11 +438,11 @@ function registerAssetIpc(): void {
     if (!parent) return null
     const dest = join(parent, basename(b.dir))
     await cp(b.dir, dest, { recursive: true, force: true })
-    devlog.app('info', `exported step ${stepId} (${b.preset ?? 'raw'}, ${b.files} files) → ${dest}`)
+    devlog.app('info', `exported step ${stepId} (${eng ?? b.preset ?? 'raw'}, ${b.files} files) → ${dest}`)
     return dest
   })
-  handle('studio:asset:revealBundle', async (_e, stepId, preset, name) => {
-    const b = await assets.exportBundle(checkStep(stepId), checkPreset(preset), checkName(name))
+  handle('studio:asset:revealBundle', async (_e, stepId, preset, name, engine) => {
+    const b = await assets.exportBundle(checkStep(stepId), checkPreset(preset), checkName(name), checkEngine(engine))
     await shell.openPath(b.dir)
   })
   // startDrag must run while the OS drag gesture is live, so the renderer pre-warms the copy via prepare on hover.
@@ -460,6 +481,9 @@ function registerShellIpc(): void {
     if (typeof value !== 'number' || !Number.isFinite(value)) return
     w.setProgressBar(Math.min(1, Math.max(0, value)), { mode: m })
   })
+  ipcMain.on('studio:dirty', (e, dirty: unknown) => {
+    if (isTrustedSender(e.senderFrame?.url)) rendererDirty = dirty === true
+  })
   ipcMain.on('studio:notify', (e, raw: unknown) => {
     if (!isTrustedSender(e.senderFrame?.url) || !Notification.isSupported()) return
     const n = (raw ?? {}) as Partial<AppNotification>
@@ -489,6 +513,10 @@ app.on('web-contents-created', (_e, contents) => {
   contents.on('will-navigate', (e, url) => {
     if (originOf(url) !== RENDERER_ORIGIN) e.preventDefault()
   })
+  // A server-side redirect skips will-navigate, so it needs the same origin check.
+  contents.on('will-redirect', (e, url) => {
+    if (originOf(url) !== RENDERER_ORIGIN) e.preventDefault()
+  })
   contents.on('will-attach-webview', (e) => e.preventDefault())
 })
 
@@ -504,6 +532,10 @@ app.on('will-quit', () => {
 })
 
 app.on('before-quit', (e) => {
+  if (!quitting && !confirmDiscard()) {
+    e.preventDefault()
+    return
+  }
   quitting = true
   if (coreStopped) return
   e.preventDefault()

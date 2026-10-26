@@ -29,6 +29,7 @@ import { useRecipes } from '@/stores/recipes'
 import { useToasts } from '@/stores/toasts'
 import ResizeHandle from '@/components/ResizeHandle.vue'
 import { usePaneWidth } from '@/composables/paneSize'
+import { useUnsavedChanges } from '@/composables/unsaved'
 
 const props = defineProps<{ id: string }>()
 const route = useRoute()
@@ -54,6 +55,7 @@ const selectedEdge = ref<string | null>(null)
 const fitKey = ref('')
 
 const dirty = computed(() => !!doc.value && JSON.stringify(doc.value) !== savedJson.value)
+useUnsavedChanges(dirty)
 const errors = computed(() => issues.value.filter((i) => i.level === 'error'))
 const warnings = computed(() => issues.value.filter((i) => i.level === 'warning'))
 

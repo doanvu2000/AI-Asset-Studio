@@ -1,19 +1,21 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { useElementSize } from '@vueuse/core'
+import { computed, ref, shallowRef, watch } from 'vue'
+import { useElementSize, useEventListener } from '@vueuse/core'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { Check, Search, X } from '@lucide/vue'
+import { Check, Columns2, LoaderCircle, Search, X } from '@lucide/vue'
 import { ART } from '@/assets/art'
 import type { BlobRef, VersionRow, VersionStatus } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import BlobThumb from '@/components/BlobThumb.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import Lightbox from '@/components/Lightbox.vue'
+import CompareView, { type CompareItem } from '@/components/CompareView.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import RelTime from '@/components/RelTime.vue'
 import { featuredAsset, isAtlas, isImage, isJson } from '@/components/viewers/detect'
 import { useAssetFile } from '@/composables/assetFile'
 import { relativeTime } from '@/composables/format'
+import { settlePool } from '@/composables/pool'
 import { exportName, useVersions } from '@/stores/versions'
 import { useRuns } from '@/stores/runs'
 import { useRecipes } from '@/stores/recipes'
@@ -77,6 +79,17 @@ function groupStatus(list: VersionRow[]): VersionStatus {
   return list.some((v) => v.status === 'approved') ? 'approved' : 'rejected'
 }
 
+const runInfo = computed<Map<string, { recipeId: string; title: string }>>((prev) => {
+  const next = new Map<string, { recipeId: string; title: string }>()
+  let same = !!prev && prev.size === runs.runs.size
+  for (const r of runs.runs.values()) {
+    const old = prev?.get(r.id)
+    if (same && (!old || old.recipeId !== r.recipe_id || old.title !== r.title)) same = false
+    next.set(r.id, { recipeId: r.recipe_id, title: r.title })
+  }
+  return same && prev ? prev : next
+})
+
 const groups = computed<AssetGroup[]>(() => {
   const byKey = new Map<string, VersionRow[]>()
   for (const v of versions.list) {
@@ -88,8 +101,8 @@ const groups = computed<AssetGroup[]>(() => {
   const out: AssetGroup[] = []
   for (const [key, list] of byKey) {
     const first = list[0]!
-    const run = runs.runs.get(first.run_id)
-    const recipeId = run?.recipe_id ?? ''
+    const run = runInfo.value.get(first.run_id)
+    const recipeId = run?.recipeId ?? ''
     const recipe = recipes.byId(recipeId)?.name ?? ''
     const blobs = list.map((v) => v.blob)
     const featured = featuredAsset(blobs)
@@ -195,14 +208,126 @@ const lightboxMeta = computed(() => {
   return [g.recipe, relativeTime(g.created_at)].filter(Boolean).join(' · ')
 })
 // Reviewing can drop the open asset out of the status filter; keep the lightbox on its neighbour instead of closing.
-async function reviewOpen(action: 'approve' | 'reject'): Promise<void> {
+// A/R from the keyboard (`advance`) moves on right away, while the request is still in flight.
+async function reviewOpen(action: 'approve' | 'reject', advance = false): Promise<void> {
   const g = current.value
   if (!g) return
   const i = openIndex.value
-  const neighbour = items.value[i + 1]?.key ?? items.value[i - 1]?.key ?? null
-  await review(g, action)
-  if (!items.value.some((x) => x.key === g.key)) openKey.value = neighbour
+  const after = items.value[i + 1]?.key ?? null
+  const neighbour = after ?? items.value[i - 1]?.key ?? null
+  const done = review(g, action)
+  if (advance && after) {
+    openOrigin.value = null
+    openKey.value = after
+  }
+  await done
+  if (openKey.value && !items.value.some((x) => x.key === openKey.value)) openKey.value = neighbour
 }
+
+const selected = shallowRef(new Set<string>())
+let anchor: string | null = null
+const selectedGroups = computed(() => items.value.filter((g) => selected.value.has(g.key)))
+const selecting = computed(() => selected.value.size > 0)
+watch(items, (list) => {
+  if (!selected.value.size) return
+  const keep = new Set(list.filter((g) => selected.value.has(g.key)).map((g) => g.key))
+  if (keep.size !== selected.value.size) selected.value = keep
+})
+
+function clearSelection(): void {
+  selected.value = new Set()
+  anchor = null
+}
+function toggle(key: string): void {
+  const next = new Set(selected.value)
+  if (!next.delete(key)) next.add(key)
+  selected.value = next
+  anchor = key
+}
+function selectRange(key: string): void {
+  const keys = items.value.map((g) => g.key)
+  const a = anchor ? keys.indexOf(anchor) : -1
+  const b = keys.indexOf(key)
+  if (a < 0 || b < 0) return toggle(key)
+  const next = new Set(selected.value)
+  for (const k of keys.slice(Math.min(a, b), Math.max(a, b) + 1)) next.add(k)
+  selected.value = next
+}
+function onCheck(e: MouseEvent, key: string): void {
+  if (e.shiftKey) selectRange(key)
+  else toggle(key)
+}
+function onTile(e: MouseEvent, key: string): void {
+  if (e.shiftKey) selectRange(key)
+  else if (e.ctrlKey || e.metaKey || selecting.value) toggle(key)
+  else openTile(e, key)
+}
+
+const bulk = ref<{ action: 'approve' | 'reject'; done: number; total: number } | null>(null)
+const BULK_CONCURRENCY = 4
+async function reviewSelected(action: 'approve' | 'reject'): Promise<void> {
+  const list = selectedGroups.value
+  if (!list.length || bulk.value) return
+  bulk.value = { action, done: 0, total: list.length }
+  const res = await settlePool(list, BULK_CONCURRENCY, async (g) => {
+    try {
+      await versions.setStatusMany(
+        g.versions.map((v) => v.id),
+        action
+      )
+    } finally {
+      if (bulk.value) bulk.value.done += 1
+    }
+  })
+  bulk.value = null
+  const failed = list.filter((_, i) => res[i]?.status === 'rejected')
+  const verb = action === 'approve' ? 'duyệt' : 'từ chối'
+  if (failed.length) {
+    toasts.push(`${failed.length}/${list.length} asset chưa ${verb} được, thử lại sau`, 'error', 6000)
+    selected.value = new Set(failed.map((g) => g.key))
+  } else {
+    toasts.push(`Đã ${verb} ${list.length} asset`, 'success', 2400)
+    clearSelection()
+  }
+}
+
+const compareKeys = ref<string[] | null>(null)
+function itemOf(g: AssetGroup): CompareItem {
+  return {
+    key: g.key,
+    name: g.name,
+    meta: [g.recipe, relativeTime(g.created_at)].filter(Boolean).join(' · '),
+    status: g.status,
+    lead: g.lead.blob,
+    siblings: g.versions.map((v) => v.blob)
+  }
+}
+const compareItems = computed<CompareItem[] | null>(() => {
+  const keys = compareKeys.value
+  if (!keys) return null
+  const list = keys.map((k) => groups.value.find((g) => g.key === k)).filter((g): g is AssetGroup => !!g)
+  return list.length === 2 ? list.map(itemOf) : null
+})
+function openCompare(): void {
+  if (selectedGroups.value.length === 2) compareKeys.value = selectedGroups.value.map((g) => g.key)
+}
+function reviewCompared(key: string, action: 'approve' | 'reject'): void {
+  const g = groups.value.find((x) => x.key === key)
+  if (g) void review(g, action)
+}
+
+useEventListener(window, 'keydown', (e: KeyboardEvent) => {
+  if (openKey.value || compareKeys.value) return
+  const t = e.target as HTMLElement | null
+  if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return
+  if (e.key === 'Escape' && selecting.value) {
+    clearSelection()
+    e.preventDefault()
+  } else if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A') && items.value.length) {
+    selected.value = new Set(items.value.map((g) => g.key))
+    e.preventDefault()
+  }
+})
 
 function move(d: -1 | 1): void {
   const next = items.value[openIndex.value + d]
@@ -261,19 +386,31 @@ function move(d: -1 | 1): void {
             gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`
           }"
         >
-          <article v-for="g in rowItems(r.index)" :key="g.key" class="tile" :class="`vs-${g.status}`">
+          <article v-for="g in rowItems(r.index)" :key="g.key" class="tile" :class="[`vs-${g.status}`, { sel: selected.has(g.key), selecting }]">
             <div class="stage">
               <button
                 class="img-btn"
-                :aria-label="`Xem ${g.name}`"
+                :aria-label="selecting ? `Chọn ${g.name}` : `Xem ${g.name}`"
                 :draggable="file.available"
-                @click="openTile($event, g.key)"
+                @click="onTile($event, g.key)"
                 @pointerenter="file.prepare(g.lead.blob.hash, exportName(g.lead))"
                 @dragstart="file.startDrag($event, g.lead.blob.hash, exportName(g.lead))"
               >
                 <BlobThumb :blob="g.cover.blob" :size="256" />
                 <span class="type-tag">{{ TYPE_TEXT[g.type] }}</span>
+                <span class="img-ring" aria-hidden="true" />
                 <span v-if="g.versions.length > 1" class="more num" :title="g.versions.map((v) => v.blob.name).filter(Boolean).join('\n')">+{{ g.versions.length - 1 }} file</span>
+              </button>
+              <button
+                type="button"
+                class="pick"
+                role="checkbox"
+                :aria-checked="selected.has(g.key)"
+                :aria-label="`Chọn ${g.name}`"
+                title="Chọn (Shift: chọn dải, Ctrl: thêm/bớt)"
+                @click="onCheck($event, g.key)"
+              >
+                <Check :size="13" :stroke-width="3" />
               </button>
               <div class="acts" role="group" :aria-label="`Duyệt ${g.name}`">
                 <button type="button" class="act ok" :class="{ on: g.status === 'approved' }" :aria-pressed="g.status === 'approved'" @click="review(g, 'approve')">
@@ -302,6 +439,35 @@ function move(d: -1 | 1): void {
         </div>
       </div>
     </div>
+    <Transition name="selbar">
+      <div v-if="selecting" class="selbar" role="toolbar" aria-label="Thao tác với asset đã chọn">
+        <span class="sel-count">
+          <TweenNumber :value="selected.size" /> đã chọn
+        </span>
+        <span class="sep" />
+        <template v-if="bulk">
+          <span class="caption bulk-state" role="status">
+            <LoaderCircle class="spin" :size="14" />
+            Đang {{ bulk.action === 'approve' ? 'duyệt' : 'từ chối' }} <TweenNumber :value="bulk.done" />/{{ bulk.total }}
+          </span>
+        </template>
+        <template v-else>
+          <button type="button" class="btn sb ok" @click="reviewSelected('approve')"><Check /> Duyệt <TweenNumber :value="selectedGroups.length" /></button>
+          <button type="button" class="btn sb no" @click="reviewSelected('reject')"><X /> Từ chối <TweenNumber :value="selectedGroups.length" /></button>
+          <button
+            type="button"
+            class="btn sb"
+            :disabled="selectedGroups.length !== 2"
+            :title="selectedGroups.length === 2 ? 'Xem 2 bản cạnh nhau' : 'Chọn đúng 2 asset để so sánh'"
+            @click="openCompare"
+          >
+            <Columns2 /> So sánh
+          </button>
+        </template>
+        <button type="button" class="btn btn-plain sb" :disabled="!!bulk" title="Bỏ chọn (Esc)" @click="clearSelection">Bỏ chọn</button>
+      </div>
+    </Transition>
+    <CompareView :items="compareItems" @close="compareKeys = null" @review="reviewCompared" />
     <Lightbox
       :blob="current?.lead.blob ?? null"
       :siblings="current?.versions.map((v) => v.blob) ?? []"
@@ -434,6 +600,136 @@ function move(d: -1 | 1): void {
   transform: translateY(-2px);
   box-shadow: var(--shadow-2), var(--hairline);
 }
+.tile.sel {
+  box-shadow: var(--shadow-2), 0 0 0 2px var(--accent);
+}
+.img-btn :deep(.blob),
+.img-btn :deep(.glyph) {
+  transition: transform var(--t-base) var(--ease-spring);
+}
+.tile.sel .img-btn :deep(.blob),
+.tile.sel .img-btn :deep(.glyph) {
+  transform: scale(0.92);
+}
+.selecting .img-btn {
+  cursor: pointer;
+}
+.img-ring {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--accent-soft);
+  opacity: 0;
+  transition: opacity var(--t-base);
+}
+.tile.sel .img-ring {
+  opacity: 0.5;
+}
+.pick {
+  position: absolute;
+  top: 7px;
+  left: 7px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: transparent;
+  background: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--text) 45%, transparent), var(--shadow-1);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity var(--t-fast),
+    transform var(--t-fast) var(--ease-spring),
+    background-color var(--t-fast),
+    color var(--t-fast);
+}
+.tile:hover .pick,
+.tile:focus-within .pick,
+.selecting .pick {
+  opacity: 1;
+  transform: none;
+}
+.pick[aria-checked='true'] {
+  color: var(--text-on-accent);
+  background: var(--accent);
+  box-shadow: var(--shadow-1);
+}
+.pick:active {
+  transform: scale(0.9);
+}
+.tile:hover .type-tag,
+.tile:focus-within .type-tag,
+.selecting .type-tag {
+  transform: translateX(26px);
+}
+.selbar {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 6px 14px;
+  border-radius: 14px;
+  transform: translateX(-50%);
+  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  box-shadow: var(--shadow-3), var(--hairline);
+  white-space: nowrap;
+}
+.sel-count {
+  font-weight: 600;
+  min-width: 78px;
+}
+.selbar .sep {
+  width: 0.5px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--separator-strong);
+}
+.sb {
+  height: 30px;
+  padding: 0 12px;
+  font-size: var(--fs-callout);
+}
+.sb.ok {
+  color: var(--st-ok);
+}
+.sb.no {
+  color: var(--st-fail);
+}
+.bulk-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  color: var(--text-2);
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+.selbar-enter-active {
+  transition:
+    opacity var(--t-base) var(--ease-out),
+    transform var(--t-slow) var(--ease-spring);
+}
+.selbar-leave-active {
+  transition:
+    opacity var(--t-fast) var(--ease-in),
+    transform var(--t-fast) var(--ease-in);
+}
+.selbar-enter-from,
+.selbar-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 16px);
+}
 .vs-rejected .img-btn {
   opacity: 0.5;
 }
@@ -465,6 +761,7 @@ function move(d: -1 | 1): void {
 }
 .type-tag {
   left: 8px;
+  transition: transform var(--t-fast) var(--ease-spring);
 }
 .more {
   right: 8px;
@@ -580,9 +877,16 @@ function move(d: -1 | 1): void {
 .fade-leave-to {
   opacity: 0;
 }
+.view {
+  position: relative;
+}
 @media (prefers-reduced-motion: reduce) {
   .tile,
-  .acts {
+  .acts,
+  .pick,
+  .type-tag,
+  .img-btn :deep(.blob),
+  .img-btn :deep(.glyph) {
     transition: none;
   }
   .tile:hover {

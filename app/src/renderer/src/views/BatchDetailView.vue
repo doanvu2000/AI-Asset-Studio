@@ -18,6 +18,7 @@ import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { useGates } from '@/stores/gates'
 import { kindName, STEP_LABEL, stepLabel } from '@/composables/format'
+import { settlePool } from '@/composables/pool'
 
 const props = defineProps<{ id: string }>()
 const batches = useBatches()
@@ -40,26 +41,35 @@ watch(
   { immediate: true }
 )
 
+function releaseAll(): void {
+  for (const id of held) runs.closeDetail(id, HOLDER)
+  held.clear()
+}
+watch(() => props.id, releaseAll)
+
+const DETAIL_CONCURRENCY = 6
 watch(
   () => [conn.transport, batch.value?.runs.map((r) => r.id).join(',')] as const,
   ([t]) => {
     if (!t || !batch.value) return
-    for (const r of batch.value.runs) {
-      if (held.has(r.id)) continue
-      held.add(r.id)
-      void runs.loadDetail(r.id, HOLDER).catch(() => held.delete(r.id))
-    }
+    const fresh = batch.value.runs.map((r) => r.id).filter((id) => !held.has(id))
+    for (const id of fresh) held.add(id)
+    void settlePool(fresh, DETAIL_CONCURRENCY, async (id) => {
+      try {
+        await runs.loadDetail(id, HOLDER)
+      } catch {
+        runs.closeDetail(id, HOLDER)
+        held.delete(id)
+      }
+    })
   },
   { immediate: true }
 )
-onBeforeUnmount(() => {
-  for (const id of held) runs.closeDetail(id, HOLDER)
-})
+onBeforeUnmount(releaseAll)
 
 const stages = computed(() => (batch.value ? batches.stages(batch.value) : []))
 const total = computed(() => batch.value?.runs.length ?? 0)
 const stepFor = (runId: string, key: string): StepRow | undefined => {
-  void runs.steps
   return runs.stepsOf(runId).find((s) => s.key === key)
 }
 const fraction = (s: StepRow | undefined): number | null => {
@@ -84,7 +94,6 @@ const MATCH: Record<Filter, (r: RunRow) => boolean> = {
   failed: (r) => r.status === 'failed' || r.status === 'interrupted' || r.status === 'cancelled'
 }
 const shownRuns = computed(() => {
-  void runs.steps
   const all = batch.value?.runs ?? []
   return all.map((r, i) => ({ r, i })).filter(({ r }) => MATCH[filter.value](r))
 })

@@ -14,10 +14,9 @@ export const useKinds = defineStore('kinds', () => {
     try {
       list.value = await api().kinds()
       error.value = null
+      loaded.value = true
     } catch (e) {
       error.value = (e as Error).message
-    } finally {
-      loaded.value = true
     }
   }
 
@@ -34,10 +33,9 @@ export const usePresets = defineStore('presets', () => {
     try {
       list.value = await api().presets()
       error.value = null
+      loaded.value = true
     } catch (e) {
       error.value = (e as Error).message
-    } finally {
-      loaded.value = true
     }
   }
 

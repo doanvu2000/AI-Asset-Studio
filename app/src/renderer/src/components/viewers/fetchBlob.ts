@@ -1,18 +1,29 @@
 import { blobUrl } from '@/stores/connection'
 
-// Blobs are content-addressed, so a hash always maps to the same bytes.
+// Blobs are content-addressed, so a hash always maps to the same bytes; the cap keeps big Spine JSON from piling up.
 const texts = new Map<string, Promise<string>>()
+const CACHE_MAX = 48
+const FETCH_TIMEOUT_MS = 30_000
 
 export function blobText(hash: string): Promise<string> {
   let p = texts.get(hash)
-  if (!p) {
-    p = fetch(blobUrl(hash)).then((r) => {
+  if (p) {
+    texts.delete(hash)
+    texts.set(hash, p)
+    return p
+  }
+  p = fetch(blobUrl(hash), { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }).then(
+    (r) => {
       if (!r.ok) throw new Error(`Không tải được tệp (HTTP ${r.status})`)
       return r.text()
-    })
-    texts.set(hash, p)
-    p.catch(() => texts.delete(hash))
-  }
+    },
+    (e: Error) => {
+      throw new Error(e.name === 'TimeoutError' ? 'Tải tệp quá lâu, thử lại sau' : `Không tải được tệp: ${e.message}`)
+    }
+  )
+  texts.set(hash, p)
+  p.catch(() => texts.delete(hash))
+  while (texts.size > CACHE_MAX) texts.delete(texts.keys().next().value!)
   return p
 }
 

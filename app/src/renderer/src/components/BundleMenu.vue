@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useId, watch } from 'vue'
 import { onClickOutside, useEventListener } from '@vueuse/core'
-import { ChevronDown, FolderDown, FolderOpen, LoaderCircle } from '@lucide/vue'
-import type { BundleOptions } from '../../../preload/types'
+import { Boxes, ChevronDown, FolderDown, FolderOpen, LoaderCircle } from '@lucide/vue'
+import type { BundleEngine, BundleOptions } from '../../../preload/types'
 import { useAssetFile } from '@/composables/assetFile'
 import { usePresets } from '@/stores/catalog'
 
@@ -34,26 +34,31 @@ watch(
   { immediate: true }
 )
 
-const visible = computed(() => !!opts.value && (opts.value.sprite_sheet || opts.value.files > 1))
-type Item = { id: string; label: string; hint?: string; preset?: string; reveal?: boolean }
+const ENGINES: Record<BundleEngine, { label: string; hint: string }> = {
+  unity: { label: 'Xuất cho Unity', hint: 'Sprite + anim + prefab' },
+  godot: { label: 'Xuất cho Godot', hint: 'SpriteFrames + scene' }
+}
+const engines = computed(() => opts.value?.engines ?? [])
+const hasMenu = computed(() => !!opts.value?.sprite_sheet || engines.value.length > 0)
+const visible = computed(() => !!opts.value && (hasMenu.value || opts.value.files > 1))
+type Item = { id: string; label: string; hint?: string; preset?: string; engine?: BundleEngine; reveal?: boolean; sep?: boolean }
+type Choice = { preset?: string; engine?: BundleEngine }
+const last = ref<Choice | null>(null)
 const items = computed<Item[]>(() => {
   const o = opts.value
-  if (!o?.sprite_sheet) return []
-  const list: Item[] = presets.list.map((p) => ({
-    id: `p-${p.id}`,
-    label: p.name,
-    hint: p.id === o.preset ? 'Đang dùng' : undefined,
-    preset: p.id
-  }))
-  return [...list, { id: 'reveal', label: 'Mở thư mục đã xuất', preset: lastPreset.value, reveal: true }]
+  if (!o || !hasMenu.value) return []
+  const list: Item[] = o.sprite_sheet
+    ? presets.list.map((p) => ({ id: `p-${p.id}`, label: p.name, hint: p.id === o.preset ? 'Đang dùng' : undefined, preset: p.id }))
+    : [{ id: 'raw', label: `Cả ${o.files} tệp` }]
+  engines.value.forEach((e, i) => list.push({ id: `e-${e}`, label: ENGINES[e].label, hint: ENGINES[e].hint, engine: e, sep: i === 0 }))
+  return [...list, { id: 'reveal', label: 'Mở thư mục đã xuất', reveal: true, sep: true }]
 })
-const lastPreset = ref<string | undefined>(undefined)
 const itemId = (i: number): string => `${uid}-it-${i}`
 
 async function show(): Promise<void> {
   const r = button.value?.getBoundingClientRect()
   if (!r) return
-  pos.value = { left: Math.min(r.left, window.innerWidth - 248), top: r.bottom + 4 }
+  pos.value = { left: Math.min(r.left, window.innerWidth - 288), top: r.bottom + 4 }
   active.value = 0
   open.value = true
   await nextTick()
@@ -67,7 +72,7 @@ function close(refocus = true): void {
 }
 
 function onButton(): void {
-  if (!opts.value?.sprite_sheet) return void file.saveBundle(props.stepId, undefined, props.name)
+  if (!hasMenu.value) return void file.saveBundle(props.stepId, undefined, props.name)
   if (open.value) close()
   else void show()
 }
@@ -76,9 +81,12 @@ function choose(i: number): void {
   const it = items.value[i]
   if (!it) return
   close()
-  if (it.reveal) return void file.revealBundle(props.stepId, it.preset ?? opts.value?.preset ?? 'studio', props.name)
-  lastPreset.value = it.preset
-  void file.saveBundle(props.stepId, it.preset, props.name)
+  if (it.reveal) {
+    const c = last.value ?? (opts.value?.sprite_sheet ? { preset: opts.value.preset ?? 'studio' } : {})
+    return void file.revealBundle(props.stepId, c.preset, props.name, c.engine)
+  }
+  last.value = { preset: it.preset, engine: it.engine }
+  void file.saveBundle(props.stepId, it.preset, props.name, it.engine)
 }
 
 function onKey(e: KeyboardEvent): void {
@@ -113,16 +121,16 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
       class="btn btn-plain"
       :class="{ 'btn-icon': compact }"
       :disabled="!!file.busy.value"
-      :aria-haspopup="opts?.sprite_sheet ? 'menu' : undefined"
-      :aria-expanded="opts?.sprite_sheet ? open : undefined"
+      :aria-haspopup="hasMenu ? 'menu' : undefined"
+      :aria-expanded="hasMenu ? open : undefined"
       :aria-label="compact ? 'Xuất thư mục' : undefined"
-      :title="opts?.sprite_sheet ? 'Sprite sheet + từng khung, xếp theo engine' : `Lưu cả ${opts?.files} tệp vào một thư mục`"
+      :title="hasMenu ? 'Xuất cho engine: Unity, Godot hoặc sheet theo preset' : `Lưu cả ${opts?.files} tệp vào một thư mục`"
       @click="onButton"
     >
       <LoaderCircle v-if="file.busy.value === 'bundle'" class="spin" />
       <FolderDown v-else />
-      <span v-if="!compact">{{ opts?.sprite_sheet ? 'Xuất cho engine' : 'Xuất thư mục…' }}</span>
-      <ChevronDown v-if="opts?.sprite_sheet && !compact" :size="13" class="chev" :class="{ up: open }" aria-hidden="true" />
+      <span v-if="!compact">{{ hasMenu ? 'Xuất cho engine' : 'Xuất thư mục…' }}</span>
+      <ChevronDown v-if="hasMenu && !compact" :size="13" class="chev" :class="{ up: open }" aria-hidden="true" />
     </button>
     <Teleport to="body">
       <Transition name="menu">
@@ -132,14 +140,14 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
           class="b-menu"
           role="menu"
           tabindex="-1"
-          aria-label="Xuất sprite sheet cho engine"
+          aria-label="Xuất cho engine"
           :aria-activedescendant="itemId(active)"
           :style="{ left: `${pos.left}px`, top: `${pos.top}px` }"
           @keydown="onKey"
         >
-          <p class="b-head caption">Sheet + từng khung, thứ tự hướng theo engine</p>
+          <p class="b-head caption">{{ opts?.sprite_sheet ? 'Sheet + từng khung, thứ tự hướng theo engine' : 'Xuất thư mục' }}</p>
           <template v-for="(it, i) in items" :key="it.id">
-            <hr v-if="it.reveal" class="b-sep" />
+            <hr v-if="it.sep" class="b-sep" />
             <div
               :id="itemId(i)"
               role="menuitem"
@@ -149,6 +157,7 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
               @click="choose(i)"
             >
               <FolderOpen v-if="it.reveal" :size="14" aria-hidden="true" />
+              <Boxes v-else-if="it.engine" :size="14" aria-hidden="true" />
               <span class="b-label">{{ it.reveal ? it.label : `${it.label}…` }}</span>
               <span v-if="it.hint" class="b-hint">{{ it.hint }}</span>
             </div>
@@ -171,7 +180,7 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
 .b-menu {
   position: fixed;
   z-index: 60;
-  width: 240px;
+  width: 280px;
   padding: 5px;
   border-radius: var(--r-md);
   background: var(--bg-elevated);

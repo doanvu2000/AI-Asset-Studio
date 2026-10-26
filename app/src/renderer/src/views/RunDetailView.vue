@@ -14,7 +14,7 @@ import AssetViewer from '@/components/viewers/AssetViewer.vue'
 import AssetActions from '@/components/AssetActions.vue'
 import ViewsReport from '@/components/ViewsReport.vue'
 import MeshReport from '@/components/MeshReport.vue'
-import { featuredAsset, isImage, viewsFor } from '@/components/viewers/detect'
+import { featuredAsset, isImage, outputBlobs, viewsFor } from '@/components/viewers/detect'
 import Lightbox from '@/components/Lightbox.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -102,7 +102,6 @@ onBeforeUnmount(() => runs.closeDetail(props.id))
 
 const run = computed(() => runs.runs.get(props.id))
 const steps = computed(() => {
-  void runs.steps
   return runs.stepsOf(props.id)
 })
 const active = computed(() => !!run.value && RUN_ACTIVE.has(run.value.status))
@@ -249,7 +248,7 @@ const selBlobs = computed(() => (sel.value ? [...Object.values(sel.value.outputs
 const selFeatured = computed(() => {
   const s = sel.value
   if (!s || selAwaiting.value || hero.value?.step.id === s.id) return null
-  return STEP_DONE_OK.has(s.status) ? featuredAsset(Object.values(s.outputs).flat()) : null
+  return STEP_DONE_OK.has(s.status) ? featuredAsset(outputBlobs(s.outputs)) : null
 })
 
 const finalStep = computed(() =>
@@ -280,11 +279,11 @@ const heroVariants = computed(() => {
   const walk = ok('walk')
   if (still && walk && walk.kind === 'op.sheet') {
     return [
-      { label: 'Đứng yên', step: still, blobs: Object.values(still.outputs).flat() },
-      { label: 'Đi bộ', step: walk, blobs: Object.values(walk.outputs).flat(), bundle: 'walk' }
+      { label: 'Đứng yên', step: still, blobs: outputBlobs(still.outputs) },
+      { label: 'Đi bộ', step: walk, blobs: outputBlobs(walk.outputs), bundle: 'walk' }
     ]
   }
-  return [{ label: '', step: s, blobs: Object.values(s.outputs).flat() }]
+  return [{ label: '', step: s, blobs: outputBlobs(s.outputs) }]
 })
 const heroPick = ref(0)
 watch(() => props.id, () => (heroPick.value = 0))
@@ -565,7 +564,7 @@ function segTitle(s: StepRow): string {
             </div>
 
             <ViewsReport v-if="sel.kind === 'views.qwen_checked' && sel.outputs.report?.[0]" :report="sel.outputs.report[0]" />
-            <MeshReport v-if="sel.kind === 'mesh.checked' && sel.outputs.report?.[0]" :report="sel.outputs.report[0]" />
+            <MeshReport v-if="(sel.kind === 'mesh.checked' || sel.outputs.report?.[0]?.name === 'mesh_report.json') && sel.outputs.report?.[0]" :report="sel.outputs.report[0]" />
 
             <div v-for="[name, list] in selInputs" :key="`i-${name}`" class="group">
               <h3 class="section-label">{{ portName(name) }} đầu vào</h3>

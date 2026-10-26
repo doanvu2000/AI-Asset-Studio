@@ -48,7 +48,8 @@ export interface StudioApi {
   health(): Promise<{ ok: boolean; version: string }>
   resources(): Promise<ResourceHealth[]>
   startResource(name: string): Promise<ResourceHealth>
-  stopResource(name: string): Promise<ResourceHealth>
+  /** `force` stops a tool even while it is busy (core answers 409 resource_busy otherwise). */
+  stopResource(name: string, force?: boolean): Promise<ResourceHealth>
   recipes(): Promise<RecipeInfo[]>
   startRun(body: StartRunBody): Promise<{ run_id: string }>
   listRuns(q?: ListRunsQuery): Promise<RunRow[]>
@@ -87,19 +88,26 @@ function query(params: Record<string, string | number | undefined>): string {
   return s ? `?${s}` : ''
 }
 
+const TIMEOUT_MS = 20_000
+// Uploads, Claude translation and batch fan-out legitimately take longer than a plain read.
+const SLOW_TIMEOUT_MS = 180_000
+
 export function createHttpApi(baseUrl: string, token: string): StudioApi {
   const auth = { Authorization: `Bearer ${token}` }
 
-  async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async function call<T>(method: string, path: string, body?: unknown, timeoutMs = TIMEOUT_MS): Promise<T> {
     let res: Response
     try {
       res = await fetch(`${baseUrl}${path}`, {
         method,
         headers: body instanceof FormData ? auth : { ...auth, 'Content-Type': 'application/json' },
-        body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body)
+        body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
+        signal: AbortSignal.timeout(timeoutMs)
       })
     } catch (e) {
-      devlog('warn', `api ${method} ${path} → network: ${(e as Error).message}`)
+      const err = e as Error
+      devlog('warn', `api ${method} ${path} → network: ${err.message}`)
+      if (err.name === 'TimeoutError') throw new ApiError('timeout', 'Core phản hồi quá lâu, thử lại sau', 0)
       throw new ApiError('network', 'Không kết nối được tới core', 0)
     }
     if (!res.ok) {
@@ -125,10 +133,10 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
   return {
     health: () => call('GET', '/api/health'),
     resources: () => call('GET', '/api/resources'),
-    startResource: (name) => call('POST', `/api/resources/${enc(name)}/start`),
-    stopResource: (name) => call('POST', `/api/resources/${enc(name)}/stop`),
+    startResource: (name) => call('POST', `/api/resources/${enc(name)}/start`, undefined, SLOW_TIMEOUT_MS),
+    stopResource: (name, force) => call('POST', `/api/resources/${enc(name)}/stop${force ? '?force=true' : ''}`, undefined, SLOW_TIMEOUT_MS),
     recipes: () => call('GET', '/api/recipes'),
-    startRun: (body) => call('POST', '/api/runs', body),
+    startRun: (body) => call('POST', '/api/runs', body, SLOW_TIMEOUT_MS),
     listRuns: (q = {}) => call('GET', `/api/runs${query({ limit: q.limit, before: q.before, status: q.status, batch_id: q.batch_id, batched: q.batched ? 'true' : undefined })}`),
     getRun: (id) => call('GET', `/api/runs/${enc(id)}`),
     cancelRun: (id) => call('POST', `/api/runs/${enc(id)}/cancel`),
@@ -138,7 +146,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     uploadBlob(file) {
       const fd = new FormData()
       fd.append('file', file, file.name)
-      return call('POST', '/api/blobs', fd)
+      return call('POST', '/api/blobs', fd, SLOW_TIMEOUT_MS)
     },
     versions: (q = {}) => call('GET', `/api/versions${query({ run_id: q.run_id, status: q.status })}`),
     setVersionStatus: (id, action) => call('POST', `/api/versions/${enc(id)}/${action}`),
@@ -149,13 +157,13 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     validateRecipe: (body) => call('POST', '/api/recipes/validate', body),
     saveRecipe: (id, body) => call('PUT', `/api/recipes/${enc(id)}`, body),
     deleteRecipe: (id) => call('DELETE', `/api/recipes/${enc(id)}`),
-    startBatch: (body) => call('POST', '/api/batches', body),
-    translate: (texts) => call('POST', '/api/translate', { texts }),
+    startBatch: (body) => call('POST', '/api/batches', body, SLOW_TIMEOUT_MS),
+    translate: (texts) => call('POST', '/api/translate', { texts }, SLOW_TIMEOUT_MS),
     presets: () => call('GET', '/api/presets'),
     savePreset: (p) => call('PUT', `/api/presets/${enc(p.id)}`, p),
     deletePreset: (id) => call('DELETE', `/api/presets/${enc(id)}`),
-    toolPaths: (versions = true) => call('GET', `/api/settings/tools${query({ versions: versions ? undefined : 'false' })}`),
+    toolPaths: (versions = true) => call('GET', `/api/settings/tools${query({ versions: versions ? undefined : 'false' })}`, undefined, SLOW_TIMEOUT_MS),
     saveToolPaths: (paths) => call('PUT', '/api/settings/tools', { paths }),
-    diagnostics: () => call('GET', '/api/diagnostics')
+    diagnostics: () => call('GET', '/api/diagnostics', undefined, SLOW_TIMEOUT_MS)
   }
 }

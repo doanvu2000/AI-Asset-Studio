@@ -30,6 +30,7 @@ import {
   type VersionStatus
 } from '../types'
 import { renderArt, renderPreviewB64 } from './art'
+import { renderWalkSheet } from './walkSheet'
 import { MOCK_KINDS, MOCK_PRESETS, MOCK_TOOLS, mockValidate, stepDeps } from './catalog'
 import sampleGlbUrl from './assets/sample-prop.glb?url'
 import sheetPngUrl from './assets/sample-sheet.png?url'
@@ -343,6 +344,30 @@ export class MockCore implements StudioApi, EventStream {
     return ref
   }
 
+  private putBlob(blob: Blob, name: string, w?: number, h?: number): BlobRef {
+    const ref: BlobRef = { hash: hex(), mime: blob.type || 'application/octet-stream', size: blob.size, width: w ?? null, height: h ?? null, name }
+    this.blobs.set(ref.hash, { url: URL.createObjectURL(blob), seed: 7, ref })
+    return ref
+  }
+
+  private async walkOutputs(): Promise<Outputs> {
+    const w = await renderWalkSheet()
+    const json = (o: unknown): Blob => new Blob([JSON.stringify(o, null, 1)], { type: 'application/json' })
+    const mw = w.meta.width as number
+    const mh = w.meta.height as number
+    return {
+      sheet: [this.putBlob(w.color, 'knight_walk_sheet.png', mw, mh)],
+      meta: [this.putBlob(json(w.meta), 'sheet.json')],
+      normal_sheet: [this.putBlob(w.normal, 'knight_walk_normal_sheet.png', mw, mh)],
+      normal_meta: [this.putBlob(json(w.normalMeta), 'normal_sheet.json')]
+    }
+  }
+
+  private meshReport(): BlobRef {
+    const report = { attempts: [{ attempt: 1, hash: 'mock', error: 'blender_crashed' }], min_iou: 0.6, checked: true, passed: false, skipped: true, status: 'skipped' }
+    return this.putBlob(new Blob([JSON.stringify(report)], { type: 'application/json' }), 'mesh_report.json')
+  }
+
   private async loadSamples(): Promise<Samples> {
     const [glb, sheet, sheetMeta, skeleton, atlas, texture, setup] = await Promise.all([
       this.sampleBlob(sampleGlbUrl, 'crystal_pedestal_clean.glb', 'model/gltf-binary'),
@@ -478,6 +503,14 @@ export class MockCore implements StudioApi, EventStream {
     const x = (this.samples = await this.loadSamples())
     const propOuts: Record<string, Outputs> = { concept: { images: pool.slice(6, 10) }, pick: { images: [pool[6]!] }, mesh: { meshes: [x.glb] }, cleanup: { meshes: [x.glb] }, validate: { meshes: [x.glb] }, turntable: { images: pool.slice(0, 6) } }
     this.seedShowcase('prop-3d', 'Bệ pha lê', t0 - 900, propOuts, [x.glb])
+    const walk = await this.walkOutputs()
+    this.seedShowcase(
+      'sprite-8dir-3d',
+      'Hiệp sĩ đi bộ (3 clip + normal)',
+      t0 - 1200,
+      { concept: { images: pool.slice(10, 14) }, pick: { images: [pool[10]!] }, mesh: { meshes: [x.glb], report: [this.meshReport()] }, cleanup: { meshes: [x.glb] }, render: { images: pool.slice(0, 8) }, down: { images: pool.slice(0, 8) }, sheet: walk },
+      Object.values(walk).flat()
+    )
     this.seedShowcase('sprite-8dir-3d', 'Hiệp sĩ 8 hướng', t0 - 1500, { concept: { images: pool.slice(10, 14) }, pick: { images: [pool[10]!] }, mesh: { meshes: [x.glb] }, cleanup: { meshes: [x.glb] }, render: { images: pool.slice(0, 8) }, down: { images: pool.slice(0, 8) }, sheet: { sheet: [x.sheet], meta: [x.sheetMeta] } }, [x.sheet, x.sheetMeta])
     const spineOuts: Record<string, Outputs> = { concept: { images: pool.slice(2, 6) }, pick: { images: [pool[2]!] }, rmbg: { images: [pool[2]!] }, parts: { preview: [pool[3]!] }, layers: { preview: [pool[4]!] }, export: { skeleton: [x.skeleton], atlas: [x.atlas], texture: [x.texture], preview: [x.setup] } }
     this.seedShowcase('spine-character', 'Hiệp sĩ Spine', t0 - 2100, spineOuts, [x.skeleton, x.atlas, x.texture, x.setup])
@@ -763,9 +796,11 @@ export class MockCore implements StudioApi, EventStream {
     return clone(starting)
   }
 
-  async stopResource(name: string): Promise<ResourceHealth> {
+  async stopResource(name: string, force = false): Promise<ResourceHealth> {
     const r = this.resourcesMap.get(name)
     if (!r) throw new ApiError('not_found', `Không có tài nguyên ${name}`, 404)
+    const busy = [...this.steps.values()].some((s) => s.status === 'running' && s.lane === (name === 'comfyui' ? 'gpu' : name))
+    if (busy && !force) throw new ApiError('resource_busy', `${name} đang chạy một bước`, 409)
     const down: ResourceHealth = { ...r, status: 'down', detail: { ...r.detail, pid: undefined } }
     this.resourcesMap.set(name, down)
     this.emit('resource.updated', down)

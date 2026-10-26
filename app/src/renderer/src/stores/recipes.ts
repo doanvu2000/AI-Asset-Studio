@@ -13,10 +13,9 @@ export const useRecipes = defineStore('recipes', () => {
     try {
       list.value = await api().recipes()
       error.value = null
+      loaded.value = true
     } catch (e) {
       error.value = (e as Error).message
-    } finally {
-      loaded.value = true
     }
   }
 

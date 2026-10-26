@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Check, ChevronLeft, ChevronRight, X } from '@lucide/vue'
 import { useEventListener } from '@vueuse/core'
 import type { BlobRef, VersionStatus } from '@/api/types'
 import { bytes } from '@/composables/format'
 import { useReducedMotion } from '@/composables/motion'
+import { useFocusTrap } from '@/composables/focusTrap'
 import BlobImage from './BlobImage.vue'
 import AssetActions from './AssetActions.vue'
 import AssetViewer from './viewers/AssetViewer.vue'
@@ -31,8 +32,11 @@ const props = withDefaults(
   }>(),
   { siblings: () => [] }
 )
-const emit = defineEmits<{ close: []; prev: []; next: []; review: [action: 'approve' | 'reject'] }>()
+const emit = defineEmits<{ close: []; prev: []; next: []; review: [action: 'approve' | 'reject', advance: boolean] }>()
 const closeBtn = ref<HTMLButtonElement | null>(null)
+const scrim = ref<HTMLElement | null>(null)
+const isOpen = computed(() => !!props.blob)
+const trap = useFocusTrap(scrim, isOpen, closeBtn)
 
 const localHash = ref<string | null>(null)
 const external = computed(() => props.count !== undefined)
@@ -81,11 +85,17 @@ useEventListener(
   'keydown',
   (e: KeyboardEvent) => {
     if (!props.blob) return
+    if (trap.onTab(e)) return
     const t = e.target as HTMLElement | null
     if (t && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return
+    // A focused viewer (sprite sheet) owns the arrow keys for its own frames and rows.
+    if (e.key !== 'Escape' && t?.closest('[data-own-keys]')) return
+    const plainKey = !e.ctrlKey && !e.metaKey && !e.altKey
     if (e.key === 'Escape') emit('close')
     else if (e.key === 'ArrowLeft' && canNav.value) step(-1)
     else if (e.key === 'ArrowRight' && canNav.value) step(1)
+    else if (plainKey && props.status && (e.key === 'a' || e.key === 'A')) emit('review', 'approve', true)
+    else if (plainKey && props.status && (e.key === 'r' || e.key === 'R')) emit('review', 'reject', true)
     else return
     e.preventDefault()
     e.stopPropagation()
@@ -95,10 +105,9 @@ useEventListener(
 
 watch(
   () => props.blob?.hash,
-  (h, old) => {
+  () => {
     localHash.value = null
     mode.value = 0
-    if (h && !old) void nextTick(() => closeBtn.value?.focus())
   }
 )
 watch(localHash, () => (mode.value = 0))
@@ -128,7 +137,7 @@ function growFromOrigin(el: Element): void {
 <template>
   <Teleport to="body">
     <Transition name="lb" @enter="growFromOrigin">
-      <div v-if="shown && view" class="scrim" role="dialog" aria-modal="true" :aria-label="heading" @click.self="emit('close')">
+      <div v-if="shown && view" ref="scrim" class="scrim" role="dialog" aria-modal="true" :aria-label="heading" @click.self="emit('close')">
         <button v-if="canNav" type="button" class="nav prev" :disabled="atStart" aria-label="Trước (←)" title="Trước (←)" @click="step(-1)">
           <ChevronLeft :size="22" />
         </button>
@@ -162,11 +171,11 @@ function growFromOrigin(el: Element): void {
                 </button>
               </div>
               <div v-if="status" class="review" role="group" aria-label="Duyệt">
-                <button type="button" class="btn rv ok" :class="{ on: status === 'approved' }" :aria-pressed="status === 'approved'" @click="emit('review', 'approve')">
+                <button type="button" class="btn rv ok" :class="{ on: status === 'approved' }" :aria-pressed="status === 'approved'" title="Duyệt (A)" @click="emit('review', 'approve', false)">
                   <Check />
                   {{ status === 'approved' ? 'Đã duyệt' : 'Duyệt' }}
                 </button>
-                <button type="button" class="btn rv no" :class="{ on: status === 'rejected' }" :aria-pressed="status === 'rejected'" @click="emit('review', 'reject')">
+                <button type="button" class="btn rv no" :class="{ on: status === 'rejected' }" :aria-pressed="status === 'rejected'" title="Từ chối (R)" @click="emit('review', 'reject', false)">
                   <X />
                   {{ status === 'rejected' ? 'Đã từ chối' : 'Từ chối' }}
                 </button>

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ART } from '@/assets/art'
-import { ExternalLink, Plus } from '@lucide/vue'
+import { CloudOff, ExternalLink, LoaderCircle, Plus, RotateCw } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
 import BlobThumb from '@/components/BlobThumb.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -16,12 +16,18 @@ import RelTime from '@/components/RelTime.vue'
 import ResizeHandle from '@/components/ResizeHandle.vue'
 import { usePaneWidth } from '@/composables/paneSize'
 import { runMeta } from '@/stores/batches'
+import { useConnection } from '@/stores/connection'
 
 const gates = useGates()
 const runs = useRuns()
 const route = useRoute()
 const router = useRouter()
 const queueW = usePaneWidth('gates-queue', 280)
+const conn = useConnection()
+
+function retryLoad(): void {
+  void gates.load().catch(() => undefined)
+}
 
 const batchId = computed(() => (route.query.batch as string | undefined) ?? null)
 const queue = computed<GateItem[]>(() => {
@@ -73,7 +79,20 @@ function instruction(g: GateItem): string {
 <template>
   <div class="view">
     <PageHeader title="Cần duyệt" :subtitle="gates.count ? `${gates.count} bước đang chờ` : 'Không có gì đang chờ'" />
-    <EmptyState v-if="!current" class="gates-empty" :art="ART.emptyGates" :art-size="176" title="Hộp duyệt trống" text="Khi một lượt chạy cần bạn chọn ảnh hoặc duyệt, nó sẽ xuất hiện ở đây.">
+    <div v-if="!current && !gates.loaded && !gates.error && conn.online" class="gates-empty gates-loading" role="status">
+      <LoaderCircle class="spin" :size="22" />
+      <p class="secondary">Đang tải hộp duyệt…</p>
+    </div>
+    <EmptyState
+      v-else-if="!current && (gates.error || !conn.online)"
+      class="gates-empty"
+      :icon="CloudOff"
+      :title="conn.online ? 'Không tải được hộp duyệt' : 'Chưa kết nối tới core'"
+      :text="gates.error ?? 'Danh sách chờ duyệt sẽ hiện khi core kết nối lại.'"
+    >
+      <button v-if="conn.online" class="btn" @click="retryLoad"><RotateCw /> Thử lại</button>
+    </EmptyState>
+    <EmptyState v-else-if="!current" class="gates-empty" :art="ART.emptyGates" :art-size="176" title="Hộp duyệt trống" text="Khi một lượt chạy cần bạn chọn ảnh hoặc duyệt, nó sẽ xuất hiện ở đây.">
       <RouterLink to="/runs" class="btn">Xem lượt chạy</RouterLink>
       <RouterLink to="/new" class="btn btn-primary"><Plus /> Tạo asset mới</RouterLink>
     </EmptyState>
@@ -126,6 +145,15 @@ function instruction(g: GateItem): string {
   flex: 1;
   align-content: center;
   padding-bottom: 72px;
+}
+.gates-loading {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  color: var(--text-3);
+}
+.spin {
+  animation: spin 1s linear infinite;
 }
 .split {
   flex: 1;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { BookOpen, Copy, Pencil, Plus } from '@lucide/vue'
+import { BookOpen, Copy, Pencil, Plus, RotateCw } from '@lucide/vue'
 import type { RecipeInfo } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -39,14 +39,16 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
     <div class="scroll">
       <div class="stack">
         <EmptyState
-          v-if="recipes.loaded && !recipes.list.length"
+          v-if="(recipes.loaded || recipes.error) && !recipes.list.length"
           :icon="BookOpen"
-          title="Chưa có quy trình nào"
+          :title="recipes.error ? 'Không tải được quy trình' : 'Chưa có quy trình nào'"
           :text="recipes.error ?? 'Tạo một quy trình mới, hoặc kiểm tra kết nối tới core.'"
           action-label="Quy trình mới"
           action-to="/recipes/new"
           :action-icon="Plus"
-        />
+        >
+          <button v-if="recipes.error" class="btn" @click="recipes.load(true)"><RotateCw /> Thử lại</button>
+        </EmptyState>
         <div v-else v-auto-animate class="grid">
           <article v-for="r in sorted" :key="r.id" class="rc card">
             <RouterLink :to="`/recipes/${encodeURIComponent(r.id)}`" class="rc-main">

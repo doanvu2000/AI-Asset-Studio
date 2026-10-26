@@ -37,10 +37,10 @@ export const useResources = defineStore('resources', () => {
     loaded.value = true
   }
 
-  async function toggle(name: string, start: boolean): Promise<void> {
+  async function toggle(name: string, start: boolean, force = false): Promise<void> {
     pending.value.add(name)
     try {
-      const r = start ? await api().startResource(name) : await api().stopResource(name)
+      const r = start ? await api().startResource(name) : await api().stopResource(name, force)
       upsert(r)
       commit()
     } finally {

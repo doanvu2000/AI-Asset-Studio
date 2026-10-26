@@ -18,7 +18,7 @@ withDefaults(defineProps<{ view: AssetView; compact?: boolean }>(), { compact: f
 
 <template>
   <GlbViewer v-if="view.kind === 'glb'" :key="view.blob.hash" :blob="view.blob" :compact="compact" />
-  <SpriteSheetViewer v-else-if="view.kind === 'sprite' && view.sheet && view.meta" :sheet="view.sheet" :meta="view.meta" :compact="compact" />
+  <SpriteSheetViewer v-else-if="view.kind === 'sprite' && view.sheet && view.meta" :sheet="view.sheet" :meta="view.meta" :normal="view.normal" :compact="compact" />
   <SpineViewer v-else-if="view.kind === 'spine' && view.spine" :spine="view.spine" :compact="compact" />
   <TextViewer v-else-if="view.kind === 'text'" :blob="view.blob" />
   <div v-else-if="view.kind === 'image'" class="vw checker img">

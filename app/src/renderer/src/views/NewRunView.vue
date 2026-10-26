@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, BookOpen, Languages, Layers, LoaderCircle, Play, Timer } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, BookOpen, Languages, Layers, LoaderCircle, Play, RotateCw, Timer } from '@lucide/vue'
 import type { BlobRef, RecipeInfo, RecipeInputSpec } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import LaneTag from '@/components/LaneTag.vue'
@@ -14,6 +14,7 @@ import TweenNumber from '@/components/TweenNumber.vue'
 import { useRecipes } from '@/stores/recipes'
 import { useRuns } from '@/stores/runs'
 import { api, useConnection } from '@/stores/connection'
+import type { ApiError } from '@/api/client'
 import { useToasts } from '@/stores/toasts'
 import { stepName } from '@/composables/format'
 import { RECIPE_GROUP_LABEL, RECOMMENDED_RECIPES, recipeGroup, recipePitch, type RecipeGroup } from '@/assets/art'
@@ -279,15 +280,25 @@ const translatable = computed(
 )
 const translating = ref<string | null>(null)
 
+function translateError(e: unknown): string {
+  const err = e as Partial<ApiError>
+  if (err.code === 'claude_timeout' || err.status === 504) return 'Claude dịch quá lâu nên đã dừng, thử lại sau ít phút.'
+  if (err.status === 502) return 'Claude chưa dịch được (dịch vụ lỗi hoặc mất mạng).'
+  if (err.code === 'timeout' || err.code === 'network') return `Không dịch được: ${(e as Error).message}.`
+  return `Không dịch được: ${(e as Error).message ?? 'lỗi không rõ'}.`
+}
+
 async function translateField(name: string): Promise<void> {
   const text = String(values[name] ?? '')
   if (!hasVi(text) || translating.value) return
   translating.value = name
   try {
     const res = await api().translate([text])
-    if (String(values[name] ?? '') === text) values[name] = res.texts[0] ?? text
+    const out = res.texts?.[0]
+    if (typeof out !== 'string' || !out.trim()) throw new Error('Core không trả bản dịch')
+    if (String(values[name] ?? '') === text) values[name] = out
   } catch (e) {
-    toasts.error(e, 'Không dịch được')
+    toasts.push(translateError(e), 'error', 6000)
   } finally {
     translating.value = null
   }
@@ -298,10 +309,16 @@ async function toEnglish(texts: string[]): Promise<string[]> {
   translating.value = '*'
   try {
     const res = await api().translate(texts)
-    toasts.push('Đã dịch prompt sang tiếng Anh', 'success', 2200)
-    return res.texts
+    const out = texts.map((t, i) => {
+      const r = res.texts?.[i]
+      return typeof r === 'string' && r.trim() ? r : t
+    })
+    const missing = texts.filter((t, i) => hasVi(t) && out[i] === t).length
+    if (missing) toasts.push(`${missing} prompt chưa dịch được, giữ tiếng Việt`, 'info', 3200)
+    else toasts.push('Đã dịch prompt sang tiếng Anh', 'success', 2200)
+    return out
   } catch (e) {
-    toasts.error(e, 'Không dịch được, chạy bằng tiếng Việt')
+    toasts.push(`${translateError(e)} Chạy bằng tiếng Việt.`, 'error', 6000)
     return texts
   } finally {
     translating.value = null
@@ -323,15 +340,17 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
     <div class="scroll">
       <!-- Picker -->
       <div v-if="!selected" class="picker stack">
-        <p v-if="!recipes.loaded" class="caption">Đang tải quy trình…</p>
+        <p v-if="!recipes.loaded && !recipes.error" class="caption">Đang tải quy trình…</p>
         <EmptyState
           v-else-if="!recipes.list.length"
           :icon="BookOpen"
-          title="Chưa có quy trình nào"
+          :title="recipes.error ? 'Không tải được quy trình' : 'Chưa có quy trình nào'"
           :text="recipes.error ?? 'Core chưa nạp quy trình nào. Tạo một quy trình mới để bắt đầu.'"
           action-label="Quy trình mới"
           action-to="/recipes/new"
-        />
+        >
+          <button v-if="recipes.error" class="btn" @click="recipes.load(true)"><RotateCw /> Thử lại</button>
+        </EmptyState>
         <template v-else>
           <button v-if="lastRecipe && selectedId === null" class="resume card" @click="pick(lastRecipe.id)">
             <RecipeThumb :id="lastRecipe.id" :size="40" />

@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useToasts } from '@/stores/toasts'
+import type { BundleEngine } from '../../../preload/types'
 
 export type AssetBusy = 'save' | 'reveal' | 'copy' | 'bundle' | null
 
@@ -59,13 +60,13 @@ export function useAssetFile() {
     bridge.startDrag(hash, name)
   }
 
-  async function saveBundle(stepId: string, preset?: string, name?: string): Promise<void> {
-    const dest = await run('bundle', () => bridge!.saveBundle(stepId, preset, name), 'Không xuất được thư mục')
+  async function saveBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine): Promise<void> {
+    const dest = await run('bundle', () => bridge!.saveBundle(stepId, preset, name, engine), 'Không xuất được thư mục')
     if (dest) toasts.push(`Đã xuất thư mục ${baseName(dest)}`, 'success', 3200)
   }
 
-  async function revealBundle(stepId: string, preset?: string, name?: string): Promise<void> {
-    await run('bundle', () => bridge!.revealBundle(stepId, preset, name), 'Không mở được thư mục')
+  async function revealBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine): Promise<void> {
+    await run('bundle', () => bridge!.revealBundle(stepId, preset, name, engine), 'Không mở được thư mục')
   }
 
   return { available: !!bridge, busy, copied, saveAs, reveal, copyPath, prepare, startDrag, saveBundle, revealBundle }

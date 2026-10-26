@@ -26,7 +26,10 @@ export function exportName(v: Pick<VersionRow, 'asset_name' | 'blob'>): string |
 export const useVersions = defineStore('versions', () => {
   const map = shallowRef(new Map<string, VersionRow>())
   const loaded = ref(false)
+  const error = ref<string | null>(null)
   let dirty = false
+  // Ids upserted by live events while a snapshot is in flight; their current row is newer than the snapshot's.
+  const inflight = new Set<Set<string>>()
 
   const list = computed(() => [...map.value.values()].sort((a, b) => b.created_at - a.created_at))
   const draftCount = computed(() => list.value.filter((v) => v.status === 'draft').length)
@@ -38,6 +41,7 @@ export const useVersions = defineStore('versions', () => {
 
   function upsert(v: VersionRow): void {
     map.value.set(v.id, v)
+    for (const t of inflight) t.add(v.id)
     dirty = true
   }
 
@@ -47,11 +51,25 @@ export const useVersions = defineStore('versions', () => {
   }
 
   async function load(): Promise<void> {
-    const rows = await api().versions()
-    const next = new Map<string, VersionRow>()
-    for (const v of rows) next.set(v.id, v)
-    map.value = next
-    loaded.value = true
+    const live = new Set<string>()
+    inflight.add(live)
+    try {
+      const rows = await api().versions()
+      const next = new Map<string, VersionRow>()
+      for (const v of rows) next.set(v.id, v)
+      for (const id of live) {
+        const cur = map.value.get(id)
+        if (cur) next.set(id, cur)
+      }
+      map.value = next
+      loaded.value = true
+      error.value = null
+    } catch (e) {
+      error.value = (e as Error).message
+      throw e
+    } finally {
+      inflight.delete(live)
+    }
   }
 
   async function setStatus(id: string, action: 'approve' | 'reject'): Promise<void> {
@@ -76,5 +94,5 @@ export const useVersions = defineStore('versions', () => {
     if (failed) throw failed.reason
   }
 
-  return { map, list, byHash, draftCount, loaded, upsert, commit, load, setStatus, setStatusMany }
+  return { map, list, byHash, draftCount, loaded, error, upsert, commit, load, setStatus, setStatusMany }
 })
