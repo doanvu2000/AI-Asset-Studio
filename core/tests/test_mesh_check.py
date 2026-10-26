@@ -107,8 +107,34 @@ async def test_never_good_keeps_best_or_fails(tmp_path: Path) -> None:
 
 
 async def test_render_error_fails_open(tmp_path: Path) -> None:
-    gen, ctx, res = await run_mesh(tmp_path, [False], blender=FakeBlender(fail=True))
-    assert len(gen.calls) == 1 and report_of(ctx, res)["attempts"][0]["error"] == "blender_crashed"
+    gen, ctx, res = await run_mesh(tmp_path, [False], blender=FakeBlender(fail=True), on_fail="fail")
+    rep = report_of(ctx, res)
+    assert len(gen.calls) == 1 and rep["attempts"][0]["error"] == "blender_crashed"
+    assert rep["skipped"] and not rep["passed"] and rep["status"] == "skipped"
+    assert res.meta["check"] == "skipped" and res.meta["skipped"] is True
+
+
+async def test_comfy_vram_freed_before_check_render(tmp_path: Path) -> None:
+    order: list[str] = []
+
+    class Comfy:
+        async def free(self) -> None:
+            order.append("free")
+
+    class Blender(FakeBlender):
+        async def call(self, cmd: str, params: dict[str, Any], **kw: Any) -> dict[str, Any]:
+            order.append("render")
+            return await super().call(cmd, params, **kw)
+
+    gen = FakeMesh([True])
+    reg = ExecutorRegistry()
+    reg.register(gen)
+    ex = CheckedMeshExecutor(reg.resolve, Comfy(), Blender())
+    ctx = FakeCtx(tmp_path)
+    images = [await ctx.blobs.put_bytes(png(figure(width=w)), name=f"{i}.png")
+              for i, w in enumerate((120, 70, 120, 70))]
+    res = await ex.run(ctx, {"workflow": "fake_mesh", "azimuths": AZIMUTHS}, {"image": images})
+    assert order == ["free", "render"] and res.meta["check"] == "passed"
 
 
 async def test_unmapped_images_not_scored(tmp_path: Path) -> None:

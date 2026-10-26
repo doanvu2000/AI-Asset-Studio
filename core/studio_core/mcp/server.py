@@ -171,7 +171,7 @@ class StudioTools:
             raise ToolError(f"upload {p}: {e.code}: {e.message}") from e
 
     async def start_run(self, recipe: str, inputs: dict[str, Any], title: str | None,
-                        gate_policy: GatePolicy) -> dict[str, Any]:
+                        gate_policy: GatePolicy, project_id: str | None = None) -> dict[str, Any]:
         r = await self._recipe(recipe)
         specs = r.get("inputs", {})
         unknown = sorted(set(inputs) - set(specs))
@@ -183,9 +183,23 @@ class StudioTools:
                 values[name] = await self._blob_input(name, values[name])
         body = {"recipe_id": recipe, "inputs": values, "title": title or "",
                 "params": {META_KEY: {"source": "mcp", "gate_policy": gate_policy}}}
+        if project_id:
+            body["project_id"] = _safe_id(project_id, "project_id")
         res = await self._call("POST", "/api/runs", json=body)
-        return {"run_id": res["run_id"], "recipe": recipe, "gate_policy": gate_policy,
-                "next": "call wait_run(run_id)"}
+        out = {"run_id": res["run_id"], "recipe": recipe, "gate_policy": gate_policy,
+               "next": "call wait_run(run_id)"}
+        if project_id:
+            out["project_id"] = project_id
+        return out
+
+    async def list_projects(self, include_archived: bool) -> dict[str, Any]:
+        rows = await self._call("GET", "/api/projects", params={"archived": include_archived, "summary": True})
+        return {"projects": [{
+            "project_id": p["id"], "name": p["name"], "description": p.get("description", ""),
+            "archived": p.get("archived", False), "style": p.get("style", {}),
+            "runs_total": (p.get("summary") or {}).get("runs_total", 0),
+            "approved_versions": (p.get("summary") or {}).get("approved_versions", 0),
+        } for p in rows]}
 
     async def _gate_files(self, run_id: str, step: dict[str, Any]) -> list[dict[str, Any]]:
         out = []
@@ -454,14 +468,22 @@ def build_server(link: CoreLink) -> MCPServer:
 
     @mcp.tool(annotations=acts)
     async def start_run(recipe: str, inputs: dict[str, Any], title: str | None = None,
-                        gate_policy: GatePolicy = "human") -> dict[str, Any]:
+                        gate_policy: GatePolicy = "human", project_id: str | None = None) -> dict[str, Any]:
         """Start a recipe run and return its run_id immediately (use wait_run to follow it).
 
         inputs: {input_name: value}; image/mesh inputs take absolute file paths (uploaded for you).
         gate_policy: 'human' (default) = the user picks/approves in the desktop app;
         'agent' = you look at candidates (get_run/wait_run) and call resolve_gate;
-        'auto_first' = wait_run auto-picks the first candidate(s) and approves every approve gate."""
-        return await tools.start_run(recipe, inputs, title, gate_policy)
+        'auto_first' = wait_run auto-picks the first candidate(s) and approves every approve gate.
+        project_id (from list_projects): the project's locked style (prompt prefix/suffix, preset, palette,
+        reference image, default inputs) fills the inputs you leave out; inputs you pass always win."""
+        return await tools.start_run(recipe, inputs, title, gate_policy, project_id)
+
+    @mcp.tool(annotations=read_only)
+    async def list_projects(include_archived: bool = False) -> dict[str, Any]:
+        """Projects (one game / asset set each) with their locked style and run/approved counts. Pass a
+        project_id to start_run so new assets match the rest of the set."""
+        return await tools.list_projects(include_archived)
 
     @mcp.tool(annotations=read_only)
     async def get_run(run_id: str, include_thumbnails: bool = True) -> CallToolResult:

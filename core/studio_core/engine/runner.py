@@ -5,12 +5,14 @@ import base64
 import logging
 import time
 import uuid
+import weakref
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from ..config import Settings
 from ..contracts import (
+    DEFAULT_PROJECT,
     STEP_DONE_OK,
     STEP_TERMINAL,
     BlobRef,
@@ -34,12 +36,14 @@ from ..contracts import (
 from .cache import executor_cache_key
 from .gates import GATES, gate_enabled
 from .library import RecipeLibrary
+from .projects import apply_style
 from .recipe import BLOB_TYPES, Recipe, RecipeError, find_step_refs, ref_value, substitute_refs
 from .scheduler import LaneScheduler
 
 log = logging.getLogger(__name__)
 
 INTERRUPTED = "interrupted"
+META_KEY = "$meta"
 _RUN_TERMINAL = {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}
 _ACTIVE = {StepStatus.READY, StepStatus.WAITING_RESOURCE, StepStatus.RUNNING}
 _RETRYABLE = (StepStatus.FAILED, StepStatus.CANCELLED)
@@ -145,6 +149,7 @@ class StudioEngine:
         self.scheduler = LaneScheduler(settings.lane_limits)
         self.library = RecipeLibrary(settings.recipes_dir, settings.user_recipes_dir)
         self._runs: dict[str, _RunState] = {}
+        self._control: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
         self._bg: set[asyncio.Task[Any]] = set()
         self._closed = False
 
@@ -207,11 +212,10 @@ class StudioEngine:
 
     # runs
 
-    async def start_run(self, recipe_id: str, inputs: dict[str, Any], params: dict[str, Any] | None = None,
-                        project_id: str = "default", title: str = "") -> str:
-        if self._closed:
-            raise EngineStateError("engine is shut down")
-        recipe = self.get_recipe(recipe_id)
+    async def check_inputs(self, recipe: Recipe | str, inputs: dict[str, Any]) -> dict[str, Any]:
+        """Coerced inputs; raises RecipeError (a ValueError) on bad values or unknown blobs."""
+        if isinstance(recipe, str):
+            recipe = self.get_recipe(recipe)
         values = recipe.coerce_inputs(inputs or {})
         for name, spec in recipe.inputs.items():
             if spec["type"] in BLOB_TYPES and values.get(name) is not None:
@@ -219,7 +223,22 @@ class StudioEngine:
                 for h in hashes:
                     if await self.blobs.get(h) is None:
                         raise RecipeError(f"input '{name}': unknown blob {h}")
+        return values
+
+    async def start_run(self, recipe_id: str, inputs: dict[str, Any], params: dict[str, Any] | None = None,
+                        project_id: str = "default", title: str = "") -> str:
+        if self._closed:
+            raise EngineStateError("engine is shut down")
+        recipe = self.get_recipe(recipe_id)
         overrides = params or {}
+        if project_id != DEFAULT_PROJECT:
+            project = await self.repo.get_project(project_id)
+            if project is None:
+                raise NotFoundError(f"unknown project: {project_id}")
+            inputs, applied = apply_style(recipe, inputs, project.style)
+            meta = {**(overrides.get(META_KEY) or {}), "project_id": project_id, "project_applied": applied}
+            overrides = {**overrides, META_KEY: meta}
+        values = await self.check_inputs(recipe, inputs)
         run = RunRow(id=_new_id(), project_id=project_id, recipe_id=recipe.id, recipe_hash=recipe.hash,
                      title=title, inputs=values, params=overrides, status=RunStatus.RUNNING, created_at=_now())
         publish: dict[str, dict[str, str]] = {}
@@ -543,6 +562,13 @@ class StudioEngine:
 
     # external control
 
+    def _run_control(self, run_id: str) -> asyncio.Lock:
+        # Serialises load-state -> mutate -> start-driver so two callers cannot both see "no driver" and start two.
+        lock = self._control.get(run_id)
+        if lock is None:
+            lock = self._control[run_id] = asyncio.Lock()
+        return lock
+
     async def _with_state(self, run_id: str) -> tuple[_RunState, bool]:
         st = self._runs.get(run_id)
         if st is not None and st.driver is not None and not st.driver.done():
@@ -555,26 +581,28 @@ class StudioEngine:
             raise NotFoundError(f"unknown step: {step_id}")
         if row.kind not in GATES:
             raise EngineStateError(f"step {step_id} is not a gate")
-        st, alive = await self._with_state(row.run_id)
-        async with st.lock:
-            step = st.steps[row.key]
-            if step.status != StepStatus.AWAITING_HUMAN:
-                raise EngineStateError(f"gate {step.key} is not awaiting (status={step.status.value})")
-            gate = GATES[step.kind]
-            try:
-                outputs = gate.resolve(step.params, step.inputs, res)
-            except StepError as e:
-                await self._set_step(step, status=StepStatus.FAILED, ended_at=_now(), error=_err(e.code, e.message))
-            else:
-                await self._set_step(step, status=StepStatus.SUCCEEDED, outputs=outputs, progress=1.0,
-                                     ended_at=_now(), meta={**step.meta, "resolution": res.model_dump()})
-            if alive:
-                st.wake.set()
-                return
-            if st.run.status == RunStatus.AWAITING_HUMAN:
-                await self._set_run(st.run, status=RunStatus.RUNNING)
-        if st.run.status == RunStatus.RUNNING and not self._closed:
-            self._start_driver(st)
+        async with self._run_control(row.run_id):
+            st, alive = await self._with_state(row.run_id)
+            async with st.lock:
+                step = st.steps[row.key]
+                if step.status != StepStatus.AWAITING_HUMAN:
+                    raise EngineStateError(f"gate {step.key} is not awaiting (status={step.status.value})")
+                gate = GATES[step.kind]
+                try:
+                    outputs = gate.resolve(step.params, step.inputs, res)
+                except StepError as e:
+                    await self._set_step(step, status=StepStatus.FAILED, ended_at=_now(),
+                                         error=_err(e.code, e.message))
+                else:
+                    await self._set_step(step, status=StepStatus.SUCCEEDED, outputs=outputs, progress=1.0,
+                                         ended_at=_now(), meta={**step.meta, "resolution": res.model_dump()})
+                if alive:
+                    st.wake.set()
+                    return
+                if st.run.status == RunStatus.AWAITING_HUMAN:
+                    await self._set_run(st.run, status=RunStatus.RUNNING)
+            if st.run.status == RunStatus.RUNNING and not self._closed:
+                self._start_driver(st)
 
     async def retry_step(self, step_id: str) -> None:
         row = await self.repo.get_step(step_id)
@@ -582,36 +610,37 @@ class StudioEngine:
             raise NotFoundError(f"unknown step: {step_id}")
         if row.status not in (*_RETRYABLE, *_REGENERABLE):
             raise EngineStateError(f"step {row.key} is {row.status.value}; only failed/cancelled steps can be retried")
-        old = self._runs.get(row.run_id)
-        if old is not None and old.driver is not None and old.closing:
-            await asyncio.gather(old.driver, return_exceptions=True)
-        st, alive = await self._with_state(row.run_id)
-        async with st.lock:
-            target = st.steps[row.key]
-            downstream = self._downstream(st, target.key)
-            # Re-running a finished step is only offered as "regenerate" for a gate still waiting on its output.
-            regen = target.status in _REGENERABLE and any(
-                st.steps[k].status == StepStatus.AWAITING_HUMAN and st.steps[k].kind in GATES for k in downstream)
-            if target.status not in _RETRYABLE and not regen:
-                raise EngineStateError(f"step {target.key} is {target.status.value}; only failed/cancelled steps "
-                                       "or the source of a waiting gate can be retried")
-            for s in st.ordered():
-                if s.key == target.key or s.key in downstream or s.status in (StepStatus.SKIPPED,
-                                                                                StepStatus.CANCELLED):
-                    if s.key in st.tasks:
-                        continue
-                    await self._set_step(
-                        s, status=StepStatus.PENDING, attempt=s.attempt + (1 if s.started_at else 0),
-                        error=None, outputs={}, inputs={}, progress=None, cache_key=None, started_at=None,
-                        ended_at=None, meta={"spec": s.meta.get("spec", {}),
-                                             **({"fresh": True} if regen and s.key == target.key else {})})
-            if st.run.status != RunStatus.RUNNING:
-                await self._set_run(st.run, status=RunStatus.RUNNING, error=None, ended_at=None)
-            if alive:
-                st.wake.set()
-                return
-        if not self._closed:
-            self._start_driver(st)
+        async with self._run_control(row.run_id):
+            old = self._runs.get(row.run_id)
+            if old is not None and old.driver is not None and old.closing:
+                await asyncio.gather(old.driver, return_exceptions=True)
+            st, alive = await self._with_state(row.run_id)
+            async with st.lock:
+                target = st.steps[row.key]
+                downstream = self._downstream(st, target.key)
+                # Re-running a finished step is only offered as "regenerate" for a gate still waiting on its output.
+                regen = target.status in _REGENERABLE and any(
+                    st.steps[k].status == StepStatus.AWAITING_HUMAN and st.steps[k].kind in GATES for k in downstream)
+                if target.status not in _RETRYABLE and not regen:
+                    raise EngineStateError(f"step {target.key} is {target.status.value}; only failed/cancelled steps "
+                                           "or the source of a waiting gate can be retried")
+                for s in st.ordered():
+                    if s.key == target.key or s.key in downstream or s.status in (StepStatus.SKIPPED,
+                                                                                    StepStatus.CANCELLED):
+                        if s.key in st.tasks:
+                            continue
+                        await self._set_step(
+                            s, status=StepStatus.PENDING, attempt=s.attempt + (1 if s.started_at else 0),
+                            error=None, outputs={}, inputs={}, progress=None, cache_key=None, started_at=None,
+                            ended_at=None, meta={"spec": s.meta.get("spec", {}),
+                                                 **({"fresh": True} if regen and s.key == target.key else {})})
+                if st.run.status != RunStatus.RUNNING:
+                    await self._set_run(st.run, status=RunStatus.RUNNING, error=None, ended_at=None)
+                if alive:
+                    st.wake.set()
+                    return
+            if not self._closed:
+                self._start_driver(st)
 
     @staticmethod
     def _downstream(st: _RunState, key: str) -> set[str]:
@@ -626,16 +655,17 @@ class StudioEngine:
         return out
 
     async def cancel_run(self, run_id: str) -> None:
-        st, alive = await self._with_state(run_id)
-        if not alive and st.run.status in _RUN_TERMINAL:
-            return
-        async with st.lock:
-            if st.run.status in _RUN_TERMINAL:
+        async with self._run_control(run_id):
+            st, alive = await self._with_state(run_id)
+            if not alive and st.run.status in _RUN_TERMINAL:
                 return
-            await self._abort(st, RunStatus.CANCELLED, None)
-            st.wake.set()
-        if st.driver is not None:
-            await asyncio.gather(st.driver, return_exceptions=True)
+            async with st.lock:
+                if st.run.status in _RUN_TERMINAL:
+                    return
+                await self._abort(st, RunStatus.CANCELLED, None)
+                st.wake.set()
+            if st.driver is not None:
+                await asyncio.gather(st.driver, return_exceptions=True)
 
     async def recover(self) -> None:
         stale = await self.repo.list_steps_by_status(

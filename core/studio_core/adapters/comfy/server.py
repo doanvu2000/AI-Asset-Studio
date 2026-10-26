@@ -123,29 +123,43 @@ class ComfyResource:
         try:
             self.proc, self.job = await spawn_in_job(args, cwd=s.comfy_dir, stdin=asyncio.subprocess.DEVNULL,
                                                      stdout=self._log_file, stderr=asyncio.subprocess.STDOUT)
-        except OSError as e:
+        except asyncio.CancelledError:
+            self._kill()
+            self._set("down")
+            raise
+        except Exception as e:
             self._fail_boot(f"spawn failed: {e!r}")
             raise StepError("comfy_boot_failed", f"cannot spawn ComfyUI: {e!r}") from e
-        while True:
-            if self.proc.returncode is not None:
-                msg = f"ComfyUI exited rc={self.proc.returncode} during boot, see {self.log_path}"
-                self._fail_boot(msg)
-                raise StepError("comfy_boot_failed", msg, retryable=True)
-            stats = await self._stats()
-            if stats is not None:
-                argv = (stats.get("system") or {}).get("argv") or []
-                if "--disable-pinned-memory" not in argv:
-                    self._fail_boot("server argv lacks --disable-pinned-memory")
-                    raise StepError("comfy_boot_failed", "pinned memory not disabled", detail={"argv": argv})
-                self.boot_s = time.perf_counter() - t0
-                self._adopt(stats, managed=True)
-                log.info("comfyui up in %.1fs pid=%s", self.boot_s, self.proc.pid)
-                return
-            if time.perf_counter() - t0 > s.comfy_boot_timeout_s:
-                self._fail_boot(f"not ready after {s.comfy_boot_timeout_s:.0f}s")
-                raise StepError("comfy_boot_timeout", f"ComfyUI not ready after {s.comfy_boot_timeout_s:.0f}s",
-                                retryable=True)
-            await asyncio.sleep(0.5)
+        try:
+            while True:
+                if self.proc.returncode is not None:
+                    msg = f"ComfyUI exited rc={self.proc.returncode} during boot, see {self.log_path}"
+                    self._fail_boot(msg)
+                    raise StepError("comfy_boot_failed", msg, retryable=True)
+                stats = await self._stats()
+                if stats is not None:
+                    argv = (stats.get("system") or {}).get("argv") or []
+                    if "--disable-pinned-memory" not in argv:
+                        self._fail_boot("server argv lacks --disable-pinned-memory")
+                        raise StepError("comfy_boot_failed", "pinned memory not disabled", detail={"argv": argv})
+                    self.boot_s = time.perf_counter() - t0
+                    self._adopt(stats, managed=True)
+                    log.info("comfyui up in %.1fs pid=%s", self.boot_s, self.proc.pid)
+                    return
+                if time.perf_counter() - t0 > s.comfy_boot_timeout_s:
+                    self._fail_boot(f"not ready after {s.comfy_boot_timeout_s:.0f}s")
+                    raise StepError("comfy_boot_timeout", f"ComfyUI not ready after {s.comfy_boot_timeout_s:.0f}s",
+                                    retryable=True)
+                await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            self._kill()
+            self._set("down")
+            raise
+        except StepError:
+            raise
+        except Exception as e:
+            self._fail_boot(f"boot failed: {e!r}"[:300])
+            raise StepError("comfy_boot_failed", repr(e), retryable=True) from e
 
     def _fail_boot(self, msg: str) -> None:
         self._kill()

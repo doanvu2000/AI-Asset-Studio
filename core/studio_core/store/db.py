@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS runs (
     ended_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs(created_at);
+-- Must match repo._BATCH_ID verbatim, or SQLite will not use it.
+CREATE INDEX IF NOT EXISTS idx_runs_batch_id ON runs(json_extract(params, '$."$meta".batch_id'));
 
 CREATE TABLE IF NOT EXISTS steps (
     id TEXT PRIMARY KEY,
@@ -69,6 +71,16 @@ CREATE TABLE IF NOT EXISTS blobs (
     created_at REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    style TEXT NOT NULL DEFAULT '{}',
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS cache (
     "key" TEXT PRIMARY KEY,
     outputs TEXT NOT NULL,
@@ -99,7 +111,18 @@ class Database:
         await self._conn.execute("PRAGMA synchronous=NORMAL")
         await self._conn.execute("PRAGMA foreign_keys=ON")
         await self._conn.executescript(SCHEMA)
+        await self._migrate()
         await self._conn.commit()
+
+    async def _migrate(self) -> None:
+        for table in ("runs", "versions"):
+            async with self.conn.execute(f"PRAGMA table_info({table})") as cur:
+                cols = {r["name"] for r in await cur.fetchall()}
+            if "project_id" not in cols:
+                await self.conn.execute(f"ALTER TABLE {table} ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+        # After the ALTER: a DB from before projects has no column for these indexes to name.
+        await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_project ON runs(project_id, created_at)")
+        await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_versions_project ON versions(project_id, created_at)")
 
     async def close(self) -> None:
         if self._conn is not None:

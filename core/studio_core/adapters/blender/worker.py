@@ -119,6 +119,70 @@ def configure_output(scene, p, res):
         scene.cycles.samples = p.get("samples", 32)
 
 
+def normal_material(cam):
+    """Emits camera-space normals as 2D sprite normal-map colours (+X right, +Y up, +Z toward the camera).
+    Dot products with the camera axes instead of Vector Transform, whose camera space differs between engines."""
+    mat = bpy.data.materials.new("studio_normal")
+    mat.use_nodes = True
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    for n in list(nodes):
+        nodes.remove(n)
+    geo = nodes.new("ShaderNodeNewGeometry")
+    combine = nodes.new("ShaderNodeCombineXYZ")
+    m = cam.rotation_euler.to_matrix()
+    for i in range(3):
+        dot = nodes.new("ShaderNodeVectorMath")
+        dot.operation = "DOT_PRODUCT"
+        links.new(geo.outputs["Normal"], dot.inputs[0])
+        dot.inputs[1].default_value = m.col[i]
+        links.new(dot.outputs["Value"], combine.inputs[i])
+    enc = nodes.new("ShaderNodeVectorMath")
+    enc.operation = "MULTIPLY_ADD"
+    enc.inputs[1].default_value = (0.5, 0.5, 0.5)
+    enc.inputs[2].default_value = (0.5, 0.5, 0.5)
+    links.new(combine.outputs[0], enc.inputs[0])
+    emit = nodes.new("ShaderNodeEmission")
+    links.new(enc.outputs[0], emit.inputs["Color"])
+    out = nodes.new("ShaderNodeOutputMaterial")
+    links.new(emit.outputs[0], out.inputs["Surface"])
+    return mat
+
+
+@contextlib.contextmanager
+def normal_pass(scene, mat):
+    vl = bpy.context.view_layer
+    vs = scene.view_settings
+    prev = (vl.material_override, vs.view_transform, vs.look, scene.render.dither_intensity, scene.render.engine)
+    vl.material_override = mat
+    # Raw keeps the encoded values linear in the PNG; Standard would apply the sRGB curve to them.
+    vs.view_transform = "Raw"
+    scene.render.dither_intensity = 0.0
+    if scene.render.engine == "BLENDER_WORKBENCH":
+        set_engine(scene, "BLENDER_EEVEE")
+    try:
+        yield
+    finally:
+        vl.material_override = prev[0]
+        vs.view_transform, vs.look = prev[1], prev[2]
+        scene.render.dither_intensity = prev[3]
+        if scene.render.engine != prev[4]:
+            set_engine(scene, prev[4])
+
+
+def render_still(scene, path, normal_mat=None):
+    """Colour frame at `path`; with a normal material also `<stem>_n.png`. Returns the normal path or None."""
+    scene.render.filepath = path
+    bpy.ops.render.render(write_still=True)
+    if normal_mat is None:
+        return None
+    npath = path[:-4] + "_n.png"
+    with normal_pass(scene, normal_mat):
+        scene.render.filepath = npath
+        bpy.ops.render.render(write_still=True)
+    scene.render.filepath = path
+    return npath
+
+
 def render_angles(count, mirror):
     step = 360 / count
     angles = [i * step for i in range(count)]
@@ -172,13 +236,15 @@ def render_dirs(p, emit):
     out_dir = p["out_dir"]
     os.makedirs(out_dir, exist_ok=True)
     angles = render_angles(int(p.get("count", 8)), bool(p.get("mirror")))
+    nmat = normal_material(cam) if p.get("normals") else None
     frames = []
     for i, a in enumerate(angles):
         pivot.rotation_euler = (0, 0, math.radians(-a))
-        scene.render.filepath = os.path.join(out_dir, f"dir_{round(a):03d}.png")
+        path = os.path.join(out_dir, f"dir_{round(a):03d}.png")
         t = time.perf_counter()
-        bpy.ops.render.render(write_still=True)
-        frames.append({"angle": a, "file": scene.render.filepath, "s": round(time.perf_counter() - t, 3)})
+        npath = render_still(scene, path, nmat)
+        frames.append({"angle": a, "file": path, "s": round(time.perf_counter() - t, 3),
+                       **({"normal": npath} if npath else {})})
         emit({"event": "progress", "value": i + 1, "max": len(angles), "label": f"{round(a)}°"})
     return {"import_s": round(t_import, 2), "total_s": round(time.perf_counter() - t0, 2),
             "engine": scene.render.engine, "ortho_scale": round(ortho, 4), "radius": round(r, 4),
@@ -640,15 +706,100 @@ def walk_pose(phase, height):
     return pose, drop
 
 
+def run_pose(phase, height):
+    s = math.sin(phase)
+    c = math.cos(phase)
+    pose = {}
+    for side, sign in (("l", 1.0), ("r", -1.0)):
+        swing = sign * s
+        lift = max(0.0, sign * c)
+        pose[f"thigh_{side}"] = ("X", -42.0 * swing - 8.0 * lift)
+        pose[f"shin_{side}"] = ("X", 15.0 + 75.0 * lift)
+        pose[f"foot_{side}"] = ("X", -20.0 * lift)
+        pose[f"upper_arm_{side}"] = ("X", 38.0 * swing)
+        pose[f"forearm_{side}"] = ("X", -70.0 - 15.0 * max(0.0, -swing))
+    pose["spine"] = {"X": 12.0, "Z": 7.0 * s}
+    pose["head"] = ("X", -8.0)
+    drop = -0.045 * height * abs(c)
+    return pose, drop
+
+
+def idle_pose(phase, height):
+    s = math.sin(phase)
+    breath = (1 - math.cos(phase)) / 2
+    pose = {"spine": ("X", -1.5 * breath), "head": ("X", 1.0 * s)}
+    for side, sign in (("l", 1.0), ("r", -1.0)):
+        pose[f"upper_arm_{side}"] = ("Y", -sign * (2.0 + 2.5 * breath))
+        pose[f"forearm_{side}"] = ("X", -6.0 - 3.0 * breath)
+    return pose, -0.006 * height * breath
+
+
+STANCE = {"thigh_l": {"X": -14.0}, "shin_l": {"X": 10.0}, "thigh_r": {"X": 12.0}, "shin_r": {"X": 14.0},
+          "foot_r": {"X": -6.0}}
+# (t, bone -> {axis: deg}, drop as a fraction of height). The right arm (image left in the front view) swings.
+ATTACK_KEYS = (
+    (0.0, {}, 0.0),
+    (0.35, {**STANCE, "upper_arm_r": {"X": -150.0, "Y": -10.0}, "forearm_r": {"X": -55.0},
+            "spine": {"X": -5.0, "Z": -18.0}, "upper_arm_l": {"X": -20.0}, "forearm_l": {"X": -30.0}}, -0.01),
+    (0.5, {**STANCE, "upper_arm_r": {"X": -45.0}, "forearm_r": {"X": -8.0},
+           "spine": {"X": 12.0, "Z": 20.0}, "head": {"X": -6.0}, "upper_arm_l": {"X": 15.0},
+           "forearm_l": {"X": -25.0}}, -0.035),
+    (0.65, {**STANCE, "upper_arm_r": {"X": -15.0}, "forearm_r": {"X": -5.0},
+            "spine": {"X": 14.0, "Z": 24.0}, "head": {"X": -6.0}, "upper_arm_l": {"X": 18.0},
+            "forearm_l": {"X": -25.0}}, -0.04),
+    (1.0, {}, 0.0),
+)
+
+
+def _smooth(x):
+    return x * x * (3 - 2 * x)
+
+
+def keyed_pose(keys, t, height):
+    t = min(1.0, max(0.0, t))
+    i = next((k for k in range(len(keys) - 1) if t <= keys[k + 1][0]), len(keys) - 2)
+    (t0, a, d0), (t1, b, d1) = keys[i], keys[i + 1]
+    w = _smooth((t - t0) / (t1 - t0) if t1 > t0 else 1.0)
+    pose = {}
+    for bone in set(a) | set(b):
+        ra, rb = a.get(bone, {}), b.get(bone, {})
+        pose[bone] = {ax: ra.get(ax, 0.0) * (1 - w) + rb.get(ax, 0.0) * w for ax in set(ra) | set(rb)}
+    return pose, (d0 * (1 - w) + d1 * w) * height
+
+
+def clip_pose(name, fi, n, loop, height):
+    """Loops sample [0, 1) so the cycle closes without a duplicate frame; one-shots include both ends."""
+    t = fi / n if loop else fi / max(1, n - 1)
+    if name == "walk":
+        return walk_pose(2 * math.pi * t, height)
+    if name == "run":
+        return run_pose(2 * math.pi * t, height)
+    if name == "idle":
+        return idle_pose(2 * math.pi * t, height)
+    if name == "attack":
+        return keyed_pose(ATTACK_KEYS, t, height)
+    raise RuntimeError(f"unknown clip {name}")
+
+
+def _rotation(spec):
+    if isinstance(spec, dict):
+        m = Matrix.Identity(4)
+        for ax in ("X", "Y", "Z"):
+            if spec.get(ax):
+                m = Matrix.Rotation(math.radians(spec[ax]), 4, ax) @ m
+        return m
+    axis, deg = spec
+    return Matrix.Rotation(math.radians(deg), 4, axis)
+
+
 def apply_pose(arm, pose, drop):
     """Rotations are about world axes through each bone's rest head, composed down the chain."""
     deltas = {}
     for name, parent, _, _ in RIG_BONES:
         bone = arm.data.bones[name]
         parent_delta = deltas.get(parent, Matrix.Translation((0, 0, drop)))
-        axis, deg = pose.get(name, ("X", 0.0))
         head = bone.head_local
-        local = Matrix.Translation(head) @ Matrix.Rotation(math.radians(deg), 4, axis) @ Matrix.Translation(-head)
+        local = Matrix.Translation(head) @ _rotation(pose.get(name, ("X", 0.0))) @ Matrix.Translation(-head)
         deltas[name] = parent_delta @ local
         pb = arm.pose.bones[name]
         pb.matrix = deltas[name] @ bone.matrix_local
@@ -681,7 +832,10 @@ def animate_dirs(p, emit):
     r = float(np.sqrt((v[:, :2] ** 2).sum(1)).max()) * 1.3
     zmin, zmax = float(v[:, 2].min()), float(v[:, 2].max())
     vlo = zmin * math.cos(elev) - r * math.sin(elev) - 0.03 * height
-    vhi = zmax * math.cos(elev) + r * math.sin(elev)
+    clips = p.get("clips") or [{"name": "walk", "frames": frames_n, "loop": True}]
+    # The attack wind-up lifts the hand above the head.
+    headroom = 0.3 * height if any(c["name"] == "attack" for c in clips) else 0.0
+    vhi = (zmax + headroom) * math.cos(elev) + r * math.sin(elev)
     ortho = max(2 * r, vhi - vlo) * p.get("margin", 1.05)
     vmid = (vlo + vhi) / 2
     cam_data = bpy.data.cameras.new("cam")
@@ -703,20 +857,25 @@ def animate_dirs(p, emit):
     out_dir = p["out_dir"]
     os.makedirs(out_dir, exist_ok=True)
     angles = render_angles(int(p.get("count", 8)), False)
+    nmat = normal_material(cam) if p.get("normals") else None
     frames = []
-    total = frames_n * len(angles)
-    for fi in range(frames_n):
-        pose, drop = walk_pose(2 * math.pi * fi / frames_n, height)
-        apply_pose(arm, pose, drop)
-        for a in angles:
-            pivot.rotation_euler = (0, 0, math.radians(-a))
-            scene.render.filepath = os.path.join(out_dir, f"dir_{round(a):03d}_f{fi:02d}.png")
-            bpy.ops.render.render(write_still=True)
-            frames.append({"angle": a, "frame": fi, "file": scene.render.filepath})
-            emit({"event": "progress", "value": len(frames), "max": total, "label": f"{round(a)}° · khung {fi + 1}"})
+    total = sum(max(2, int(c["frames"])) for c in clips) * len(angles)
+    for clip in clips:
+        name, n = clip["name"], max(2, int(clip["frames"]))
+        for fi in range(n):
+            pose, drop = clip_pose(name, fi, n, bool(clip.get("loop", True)), height)
+            apply_pose(arm, pose, drop)
+            for a in angles:
+                pivot.rotation_euler = (0, 0, math.radians(-a))
+                path = os.path.join(out_dir, f"{name}_dir_{round(a):03d}_f{fi:02d}.png")
+                npath = render_still(scene, path, nmat)
+                frames.append({"clip": name, "angle": a, "frame": fi, "file": path,
+                               **({"normal": npath} if npath else {})})
+                emit({"event": "progress", "value": len(frames), "max": total,
+                      "label": f"{name} · {round(a)}° · khung {fi + 1}"})
     return {"total_s": round(time.perf_counter() - t0, 2), "engine": scene.render.engine, "ortho_scale": round(ortho, 4),
             "res": res, "supersample": supersample, "elevation": p.get("elevation", 30), "frames": frames,
-            "frames_per_dir": frames_n, "weights": weights, "height": round(height, 4),
+            "frames_per_dir": max(int(c["frames"]) for c in clips), "weights": weights, "height": round(height, 4),
             "pivot": [res / 2, res * (0.5 + vmid / ortho)]}
 
 

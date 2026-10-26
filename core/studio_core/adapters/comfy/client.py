@@ -105,6 +105,7 @@ class ComfyClient:
 
     async def close(self) -> None:
         self._closed = True
+        self.fail_all("comfy_stopped", "ComfyUI was stopped while the prompt was running")
         if self._ws_task:
             self._ws_task.cancel()
             try:
@@ -208,6 +209,8 @@ class ComfyClient:
         while True:
             if cancelled is not None and cancelled.is_set():
                 raise asyncio.CancelledError()
+            if self._closed:
+                raise StepError("comfy_stopped", "ComfyUI was stopped while the prompt was running", retryable=True)
             now = loop.time()
             if now > deadline:
                 await self.cancel(pid)
@@ -237,7 +240,8 @@ class ComfyClient:
     async def _poll(self, pid: str) -> dict[str, Any] | None:
         try:
             entry = await self.history(pid)
-        except (httpx.HTTPError, ValueError):
+        except (httpx.HTTPError, ValueError, RuntimeError):
+            # RuntimeError: httpx refuses requests once close() ran; the loop then raises comfy_stopped.
             return None
         if not entry or (entry.get("status") or {}).get("completed") is None:
             return None
@@ -257,7 +261,7 @@ class ComfyClient:
         for _ in range(40):
             try:
                 entry = await self.history(pid)
-            except (httpx.HTTPError, ValueError):
+            except (httpx.HTTPError, ValueError, RuntimeError):
                 entry = None
             if entry and (entry.get("status") or {}).get("completed") is not None:
                 return self._check_entry(entry, None)
@@ -268,7 +272,7 @@ class ComfyClient:
         for path, body in ((f"/api/jobs/{pid}/cancel", None), ("/interrupt", {"prompt_id": pid})):
             try:
                 await self.http.post(path, json=body, timeout=5)
-            except httpx.HTTPError:
+            except (httpx.HTTPError, RuntimeError):
                 pass
 
     async def free(self) -> None:

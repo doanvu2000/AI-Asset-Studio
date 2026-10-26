@@ -593,3 +593,39 @@ async def test_auto_retry_gives_up_on_non_retryable_and_after_limit(tmp_path: Pa
     env2 = Env(tmp_path / "b", [always], {"flaky": FLAKY})
     assert env2.status(await env2.run("flaky")) == RunStatus.FAILED
     assert len(always.calls) == 2
+
+
+class SlowRepo(FakeRepo):
+    """Yields inside state loads, like the real DB, so concurrent control calls interleave."""
+
+    async def get_steps(self, run_id: str) -> list[StepRow]:
+        rows = await super().get_steps(run_id)
+        await asyncio.sleep(0.01)
+        return rows
+
+
+async def test_concurrent_resolves_start_one_driver(tmp_path: Path) -> None:
+    fit = FakeExec("t.op", delay=0.05)
+    env = Env(tmp_path, [FakeExec("t.gen"), fit], {"pick": PICK}, repo=SlowRepo())
+    run_id = await env.run("pick")
+    gate = env.steps(run_id)["pick"]
+    res = GateResolution(picked=[gate.inputs["images"][0].hash])
+    out = await asyncio.gather(env.engine.resolve_gate(gate.id, res), env.engine.resolve_gate(gate.id, res),
+                               return_exceptions=True)
+    assert sum(isinstance(o, EngineStateError) for o in out) == 1 and out.count(None) == 1
+    await asyncio.wait_for(env.engine.wait_idle(run_id), 5)
+    assert env.status(run_id) == RunStatus.SUCCEEDED
+    assert len(fit.calls) == 1 and len(env.repo.versions) == 1
+
+
+async def test_concurrent_retries_start_one_driver(tmp_path: Path) -> None:
+    bad = FakeExec("t.bad", fail=lambda n: StepError("flaky", "first time") if n == 1 else None)
+    tail = FakeExec("t.op")
+    env = Env(tmp_path, [tail, bad, FakeExec("t.slow")], {"fail": FAILING}, repo=SlowRepo())
+    run_id = await env.run("fail")
+    b = env.steps(run_id)["b"]
+    await asyncio.gather(env.engine.retry_step(b.id), env.engine.retry_step(b.id), return_exceptions=True)
+    await asyncio.wait_for(env.engine.wait_idle(run_id), 5)
+    await asyncio.sleep(0.05)
+    assert env.status(run_id) == RunStatus.SUCCEEDED
+    assert len(bad.calls) == 2

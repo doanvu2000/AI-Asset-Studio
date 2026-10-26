@@ -120,3 +120,10 @@ async def test_list_runs_batch_filters(repo: SqliteRepo) -> None:
         await repo.create_run(RunRow(id=f"r{i}", recipe_id="x", recipe_hash="h", created_at=float(i), params=params))
     assert [r.id for r in await repo.list_runs(batched=True)] == ["r3", "r2", "r0"]
     assert [r.id for r in await repo.list_runs(batch_id="b1")] == ["r3", "r0"]
+
+
+async def test_batch_filter_uses_expression_index(repo: SqliteRepo) -> None:
+    from studio_core.store.repo import _BATCH_ID
+
+    plan = await repo.db.fetchall(f"EXPLAIN QUERY PLAN SELECT * FROM runs WHERE {_BATCH_ID} = ?", ("b",))
+    assert any("idx_runs_batch_id" in str(tuple(r)) for r in plan)

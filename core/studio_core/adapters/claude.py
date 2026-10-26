@@ -16,6 +16,7 @@ from ..config import Settings
 from ..contracts import BlobRef, Lane, Outputs, ResourceHealth, StepContext, StepError, StepResult
 
 MAX_IMAGE_BYTES = 3_500_000
+DEFAULT_TIMEOUT_S = 300.0
 MAX_IMAGE_SIDE = 1568
 API_IMAGE_MIMES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 
@@ -125,7 +126,12 @@ async def sdk_query(content: list[dict[str, Any]], options: Any) -> ClaudeReply:
 async def ask(query_fn: QueryFn, params: dict[str, Any], prompt: str, cwd: str,
               images: list[tuple[bytes, str]] | None = None, **option_kw: Any) -> ClaudeReply:
     content = await asyncio.to_thread(build_content, prompt, images or [])
-    return await query_fn(content, build_options(params, cwd, **option_kw))
+    limit = float(params.get("_timeout_s") or DEFAULT_TIMEOUT_S)
+    try:
+        async with asyncio.timeout(limit):
+            return await query_fn(content, build_options(params, cwd, **option_kw))
+    except TimeoutError as e:
+        raise StepError("claude_timeout", f"Claude did not answer within {limit:.0f}s", retryable=True) from e
 
 
 async def load_images(ctx: StepContext, refs: list[BlobRef]) -> list[tuple[bytes, str]]:
@@ -258,7 +264,8 @@ class ClaudeBriefExecutor:
         if not idea:
             raise StepError("claude_bad_params", "params.idea is required")
         target = str(params.get("target") or "generic")
-        q = {"model": params.get("model") or DEFAULT_MODEL, "max_turns": 2, "system": BRIEF_SYSTEM, "schema": BRIEF_SCHEMA}
+        q = {"model": params.get("model") or DEFAULT_MODEL, "max_turns": 2, "system": BRIEF_SYSTEM, "schema": BRIEF_SCHEMA,
+             "_timeout_s": params.get("_timeout_s")}
         await asyncio.to_thread(ctx.job_dir.mkdir, parents=True, exist_ok=True)
         ctx.progress(0, 1, "brief")
         reply = await ask(self.query, q, brief_prompt(idea, target, str(params.get("style") or "")),

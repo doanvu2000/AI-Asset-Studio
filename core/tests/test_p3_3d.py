@@ -208,7 +208,8 @@ def test_p3_recipes_load(tmp_path: Path) -> None:
             reg.resolve(s.kind)
 
     r5 = recipes["sprite-8dir-3d"]
-    assert [s.id for s in r5.steps] == ["concept", "pick", "mesh", "cleanup", "render", "dirs", "down", "sheet"]
+    assert [s.id for s in r5.steps] == ["concept", "pick", "mesh", "cleanup", "render", "dirs", "ndirs",
+                                       "down", "ndown", "sheet", "nsheet"]
     vals = r5.coerce_inputs({"prompt": "knight", "mirror": "true", "res": 128})
     render = r5.resolve_params(r5.step("render"), vals)
     assert render["mirror"] is True and render["res"] == 128 and render["elevation"] == 30
@@ -217,7 +218,8 @@ def test_p3_recipes_load(tmp_path: Path) -> None:
     assert mesh["186.target_face_count"] == 30000
     assert r5.step("mesh").bindings["image"].source == "pick"
     assert {k: str(v) for k, v in r5.outputs.items()} == {"final": "sheet.sheet", "meta": "sheet.meta",
-                                                           "frames": "down.images"}
+                                                           "frames": "down.images", "normal_sheet": "nsheet.sheet",
+                                                           "normal_meta": "nsheet.meta"}
 
     r4 = recipes["prop-3d"]
     v4 = r4.coerce_inputs({"prompt": "barrel", "texture": 1024})

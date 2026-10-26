@@ -10,6 +10,7 @@ from PIL import Image
 
 from studio_core.contracts import BlobRef, ExecutorRegistry, Executor, Lane, StepError
 from studio_core.ops import register
+from studio_core.ops.executors import Sheet, ops_source_hash
 
 
 class FakeBlobs:
@@ -85,7 +86,7 @@ def test_register_all_ops(reg: ExecutorRegistry):
     for k in kinds:
         ex = reg.resolve(k)
         assert isinstance(ex, Executor)
-        assert ex.lane == Lane.CPU and ex.version == "1" and ex.cacheable({}) and ex.cache_material({}) == ""
+        assert ex.lane == Lane.CPU and ex.version == "1" and ex.cacheable({}) and ex.cache_material({}) == ops_source_hash()
 
 
 async def test_trim_pad_resize_executor(ctx: FakeCtx, reg: ExecutorRegistry):
@@ -144,3 +145,46 @@ async def test_empty_input_raises(ctx: FakeCtx, reg: ExecutorRegistry):
     with pytest.raises(StepError) as e:
         await reg.resolve("op.sheet").run(ctx, {}, {"images": []})
     assert e.value.code == "op_no_input"
+
+
+def test_op_cache_material_follows_source(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    from studio_core.ops import executors
+
+    assert len(ops_source_hash()) == 64
+    assert Sheet().cache_material({"preset": "unity"}).startswith(ops_source_hash() + "|")
+    (tmp_path / "a.py").write_text("x = 1")
+    monkeypatch.setattr(executors, "__file__", str(tmp_path / "executors.py"))
+    ops_source_hash.cache_clear()
+    try:
+        first = ops_source_hash()
+        (tmp_path / "a.py").write_text("x = 2")
+        ops_source_hash.cache_clear()
+        assert ops_source_hash() != first
+    finally:
+        monkeypatch.undo()
+        ops_source_hash.cache_clear()
+
+
+async def test_sheet_row_angles_from_clipless_anim(ctx: FakeCtx, reg: ExecutorRegistry):
+    refs = [await put_img(ctx, figure(16, 16, (0, 0, 16, 16)), f"f{i}.png") for i in range(8 * 4)]
+    angles = [0, 45, 90, 135, 180, 225, 270, 315]
+    anim = await ctx.blobs.put_bytes(json.dumps({"pivot": [8, 15], "width": 16, "height": 16,
+                                                 "angles": angles}).encode(), name="anim.json")
+    res = await reg.resolve("op.sheet").run(ctx, {"cols": 4}, {"images": refs, "pivot": [anim]})
+    assert res.meta["rows"] == 8 and res.meta["row_angles"] == [float(a) for a in angles]
+    assert "angles" not in res.meta
+
+    short = await ctx.blobs.put_bytes(json.dumps({"pivot": [8, 15], "angles": [0, 90]}).encode(), name="a.json")
+    res = await reg.resolve("op.sheet").run(ctx, {"cols": 4}, {"images": refs, "pivot": [short]})
+    assert "row_angles" not in res.meta
+
+
+async def test_static_sheet_writes_angles(ctx: FakeCtx, reg: ExecutorRegistry):
+    refs = [await put_img(ctx, figure(16, 16, (0, 0, 16, 16)), f"d{i}.png") for i in range(8)]
+    order = [0, 45, 90, 135, 180, 225, 270, 315]
+    res = await reg.resolve("op.sheet").run(ctx, {"cols": 8, "order": order}, {"images": refs})
+    assert res.meta["angles"] == order and "row_angles" not in res.meta
+    res = await reg.resolve("op.sheet").run(ctx, {"cols": 1, "order": order}, {"images": refs})
+    assert res.meta["row_angles"] == order
+    res = await reg.resolve("op.sheet").run(ctx, {"preset": "unity"}, {"images": refs})
+    assert len(res.meta["angles"]) == 8 and sorted(res.meta["angles"]) == order

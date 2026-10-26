@@ -6,12 +6,12 @@ import tempfile
 import uuid
 from collections.abc import Awaitable
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, Literal
 
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 import yaml
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from starlette.responses import Response
 
 from studio_core import __version__
@@ -22,7 +22,7 @@ from studio_core.engine.kinds import describe_kinds
 from studio_core.engine.library import RecipeLibrary, issue, merge_text, to_text, validate
 from studio_core.engine.recipe import Recipe, RecipeError
 from studio_core.ops.presets import ExportPreset, PresetStore
-from studio_core.store.bundle import BundleError, export_bundle, sheet_meta
+from studio_core.store.bundle import ENGINES, BundleError, engine_ready, export_bundle, export_engine, sheet_meta
 from studio_core.store.export import export_copy
 from studio_core.contracts import (
     BlobStore,
@@ -115,8 +115,10 @@ async def start_resource(request: Request, name: str) -> Response:
 
 
 @api.post("/resources/{name}/stop")
-async def stop_resource(request: Request, name: str) -> Response:
+async def stop_resource(request: Request, name: str, force: bool = False) -> Response:
     r = _resource(request, name)
+    if not force and (await r.health()).status == "busy":
+        raise ApiError(409, "resource_busy", f"{name} is running a job; cancel the run first or stop with force=true")
     await r.stop()
     return _json(await r.health())
 
@@ -128,7 +130,7 @@ async def translate(request: Request, body: TranslateBody) -> Response:
     try:
         texts, meta = await request.app.state.translator.to_english(body.texts)
     except StepError as e:
-        raise ApiError(502, e.code, e.message) from e
+        raise ApiError(504 if e.code == "claude_timeout" else 502, e.code, e.message) from e
     return _json({"texts": texts, **meta})
 
 
@@ -254,9 +256,13 @@ async def create_batch(request: Request, body: BatchCreate) -> Response:
     if get_recipe_fn is not None:
         try:
             recipe = get_recipe_fn(body.recipe_id)
+            check = getattr(eng, "check_inputs", None)
             for i, values in enumerate(merged):
                 try:
-                    recipe.coerce_inputs(values)
+                    if check is not None:
+                        await check(recipe, values)
+                    else:
+                        recipe.coerce_inputs(values)
                 except ValueError as e:
                     raise ApiError(400, "invalid", f"item {i + 1}: {e}") from e
         except LookupError as e:
@@ -314,9 +320,10 @@ async def create_run(request: Request, body: RunCreate) -> Response:
 @api.get("/runs")
 async def list_runs(request: Request, limit: int = Query(50, ge=1, le=2000), before: float | None = None,
                     status: RunStatus | None = None, batch_id: str | None = None,
-                    batched: bool = False) -> Response:
+                    batched: bool = False, project_id: str | None = None) -> Response:
     repo = _repo(request)
-    runs = await repo.list_runs(limit=limit, before=before, status=status, batch_id=batch_id, batched=batched)
+    runs = await repo.list_runs(limit=limit, before=before, status=status, batch_id=batch_id, batched=batched,
+                                project_id=project_id)
     previews = await repo.run_preview_hashes([r.id for r in runs])
     return _json([{**r.model_dump(mode="json"), "preview_hash": previews.get(r.id)} for r in runs])
 
@@ -355,8 +362,8 @@ async def list_gates(request: Request) -> Response:
 
 @api.get("/versions")
 async def list_versions(request: Request, run_id: str | None = None,
-                        status: VersionStatus | None = None) -> Response:
-    return _json(await _repo(request).list_versions(run_id=run_id, status=status))
+                        status: VersionStatus | None = None, project_id: str | None = None) -> Response:
+    return _json(await _repo(request).list_versions(run_id=run_id, status=status, project_id=project_id))
 
 
 async def _set_version(request: Request, version_id: str, status: VersionStatus) -> Response:
@@ -437,6 +444,9 @@ async def export_blob(request: Request, hash: str, body: BlobExport) -> Response
 class StepExport(BaseModel):
     name: str | None = None
     preset: str | None = None
+    engine: Literal["unity", "godot"] | None = None
+    ppu: float = Field(100.0, gt=0, le=10000)
+    pixel: bool | None = None
 
 
 async def _exportable_step(request: Request, step_id: str) -> Any:
@@ -454,21 +464,33 @@ async def step_export_options(request: Request, step_id: str) -> Response:
     step = await _exportable_step(request, step_id)
     meta = await asyncio.to_thread(sheet_meta, step, _blobs(request))
     files = len({r.hash for refs in step.outputs.values() for r in refs})
+    engines = list(ENGINES) if await asyncio.to_thread(engine_ready, step, _blobs(request)) else []
     return _json({"step_id": step.id, "kind": step.kind, "files": files, "sprite_sheet": meta is not None,
-                  "preset": (meta or {}).get("preset")})
+                  "preset": (meta or {}).get("preset"), "engines": engines})
 
 
 @api.post("/steps/{step_id}/export")
 async def export_step(request: Request, step_id: str, body: StepExport) -> Response:
     """Writes every output of the step (or a preset-repacked sprite sheet + frames) into one folder under exports/app."""
     step = await _exportable_step(request, step_id)
+    settings = request.app.state.settings
+    root = getattr(settings, "app_exports_dir", None) or Path(settings.data_dir) / "exports" / "app"
+    if body.engine:
+        if body.preset:
+            raise ApiError(400, "invalid", "pick either an engine or a preset, not both")
+        # Siblings let a sheet pick up the normal-map sheet rendered by another step of the same run.
+        siblings = await _repo(request).get_steps(step.run_id)
+        try:
+            out = await asyncio.to_thread(export_engine, step, siblings, _blobs(request), Path(root), body.name,
+                                          body.engine, body.ppu, body.pixel)
+        except BundleError as e:
+            raise ApiError(422, "not_exportable", str(e)) from e
+        return _json(out)
     preset = None
     if body.preset:
         preset = await asyncio.to_thread(_presets(request).get, body.preset)
         if preset is None:
             raise ApiError(404, "not_found", f"unknown export preset: {body.preset}")
-    settings = request.app.state.settings
-    root = getattr(settings, "app_exports_dir", None) or Path(settings.data_dir) / "exports" / "app"
     try:
         out = await asyncio.to_thread(export_bundle, step, _blobs(request), Path(root), body.name, preset)
     except BundleError as e:

@@ -270,3 +270,17 @@ def test_workflows_registered() -> None:
         for key in [t["key"] for t in e["texts"]] + e["seeds"] + [i["key"] for i in e["images"]]:
             node, _, inp = key.rpartition(".")
             assert inp in wf[node]["inputs"]
+
+
+def test_pauldron_layer_rides_upper_arm(built: dict) -> None:
+    joints = {k: tuple(v) for k, v in built["layers"]["joints"].items()}
+    bones = sp.build_bones(joints, (0.0, 0.0))
+    assert {"shoulder_l", "upper_arm_l"} <= {b.name for b in bones}
+    assert sp.bone_for("shoulder_l", joints.get("shoulder_l", (0.0, 0.0)), bones) == "upper_arm_l"
+    assert sp.bone_for("shoulder_r", (0.0, 0.0), bones) == "upper_arm_r"
+
+
+def test_preview_html_escapes_name() -> None:
+    page = sp.preview_html("<b>x</script>", b"{}", b"", "p.png", b"", ["idle"])
+    assert "<title>&lt;b&gt;x&lt;/script&gt; · Spine" in page and "<footer>&lt;b&gt;x" in page
+    assert page.count("</script>") == 2

@@ -83,31 +83,37 @@ class BlenderResource:
         self._stopping = False
         t0 = time.perf_counter()
         args = [str(exe), "-b", "--factory-startup", "-noaudio", "-P", str(WORKER_SCRIPT), "--", "0"]
-        self.proc, self.job = await spawn_in_job(args, stdin=asyncio.subprocess.DEVNULL,
-                                                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         logf = open(self.log_path, "ab")
-        logf.write(f"\n==== spawn {time.strftime('%Y-%m-%d %H:%M:%S')} pid={self.proc.pid}\n".encode())
-        port = None
         try:
-            async with asyncio.timeout(BOOT_TIMEOUT_S):
-                while port is None:
-                    line = await self.proc.stdout.readline()
-                    if not line:
-                        break
-                    logf.write(line)
-                    if line.startswith(b"WORKER_READY"):
-                        port = int(line.split()[1])
-        except TimeoutError:
-            pass
-        if port is None:
+            self.proc, self.job = await spawn_in_job(args, stdin=asyncio.subprocess.DEVNULL,
+                                                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        except BaseException as e:
             logf.close()
-            await self._kill()
-            msg = f"blender worker failed to boot, see {self.log_path}"
+            self._set("down" if isinstance(e, asyncio.CancelledError) else "error", None if isinstance(
+                e, asyncio.CancelledError) else f"spawn failed: {e!r}"[:300])
+            if isinstance(e, Exception):
+                raise StepError("blender_boot_failed", f"cannot spawn Blender: {e!r}") from e
+            raise
+        logf.write(f"\n==== spawn {time.strftime('%Y-%m-%d %H:%M:%S')} pid={self.proc.pid}\n".encode())
+        try:
+            port = await self._await_ready(logf)
+            if port is None:
+                raise StepError("blender_boot_failed", f"blender worker failed to boot, see {self.log_path}",
+                                retryable=True)
+            self._reader, self._writer = await asyncio.open_connection("127.0.0.1", port, limit=16 * 2**20)
+        except BaseException as e:
+            logf.close()
+            await asyncio.shield(self._kill())
+            if isinstance(e, asyncio.CancelledError):
+                self._set("down")
+                raise
+            msg = e.message if isinstance(e, StepError) else f"blender worker failed to boot: {e!r}"[:300]
             self._set("error", msg)
-            raise StepError("blender_boot_failed", msg, retryable=True)
+            if isinstance(e, StepError):
+                raise
+            raise StepError("blender_boot_failed", msg, retryable=True) from e
         self._drain = asyncio.create_task(self._drain_stdout(logf), name="blender-stdout")
-        self._reader, self._writer = await asyncio.open_connection("127.0.0.1", port, limit=16 * 2**20)
         self._watchdog = asyncio.create_task(self._watch(), name="blender-watchdog")
         self.boot_s = time.perf_counter() - t0
         try:
@@ -118,12 +124,29 @@ class BlenderResource:
                 self.warmup_s = w.get("s")
         except BaseException as e:
             await asyncio.shield(self._kill())
-            self._set("error", f"worker init failed: {e!r}"[:300])
+            if isinstance(e, asyncio.CancelledError):
+                self._set("down")
+            else:
+                self._set("error", f"worker init failed: {e!r}"[:300])
             if isinstance(e, (StepError, asyncio.CancelledError)):
                 raise
             raise StepError("blender_boot_failed", repr(e), retryable=True) from e
         self._set("up")
         log.info("blender worker up pid=%s boot=%.1fs warmup=%ss", self.proc.pid, self.boot_s, self.warmup_s)
+
+    async def _await_ready(self, logf: Any) -> int | None:
+        assert self.proc is not None and self.proc.stdout is not None
+        try:
+            async with asyncio.timeout(BOOT_TIMEOUT_S):
+                while True:
+                    line = await self.proc.stdout.readline()
+                    if not line:
+                        return None
+                    logf.write(line)
+                    if line.startswith(b"WORKER_READY"):
+                        return int(line.split()[1])
+        except TimeoutError:
+            return None
 
     async def _drain_stdout(self, logf: Any) -> None:
         assert self.proc is not None and self.proc.stdout is not None

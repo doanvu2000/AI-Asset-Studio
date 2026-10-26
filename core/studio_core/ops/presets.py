@@ -30,6 +30,8 @@ class ExportPreset(BaseModel):
     cols: int = Field(4, ge=1, le=64)
     padding: int = Field(0, ge=0, le=64)
     pivot_origin: Literal["top_left", "bottom_left"] = "top_left"
+    # Pixel-art sheets: exporters must import with point/nearest filtering, no mipmaps or compression.
+    pixel: bool = False
     builtin: bool = False
 
     @field_validator("id")
@@ -93,6 +95,8 @@ BUILTIN: tuple[ExportPreset, ...] = (
                  dir_labels={"E": "right", "SE": "down_right", "S": "down", "SW": "down_left", "W": "left",
                              "NW": "up_left", "N": "up", "NE": "up_right"},
                  file_pattern="{asset}_{dir}", builtin=True),
+    ExportPreset(id="pixel", name="Pixel art", description="Như Studio, đánh dấu pixel art: engine lọc Point/Nearest",
+                 dir_order=list(COMPASS), file_pattern="{asset}_{angle:03d}", pixel=True, builtin=True),
 )
 
 
@@ -183,7 +187,7 @@ def annotate_sheet_meta(meta: dict[str, Any], named: list[dict[str, Any]], prese
         r, col = divmod(rec["index"], c)
         rec.update(x=col * (fw + pad), y=r * (fh + pad), w=fw, h=fh)
     meta.update(preset=preset.id, dirs=[n["label"] for n in named], frames_named=named,
-                pivot_origin=preset.pivot_origin)
+                pivot_origin=preset.pivot_origin, pixel=preset.pixel, filter="point" if preset.pixel else "bilinear")
     if "pivot" in meta:
         px, py = meta["pivot"]
         meta["pivot_norm"] = [round(px / fw, 4),

@@ -124,6 +124,40 @@ class BlobRow(BlobRef):
     created_at: float
 
 
+DEFAULT_PROJECT = "default"
+
+
+class PixelStyle(BaseModel):
+    size: int | None = None
+    palette: str | None = None
+    colors: int | None = None
+    outline: str | None = None
+    dither: str | None = None
+
+
+class ProjectStyle(BaseModel):
+    """Locked look of a project; English text, applied to inputs the user left empty (engine/projects.py)."""
+    prompt_prefix: str = ""
+    prompt_suffix: str = ""
+    negative: str = ""
+    preset: str | None = None
+    pixel: PixelStyle | None = None
+    palette_image: str | None = None
+    reference_image: str | None = None
+    inputs: dict[str, Any] = {}
+    notes: str = ""
+
+
+class ProjectRow(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    style: ProjectStyle = ProjectStyle()
+    created_at: float
+    updated_at: float
+    archived: bool = False
+
+
 # ---- events (WS) ----
 
 class Event(BaseModel):
@@ -265,7 +299,8 @@ class Repo(Protocol):
     async def update_run(self, run_id: str, **fields: Any) -> None: ...
     async def get_run(self, run_id: str) -> RunRow | None: ...
     async def list_runs(self, limit: int = 50, before: float | None = None, status: RunStatus | None = None,
-                        batch_id: str | None = None, batched: bool = False) -> list[RunRow]: ...
+                        batch_id: str | None = None, batched: bool = False,
+                        project_id: str | None = None) -> list[RunRow]: ...
 
     async def create_steps(self, steps: list[StepRow]) -> None: ...
     async def update_step(self, step_id: str, **fields: Any) -> None: ...
@@ -280,10 +315,12 @@ class Repo(Protocol):
     async def add_version(self, v: VersionRow) -> None: ...
     async def set_version_status(self, version_id: str, status: VersionStatus) -> VersionRow | None: ...
     async def list_versions(self, run_id: str | None = None, status: VersionStatus | None = None,
-                            limit: int = 200) -> list[VersionRow]: ...
+                            limit: int = 200, project_id: str | None = None) -> list[VersionRow]: ...
 
     async def put_blob_row(self, b: BlobRow) -> None: ...
     async def get_blob_row(self, hash: str) -> BlobRow | None: ...
+
+    async def get_project(self, project_id: str) -> ProjectRow | None: ...
 
 
 # ---- engine (used by API) ----

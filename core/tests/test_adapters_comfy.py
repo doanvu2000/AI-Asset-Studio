@@ -228,6 +228,15 @@ async def test_client_fail_all_on_crash(tmp_path):
     await c.close()
 
 
+
+async def test_client_close_mid_prompt_is_retryable(tmp_path):
+    fake = FakeComfy(tmp_path)
+    c = fake.client()
+    fake.on_submit = lambda b: asyncio.get_running_loop().create_task(c.close())
+    with pytest.raises(StepError) as e:
+        await asyncio.wait_for(c.run({}, "ps"), 2)
+    assert e.value.code == "comfy_stopped" and e.value.retryable
+
 class FakeResource:
     def __init__(self, client):
         self.client = client

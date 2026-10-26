@@ -13,6 +13,8 @@ datas = [
     (str(PKG / "recipes" / "*.yaml"), "studio_core/recipes"),
     (str(PKG / "adapters" / "blender" / "worker.py"), "studio_core/adapters/blender"),
     (str(PKG / "adapters" / "blender" / "cleanup_math.py"), "studio_core/adapters/blender"),
+    # Op cache keys hash these sources (ops/executors.py: ops_source_hash).
+    (str(PKG / "ops" / "*.py"), "studio_core/ops"),
 ]
 
 # app.py loads plugins and the engine via importlib, which static analysis cannot follow.

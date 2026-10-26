@@ -284,3 +284,50 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   Còn mở: miếng giáp vai Spine đứng yên khi hạ tay (lộ ở walk/hurt); hàng sheet đi bộ ghi "Hàng 1..8" chưa tên hướng;
   bone heat Blender không dùng được với mesh TRELLIS (đã thay bằng distance skinning).
   pytest 253/4, typecheck sạch.
+- [x] Commit + push `core+app: spine 6 clips + back-view rig, sprite walk cycle…`. Build core + app; tự test core đóng
+  gói chạy nhánh walk (27s, OK). Portable: app chép 15:12; core vẫn bị 11 studio-core.exe MCP khoá — vòng chờ
+  `update-portable.ps1 -Wait` (nền, từ 11:3x) sẽ chép bản mới nhất khi hết khoá. CORE PORTABLE HIỆN CŨ → recipe
+  sprite-8dir-walk / spine-character-mv chưa chạy được trên Portable cho tới khi chép core.
+- [ ] 2026-10-27 (session mới, chủ nhân đi ngủ tới sáng; cho build + test thoải mái): tổng hợp + audit + brainstorm →
+  `.planning/NIGHT-2026-10-27.md` (spec + plan + state), rồi làm theo plan. Audit core/app + inventory đang chạy subagent.
+  Chủ nhân chốt cho đêm 2026-10-27: commit + push dần; được kill studio-core.exe MCP để chép Portable cuối đêm;
+  Unity = project test riêng `L:\AI\unity-test` + exporter/importer, kiểm bằng `Unity.exe -batchmode`; chi phí API không giới hạn.
+- [x] Audit 3 agent xong + Unity MCP v10.3.0 cài (project `L:\AI\unity-test`, compile sạch, đăng ký `unityMCP` user scope).
+  Tổng hợp: `.planning/NIGHT-2026-10-27.md` (spec, audit C1–C15 / A1–A18, 10 ý tưởng, plan N1–N10). Bắt đầu N1.
+  Chủ nhân (lần cuối trước khi ngủ): cho phép tự build + test lại khi cần; không còn câu hỏi treo. Giao wave 1: W1 core-fix,
+  W2 app-fix + thư viện, W5 blender anim + normal, W6 exporter Unity/Godot, W7 pixel-art (xem NIGHT §4.1).
+  W1: C2 op cache_material = blake3 của toàn bộ ops/*.py (spec bundle ops/*.py; Sheet ghép base|preset)
+  W1: C3 claude.task/brief/translate timeout (_timeout_s mặc định 300, translate 90) → StepError claude_timeout retryable; /api/translate trả 504
+  W1: C4 translate schema [{i,text}], gán theo index, bỏ entry thiếu/trùng/ngoài tầm
+  W1: C5 runner: per-run control lock (_run_control) quanh load-state→mutate→start-driver ở resolve_gate/retry_step/cancel_run; test 2 resolve/2 retry đồng thời
+  W1: C6 mesh_check: render lỗi → report/meta skipped=true, status/check="skipped" (passed=false; on_fail=fail không reject); free VRAM Comfy trước render
+  W1: C7 engine.check_inputs() (coerce + blob tồn tại); POST /api/batches kiểm mọi item trước khi start run nào
+  W1: C8 POST /resources/{name}/stop trả 409 resource_busy khi health=busy (override ?force=true)
+  W1: C9 dọn proc khi cancel/lỗi lúc boot: blender _spawn (BaseException → kill, status down/error), comfy boot loop, _winproc assign lỗi → proc.kill()
+  W7: op.pixel_art (ops/pixel.py: shared OKLab k-means palette, presets pico8/sweetie16/db16/db32/endesga32, palette_image, outline dark/hex, bayer, despeckle) + catalog + preset 'pixel' (field pixel → sheet meta filter=point) + recipes sprite-8dir-pixel / sprite-8dir-3d-pixel + tests/test_pixel_art.py (10 pass)
+  W1: C10 ComfyClient.close() fail_all + _wait kiểm _closed → StepError comfy_stopped retryable (không còn internal)
+- [x] W7 xong (review OK: `ops/pixel.py` op.pixel_art palette chung OKLab, 2 recipe pixel, preset `pixel`; ảnh
+  `scratchpad 6ad407b8/w7/final_knight_auto16.png` đẹp). Chưa commit: `engine/kinds.py` lẫn hunk W1/W5 → commit gộp khi W1+W5 xong.
+  W1: C11 library merge_text: bool/int không còn giữ nhầm giá trị cũ (so riêng bool, vẫn giữ format scalar ruamel)
+  W6: export/unity.py (sheet .png.meta Sprite Multiple + nameFileIdTable, _NormalMap secondary, .anim/clip×dir, .controller blend tree 2D, prefab) — Unity 6000.3.6f1 batchmode L:\AI\unity-test-batch: 56 sprite, 16 clip, 2 state, 0 lỗi, Unity không ghi đè .meta
+  W6: export/godot.py (SpriteFrames .tres AtlasTexture + CanvasTexture normal, .tscn AnimatedSprite2D offset chân, helper face()) — Godot 4.7.2 (L:\AI\tools\godot, SHA512 khớp) headless L:\AI\godot-test: 16 anim, 0 lỗi
+  W1: C1 test giáp vai shoulder_l/r → upper_arm_l/r; C12 spine preview_html escape name (title/footer) + '</' trong JSON script
+  W1: C13 index biểu thức idx_runs_batch_id (json_extract batch_id) trong db SCHEMA + test EXPLAIN
+  W1: C15 op.sheet: anim.json không clips + angles dài = rows → meta.row_angles; sheet tĩnh có order/preset → meta.angles (per cell), cols=1 thêm row_angles
+  W6: API POST /api/steps/{id}/export {engine: unity|godot, ppu?, pixel?} (GET trả engines; sheet tự ghép normal sheet anh em trong run), store/bundle.export_engine; app BundleMenu 'Xuất cho Unity…/Xuất cho Godot…' (+ preload/main/assetFile thêm tham số engine); tests/test_export_engines.py 7 pass; typecheck sạch
+- [x] W1 xong (C1–C13, C15; 293 pass, 3 fail recipe-shape do W5 đang sửa). Interface mới: mesh_report `status/skipped`,
+  translate 504 `claude_timeout`, stop resource 409 `resource_busy` (`?force=true`), sheet meta `row_angles`/`angles`. Đã báo W2/W5.
+- [ ] W8 Project (core) bắt đầu: bảng projects + runs.project_id, apply_style, `api/projects.py`, MCP list_projects. App phần Project làm sau W2.
+  W2: A1–A18 xong (BlobImage reset theo transport, stores loaded chỉ khi OK + Thử lại, gates/versions giữ event WS mới khi snapshot đang tải, ws watchdog resume 3s, fetch timeout 20s/180s, runs dọn preview/progress + LRU log, rev theo run, batch detail pool 6, GatesView loading/lỗi, focus trap Lightbox, guard dirty route + IPC quit, fuses electron-builder + will-redirect, fetchBlob LRU+timeout, dịch thiếu/504, notify cache-hit) + stop 409 xác nhận force; typecheck sạch
+- [x] W6 xong: `core/studio_core/export/{source,sheet,unity,godot}.py`; `POST /api/steps/{id}/export` thêm `engine`
+  (unity|godot), `ppu`, `pixel`; BundleMenu "Xuất cho Unity…/Godot…". Kiểm thật: Unity 6000.3.6f1 batchmode
+  (`L:\AI\unity-test-batch`) fails=0; Godot 4.7.2 headless (`L:\AI\tools\godot`, `L:\AI\godot-test`) fails=0.
+  Hạn chế: mới kiểm sheet giả lập; PPU chưa có UI; Spine chưa kiểm trong engine (không cài runtime).
+  W5: N5 anim set — animate_dirs `anims` (idle/walk/run/attack procedural, attack = right-arm windup→strike→recover, one-shot), frames clip-major→dir→frame, anim.json `clips`+`angles`; op.sheet lays one 8-row block per clip (`clips` row0/rows/frames/fps/loop + row_angles). Live on walk4 knight: 4 clips×8f×8 dirs (+normals) 92 s.
+  W5: N6 normal map — render_dirs/animate_dirs `normals: true` → `normal_frames` (camera-space RGB=n*0.5+0.5, alpha from colour frame); op.mirror_dirs `normal: true` flips R; op.sheet `normal: true`; `optional: true` on sheet/downscale/mirror passes empty input. Recipes 3d/3d-mv/3d-brief gain `normals` + normal_sheet/normal_meta.
+  W5: C14 — animate_dirs raises blender_bad_output unless frames == Σclip frames × angles. New recipe sprite-8dir-anim (anims text "idle, walk, run, attack" + normals); sprite-8dir-walk unchanged. pytest 296 passed.
+- [x] W5 xong (296 pass): anim idle/walk/run/attack (`blender.animate_dirs anims`), normal map (`normals`), recipe mới
+  `sprite-8dir-anim`, `normals` cho 3d/3d-mv/3d-brief; ảnh `scratchpad 6ad407b8/w5/r1/` OK (cape theo tay khi attack do distance skinning).
+- [ ] Audit wave 1 đang chạy: reviewer core (W1/W5/W7) + reviewer exporter/security (W6). Chờ W2 + W8 rồi commit theo nhóm.
+  W8: core Project xong: bảng projects (+migrate runs/versions.project_id, index), contracts ProjectStyle/ProjectRow, engine/projects.apply_style (start_run khi project_id≠default, $meta.project_id/project_applied), api/projects.py CRUD+summary, filter project_id ở GET /api/runs + /api/versions, MCP list_projects + start_run(project_id); tests/test_w8_projects.py 7 pass (full 303 pass). App: bỏ input user chưa chạm để style áp được.
+  W2: N4 Thư viện: chọn nhiều (checkbox, Shift dải, Ctrl/Cmd, Ctrl+A, Esc), thanh "Duyệt N / Từ chối N / So sánh / Bỏ chọn" (pool 4, tiến độ), A/R trong lightbox (duyệt rồi sang tiếp), CompareView 2 bản cạnh nhau; SpriteSheetViewer: tên hướng Việt + mũi tên + góc (row_angles / angles / fallback r*45), chip clip, nút Normal (normal_sheet / tên *normal*), phím ←/→ ↑/↓ Space N; MeshReport trạng thái skipped; mock walk sheet 3 clip + normal + mesh_report skipped; kiểm CDP mock OK; typecheck sạch

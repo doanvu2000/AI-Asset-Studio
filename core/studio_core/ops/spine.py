@@ -3,6 +3,7 @@ pure-Python compositor that replays the same transforms (setup-pose check + anim
 from __future__ import annotations
 
 import base64
+import html
 import json
 import math
 from dataclasses import dataclass
@@ -33,7 +34,8 @@ BONES: tuple[tuple[str, str | None, str, str, float], ...] = (
     *((f"shin_{s}", f"thigh_{s}", f"knee_{s}", f"ankle_{s}", 1.0) for s in "lr"),
     *((f"foot_{s}", f"shin_{s}", f"ankle_{s}", f"foot_tip_{s}", 1.0) for s in "lr"),
 )
-PART_BONE = {"cape": "torso"}
+# Pauldron layers share the clavicle bone names, but no clip rotates clavicles; they must ride the upper arm.
+PART_BONE = {"cape": "torso", "shoulder_l": "upper_arm_l", "shoulder_r": "upper_arm_r"}
 
 
 def _rot(deg: float) -> np.ndarray:
@@ -81,11 +83,10 @@ def build_bones(joints: dict[str, Point], origin: Point) -> list[Bone]:
 
 
 def bone_for(part: str, center: Point, bones: list[Bone]) -> str:
-    names = {b.name for b in bones}
-    if part in names:
-        return part
     if part in PART_BONE:
         return PART_BONE[part]
+    if part in {b.name for b in bones}:
+        return part
     best, dist = "torso", math.inf
     for b in bones[1:]:
         ax, ay = b.world_pos
@@ -452,9 +453,12 @@ def preview_html(name: str, skeleton_json: bytes, atlas: bytes, page_name: str, 
            "animation": animations_list[0] if animations_list else None, "premultipliedAlpha": False,
            "alpha": True, "backgroundColor": "#00000000", "showControls": True,
            "viewport": {"padLeft": "8%", "padRight": "8%", "padTop": "6%", "padBottom": "6%"}}
+    title = html.escape(name)
+    anims = html.escape(", ".join(animations_list) or "none")
+    cfg_js = json.dumps(cfg).replace("</", "<\\/")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{name} · Spine preview</title>
+<title>{title} · Spine preview</title>
 <link rel="stylesheet" href="{PLAYER_CSS}">
 <script src="{PLAYER_JS}"></script>
 <style>
@@ -467,8 +471,8 @@ main {{ display: flex; flex-direction: column; height: 100%; padding: 0 16px; bo
 footer {{ color: var(--muted); padding: 8px 0 12px; font-size: 12px; }}
 </style></head>
 <body><main><div id="player"></div>
-<footer>{name} — spine-player {PLAYER_VERSION} (Spine 4.2 runtime; using Spine runtimes requires a Spine Editor
-license). Animations: {", ".join(animations_list) or "none"}.</footer></main>
-<script>new spine.SpinePlayer("player", {json.dumps(cfg)});</script>
+<footer>{title} — spine-player {PLAYER_VERSION} (Spine 4.2 runtime; using Spine runtimes requires a Spine Editor
+license). Animations: {anims}.</footer></main>
+<script>new spine.SpinePlayer("player", {cfg_js});</script>
 </body></html>
 """

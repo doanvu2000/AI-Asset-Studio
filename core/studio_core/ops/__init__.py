@@ -4,6 +4,7 @@ from typing import Any
 
 from ..contracts import ExecutorRegistry, Resource
 from .executors import ALL_OPS, Sheet
+from .pixel import PIXEL_OPS
 from .presets import PresetStore
 from .rig import RIG_OPS
 
@@ -12,6 +13,6 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
     presets = PresetStore(getattr(settings, "presets_path", None))
     for cls in ALL_OPS:
         registry.register(Sheet(presets) if cls is Sheet else cls())
-    for rig_cls in RIG_OPS:
+    for rig_cls in (*RIG_OPS, *PIXEL_OPS):
         registry.register(rig_cls())
     return []

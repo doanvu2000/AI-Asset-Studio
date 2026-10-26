@@ -11,6 +11,7 @@ from pydantic_core import to_jsonable_python
 from studio_core.contracts import (
     BlobRow,
     Outputs,
+    ProjectRow,
     RunRow,
     RunStatus,
     StepRow,
@@ -62,6 +63,7 @@ _RUNS = _Table("runs", RunRow, {"inputs", "params"})
 _STEPS = _Table("steps", StepRow, {"deps", "params", "inputs", "outputs", "error", "meta"})
 _VERSIONS = _Table("versions", VersionRow, {"blob"})
 _BLOBS = _Table("blobs", BlobRow, set(), pk="hash")
+_PROJECTS = _Table("projects", ProjectRow, {"style"})
 _OUTPUTS: TypeAdapter[Outputs] = TypeAdapter(Outputs)
 _BATCH_ID = """json_extract(params, '$."$meta".batch_id')"""
 
@@ -89,9 +91,13 @@ class SqliteRepo:
         return _RUNS.decode(row) if row else None
 
     async def list_runs(self, limit: int = 50, before: float | None = None, status: RunStatus | None = None,
-                        batch_id: str | None = None, batched: bool = False) -> list[RunRow]:
+                        batch_id: str | None = None, batched: bool = False,
+                        project_id: str | None = None) -> list[RunRow]:
         where: list[str] = []
         params: list[Any] = []
+        if project_id is not None:
+            where.append("project_id = ?")
+            params.append(project_id)
         if batch_id is not None:
             where.append(f"{_BATCH_ID} = ?")
             params.append(batch_id)
@@ -187,9 +193,12 @@ class SqliteRepo:
         return _VERSIONS.decode(row) if row else None
 
     async def list_versions(self, run_id: str | None = None, status: VersionStatus | None = None,
-                            limit: int = 200) -> list[VersionRow]:
+                            limit: int = 200, project_id: str | None = None) -> list[VersionRow]:
         where: list[str] = []
         params: list[Any] = []
+        if project_id is not None:
+            where.append("project_id = ?")
+            params.append(project_id)
         if run_id is not None:
             where.append("run_id = ?")
             params.append(run_id)
@@ -209,3 +218,41 @@ class SqliteRepo:
     async def get_blob_row(self, hash: str) -> BlobRow | None:
         row = await self.db.fetchone("SELECT * FROM blobs WHERE hash = ?", (hash,))
         return _BLOBS.decode(row) if row else None
+
+    async def create_project(self, p: ProjectRow) -> None:
+        await self.db.write(_PROJECTS.insert_sql(), _PROJECTS.to_params(p))
+
+    async def update_project(self, project_id: str, **fields: Any) -> ProjectRow | None:
+        await self._update(_PROJECTS, project_id, {**fields, "updated_at": time.time()})
+        return await self.get_project(project_id)
+
+    async def get_project(self, project_id: str) -> ProjectRow | None:
+        row = await self.db.fetchone("SELECT * FROM projects WHERE id = ?", (project_id,))
+        return _PROJECTS.decode(row) if row else None
+
+    async def list_projects(self, archived: bool = False) -> list[ProjectRow]:
+        sql = "SELECT * FROM projects" + ("" if archived else " WHERE archived = 0") + " ORDER BY updated_at DESC"
+        return [_PROJECTS.decode(r) for r in await self.db.fetchall(sql)]
+
+    async def project_summary(self, project_id: str) -> dict[str, Any]:
+        rows = await self.db.fetchall(
+            "SELECT status, COUNT(*) AS n, MAX(MAX(created_at, COALESCE(ended_at, 0))) AS last FROM runs "
+            "WHERE project_id = ? GROUP BY status", (project_id,))
+        runs = {r["status"]: r["n"] for r in rows}
+        last = max((r["last"] for r in rows), default=None)
+        vrows = await self.db.fetchall(
+            "SELECT status, COUNT(*) AS n FROM versions WHERE project_id = ? GROUP BY status", (project_id,))
+        versions = {r["status"]: r["n"] for r in vrows}
+        cover = await self.db.fetchone(
+            "SELECT blob FROM versions WHERE project_id = ? AND status != ? AND json_extract(blob, '$.mime') "
+            "LIKE 'image/%' ORDER BY status = ? DESC, created_at DESC LIMIT 1",
+            (project_id, VersionStatus.REJECTED.value, VersionStatus.APPROVED.value))
+        cover_hash = orjson.loads(cover["blob"])["hash"] if cover else None
+        if cover_hash is None:
+            latest = await self.db.fetchall(
+                "SELECT id FROM runs WHERE project_id = ? ORDER BY created_at DESC LIMIT 5", (project_id,))
+            previews = await self.run_preview_hashes([r["id"] for r in latest])
+            cover_hash = next((previews[r["id"]] for r in latest if r["id"] in previews), None)
+        return {"project_id": project_id, "runs": runs, "runs_total": sum(runs.values()),
+                "versions": versions, "approved_versions": versions.get(VersionStatus.APPROVED.value, 0),
+                "last_activity": last, "cover_hash": cover_hash}

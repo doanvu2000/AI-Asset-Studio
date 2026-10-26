@@ -74,6 +74,11 @@ async def spawn_in_job(args: list[str], cwd: Path | str | None = None, **kwargs:
         job.assign_and_resume(proc.pid)
     except BaseException:
         job.close()
+        # Not in the job yet, so closing it does not reach the (still suspended) child.
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
         raise
     return proc, job
 

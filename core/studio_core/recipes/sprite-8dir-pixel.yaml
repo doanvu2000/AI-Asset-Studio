@@ -1,0 +1,42 @@
+id: sprite-8dir-pixel
+name: Sprite 8 hướng pixel art (GLB → Blender)
+description: Mesh GLB → dọn mesh → render 8 hướng ortho (Blender) → pixel art (một bảng màu chung cho mọi hướng, viền 1px, alpha cứng) → sprite sheet (pivot = tâm chân) + JSON + bảng màu
+inputs:
+  mesh: {type: mesh, label: Mesh GLB}
+  elevation: {type: float, default: 30, min: 0, max: 90, label: Góc nghiêng}
+  pixel: {type: int, default: 64, options: [32, 48, 64, 96, 128], label: Cỡ pixel art (px)}
+  colors: {type: int, default: 16, options: [8, 12, 16, 24, 32], label: Số màu}
+  palette: {type: enum, default: auto, options: [auto, pico8, sweetie16, db16, db32, endesga32], label: Bảng màu}
+  palette_image: {type: image, required: false, label: Ảnh lấy bảng màu (tuỳ chọn)}
+  outline: {type: enum, default: dark, options: [dark, none, "#000000"], label: Viền ngoài}
+  dither: {type: enum, default: none, options: [none, bayer], label: Dither}
+  mirror: {type: bool, default: false, label: Lật gương (5 hướng → 8)}
+  upright: {type: enum, default: none, options: [none, x90, x-90, y90, y-90, x180], label: Dựng đứng}
+  preset: {type: preset, default: pixel, label: Preset xuất}
+steps:
+  - id: cleanup
+    kind: blender.cleanup
+    in: {mesh: inputs.mesh}
+    params: {target_faces: 50000, height: 1.0, origin: feet, upright: "${inputs.upright}"}
+  - id: render
+    kind: blender.render_dirs
+    in: {mesh: cleanup.meshes}
+    params: {elevation: "${inputs.elevation}", count: 8, res: 256, supersample: 2, mirror: "${inputs.mirror}"}
+  - id: dirs
+    kind: op.mirror_dirs
+    in: {images: render.images}
+    params: {count: 8}
+  - id: pixel
+    kind: op.pixel_art
+    in: {images: dirs.images, palette_image: inputs.palette_image}
+    params: {size: "${inputs.pixel}", colors: "${inputs.colors}", palette: "${inputs.palette}",
+             outline: "${inputs.outline}", dither: "${inputs.dither}"}
+  - id: sheet
+    kind: op.sheet
+    in: {images: pixel.images, pivot: render.meta}
+    params: {cols: 8, order: [0, 45, 90, 135, 180, 225, 270, 315], preset: "${inputs.preset}"}
+outputs:
+  final: sheet.sheet
+  meta: sheet.meta
+  palette: pixel.palette
+  swatch: pixel.swatch

@@ -9,6 +9,7 @@ inputs:
   mirror: {type: bool, default: false, label: Lật gương (5 hướng → 8)}
   faces: {type: int, default: 30000, min: 2000, max: 200000, label: Số mặt}
   preset: {type: preset, default: studio, label: Preset xuất}
+  normals: {type: bool, default: false, label: Thêm normal map (sheet riêng)}
 steps:
   - id: brief
     kind: claude.brief
@@ -32,7 +33,8 @@ steps:
   - id: render
     kind: blender.render_dirs
     in: {mesh: cleanup.meshes}
-    params: {count: 8, elevation: "${inputs.elevation}", res: "${inputs.res}", supersample: 2, mirror: "${inputs.mirror}"}
+    params: {count: 8, elevation: "${inputs.elevation}", res: "${inputs.res}", supersample: 2, mirror: "${inputs.mirror}",
+             normals: "${inputs.normals}"}
   - id: dirs
     kind: op.mirror_dirs
     in: {images: render.images}
@@ -45,7 +47,23 @@ steps:
     kind: op.sheet
     in: {images: down.images, pivot: render.meta}
     params: {cols: 8, order: [0, 45, 90, 135, 180, 225, 270, 315], preset: "${inputs.preset}"}
+  # Normal steps pass through empty when normals are off; same factor and preset keep the layout identical.
+  - id: ndirs
+    kind: op.mirror_dirs
+    in: {images: render.normal_frames}
+    params: {count: 8, normal: true, optional: true}
+  - id: ndown
+    kind: op.downscale
+    in: {images: ndirs.images}
+    params: {factor: 2, resample: box, optional: true}
+  - id: nsheet
+    kind: op.sheet
+    in: {images: ndown.images, pivot: render.meta}
+    params: {cols: 8, order: [0, 45, 90, 135, 180, 225, 270, 315], preset: "${inputs.preset}", normal: true,
+             optional: true}
 outputs:
   final: sheet.sheet
   meta: sheet.meta
   frames: down.images
+  normal_sheet: nsheet.sheet
+  normal_meta: nsheet.meta

@@ -11,6 +11,7 @@ from typing import Any, Literal
 import yaml
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
+from ruamel.yaml.scalarbool import ScalarBoolean
 
 from ..contracts import ExecutorRegistry
 from .kinds import CATALOG, comfy_entries
@@ -57,7 +58,19 @@ def _merge(old: Any, new: Any) -> Any:
         old.ca.items.clear()
         old.ca.items.update({j: notes[id(x)] for j, x in enumerate(items) if id(x) in notes})
         return old
-    return old if isinstance(old, type(new)) and old == new else new
+    return old if _same_scalar(old, new) else new
+
+
+def _is_bool(v: Any) -> bool:
+    return isinstance(v, (bool, ScalarBoolean))
+
+
+def _same_scalar(old: Any, new: Any) -> bool:
+    # isinstance, not `type(old) is type(new)`: ruamel's ScalarFloat/quoted strings must still keep their formatting.
+    # bool is an int (True == 1), so it is compared separately.
+    if _is_bool(old) or _is_bool(new):
+        return _is_bool(old) and _is_bool(new) and bool(old) == bool(new)
+    return isinstance(old, type(new)) and old == new
 
 
 def merge_text(prev_text: str, doc: dict[str, Any]) -> str:

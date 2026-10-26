@@ -72,7 +72,7 @@ async def test_kinds_describe_ports_and_params(ctx) -> None:
     assert sheet["lane"] == "cpu" and sheet["in"] == CATALOG["op.sheet"]["in"]
     assert sheet["params"]["preset"]["type"] == "preset"
     assert kinds["gate.pick"]["lane"] == "none"
-    assert kinds["blender.render_dirs"]["out"] == {"images": "image[]", "meta": "json"}
+    assert kinds["blender.render_dirs"]["out"] == {"images": "image[]", "normal_frames": "image[]", "meta": "json"}
     assert not any(k.startswith("comfy.") and k != "comfy.*" for k in kinds)
 
 

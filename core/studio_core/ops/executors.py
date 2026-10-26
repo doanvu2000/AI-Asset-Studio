@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import io
 import json
+from pathlib import Path
 from typing import Any, Callable
 
+from blake3 import blake3
 from PIL import Image
 
 from ..contracts import BlobRef, Lane, Outputs, StepContext, StepError, StepResult
@@ -12,12 +15,18 @@ from . import glb
 from . import image as im
 from . import viewcheck as vc
 from .presets import ExportPreset, PresetStore, annotate_sheet_meta, apply_preset, resolve_preset
+from .sheet_layout import clip_layout
 
 
 def _png(img: Image.Image) -> bytes:
     buf = io.BytesIO()
     img.save(buf, "PNG", optimize=False, compress_level=6)
     return buf.getvalue()
+
+
+def _skip_empty(params: dict[str, Any], inputs: Outputs, name: str = "images") -> bool:
+    """`optional: true` lets a step pass an empty input through (e.g. normal frames when normals are off)."""
+    return bool(params.get("optional")) and not inputs.get(name)
 
 
 def _images_in(inputs: Outputs, name: str = "images") -> list[BlobRef]:
@@ -44,6 +53,20 @@ async def _put_png(ctx: StepContext, img: Image.Image, name: str) -> BlobRef:
     return await ctx.blobs.put_bytes(data, name=name, mime="image/png")
 
 
+@functools.cache
+def ops_source_hash() -> str:
+    # Whole package, since ops share helpers (image.py, presets.py...). Frozen builds only have these
+    # files if the spec bundles them; without them the class `version` is the only invalidation.
+    files = sorted(Path(__file__).parent.glob("*.py"))
+    if not files:
+        return ""
+    h = blake3()
+    for f in files:
+        h.update(f.name.encode())
+        h.update(f.read_bytes())
+    return h.hexdigest()
+
+
 class OpExecutor:
     lane = Lane.CPU
     version = "1"
@@ -53,7 +76,7 @@ class OpExecutor:
         return True
 
     def cache_material(self, params: dict[str, Any]) -> str:
-        return ""
+        return ops_source_hash()
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         raise NotImplementedError
@@ -68,6 +91,8 @@ class PerImageOp(OpExecutor):
         raise NotImplementedError
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        if _skip_empty(params, inputs):
+            return StepResult(outputs={"images": []})
         refs = _images_in(inputs)
         fn = self.transform(params)
         out: list[BlobRef] = []
@@ -150,10 +175,18 @@ class Normalize(OpExecutor):
         return StepResult(outputs={"images": out}, meta={"pivot": list(pivot), "size": size})
 
 
+def _flip_normal_x(img: Image.Image) -> Image.Image:
+    """A horizontally mirrored normal map must also negate n.x (R -> 255 - R)."""
+    r, g, b, a = img.convert("RGBA").split()
+    return Image.merge("RGBA", (r.point(lambda v: 255 - v), g, b, a))
+
+
 class MirrorDirs(OpExecutor):
     kind = "op.mirror_dirs"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        if _skip_empty(params, inputs):
+            return StepResult(outputs={"images": []}, meta={"mirrored": False})
         refs = _images_in(inputs)
         count = int(params.get("count", 8))
         if len(refs) == count:
@@ -164,17 +197,27 @@ class MirrorDirs(OpExecutor):
         except ValueError as e:
             raise StepError("op_bad_input", str(e)) from e
         step = 360 // count
-        names = [f"dir_{a * step:03d}.png" for a in range(count)]
+        normal = bool(params.get("normal"))
+        if normal:
+            full[len(refs):] = [_flip_normal_x(f) for f in full[len(refs):]]
+        names = [f"dir_{a * step:03d}{'_n' if normal else ''}.png" for a in range(count)]
         # Unmirrored angles keep their original blobs so hashes (and downstream cache keys) stay stable.
         mirrored = await _save_all(ctx, full[len(refs):], names[len(refs):])
         angles = [a * step for a in range(count)]
         return StepResult(outputs={"images": list(refs) + mirrored}, meta={"mirrored": True, "angles": angles})
 
 
+async def _read_json(ctx: StepContext, ref: BlobRef) -> Any:
+    try:
+        return json.loads(await asyncio.to_thread(ctx.blobs.path(ref.hash).read_bytes))
+    except (OSError, ValueError) as e:
+        raise StepError("op_bad_input", f"bad pivot json: {e}") from e
+
+
 async def _pivot_from_blob(ctx: StepContext, ref: BlobRef, frame_size: tuple[int, int]) -> tuple[int, int]:
     """JSON {pivot: [x, y], width, height} in source-frame pixels, rescaled to the frames actually packed."""
     try:
-        info = json.loads(await asyncio.to_thread(ctx.blobs.path(ref.hash).read_bytes))
+        info = await _read_json(ctx, ref)
         x, y = (float(v) for v in info["pivot"])
         sx = frame_size[0] / float(info.get("width") or frame_size[0])
         sy = frame_size[1] / float(info.get("height") or frame_size[1])
@@ -197,13 +240,16 @@ class Sheet(OpExecutor):
 
     def cache_material(self, params: dict[str, Any]) -> str:
         # The preset id alone would keep serving stale sheets after the user edits that preset.
+        base = super().cache_material(params)
         try:
             p = resolve_preset(params.get("preset"), self.presets)
         except ValueError:
-            return ""
-        return p.model_dump_json() if p else ""
+            return base
+        return f"{base}|{p.model_dump_json()}" if p else base
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        if _skip_empty(params, inputs):
+            return StepResult(outputs={"sheet": [], "meta": []})
         refs = _images_in(inputs)
         preset = self._preset(params)
         imgs = await _load_all(ctx, refs)
@@ -233,12 +279,35 @@ class Sheet(OpExecutor):
             w, h = imgs[0].size
             pivot = (w // 2, h - round(h * float(params.get("pivot_pad", 0.06))))
         padding = preset.padding if preset is not None else int(params.get("padding", 0))
+        clip_meta = None
+        if preset is None and inputs.get("pivot"):
+            clip_meta = await self._clip_slots(ctx, inputs["pivot"][0], len(refs))
+        cell_refs: list[BlobRef | None] = list(refs)
+        if clip_meta is not None:
+            slots, cols, clips, row_angles = clip_meta
+            blank = Image.new("RGBA", imgs[0].size, (0, 0, 0, 0))
+            imgs = [blank if i is None else imgs[i] for i in slots]
+            cell_refs = [None if i is None else refs[i] for i in slots]
         try:
             sheet, meta = await asyncio.to_thread(
                 im.pack_sheet, imgs, cols, cell, padding, tuple(pivot) if pivot else None, order)
         except ValueError as e:
             raise StepError("op_bad_params", str(e)) from e
-        meta["frames"] = [r.hash for r in refs]
+        meta["frames"] = [r.hash if r is not None else None for r in cell_refs]
+        if clip_meta is not None:
+            meta["clips"], meta["row_angles"] = clips, row_angles
+        explicit_order = preset is not None or isinstance(params.get("order"), list)
+        if clip_meta is None and not explicit_order and inputs.get("pivot"):
+            # The pivot json lists angles in render order, which only matches the rows when nothing reordered them.
+            if angles_in := await self._row_angles(ctx, inputs["pivot"][0], meta["rows"]):
+                meta["row_angles"] = angles_in
+        if explicit_order and len(meta["order"]) == meta["count"] \
+                and all(isinstance(a, (int, float)) for a in meta["order"]):
+            meta["angles"] = list(meta["order"])
+            if meta["cols"] == 1 and "row_angles" not in meta:
+                meta["row_angles"] = list(meta["order"])
+        if params.get("normal"):
+            meta["normal"] = True
         sheet_name = "sheet.png"
         if preset is not None and named is not None:
             annotate_sheet_meta(meta, named, preset)
@@ -248,6 +317,29 @@ class Sheet(OpExecutor):
                                              mime="application/json")
         ctx.progress(1.0)
         return StepResult(outputs={"sheet": [sheet_ref], "meta": [meta_ref]}, meta=meta)
+
+    async def _clip_slots(self, ctx: StepContext, ref: BlobRef,
+                          count: int) -> tuple[list[int | None], int, list[dict[str, Any]], list[float]] | None:
+        info = await _read_json(ctx, ref)
+        clips, angles = (info.get("clips"), info.get("angles")) if isinstance(info, dict) else (None, None)
+        if not isinstance(clips, list) or not clips or not isinstance(angles, list):
+            return None
+        try:
+            return clip_layout(clips, [float(a) for a in angles], count)
+        except (ValueError, KeyError, TypeError) as e:
+            raise StepError("op_bad_input", f"anim clips do not match the frames: {e}") from e
+
+    @staticmethod
+    async def _row_angles(ctx: StepContext, ref: BlobRef, rows: int) -> list[float] | None:
+        """Clip-less anim.json (one row per direction): its `angles` label the rows when the counts agree."""
+        info = await _read_json(ctx, ref)
+        angles = info.get("angles") if isinstance(info, dict) else None
+        if not isinstance(angles, list) or len(angles) != rows:
+            return None
+        try:
+            return [float(a) for a in angles]
+        except (TypeError, ValueError):
+            return None
 
 
 class GlbValidate(OpExecutor):

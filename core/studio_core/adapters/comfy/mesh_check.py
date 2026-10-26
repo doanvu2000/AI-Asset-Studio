@@ -70,6 +70,10 @@ class CheckedMeshExecutor:
             shutil.copyfile(ctx.blobs.path(mesh.hash), glb)
 
         await asyncio.to_thread(stage)
+        # The mesh model stays resident in ComfyUI; Blender's GPU render would otherwise fight it for VRAM.
+        free = getattr(self.required_resource, "free", None)
+        if free is not None:
+            await free()
         r = await self.blender.call("render_dirs", {"glb": str(glb), "out_dir": str(work / "frames"), "count": 4,
                                                     "elevation": 0, "res": res, "engine": "BLENDER_EEVEE"},
                                     timeout=300)
@@ -140,15 +144,18 @@ class CheckedMeshExecutor:
                 break
 
         assert best is not None
-        passed = not check or any(t.get("ok") or t.get("error") for t in tries)
-        report = {"attempts": tries, "min_iou": min_iou, "checked": check, "passed": passed,
-                  "chosen": best[1].hash, "regenerated": len(tries) - 1, "on_fail": on_fail}
-        if not passed and on_fail == "fail":
+        skipped = check and any(t.get("error") for t in tries)
+        passed = not check or any(t.get("ok") for t in tries)
+        status = "off" if not check else "skipped" if skipped else "passed" if passed else "failed"
+        report = {"attempts": tries, "min_iou": min_iou, "checked": check, "passed": passed, "skipped": skipped,
+                  "status": status, "chosen": best[1].hash, "regenerated": len(tries) - 1, "on_fail": on_fail}
+        if status == "failed" and on_fail == "fail":
             raise StepError("mesh_rejected", f"mesh still off the input views after {attempts} attempts "
                                              f"(best min IoU {best[0]:.2f} < {min_iou})", detail=report)
         report_ref = await ctx.blobs.put_bytes(json.dumps(report, indent=1).encode("utf-8"), name="mesh_report.json",
                                                mime="application/json")
         outputs: Outputs = {**best[2].outputs, "report": [report_ref]}
         return StepResult(outputs=outputs, meta={**best[2].meta, "attempts": len(tries), "passed": passed,
+                                                 "skipped": skipped, "check": status,
                                                  "best_min_iou": round(best[0], 3) if check else None,
                                                  "seconds": round(time.perf_counter() - t0, 2)})

@@ -136,12 +136,22 @@ async def test_batch_runs_stage_major_on_gpu(tmp_path: Path) -> None:
     assert [k for _, k in starts] == ["gen"] * 4 + ["post"] * 4
 
 
+IMG_RECIPE = """
+id: img
+inputs:
+  pic: {type: image}
+steps:
+  - {id: ok, kind: gate.approve, in: {images: inputs.pic}}
+"""
+
+
 @pytest.fixture
 async def client(tmp_path: Path) -> AsyncIterator[httpx.AsyncClient]:
     rdir = tmp_path / "builtin"
     rdir.mkdir()
     (rdir / "two.yaml").write_text(TWO_STAGE.replace("t.gen", "gate.approve").replace(
         "t.post", "gate.approve").replace("{count: 1, p: \"${inputs.prompt}\"}", "{k: 0}"), encoding="utf-8")
+    (rdir / "img.yaml").write_text(IMG_RECIPE, encoding="utf-8")
     settings = Settings(data_dir=tmp_path / "data", recipes_dir=rdir, comfy_workflows_dir=tmp_path / "none")
     for d in (settings.blobs_dir, settings.thumbs_dir, settings.jobs_dir):
         d.mkdir(parents=True, exist_ok=True)
@@ -185,3 +195,19 @@ async def test_presets_api(client: httpx.AsyncClient) -> None:
     assert r.status_code == 422 and "dir_order" in r.json()["error"]["message"]
     assert (await client.delete("/api/presets/game", headers=AUTH)).json() == {"ok": True}
     assert (await client.delete("/api/presets/game", headers=AUTH)).status_code == 404
+
+
+async def test_batch_checks_every_blob_before_starting(client: httpx.AsyncClient) -> None:
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGBA", (4, 4)).save(buf, "PNG")
+    r = await client.post("/api/blobs", files={"file": ("a.png", buf.getvalue(), "image/png")}, headers=AUTH)
+    good = r.json()["hash"]
+    before = len((await client.get("/api/runs", headers=AUTH)).json())
+    body = {"recipe_id": "img", "items": [{"inputs": {"pic": good}}, {"inputs": {"pic": "f" * 64}}]}
+    r = await client.post("/api/batches", json=body, headers=AUTH)
+    assert r.status_code == 400 and "item 2" in r.json()["error"]["message"]
+    assert len((await client.get("/api/runs", headers=AUTH)).json()) == before

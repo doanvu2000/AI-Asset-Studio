@@ -198,7 +198,7 @@ async def test_translate_endpoint(app_ctx: tuple[FastAPI, httpx.AsyncClient, Stu
     app, client, _ = app_ctx
 
     async def ok(content: list[dict[str, Any]], options: Any) -> ClaudeReply:
-        return ClaudeReply({"texts": ["treasure chest"]}, "", {})
+        return ClaudeReply({"texts": [{"i": 1, "text": "treasure chest"}]}, "", {})
 
     app.state.translator.query = ok
     r = await client.post("/api/translate", json={"texts": ["rương báu", "rock"]}, headers=AUTH)
@@ -210,3 +210,26 @@ async def test_translate_endpoint(app_ctx: tuple[FastAPI, httpx.AsyncClient, Stu
     app.state.translator.query = down
     r = await client.post("/api/translate", json={"texts": ["cây"]}, headers=AUTH)
     assert r.status_code == 502 and r.json()["error"]["code"] == "claude_failed"
+
+
+async def test_stop_busy_resource_is_refused(app_ctx: tuple[FastAPI, httpx.AsyncClient, StubEngine]) -> None:
+    from studio_core.contracts import ResourceHealth
+
+    app, client, _ = app_ctx
+
+    class Busy:
+        name = "blender"
+        stopped = 0
+
+        async def health(self) -> ResourceHealth:
+            return ResourceHealth(name=self.name, status="busy" if not self.stopped else "down")
+
+        async def stop(self) -> None:
+            self.stopped += 1
+
+    r = Busy()
+    app.state.resources = {**app.state.resources, "blender": r}
+    resp = await client.post("/api/resources/blender/stop", headers=AUTH)
+    assert resp.status_code == 409 and resp.json()["error"]["code"] == "resource_busy" and r.stopped == 0
+    resp = await client.post("/api/resources/blender/stop?force=true", headers=AUTH)
+    assert resp.status_code == 200 and r.stopped == 1
