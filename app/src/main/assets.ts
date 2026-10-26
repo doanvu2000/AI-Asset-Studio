@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import { isAbsolute, join, relative } from 'node:path'
 import type { CoreSupervisor } from './core'
-import type { BundleEngine, BundleOptions, ExportedAsset, ExportedBundle } from '../preload/types'
+import type { BundleEngine, BundleOptions, EngineExportOptions, ExportedAsset, ExportedBundle } from '../preload/types'
 
 const HASH_RE = /^[0-9a-f]{64}$/
 const STEP_RE = /^[\w-]{1,80}$/
@@ -22,6 +22,22 @@ export function checkEngine(v: unknown): BundleEngine | undefined {
   if (v === undefined || v === null || v === '') return undefined
   if (v !== 'unity' && v !== 'godot') throw new Error('invalid engine')
   return v
+}
+
+export function checkEngineOptions(v: unknown): EngineExportOptions {
+  if (v === undefined || v === null) return {}
+  if (typeof v !== 'object') throw new Error('invalid export options')
+  const { ppu, pixel } = v as Record<string, unknown>
+  const out: EngineExportOptions = {}
+  if (ppu !== undefined && ppu !== null) {
+    if (typeof ppu !== 'number' || !Number.isFinite(ppu) || ppu <= 0 || ppu > 10000) throw new Error('invalid ppu')
+    out.ppu = ppu
+  }
+  if (pixel !== undefined && pixel !== null) {
+    if (typeof pixel !== 'boolean') throw new Error('invalid pixel flag')
+    out.pixel = pixel
+  }
+  return out
 }
 const NAME_MAX = 200
 const CACHE_MAX = 64
@@ -85,8 +101,8 @@ export class AssetExporter {
     return this.call<BundleOptions>(`steps/${stepId}/export`)
   }
 
-  async exportBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine): Promise<ExportedBundle> {
-    const body = { preset: preset ?? null, name: name ?? null, engine: engine ?? null }
+  async exportBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts: EngineExportOptions = {}): Promise<ExportedBundle> {
+    const body = { preset: preset ?? null, name: name ?? null, engine: engine ?? null, ...(engine ? opts : {}) }
     const out = await this.call<ExportedBundle>(`steps/${stepId}/export`, body, 120_000)
     if (typeof out.dir !== 'string' || !(await inside(this.root, out.dir))) throw new Error('core trả đường dẫn ngoài thư mục xuất')
     return { dir: out.dir, name: String(out.name), preset: out.preset ?? null, files: Array.isArray(out.files) ? out.files.length : 0 }

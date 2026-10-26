@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { onKeyStroke } from '@vueuse/core'
-import { CornerDownLeft, Images, Inbox, Keyboard, Layers, LayoutDashboard, ListChecks, Monitor, Moon, Plus, Search, Settings, Sun, Workflow } from '@lucide/vue'
+import { CornerDownLeft, FolderKanban, Images, Inbox, Keyboard, Layers, LayoutDashboard, ListChecks, Monitor, Moon, Plus, Search, Settings, Sun, Workflow } from '@lucide/vue'
 import { useRecipes } from '@/stores/recipes'
 import { useRuns } from '@/stores/runs'
 import { RUN_LABEL } from '@/composables/format'
@@ -42,6 +42,7 @@ const NAV: Item[] = [
   { id: 'nav-gallery', group: 'Đi tới', label: 'Thư viện', hint: 'Ctrl 5', icon: Images, run: go('/gallery') },
   { id: 'nav-recipes', group: 'Đi tới', label: 'Quy trình', hint: 'Ctrl 6', icon: Workflow, run: go('/recipes') },
   { id: 'nav-batch', group: 'Đi tới', label: 'Hàng loạt', hint: 'Ctrl 7', icon: Layers, run: go('/batch') },
+  { id: 'nav-projects', group: 'Đi tới', label: 'Dự án', hint: 'Ctrl 8', icon: FolderKanban, run: go('/projects') },
   { id: 'nav-batch-new', group: 'Đi tới', label: 'Tạo lô nhiều prompt', icon: Layers, run: go('/new?mode=batch') },
   { id: 'nav-settings', group: 'Đi tới', label: 'Cài đặt', icon: Settings, run: go('/settings') },
   { id: 'nav-keys', group: 'Đi tới', label: 'Phím tắt', hint: '?', icon: Keyboard, run: () => openShortcuts() }
@@ -167,7 +168,7 @@ const SHORTCUTS: Array<{ group: string; rows: Array<{ keys: string[]; label: str
     rows: [
       { keys: ['Ctrl', 'K'], label: 'Tìm nhanh: đi tới, tạo mới, mở lượt chạy' },
       { keys: ['Ctrl', 'N'], label: 'Tạo mới' },
-      { keys: ['Ctrl', '1 … 7'], label: 'Tổng quan · Tạo mới · Lượt chạy · Cần duyệt · Thư viện · Quy trình · Hàng loạt' },
+      { keys: ['Ctrl', '1 … 8'], label: 'Tổng quan · Tạo mới · Lượt chạy · Cần duyệt · Thư viện · Quy trình · Hàng loạt · Dự án' },
       { keys: ['?'], label: 'Bảng phím tắt này' }
     ]
   },

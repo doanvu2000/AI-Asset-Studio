@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, BookOpen, Languages, Layers, LoaderCircle, Play, RotateCw, Timer } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, BookOpen, FolderKanban, Languages, Layers, LoaderCircle, Play, RotateCcw, RotateCw, Timer } from '@lucide/vue'
 import type { BlobRef, RecipeInfo, RecipeInputSpec } from '@/api/types'
+import { NO_PROJECT } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import LaneTag from '@/components/LaneTag.vue'
 import QuickPrompts from '@/components/QuickPrompts.vue'
@@ -11,7 +12,11 @@ import RecipeThumb from '@/components/RecipeThumb.vue'
 import BlobDropZone from '@/components/BlobDropZone.vue'
 import PresetSelect from '@/components/PresetSelect.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
+import ProjectSelect from '@/components/ProjectSelect.vue'
 import { useRecipes } from '@/stores/recipes'
+import { useProjects } from '@/stores/projects'
+import { usePresets } from '@/stores/catalog'
+import { fillSummary, normalizeStyle, styleFills, type StyleFill } from '@/composables/projectStyle'
 import { useRuns } from '@/stores/runs'
 import { api, useConnection } from '@/stores/connection'
 import type { ApiError } from '@/api/client'
@@ -21,6 +26,8 @@ import { RECIPE_GROUP_LABEL, RECOMMENDED_RECIPES, recipeGroup, recipePitch, type
 import { quickStyleLabel } from '@/assets/quickPrompts'
 
 const recipes = useRecipes()
+const projects = useProjects()
+const presets = usePresets()
 const runs = useRuns()
 const conn = useConnection()
 const toasts = useToasts()
@@ -56,8 +63,25 @@ function setMode(m: Mode): void {
   void router.replace({ query: { ...route.query, mode: m === 'batch' ? 'batch' : undefined } })
 }
 function backToPicker(): void {
-  void router.push({ query: { mode: route.query.mode } })
+  void router.push({ query: { mode: route.query.mode, project: route.query.project } })
 }
+
+// ?project= wins (deep link from a project page); otherwise the last project picked here stays active.
+const projectId = computed<string>(() => {
+  const q = route.query.project
+  if (typeof q === 'string' && q) return q
+  return projects.activeId ?? NO_PROJECT
+})
+const project = computed(() => projects.byId(projectId.value))
+function setProject(id: string): void {
+  projects.setActive(id)
+  void router.replace({ query: { ...route.query, project: id === NO_PROJECT ? undefined : id } })
+}
+watch(
+  () => conn.transport,
+  (t) => t && !projects.loaded && void projects.load().catch(() => undefined),
+  { immediate: true }
+)
 
 const ORDER: RecipeGroup[] = ['2d', '3d', 'character']
 const groups = computed(() => {
@@ -118,6 +142,8 @@ const varying = computed(() => (mode.value !== 'batch' ? null : ((varyBy.value =
 const batchLines = ref('')
 const batchFiles = ref<BlobRef[]>([])
 const batchStyle = ref<string | null>(null)
+// Inputs the user changed by hand; untouched ones a project style covers are left out of the request so the core fills them.
+const touched = reactive(new Set<string>())
 const withBatchStyle = (text: string): string => (batchStyle.value ? `${text.replace(/[,\s]+$/, '')}, ${batchStyle.value}` : text)
 const unit = computed(() => (textInputs.value.length ? 'prompt' : 'file'))
 
@@ -133,9 +159,10 @@ watch(
     }
     for (const k of Object.keys(values)) delete values[k]
     for (const k of Object.keys(errors)) delete errors[k]
+    touched.clear()
     for (const [name, spec] of Object.entries(r.inputs)) {
       if (isBlob(spec.type)) blobs[name] = blobs[name] ?? []
-      else values[name] = (spec.default as FieldValue | undefined) ?? (spec.type === 'bool' ? false : isNum(spec.type) ? (spec.min ?? 0) : '')
+      else values[name] = defaultOf(spec)
     }
     varyBy.value = textInputs.value.length ? 'prompts' : 'files'
     batchFiles.value = []
@@ -143,6 +170,41 @@ watch(
   },
   { immediate: true }
 )
+
+const fills = computed<StyleFill[]>(() => (selected.value && project.value ? styleFills(selected.value.inputs, normalizeStyle(project.value.style)) : []))
+const fillByKey = computed(() => new Map(fills.value.filter((f) => !f.wraps).map((f) => [f.key, f])))
+const projectFill = (name: string): StyleFill | undefined => (touched.has(name) ? undefined : fillByKey.value.get(name))
+const appliedFills = computed(() => fills.value.filter((f) => f.wraps || !touched.has(f.key)))
+const overriddenFills = computed(() => fills.value.filter((f) => !f.wraps && touched.has(f.key)))
+const presetName = (id: string): string | undefined => presets.list.find((p) => p.id === id)?.name
+const fillText = computed(() => fillSummary(appliedFills.value, presetName))
+
+function defaultOf(spec: RecipeInputSpec): FieldValue {
+  return (spec.default as FieldValue | undefined) ?? (spec.type === 'bool' ? false : isNum(spec.type) ? (spec.min ?? 0) : '')
+}
+
+// Untouched fields show what the project will put there; the value itself still comes from the core's style apply.
+function seedFromProject(): void {
+  const r = selected.value
+  if (!r) return
+  for (const [name, spec] of Object.entries(r.inputs)) {
+    if (isBlob(spec.type) || touched.has(name)) continue
+    const f = fillByKey.value.get(name)
+    values[name] = f ? (isNum(spec.type) ? Number(f.value) : (f.value as FieldValue)) : defaultOf(spec)
+  }
+}
+watch(fillByKey, () => seedFromProject(), { immediate: true })
+
+function resetToProject(name: string): void {
+  touched.delete(name)
+  errors[name] = null
+  seedFromProject()
+}
+
+function onFieldEdit(name: string, e: Event): void {
+  const t = e.target as HTMLElement | null
+  if (e.type === 'input' || t?.closest('[role="radio"]')) touched.add(name)
+}
 
 const fields = computed(() => Object.entries(selected.value?.inputs ?? {}).filter(([n]) => n !== varying.value))
 
@@ -160,7 +222,7 @@ function label(name: string, spec: RecipeInputSpec): string {
 }
 
 function errorFor(name: string, spec: RecipeInputSpec): string | null {
-  if (isBlob(spec.type)) return spec.required !== false && !(blobs[name]?.length ?? 0) ? 'Cần thêm file' : null
+  if (isBlob(spec.type)) return spec.required !== false && !(blobs[name]?.length ?? 0) && !fillByKey.value.has(name) ? 'Cần thêm file' : null
   if (isNum(spec.type)) {
     const v = Number(values[name])
     if (Number.isNaN(v)) return 'Nhập một số'
@@ -198,6 +260,7 @@ const blockReason = computed<string | null>(() => {
 function collectInputs(): Record<string, unknown> {
   const inputs: Record<string, unknown> = {}
   for (const [name, spec] of fields.value) {
+    if (project.value && fillByKey.value.has(name) && !touched.has(name)) continue
     if (isBlob(spec.type)) {
       const refs = blobs[name] ?? []
       if (refs.length) inputs[name] = spec.type === 'images' ? refs.map((b) => b.hash) : refs[0]!.hash
@@ -237,14 +300,15 @@ async function submit(): Promise<void> {
         recipe_id: r.id,
         items: itemsEn,
         inputs,
-        title: title.value.trim() || `${r.name} × ${batchItems.value.length}`
+        title: title.value.trim() || `${r.name} × ${batchItems.value.length}`,
+        project_id: project.value?.id
       })
       toasts.push(`Đã tạo ${res.run_ids.length} lượt chạy`, 'success', 2600)
       batchLines.value = ''
       batchFiles.value = []
       await router.push(`/batch/${res.batch_id}`)
     } else {
-      const { run_id } = await api().startRun({ recipe_id: r.id, inputs, title: title.value.trim() || title0 })
+      const { run_id } = await api().startRun({ recipe_id: r.id, inputs, title: title.value.trim() || title0, project_id: project.value?.id })
       toasts.push('Đã bắt đầu chạy', 'success', 2500)
       await router.push(`/runs/${run_id}`)
     }
@@ -416,6 +480,7 @@ ${r.description}`" @click="pick(r.id)">
               <Layers :size="13" /> Nhiều {{ unit }}
             </button>
           </div>
+          <ProjectSelect class="mb-project" :model-value="projectId" label="Dự án cho lượt chạy" @update:model-value="setProject" />
           <div v-if="mode === 'batch' && textInputs.length && fileInputs.length" class="segmented small" role="radiogroup" aria-label="Thay đổi theo">
             <button type="button" role="radio" :aria-checked="varyBy === 'prompts'" :class="{ on: varyBy === 'prompts' }" @click="varyBy = 'prompts'">
               Mỗi dòng 1 lượt
@@ -425,6 +490,23 @@ ${r.description}`" @click="pick(r.id)">
             </button>
           </div>
         </div>
+
+        <Transition name="chip">
+          <div v-if="project" :key="project.id" class="proj-chip" role="status">
+            <FolderKanban :size="15" class="pc-ic" aria-hidden="true" />
+            <div class="pc-text">
+              <p>
+                Thuộc dự án <strong>{{ project.name }}</strong>
+                <template v-if="appliedFills.length">{{ ' · ' }}Sẽ áp: {{ fillText }}</template>
+                <template v-else-if="!fills.length">{{ ' · ' }}Phong cách dự án không có mục nào hợp với quy trình này</template>
+              </p>
+              <p v-if="overriddenFills.length" class="caption">
+                Giữ giá trị bạn đã chỉnh: {{ [...new Set(overriddenFills.map((f) => f.label))].join(', ') }}
+              </p>
+            </div>
+            <RouterLink :to="`/projects/${project.id}`" class="pc-link">Sửa phong cách</RouterLink>
+          </div>
+        </Transition>
 
         <div class="fields card">
           <div v-if="mode === 'batch' && varying" class="f">
@@ -465,9 +547,19 @@ ${r.description}`" @click="pick(r.id)">
           <div v-for="[name, spec] in fields" :key="name" class="f">
             <label :for="`in-${name}`" class="f-label">
               {{ label(name, spec) }}
-              <span v-if="spec.required" class="req" aria-hidden="true">*</span>
+              <span v-if="spec.required && !fillByKey.has(name)" class="req" aria-hidden="true">*</span>
+              <span v-if="projectFill(name)" class="from-proj" :title="`Giá trị lấy từ dự án ${project?.name ?? ''}`">Theo dự án</span>
+              <button
+                v-else-if="project && fillByKey.has(name)"
+                type="button"
+                class="to-proj"
+                :title="`Bỏ giá trị bạn chỉnh, dùng lại giá trị của dự án ${project.name}`"
+                @click="resetToProject(name)"
+              >
+                <RotateCcw :size="11" /> Dùng của dự án
+              </button>
             </label>
-            <div class="f-control">
+            <div class="f-control" @input="onFieldEdit(name, $event)" @click="onFieldEdit(name, $event)">
               <QuickPrompts
                 v-if="spec.type === 'text' && QUICK_INPUTS.has(name)"
                 :model-value="String(values[name] ?? '')"
@@ -544,9 +636,12 @@ ${r.description}`" @click="pick(r.id)">
                 :kind="spec.type as 'image' | 'images' | 'mesh'"
                 :label="label(name, spec)"
                 :invalid="!!errors[name]"
-                @update:model-value="errors[name] = null"
+                @update:model-value="(errors[name] = null), touched.add(name)"
               />
-              <input v-else :id="`in-${name}`" v-model="values[name]" class="field" type="text" />
+              <input v-else-if="spec.type !== 'text'" :id="`in-${name}`" v-model="values[name]" class="field" type="text" />
+              <p v-if="isBlob(spec.type) && projectFill(name) && !(blobs[name]?.length ?? 0)" class="caption help">
+                Để trống: dùng ảnh của dự án {{ project?.name }}
+              </p>
               <p v-if="errors[name]" class="err" role="alert">{{ errors[name] }}</p>
               <p v-else-if="spec.help" class="caption help">{{ spec.help }}</p>
             </div>
@@ -908,6 +1003,81 @@ ${r.description}`" @click="pick(r.id)">
 }
 .spin {
   animation: spin 1s linear infinite;
+}
+.mb-project {
+  margin-left: auto;
+}
+.proj-chip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--accent) 35%, transparent);
+  font-size: var(--fs-callout);
+}
+.pc-ic {
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+.pc-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.pc-link {
+  flex: none;
+  color: var(--accent);
+  font-weight: 500;
+  text-decoration: none;
+}
+.pc-link:hover {
+  text-decoration: underline;
+}
+.chip-enter-active,
+.chip-leave-active {
+  transition:
+    opacity var(--t-base) var(--ease-out),
+    transform var(--t-base) var(--ease-spring);
+}
+.chip-enter-from,
+.chip-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+.from-proj,
+.to-proj {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  vertical-align: 1px;
+}
+.from-proj {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.to-proj {
+  border: 0;
+  color: var(--text-2);
+  background: var(--bg-active);
+  cursor: pointer;
+}
+.to-proj:hover {
+  color: var(--accent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .chip-enter-active,
+  .chip-leave-active {
+    transition: none;
+  }
 }
 .vi-row {
   display: flex;

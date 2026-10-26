@@ -1,5 +1,6 @@
 import type {
   GateAwaitingData,
+  ProjectRow,
   LogData,
   PreviewData,
   ProgressData,
@@ -15,6 +16,8 @@ import { useGates } from './gates'
 import { useResources } from './resources'
 import { useVersions } from './versions'
 import { useRecipes } from './recipes'
+import { useProjects } from './projects'
+import { NO_PROJECT } from '@/api/types'
 
 // One pass per animation frame: each store mutates in place and triggers its shallowRefs once.
 export function applyEvents(events: StudioEvent[]): void {
@@ -22,14 +25,21 @@ export function applyEvents(events: StudioEvent[]): void {
   const gates = useGates()
   const resources = useResources()
   const versions = useVersions()
+  const projects = useProjects()
+  const touchedProjects = new Set<string>()
+  const touchProject = (id: string | undefined): void => void (id && id !== NO_PROJECT && touchedProjects.add(id))
   const tx = runs.begin()
   for (const e of events) {
     switch (e.type) {
       case 'run.created':
         tx.run(e.data as unknown as RunRow)
+        touchProject((e.data as unknown as RunRow).project_id)
         break
       case 'run.updated':
-        if (e.run_id) tx.runPatch(e.run_id, e.data as unknown as RunUpdatedData)
+        if (e.run_id) {
+          tx.runPatch(e.run_id, e.data as unknown as RunUpdatedData)
+          touchProject(runs.runs.get(e.run_id)?.project_id)
+        }
         break
       case 'step.updated': {
         const step = e.data as unknown as StepRow
@@ -51,6 +61,10 @@ export function applyEvents(events: StudioEvent[]): void {
         break
       case 'version.updated':
         versions.upsert(e.data as unknown as VersionRow)
+        touchProject((e.data as unknown as VersionRow).project_id)
+        break
+      case 'project.updated':
+        projects.upsert(e.data as unknown as ProjectRow)
         break
       case 'resource.updated':
         resources.upsert(e.data as unknown as ResourceHealth)
@@ -61,6 +75,8 @@ export function applyEvents(events: StudioEvent[]): void {
   gates.commit()
   versions.commit()
   resources.commit()
+  projects.commit()
+  if (touchedProjects.size) projects.touch(touchedProjects)
 }
 
 export async function resyncAll(): Promise<void> {
@@ -70,6 +86,7 @@ export async function resyncAll(): Promise<void> {
     useRuns().loadList(),
     useRuns().reloadDetails(),
     useGates().load(),
-    useVersions().load()
+    useVersions().load(),
+    useProjects().load()
   ])
 }

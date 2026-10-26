@@ -15,6 +15,8 @@ export const router = createRouter({
     // Creating a batch moved into Tạo mới (mode "Nhiều prompt"); /batch itself is the list of batches.
     { path: '/batch/new', redirect: (to) => ({ path: '/new', query: { ...to.query, mode: 'batch' } }) },
     { path: '/batch/:id', name: 'batch-detail', component: () => import('./views/BatchDetailView.vue'), props: true },
+    { path: '/projects', name: 'projects', component: () => import('./views/ProjectsView.vue') },
+    { path: '/projects/:id', name: 'project', component: () => import('./views/ProjectDetailView.vue'), props: true },
     { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' }
   ]

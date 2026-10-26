@@ -101,6 +101,7 @@ export type EventType =
   | 'gate.awaiting'
   | 'version.updated'
   | 'resource.updated'
+  | 'project.updated'
 
 export interface StudioEvent<T = Record<string, unknown>> {
   seq: number
@@ -320,6 +321,66 @@ export interface RunMeta {
   batch_total?: number
   batch_title?: string
   [k: string]: unknown
+}
+
+export const NO_PROJECT = 'default'
+
+export interface PixelStyle {
+  size?: number | null
+  palette?: string | null
+  colors?: number | null
+  outline?: string | null
+  dither?: string | null
+}
+
+/** Locked look of a project, English text; the core fills it into recipe inputs the user left empty. */
+export interface ProjectStyle {
+  prompt_prefix: string
+  prompt_suffix: string
+  negative: string
+  preset: string | null
+  pixel: PixelStyle | null
+  palette_image: string | null
+  reference_image: string | null
+  inputs: Record<string, unknown>
+  notes: string
+}
+
+export interface ProjectRow {
+  id: string
+  name: string
+  description: string
+  style: ProjectStyle
+  created_at: number
+  updated_at: number
+  archived: boolean
+}
+
+export interface ProjectSummary {
+  project_id: string
+  runs: Partial<Record<RunStatus, number>>
+  runs_total: number
+  versions: Partial<Record<VersionStatus, number>>
+  approved_versions: number
+  last_activity: number | null
+  cover_hash: string | null
+}
+
+export interface ProjectWithSummary extends ProjectRow {
+  summary?: ProjectSummary
+}
+
+export interface ProjectCreateBody {
+  name: string
+  description?: string
+  style?: Partial<ProjectStyle>
+}
+
+export interface ProjectPatchBody {
+  name?: string
+  description?: string
+  style?: ProjectStyle
+  archived?: boolean
 }
 
 export type ToolKey = 'comfy_dir' | 'comfy_python' | 'comfy_models_dir' | 'comfy_workflows_dir' | 'blender_exe' | 'codex_exe'

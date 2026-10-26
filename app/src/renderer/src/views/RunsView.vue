@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { Plus } from '@lucide/vue'
 import { ART } from '@/assets/art'
@@ -7,9 +8,15 @@ import type { RunStatus } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import RunRowItem from '@/components/RunRowItem.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import ProjectSelect from '@/components/ProjectSelect.vue'
 import { useRuns } from '@/stores/runs'
 
 const runs = useRuns()
+const route = useRoute()
+const projectFilter = ref(typeof route.query.project === 'string' ? route.query.project : 'all')
+// The list holds the recent window only; a project's older runs are fetched once it is picked.
+watch(projectFilter, (p) => p !== 'all' && p !== 'default' && void runs.loadProject(p).catch(() => undefined), { immediate: true })
+const inProject = computed(() => (projectFilter.value === 'all' ? runs.runList : runs.runList.filter((r) => r.project_id === projectFilter.value)))
 
 type Filter = 'all' | 'active' | 'awaiting_human' | 'succeeded' | 'failed'
 const FILTERS: Array<{ id: Filter; label: string; match: (s: RunStatus) => boolean }> = [
@@ -38,12 +45,12 @@ watch(filter, (f) => {
 
 const counts = computed(() => {
   const out: Record<Filter, number> = { all: 0, active: 0, awaiting_human: 0, succeeded: 0, failed: 0 }
-  for (const r of runs.runList) for (const f of FILTERS) if (f.match(r.status)) out[f.id] += 1
+  for (const r of inProject.value) for (const f of FILTERS) if (f.match(r.status)) out[f.id] += 1
   return out
 })
 const rows = computed(() => {
   const f = FILTERS.find((x) => x.id === filter.value)!
-  return runs.runList.filter((r) => f.match(r.status))
+  return inProject.value.filter((r) => f.match(r.status))
 })
 
 const scroller = ref<HTMLElement | null>(null)
@@ -80,15 +87,16 @@ const total = computed(() => virtualizer.value.getTotalSize())
           <span class="num c">{{ counts[f.id] }}</span>
         </button>
       </div>
+      <ProjectSelect v-model="projectFilter" all-label="Mọi dự án" label="Lọc theo dự án" />
     </div>
     <div ref="scroller" class="list-scroll">
       <EmptyState
-        v-if="runs.listLoaded && !rows.length && filter !== 'all'"
+        v-if="runs.listLoaded && !rows.length && (filter !== 'all' || projectFilter !== 'all')"
         :art="ART.emptyRuns"
         :art-size="128"
         title="Không có lượt chạy nào ở mục này"
       >
-        <button class="btn" @click="filter = 'all'">Xem tất cả</button>
+        <button class="btn" @click="(filter = 'all'), (projectFilter = 'all')">Xem tất cả</button>
         <RouterLink to="/new" class="btn btn-primary"><Plus /> Tạo asset mới</RouterLink>
       </EmptyState>
       <EmptyState
@@ -118,6 +126,10 @@ const total = computed(() => virtualizer.value.getTotalSize())
 <style scoped>
 .bar {
   flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
   padding: 12px 24px;
   border-bottom: 0.5px solid var(--separator);
 }

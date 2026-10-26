@@ -2,9 +2,9 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { onClickOutside, onKeyStroke } from '@vueuse/core'
 import { AnimatePresence, motion } from 'motion-v'
-import { ArrowLeft, CircleAlert, CircleCheck, CircleStop, Copy, Ellipsis, Hourglass, Inbox, List, LoaderCircle, Library, RotateCcw, Workflow } from '@lucide/vue'
+import { ArrowLeft, CircleAlert, CircleCheck, CircleStop, Copy, Ellipsis, FolderKanban, Hourglass, Inbox, List, LoaderCircle, Library, RotateCcw, Workflow } from '@lucide/vue'
 import type { BlobRef, StepRow } from '@/api/types'
-import { RUN_ACTIVE, STEP_DONE_OK } from '@/api/types'
+import { NO_PROJECT, RUN_ACTIVE, STEP_DONE_OK } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
 import StepChip from '@/components/StepChip.vue'
@@ -28,6 +28,8 @@ import { useRuns } from '@/stores/runs'
 import { useRecipes } from '@/stores/recipes'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
+import { useProjects } from '@/stores/projects'
+import { appliedText } from '@/composables/projectStyle'
 import { gateFromStep, useGates } from '@/stores/gates'
 import { exportName, useVersions } from '@/stores/versions'
 import ResizeHandle from '@/components/ResizeHandle.vue'
@@ -52,6 +54,7 @@ const toasts = useToasts()
 const kinds = useKinds()
 const gates = useGates()
 const versions = useVersions()
+const projects = useProjects()
 const listW = usePaneWidth('run-steps', 420)
 const graphW = usePaneWidth('run-graph', 620)
 
@@ -327,6 +330,19 @@ async function addToLibrary(): Promise<void> {
   }
 }
 
+const runProject = computed(() => {
+  const r = run.value
+  if (!r || !r.project_id || r.project_id === NO_PROJECT) return null
+  const meta = (r.params?.$meta ?? {}) as { project_applied?: unknown }
+  const applied = appliedText(meta.project_applied, recipes.byId(r.recipe_id)?.inputs)
+  return { id: r.project_id, name: projects.byId(r.project_id)?.name ?? 'Dự án', applied }
+})
+watch(
+  () => runProject.value?.id,
+  (id) => id && !projects.byId(id) && conn.transport && void projects.refresh(id).catch(() => undefined),
+  { immediate: true }
+)
+
 function segTitle(s: StepRow): string {
   return `${stepName(s)}: ${STEP_LABEL[s.status]}`
 }
@@ -342,7 +358,17 @@ function segTitle(s: StepRow): string {
         {{ recipeName }} · {{ absoluteTime(run.created_at) }} ·
         <ElapsedTimer v-if="active" :from="run.created_at" />
         <span v-else-if="run.ended_at" class="num">{{ humanDuration(run.ended_at - run.created_at) }}</span>
+        <template v-if="runProject"> · {{ runProject.applied ? `Đã áp từ dự án: ${runProject.applied}` : 'Dự án không áp thêm gì' }}</template>
       </template>
+      <RouterLink
+        v-if="runProject"
+        :to="`/projects/${runProject.id}`"
+        class="proj-badge"
+        :title="runProject.applied ? `Dự án ${runProject.name} · đã áp: ${runProject.applied}` : `Dự án ${runProject.name}`"
+      >
+        <FolderKanban :size="13" aria-hidden="true" />
+        <span class="pb-name">{{ runProject.name }}</span>
+      </RouterLink>
       <div class="seg" role="radiogroup" aria-label="Kiểu xem">
         <button type="button" role="radio" :aria-checked="viewMode === 'list'" :class="{ on: viewMode === 'list' }" title="Danh sách bước" @click="setMode('list')"><List :size="14" /> Danh sách</button>
         <button type="button" role="radio" :aria-checked="viewMode === 'graph'" :class="{ on: viewMode === 'graph' }" title="Sơ đồ bước" @click="setMode('graph')"><Workflow :size="14" /> Sơ đồ</button>
@@ -1118,5 +1144,28 @@ function segTitle(s: StepRow): string {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+.proj-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 200px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: var(--fs-callout);
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  text-decoration: none;
+  transition: background-color var(--t-fast);
+}
+.proj-badge:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.pb-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

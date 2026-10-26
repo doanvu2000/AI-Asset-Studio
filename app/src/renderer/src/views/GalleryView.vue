@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { useElementSize, useEventListener } from '@vueuse/core'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { Check, Columns2, LoaderCircle, Search, X } from '@lucide/vue'
@@ -12,6 +13,7 @@ import Lightbox from '@/components/Lightbox.vue'
 import CompareView, { type CompareItem } from '@/components/CompareView.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import RelTime from '@/components/RelTime.vue'
+import ProjectSelect from '@/components/ProjectSelect.vue'
 import { featuredAsset, isAtlas, isImage, isJson } from '@/components/viewers/detect'
 import { useAssetFile } from '@/composables/assetFile'
 import { relativeTime } from '@/composables/format'
@@ -35,6 +37,7 @@ interface AssetGroup {
   key: string
   name: string
   runId: string
+  project: string
   recipe: string
   versions: VersionRow[]
   /** Thumbnail shown on the card. */
@@ -113,6 +116,7 @@ const groups = computed<AssetGroup[]>(() => {
       key,
       name: first.asset_name || run?.title || 'Không tên',
       runId: first.run_id,
+      project: first.project_id,
       recipe,
       versions: list,
       cover,
@@ -131,11 +135,17 @@ const statusFilter = ref<StatusFilter>('all')
 const typeFilter = ref<TypeFilter>('all')
 const query = ref('')
 const showTechnical = ref(false)
+const route = useRoute()
+const projectFilter = ref(typeof route.query.project === 'string' ? route.query.project : 'all')
 
 const base = computed(() => {
   const q = query.value.trim().toLowerCase()
   return groups.value.filter(
-    (g) => (showTechnical.value || !g.technical) && (typeFilter.value === 'all' || g.type === typeFilter.value) && (!q || g.haystack.includes(q))
+    (g) =>
+      (showTechnical.value || !g.technical) &&
+      (typeFilter.value === 'all' || g.type === typeFilter.value) &&
+      (projectFilter.value === 'all' || g.project === projectFilter.value) &&
+      (!q || g.haystack.includes(q))
   )
 })
 const technicalCount = computed(() => groups.value.filter((g) => g.technical).length)
@@ -148,12 +158,13 @@ const counts = computed(() => {
   return c
 })
 const items = computed(() => (statusFilter.value === 'all' ? base.value : base.value.filter((g) => g.status === statusFilter.value)))
-const filtered = computed(() => !!query.value.trim() || typeFilter.value !== 'all' || statusFilter.value !== 'all')
+const filtered = computed(() => !!query.value.trim() || typeFilter.value !== 'all' || statusFilter.value !== 'all' || projectFilter.value !== 'all')
 
 function clearFilters(): void {
   query.value = ''
   typeFilter.value = 'all'
   statusFilter.value = 'all'
+  projectFilter.value = 'all'
 }
 
 const scroller = ref<HTMLElement | null>(null)
@@ -359,6 +370,7 @@ function move(d: -1 | 1): void {
           <span class="num c">{{ counts[f.id] }}</span>
         </button>
       </div>
+      <ProjectSelect v-model="projectFilter" all-label="Mọi dự án" label="Lọc theo dự án" />
       <label v-if="technicalCount" class="toggle caption" title="Bản chỉ gồm JSON / Atlas (dữ liệu phụ của sprite, Spine)">
         <input v-model="showTechnical" type="checkbox" />
         Hiện tệp dữ liệu ({{ technicalCount }})

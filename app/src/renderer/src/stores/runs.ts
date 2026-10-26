@@ -178,6 +178,12 @@ export const useRuns = defineStore('runs', () => {
     triggerRef(runs)
   }
 
+  async function loadProject(projectId: string): Promise<void> {
+    const rows = await api().listRuns({ project_id: projectId, limit: 2000 })
+    for (const row of rows) runs.value.set(row.id, row)
+    triggerRef(runs)
+  }
+
   async function fetchDetail(id: string): Promise<void> {
     const d = await api().getRun(id)
     runs.value.set(d.run.id, d.run)
@@ -234,6 +240,7 @@ export const useRuns = defineStore('runs', () => {
     begin,
     loadList,
     loadBatch,
+    loadProject,
     loadDetail,
     reloadDetails,
     closeDetail,

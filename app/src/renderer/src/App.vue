@@ -28,7 +28,7 @@ const offline = computed(
   () => !conn.core.mock && !conn.transport && ['error', 'restarting', 'stopped'].includes(conn.core.state) && route.name !== 'settings'
 )
 
-const NAV = ['/', '/new', '/runs', '/gates', '/gallery', '/recipes', '/batch']
+const NAV = ['/', '/new', '/runs', '/gates', '/gallery', '/recipes', '/batch', '/projects']
 onKeyStroke(
   (e) => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey,
   (e) => {
@@ -62,7 +62,7 @@ onKeyStroke(
         <CoreOffline v-if="offline" />
         <RouterView v-else v-slot="{ Component, route }">
           <Transition name="page" mode="out-in">
-            <component :is="Component" :key="['run', 'recipe', 'batch-detail'].includes(String(route.name)) ? route.fullPath : String(route.name)" />
+            <component :is="Component" :key="['run', 'recipe', 'batch-detail', 'project'].includes(String(route.name)) ? route.fullPath : String(route.name)" />
           </Transition>
         </RouterView>
       </main>

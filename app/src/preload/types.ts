@@ -106,8 +106,14 @@ export interface AssetBridge {
   startDrag(hash: string, name?: string): void
   /** Folder exports of a whole step (Spine json+atlas+png, sprite sheet repacked for an engine preset). */
   bundleOptions(stepId: string): Promise<BundleOptions>
-  saveBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine): Promise<string | null>
-  revealBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine): Promise<void>
+  saveBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts?: EngineExportOptions): Promise<string | null>
+  revealBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts?: EngineExportOptions): Promise<void>
+}
+
+/** `pixel` null/absent = the core decides from the sheet meta (point filter for pixel-art sheets). */
+export interface EngineExportOptions {
+  ppu?: number
+  pixel?: boolean | null
 }
 
 /** Drop-in folder for a game engine: sliced sheet + clips + controller/scene, Spine and GLB copied by convention. */

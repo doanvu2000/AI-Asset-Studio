@@ -1,6 +1,7 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, net, Notification, protocol, session, shell, Tray, type IpcMainInvokeEvent } from 'electron'
 import { existsSync, readFileSync } from 'node:fs'
-import { copyFile, cp, mkdir, writeFile } from 'node:fs/promises'
+import { copyFile, cp, lstat, mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { randomBytes } from 'node:crypto'
 import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path'
 import { release } from 'node:os'
 import { pathToFileURL } from 'node:url'
@@ -9,7 +10,7 @@ import appIconPath from '../../resources/icon.png?asset'
 import winIconPath from '../../resources/icon.ico?asset'
 import { CoreSupervisor } from './core'
 import { deviceInfo } from './device'
-import { AssetExporter, checkEngine, checkHash, checkName, checkPreset, checkStep } from './assets'
+import { AssetExporter, checkEngine, checkEngineOptions, checkHash, checkName, checkPreset, checkStep } from './assets'
 import { Devlog, listLogs, RateLimiter, type LogLevel } from './devlog'
 import { buildBundle, buildReport, parsePayload, REPORT_MAX_CHARS } from './diagnostics'
 import type { AppNotification, DiagInfo, PickPathOptions, ProgressMode, ThemeMode } from '../preload/types'
@@ -398,6 +399,28 @@ function dragIcon(file: string, mime: string): Electron.NativeImage {
   return nativeImage.createFromPath(appIconPath).resize({ width: 48 })
 }
 
+async function occupied(path: string): Promise<boolean> {
+  try {
+    const st = await lstat(path)
+    return !st.isDirectory() || (await readdir(path)).length > 0
+  } catch {
+    return false
+  }
+}
+
+// cp() merges into an existing folder, leaving stale clips/.meta from an earlier export; copy aside, then swap.
+async function replaceDir(src: string, dest: string): Promise<void> {
+  const tmp = `${dest}.tmp-${randomBytes(4).toString('hex')}`
+  try {
+    await cp(src, tmp, { recursive: true })
+    await rm(dest, { recursive: true, force: true })
+    await rename(tmp, dest)
+  } catch (err) {
+    await rm(tmp, { recursive: true, force: true }).catch(() => undefined)
+    throw err
+  }
+}
+
 function registerAssetIpc(): void {
   handle('studio:asset:prepare', (_e, hash, name) => assets.export(checkHash(hash), checkName(name)))
   handle('studio:asset:saveAs', async (e, hash, name) => {
@@ -424,9 +447,9 @@ function registerAssetIpc(): void {
     return a.path
   })
   handle('studio:asset:bundleOptions', (_e, stepId) => assets.bundleOptions(checkStep(stepId)))
-  handle('studio:asset:saveBundle', async (e, stepId, preset, name, engine) => {
+  handle('studio:asset:saveBundle', async (e, stepId, preset, name, engine, exportOpts) => {
     const eng = checkEngine(engine)
-    const b = await assets.exportBundle(checkStep(stepId), checkPreset(preset), checkName(name), eng)
+    const b = await assets.exportBundle(checkStep(stepId), checkPreset(preset), checkName(name), eng, checkEngineOptions(exportOpts))
     const opts: Electron.OpenDialogOptions = {
       title: `Chọn nơi lưu thư mục “${b.name}”`,
       defaultPath: app.getPath('downloads'),
@@ -437,12 +460,24 @@ function registerAssetIpc(): void {
     const parent = res.canceled ? undefined : res.filePaths[0]
     if (!parent) return null
     const dest = join(parent, basename(b.dir))
-    await cp(b.dir, dest, { recursive: true, force: true })
+    if (await occupied(dest)) {
+      const ask: Electron.MessageBoxOptions = {
+        type: 'question',
+        buttons: ['Thay thư mục cũ', 'Huỷ'],
+        defaultId: 0,
+        cancelId: 1,
+        message: `Thay thư mục cũ “${basename(dest)}”?`,
+        detail: 'Thư mục này đã có tệp. Thay thế sẽ xoá bản xuất cũ để không lẫn tệp .anim / .meta của lần trước.'
+      }
+      const r = owner ? await dialog.showMessageBox(owner, ask) : await dialog.showMessageBox(ask)
+      if (r.response !== 0) return null
+    }
+    await replaceDir(b.dir, dest)
     devlog.app('info', `exported step ${stepId} (${eng ?? b.preset ?? 'raw'}, ${b.files} files) → ${dest}`)
     return dest
   })
-  handle('studio:asset:revealBundle', async (_e, stepId, preset, name, engine) => {
-    const b = await assets.exportBundle(checkStep(stepId), checkPreset(preset), checkName(name), checkEngine(engine))
+  handle('studio:asset:revealBundle', async (_e, stepId, preset, name, engine, opts) => {
+    const b = await assets.exportBundle(checkStep(stepId), checkPreset(preset), checkName(name), checkEngine(engine), checkEngineOptions(opts))
     await shell.openPath(b.dir)
   })
   // startDrag must run while the OS drag gesture is live, so the renderer pre-warms the copy via prepare on hover.

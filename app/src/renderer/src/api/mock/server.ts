@@ -1,4 +1,4 @@
-import { ApiError, type ListRunsQuery, type RecipeBody, type StudioApi } from '../client'
+import { ApiError, type ListRunsQuery, type RecipeBody, type StudioApi, type VersionsQuery } from '../client'
 import { FrameBatcher, type EventSink, type EventStream } from '../ws'
 import type { CoreDiagnostics } from '../../../../preload/types'
 import {
@@ -7,6 +7,11 @@ import {
   type Binding,
   type BlobRef,
   type ExportPreset,
+  type ProjectCreateBody,
+  type ProjectPatchBody,
+  type ProjectRow,
+  type ProjectSummary,
+  type ProjectWithSummary,
   type ToolKey,
   type ToolPath,
   type ToolPaths,
@@ -26,12 +31,12 @@ import {
   type RunRow,
   type StartRunBody,
   type StepRow,
-  type VersionRow,
-  type VersionStatus
+  type VersionRow
 } from '../types'
 import { renderArt, renderPreviewB64 } from './art'
 import { renderWalkSheet } from './walkSheet'
 import { MOCK_KINDS, MOCK_PRESETS, MOCK_TOOLS, mockValidate, stepDeps } from './catalog'
+import { normalizeStyle, styleFills } from '@/composables/projectStyle'
 import sampleGlbUrl from './assets/sample-prop.glb?url'
 import sheetPngUrl from './assets/sample-sheet.png?url'
 import sheetJsonUrl from './assets/sample-sheet.json?url'
@@ -182,6 +187,32 @@ const RECIPES: MockRecipe[] = [
   },
   {
     info: {
+      id: 'sprite-8dir-3d-pixel',
+      name: 'Sprite 8 hướng pixel art (3D)',
+      description: 'Text → concept → chọn → TRELLIS mesh → render 8 hướng → pixel art (bảng màu chung, viền 1px) → sprite sheet',
+      hash: 'b3c0p1xe17',
+      inputs: {
+        prompt: { type: 'text', label: 'Prompt', required: true },
+        pixel: { type: 'int', default: 64, options: [32, 48, 64, 96, 128], label: 'Cỡ pixel art (px)' },
+        colors: { type: 'int', default: 16, options: [8, 12, 16, 24, 32], label: 'Số màu' },
+        palette: { type: 'enum', default: 'auto', options: ['auto', 'pico8', 'sweetie16', 'db16', 'db32', 'endesga32'], label: 'Bảng màu' },
+        outline: { type: 'enum', default: 'dark', options: ['dark', 'none', '#000000'], label: 'Viền ngoài' },
+        dither: { type: 'enum', default: 'none', options: ['none', 'bayer'], label: 'Dither' },
+        preset: { type: 'preset', default: 'pixel', label: 'Preset xuất' }
+      },
+      steps: []
+    },
+    defs: [
+      { id: 'concept', kind: 'comfy.t2i_zimage_turbo', lane: 'gpu', deps: [] },
+      { id: 'pick', kind: 'gate.pick', lane: 'none', deps: ['concept'], params: () => ({ k: 1 }) },
+      { id: 'mesh', kind: 'comfy.img2mesh_trellis2_textured', lane: 'gpu', deps: ['pick'], in: { image: 'pick.images' } },
+      { id: 'render', kind: 'blender.render_dirs', lane: 'blender', deps: ['mesh'], in: { mesh: 'mesh.meshes' }, params: () => ({ count: 8, elevation: 30, res: 256 }) },
+      { id: 'pixel', kind: 'op.pixel_art', lane: 'cpu', deps: ['render'], params: (i) => ({ size: i.pixel, colors: i.colors, palette: i.palette, outline: i.outline, dither: i.dither }) },
+      { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['pixel'], in: { images: 'pixel.images', pivot: 'render.meta' }, params: (i) => ({ cols: 8, preset: i.preset }), raw: { cols: 8, preset: '${inputs.preset}' } }
+    ]
+  },
+  {
+    info: {
       id: 'spine-character',
       name: 'Nhân vật Spine (R&D)',
       description: 'Prompt → concept T-pose → chọn → tách nền → tách part → layers → Spine 4.2 (JSON + atlas + png) → duyệt',
@@ -290,6 +321,7 @@ export class MockCore implements StudioApi, EventStream {
   private runs = new Map<string, RunRow>()
   private steps = new Map<string, StepRow>()
   private versionMap = new Map<string, VersionRow>()
+  private projectMap = new Map<string, ProjectRow>()
   private resourcesMap = new Map<string, ResourceHealth>()
   private cache = new Map<string, Outputs>()
   private laneBusy: Record<Lane, number> = { gpu: 0, blender: 0, cloud: 0, cpu: 0, none: 0 }
@@ -517,10 +549,67 @@ export class MockCore implements StudioApi, EventStream {
     this.seedShowcase('spine-character', 'Hiệp sĩ Spine (chờ duyệt)', t0 - 300, spineOuts, [], 'approve')
     this.seedShowcase('prop-3d', 'Bệ pha lê (chờ duyệt)', t0 - 240, propOuts, [], 'approve')
 
+    this.seedProjects(t0)
+
     // A live run occupying the GPU so a new run visibly waits for the lane, plus one gate waiting for a pick.
     void this.startRun({ recipe_id: 'concept-2d', inputs: { prompt: 'Kiếm pha lê xanh, low-poly', count: 4, size: 512, seed: -1 }, title: 'Kiếm pha lê xanh' })
     const gateRun = await this.startRun({ recipe_id: 'concept-2d-codex', inputs: { prompt: 'Bình thuốc tím phát sáng', count: 4, transparent: true }, title: 'Bình thuốc tím' })
     void gateRun
+  }
+
+  private seedProjects(t0: number): void {
+    const mk = (name: string, description: string, style: Partial<ProjectRow['style']>, created: number, archived = false): ProjectRow => {
+      const p: ProjectRow = { id: uid('prj'), name, description, style: normalizeStyle(style), created_at: created, updated_at: created, archived }
+      this.projectMap.set(p.id, p)
+      return p
+    }
+    const forest = mk(
+      'Rừng Tiên — pixel',
+      'Bộ nhân vật + vật phẩm pixel art 64px cho game nhập vai rừng thần tiên.',
+      { prompt_prefix: 'pixel art, 16-bit', prompt_suffix: 'whimsical forest fantasy, soft greens', negative: 'blurry, text, watermark', preset: 'pixel', pixel: { size: 64, palette: 'sweetie16', colors: 16, outline: 'dark', dither: 'none' }, notes: 'Giữ bảng màu Sweetie 16 cho mọi asset.' },
+      t0 - 86400 * 6
+    )
+    const knight = mk(
+      'Hiệp sĩ Bóng Đêm',
+      'Nhân vật và đạo cụ dark fantasy, xuất cho Godot.',
+      { prompt_prefix: 'dark fantasy', prompt_suffix: 'painterly, rim light, muted palette', negative: 'cartoon, low quality', preset: 'godot' },
+      t0 - 86400 * 12
+    )
+    mk('Thử nghiệm cũ', 'Dự án đã lưu trữ.', { prompt_suffix: 'flat vector style' }, t0 - 86400 * 40, true)
+    const runs = [...this.runs.values()].sort((a, b) => b.created_at - a.created_at)
+    runs.forEach((r, i) => {
+      const p = r.recipe_id.startsWith('sprite') || r.title.includes('Hiệp sĩ') ? knight : i % 4 === 1 ? forest : i % 6 === 2 ? knight : null
+      if (!p) return
+      r.project_id = p.id
+      r.params = { ...r.params, $meta: { ...((r.params.$meta as object | undefined) ?? {}), project_id: p.id, project_applied: p === forest ? ['prompt', 'preset'] : ['prompt'] } }
+    })
+    for (const v of this.versionMap.values()) v.project_id = this.runs.get(v.run_id)?.project_id ?? 'default'
+  }
+
+  private applyProject(projectId: string | undefined, recipe: MockRecipe, inputs: Record<string, unknown>): { inputs: Record<string, unknown>; applied: string[]; projectId: string } {
+    if (!projectId || projectId === 'default') return { inputs, applied: [], projectId: 'default' }
+    const p = this.projectMap.get(projectId)
+    if (!p) throw new ApiError('not_found', `unknown project: ${projectId}`, 404)
+    const out = { ...inputs }
+    const applied: string[] = []
+    for (const f of styleFills(recipe.info.inputs, p.style)) {
+      const cur = out[f.key]
+      if (f.wraps) {
+        if (typeof cur !== 'string' || !cur.trim()) continue
+        const low = cur.toLowerCase()
+        const pre = p.style.prompt_prefix.trim()
+        const suf = p.style.prompt_suffix.trim()
+        const next = [pre && !low.includes(pre.toLowerCase()) ? pre : '', cur.trim(), suf && !low.includes(suf.toLowerCase()) ? suf : ''].filter(Boolean).join(', ')
+        if (next !== cur) {
+          out[f.key] = next
+          applied.push(f.key)
+        }
+      } else if (cur === undefined || cur === null || cur === '') {
+        out[f.key] = f.value
+        applied.push(f.key)
+      }
+    }
+    return { inputs: out, applied, projectId }
   }
 
   private newRun(recipe: MockRecipe, inputs: Record<string, unknown>, title: string, created = now(), params: Record<string, unknown> = {}): RunRow {
@@ -602,7 +691,7 @@ export class MockCore implements StudioApi, EventStream {
       this.patchRun(run, { status: 'succeeded', ended_at: now() })
       const last = steps[steps.length - 1]!
       for (const b of uniqueBlobs(Object.values(last.outputs).flat())) {
-        const v: VersionRow = { id: uid('ver'), project_id: 'default', asset_name: run.title || run.recipe_id, run_id: run.id, step_id: last.id, blob: b, status: 'draft', created_at: now() }
+        const v: VersionRow = { id: uid('ver'), project_id: run.project_id, asset_name: run.title || run.recipe_id, run_id: run.id, step_id: last.id, blob: b, status: 'draft', created_at: now() }
         this.versionMap.set(v.id, v)
         this.emit('version.updated', v, run.id)
       }
@@ -875,7 +964,7 @@ export class MockCore implements StudioApi, EventStream {
     const run_ids: string[] = []
     for (const [i, it] of body.items.entries()) {
       const meta = { source: 'app', batch_id, batch_index: i, batch_total: body.items.length, batch_title: body.title ?? '' }
-      const { run_id } = await this.startRun({ recipe_id: body.recipe_id, inputs: { ...body.inputs, ...it.inputs }, title: it.title, params: { $meta: meta } })
+      const { run_id } = await this.startRun({ recipe_id: body.recipe_id, inputs: { ...body.inputs, ...it.inputs }, title: it.title, params: { $meta: meta }, project_id: body.project_id })
       run_ids.push(run_id)
     }
     return { batch_id, run_ids }
@@ -953,7 +1042,11 @@ export class MockCore implements StudioApi, EventStream {
     const recipe = this.recipe(body.recipe_id)
     if (!recipe) throw new ApiError('unknown_recipe', `Không có quy trình ${body.recipe_id}`, 400)
     const title = body.title || String(body.inputs.prompt ?? recipe.info.name).slice(0, 60)
-    const run = this.newRun(recipe, body.inputs, title, now(), body.params ?? {})
+    const { inputs, applied, projectId } = this.applyProject(body.project_id, recipe, body.inputs)
+    let params = body.params ?? {}
+    if (projectId !== 'default') params = { ...params, $meta: { ...((params.$meta as object | undefined) ?? {}), project_id: projectId, project_applied: applied } }
+    const run = this.newRun(recipe, inputs, title, now(), params)
+    run.project_id = projectId
     const steps = this.createSteps(run, recipe)
     this.emit('run.created', run, run.id)
     for (const s of steps) this.emit('step.updated', s, run.id, s.id)
@@ -965,6 +1058,7 @@ export class MockCore implements StudioApi, EventStream {
     await this.ready
     let rows = [...this.runs.values()].sort((a, b) => b.created_at - a.created_at)
     if (q.status) rows = rows.filter((r) => r.status === q.status)
+    if (q.project_id) rows = rows.filter((r) => r.project_id === q.project_id)
     if (q.before) rows = rows.filter((r) => r.created_at < q.before!)
     const batchOf = (r: RunRow): unknown => (r.params?.$meta as { batch_id?: string } | undefined)?.batch_id
     if (q.batch_id) rows = rows.filter((r) => batchOf(r) === q.batch_id)
@@ -1045,10 +1139,11 @@ export class MockCore implements StudioApi, EventStream {
     this.advance(s.run_id)
   }
 
-  async versions(q: { run_id?: string; status?: VersionStatus } = {}): Promise<VersionRow[]> {
+  async versions(q: VersionsQuery = {}): Promise<VersionRow[]> {
     await this.ready
     let rows = [...this.versionMap.values()].sort((a, b) => b.created_at - a.created_at)
     if (q.run_id) rows = rows.filter((v) => v.run_id === q.run_id)
+    if (q.project_id) rows = rows.filter((v) => v.project_id === q.project_id)
     if (q.status) rows = rows.filter((v) => v.status === q.status)
     return clone(rows)
   }
@@ -1059,5 +1154,84 @@ export class MockCore implements StudioApi, EventStream {
     v.status = action === 'approve' ? 'approved' : 'rejected'
     this.emit('version.updated', v, v.run_id)
     return clone(v)
+  }
+
+  // ---- projects ----
+
+  private project(id: string): ProjectRow {
+    const p = this.projectMap.get(id)
+    if (!p) throw new ApiError('not_found', `unknown project: ${id}`, 404)
+    return p
+  }
+
+  private summaryOf(p: ProjectRow): ProjectSummary {
+    const runs = [...this.runs.values()].filter((r) => r.project_id === p.id).sort((a, b) => b.created_at - a.created_at)
+    const vers = [...this.versionMap.values()].filter((v) => v.project_id === p.id)
+    const count = <K extends string>(keys: K[]): Partial<Record<K, number>> => {
+      const out: Partial<Record<K, number>> = {}
+      for (const k of keys) out[k] = (out[k] ?? 0) + 1
+      return out
+    }
+    const last = Math.max(p.updated_at, ...runs.map((r) => Math.max(r.created_at, r.ended_at ?? 0)))
+    const cover = vers
+      .filter((v) => v.status !== 'rejected' && v.blob.mime.startsWith('image/'))
+      .sort((a, b) => Number(b.status === 'approved') - Number(a.status === 'approved') || b.created_at - a.created_at)[0]
+    return {
+      project_id: p.id,
+      runs: count(runs.map((r) => r.status)),
+      runs_total: runs.length,
+      versions: count(vers.map((v) => v.status)),
+      approved_versions: vers.filter((v) => v.status === 'approved').length,
+      last_activity: last,
+      cover_hash: cover?.blob.hash ?? (runs[0] ? this.previewHash(runs[0].id) : null)
+    }
+  }
+
+  async projects(q: { archived?: boolean } = {}): Promise<ProjectWithSummary[]> {
+    await this.ready
+    await sleep(90)
+    return clone([...this.projectMap.values()].filter((p) => p.archived === !!q.archived).map((p) => ({ ...p, summary: this.summaryOf(p) })))
+  }
+
+  async getProject(id: string): Promise<ProjectRow> {
+    await this.ready
+    return clone(this.project(id))
+  }
+
+  async projectSummary(id: string): Promise<ProjectSummary> {
+    await this.ready
+    return clone(this.summaryOf(this.project(id)))
+  }
+
+  async createProject(body: ProjectCreateBody): Promise<ProjectRow> {
+    await sleep(160)
+    const name = body.name.trim()
+    if (!name) throw new ApiError('invalid', 'name must not be empty', 400)
+    const t = now()
+    const p: ProjectRow = { id: uid('prj'), name, description: body.description ?? '', style: normalizeStyle(body.style), created_at: t, updated_at: t, archived: false }
+    this.projectMap.set(p.id, p)
+    this.emit('project.updated', p)
+    return clone(p)
+  }
+
+  async patchProject(id: string, body: ProjectPatchBody): Promise<ProjectRow> {
+    await sleep(140)
+    const p = this.project(id)
+    if (body.name !== undefined && !body.name.trim()) throw new ApiError('invalid', 'name must not be empty', 400)
+    const preset = body.style?.preset
+    if (preset && ![...MOCK_PRESETS, ...this.userPresets.values()].some((x) => x.id === preset)) {
+      throw new ApiError('invalid', `style: unknown export preset ${preset}`, 400)
+    }
+    if (body.name !== undefined) p.name = body.name.trim()
+    if (body.description !== undefined) p.description = body.description
+    if (body.style) p.style = normalizeStyle(body.style)
+    if (body.archived !== undefined) p.archived = body.archived
+    p.updated_at = now()
+    this.emit('project.updated', p)
+    return clone(p)
+  }
+
+  async archiveProject(id: string): Promise<ProjectRow> {
+    return this.patchProject(id, { archived: true })
   }
 }

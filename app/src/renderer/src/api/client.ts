@@ -3,6 +3,11 @@ import type {
   BatchCreateBody,
   BlobRef,
   ExportPreset,
+  ProjectCreateBody,
+  ProjectPatchBody,
+  ProjectRow,
+  ProjectSummary,
+  ProjectWithSummary,
   ToolKey,
   ToolPaths,
   KindInfo,
@@ -42,6 +47,13 @@ export interface ListRunsQuery {
   status?: RunStatus
   batch_id?: string
   batched?: boolean
+  project_id?: string
+}
+
+export interface VersionsQuery {
+  run_id?: string
+  status?: VersionStatus
+  project_id?: string
 }
 
 export interface StudioApi {
@@ -59,7 +71,7 @@ export interface StudioApi {
   gates(): Promise<StepRow[]>
   resolveGate(stepId: string, res: GateResolution): Promise<void>
   uploadBlob(file: File): Promise<BlobRef>
-  versions(q?: { run_id?: string; status?: VersionStatus }): Promise<VersionRow[]>
+  versions(q?: VersionsQuery): Promise<VersionRow[]>
   setVersionStatus(id: string, action: 'approve' | 'reject'): Promise<VersionRow>
   blobUrl(hash: string): string
   thumbUrl(hash: string, size?: number): string
@@ -77,6 +89,13 @@ export interface StudioApi {
   toolPaths(versions?: boolean): Promise<ToolPaths>
   saveToolPaths(paths: Partial<Record<ToolKey, string>>): Promise<ToolPaths>
   diagnostics(): Promise<CoreDiagnostics>
+  projects(q?: { archived?: boolean }): Promise<ProjectWithSummary[]>
+  getProject(id: string): Promise<ProjectRow>
+  createProject(body: ProjectCreateBody): Promise<ProjectRow>
+  /** `style` replaces the whole style object. */
+  patchProject(id: string, body: ProjectPatchBody): Promise<ProjectRow>
+  archiveProject(id: string): Promise<ProjectRow>
+  projectSummary(id: string): Promise<ProjectSummary>
 }
 
 export type RecipeBody = { yaml: string } | { doc: RecipeDoc }
@@ -137,7 +156,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     stopResource: (name, force) => call('POST', `/api/resources/${enc(name)}/stop${force ? '?force=true' : ''}`, undefined, SLOW_TIMEOUT_MS),
     recipes: () => call('GET', '/api/recipes'),
     startRun: (body) => call('POST', '/api/runs', body, SLOW_TIMEOUT_MS),
-    listRuns: (q = {}) => call('GET', `/api/runs${query({ limit: q.limit, before: q.before, status: q.status, batch_id: q.batch_id, batched: q.batched ? 'true' : undefined })}`),
+    listRuns: (q = {}) => call('GET', `/api/runs${query({ limit: q.limit, before: q.before, status: q.status, batch_id: q.batch_id, batched: q.batched ? 'true' : undefined, project_id: q.project_id })}`),
     getRun: (id) => call('GET', `/api/runs/${enc(id)}`),
     cancelRun: (id) => call('POST', `/api/runs/${enc(id)}/cancel`),
     retryStep: (id) => call('POST', `/api/steps/${enc(id)}/retry`),
@@ -148,7 +167,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
       fd.append('file', file, file.name)
       return call('POST', '/api/blobs', fd, SLOW_TIMEOUT_MS)
     },
-    versions: (q = {}) => call('GET', `/api/versions${query({ run_id: q.run_id, status: q.status })}`),
+    versions: (q = {}) => call('GET', `/api/versions${query({ run_id: q.run_id, status: q.status, project_id: q.project_id })}`),
     setVersionStatus: (id, action) => call('POST', `/api/versions/${enc(id)}/${action}`),
     blobUrl: (hash) => `${baseUrl}/api/blobs/${enc(hash)}?t=${enc(token)}`,
     thumbUrl: (hash, size = 256) => `${baseUrl}/api/blobs/${enc(hash)}/thumb?size=${size}&t=${enc(token)}`,
@@ -164,6 +183,12 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     deletePreset: (id) => call('DELETE', `/api/presets/${enc(id)}`),
     toolPaths: (versions = true) => call('GET', `/api/settings/tools${query({ versions: versions ? undefined : 'false' })}`, undefined, SLOW_TIMEOUT_MS),
     saveToolPaths: (paths) => call('PUT', '/api/settings/tools', { paths }),
-    diagnostics: () => call('GET', '/api/diagnostics', undefined, SLOW_TIMEOUT_MS)
+    diagnostics: () => call('GET', '/api/diagnostics', undefined, SLOW_TIMEOUT_MS),
+    projects: (q = {}) => call('GET', `/api/projects${query({ archived: q.archived ? 'true' : 'false', summary: 'true' })}`),
+    getProject: (id) => call('GET', `/api/projects/${enc(id)}`),
+    createProject: (body) => call('POST', '/api/projects', body),
+    patchProject: (id, body) => call('PATCH', `/api/projects/${enc(id)}`, body),
+    archiveProject: (id) => call('DELETE', `/api/projects/${enc(id)}`),
+    projectSummary: (id) => call('GET', `/api/projects/${enc(id)}/summary`)
   }
 }

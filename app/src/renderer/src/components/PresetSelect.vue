@@ -4,7 +4,7 @@ import { usePresets } from '@/stores/catalog'
 import { useConnection } from '@/stores/connection'
 
 const model = defineModel<string | number | boolean | undefined>()
-defineProps<{ id?: string }>()
+defineProps<{ id?: string; emptyLabel?: string }>()
 const presets = usePresets()
 const conn = useConnection()
 
@@ -20,6 +20,7 @@ const current = computed(() => presets.list.find((p) => p.id === model.value))
 <template>
   <div class="preset-select">
     <select :id="id" class="field sel" :value="String(model ?? '')" @change="model = ($event.target as HTMLSelectElement).value">
+      <option v-if="emptyLabel" value="">{{ emptyLabel }}</option>
       <option v-if="!current && model" :value="String(model)">{{ model }} (không tìm thấy)</option>
       <option v-for="p in presets.list" :key="p.id" :value="p.id">{{ p.name }}</option>
     </select>

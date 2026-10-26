@@ -98,7 +98,8 @@ const KIND_NAMES: Record<string, string> = {
   'codex.image': 'Sinh ảnh (Codex)',
   'claude.task': 'Claude phân tích',
   'blender.render_dirs': 'Render các hướng',
-  'blender.animate_dirs': 'Dựng xương + đi bộ (Blender)',
+  'blender.animate_dirs': 'Dựng xương + anim (Blender)',
+  'op.pixel_art': 'Pixel art (bảng màu chung)',
   'op.trim_pad_resize': 'Cắt viền & căn cỡ',
   'op.sheet': 'Ghép sprite sheet',
   'op.mirror_dirs': 'Lật thành 8 hướng',
@@ -168,6 +169,7 @@ const KIND_SHORT: Record<string, string> = {
   'op.mirror_dirs': 'Lật thành 8 hướng',
   'op.downscale': 'Thu nhỏ',
   'op.pixelate': 'Pixel art',
+  'op.pixel_art': 'Pixel art',
   'op.sheet': 'Ghép sprite sheet',
   'op.glb_validate': 'Kiểm tra GLB',
   'op.view_check': 'Kiểm tra góc nhìn',
@@ -193,7 +195,7 @@ const KIND_SHORT: Record<string, string> = {
   'claude.procedural_3d': 'Dựng 3D bằng code',
   'blender.cleanup': 'Dọn mesh',
   'blender.render_dirs': 'Render các hướng',
-  'blender.animate_dirs': 'Dựng xương + đi bộ',
+  'blender.animate_dirs': 'Dựng xương + anim',
   'blender.script': 'Chạy script Blender',
   'blender.agent': 'Blender tự động'
 }
@@ -224,8 +226,14 @@ export function stepName(step: { kind: string; key?: string; id?: string }): str
 const STEP_ID_OVERRIDES: Record<string, string> = {
   front: 'Render mặt trước',
   joints: 'Claude chấm khớp',
-  anim_down: 'Thu nhỏ khung đi bộ',
+  anim_down: 'Thu nhỏ khung anim',
   walk: 'Ghép sheet đi bộ',
+  anim_sheet: 'Ghép sheet anim',
+  ndirs: 'Lật thành 8 hướng · normal map',
+  ndown: 'Thu nhỏ · normal map',
+  nsheet: 'Ghép sprite sheet · normal map',
+  anim_ndown: 'Thu nhỏ khung anim · normal map',
+  anim_nsheet: 'Ghép sheet anim · normal map',
   back_view: 'Sinh mặt sau'
 }
 

@@ -35,6 +35,9 @@ const RECIPE_ART: Record<string, string> = {
   'sprite-8dir-3d-mv': sprite3dMv,
   'sprite-8dir-glb': spriteGlb,
   'sprite-8dir-walk': spriteWalk,
+  'sprite-8dir-anim': spriteWalk,
+  'sprite-8dir-pixel': spriteGlb,
+  'sprite-8dir-3d-pixel': sprite3d,
   'prop-3d': prop3d,
   'procedural-3d': procedural3d,
   'spine-character': spineCharacter,
@@ -60,6 +63,9 @@ const RECIPE_PITCH: Record<string, string> = {
   'prop-3d': 'Prompt → vật phẩm 3D (GLB có texture)',
   'procedural-3d': 'Ý tưởng → Claude dựng 3D low-poly bằng code → GLB',
   'sprite-8dir-walk': 'Prompt → sprite 8 hướng + sheet đi bộ 8 hướng, dựng qua mesh 3D',
+  'sprite-8dir-anim': 'Prompt → sprite 8 hướng + bộ anim đứng / đi / chạy / chém, kèm normal map',
+  'sprite-8dir-pixel': 'Mesh GLB có sẵn → sprite sheet 8 hướng pixel art, một bảng màu chung',
+  'sprite-8dir-3d-pixel': 'Prompt → sprite sheet 8 hướng pixel art, dựng qua mesh 3D',
   'spine-character': 'Prompt → nhân vật Spine 4.2 có xương + 6 anim (thử nghiệm)',
   'spine-character-mv': 'Prompt → 2 bộ Spine mặt trước + mặt sau, cùng 6 anim (thử nghiệm)'
 }

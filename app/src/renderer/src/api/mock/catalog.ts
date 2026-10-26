@@ -94,7 +94,8 @@ export const MOCK_PRESETS: ExportPreset[] = [
     padding: 0,
     pivot_origin: 'top_left',
     builtin: true
-  }
+  },
+  { id: 'pixel', name: 'Pixel art', description: 'Như Studio, lọc Point để giữ nét pixel', dir_order: ['S', 'SW', 'W', 'NW', 'N', 'NE', 'E', 'SE'], dir_labels: {}, file_pattern: '{asset}_{angle:03d}', layout: 'row', cols: 8, padding: 0, pivot_origin: 'top_left', builtin: true }
 ]
 
 export function bindingSources(b: Binding): string[] {

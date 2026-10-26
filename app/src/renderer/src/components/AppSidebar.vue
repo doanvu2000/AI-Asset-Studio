@@ -3,7 +3,7 @@ import { ART } from '@/assets/art'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { motion } from 'motion-v'
-import { Images, Inbox, Layers, LayoutDashboard, ListChecks, Plus, Settings, Workflow } from '@lucide/vue'
+import { FolderKanban, Images, Inbox, Layers, LayoutDashboard, ListChecks, Plus, Settings, Workflow } from '@lucide/vue'
 import { useRuns } from '@/stores/runs'
 import { useGates } from '@/stores/gates'
 import { useConnection } from '@/stores/connection'
@@ -25,7 +25,8 @@ const items = computed(() => [
   { to: '/gates', name: 'gates', label: 'Cần duyệt', icon: Inbox, badge: gates.count, busy: false, key: '4' },
   { to: '/gallery', name: 'gallery', label: 'Thư viện', icon: Images, badge: 0, busy: false, key: '5' },
   { to: '/recipes', name: 'recipes', label: 'Quy trình', icon: Workflow, badge: 0, busy: false, key: '6' },
-  { to: '/batch', name: 'batch', label: 'Hàng loạt', icon: Layers, badge: 0, busy: false, key: '7' }
+  { to: '/batch', name: 'batch', label: 'Hàng loạt', icon: Layers, badge: 0, busy: false, key: '7' },
+  { to: '/projects', name: 'projects', label: 'Dự án', icon: FolderKanban, badge: 0, busy: false, key: '8' }
 ])
 
 function tip(it: { label: string; badge: number; busy: boolean; key: string }): string {
@@ -35,7 +36,7 @@ function tip(it: { label: string; badge: number; busy: boolean; key: string }): 
 
 function isActive(name: string): boolean {
   const r = String(route.name ?? '')
-  return r === name || (name === 'runs' && r === 'run') || (name === 'recipes' && r === 'recipe') || (name === 'batch' && r === 'batch-detail')
+  return r === name || (name === 'runs' && r === 'run') || (name === 'recipes' && r === 'recipe') || (name === 'batch' && r === 'batch-detail') || (name === 'projects' && r === 'project')
 }
 
 const status = computed(() => {
