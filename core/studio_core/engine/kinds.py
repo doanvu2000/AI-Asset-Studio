@@ -78,6 +78,7 @@ CATALOG: dict[str, P] = {
     "op.downscale": {"label": "Thu nhỏ", "in": {"images": "image[]"}, "out": {"images": "image[]"},
                      "params": {"factor": _float(2, min=1, max=16, label="Hệ số"),
                                 "resample": _enum(RESAMPLE, "box", label="Lấy mẫu"),
+                                "normal": _bool(False, label="Ảnh normal map (giữ hậu tố _n)"),
                                 "optional": _bool(False, label="Bỏ qua khi đầu vào rỗng", advanced=True)}},
     "op.pixelate": {"label": "Pixel art", "in": {"images": "image[]"}, "out": {"images": "image[]"},
                     "params": {"size": _int(64, min=8, max=1024, label="Cỡ (px)"),

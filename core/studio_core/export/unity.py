@@ -488,7 +488,10 @@ SpriteRenderer:
 {animator}"""
 
 
-README_HEAD = "{asset} — xuất từ AI Asset Studio cho Unity 6. Kéo cả thư mục này vào Assets/.\n\n"
+README_HEAD = ("{asset} — xuất từ AI Asset Studio cho Unity 6. Kéo cả thư mục này vào Assets/.\n"
+               "GUID trong các file .meta cố định theo bước (step) đã tạo ra asset: xuất lại cùng một run giữ "
+               "nguyên GUID nên tham chiếu trong scene/prefab vẫn đúng. Run mới sinh GUID mới, nên import lại sẽ "
+               "là asset thay thế (gán lại tham chiếu) chứ không cập nhật asset cũ.\n\n")
 README_SHEET = """- {asset}.png: sprite sheet đã cắt sẵn (Sprite Mode Multiple), tên khung <clip>_<hướng>_<số>,
   hướng S, SW, W, NW, N, NE, E, SE (S = quay mặt xuống màn hình). PPU {ppu}, pivot ở chân.
 - Animations/<clip>_<hướng>.anim + {asset}.controller: mỗi clip là một state blend tree 2D

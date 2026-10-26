@@ -30,15 +30,19 @@ class OrjsonResponse(JSONResponse):
 
 
 class ApiError(Exception):
-    def __init__(self, status: int, code: str, message: str) -> None:
+    def __init__(self, status: int, code: str, message: str, detail: dict[str, Any] | None = None) -> None:
         super().__init__(message)
         self.status = status
         self.code = code
         self.message = message
+        self.detail = detail
 
 
-def error_response(status: int, code: str, message: str) -> OrjsonResponse:
-    return OrjsonResponse({"error": {"code": code, "message": message}}, status_code=status)
+def error_response(status: int, code: str, message: str, detail: dict[str, Any] | None = None) -> OrjsonResponse:
+    err: dict[str, Any] = {"code": code, "message": message}
+    if detail:
+        err["detail"] = detail
+    return OrjsonResponse({"error": err}, status_code=status)
 
 
 _HTTP_CODES = {400: "bad_request", 401: "unauthorized", 403: "forbidden", 404: "not_found",
@@ -48,7 +52,7 @@ _HTTP_CODES = {400: "bad_request", 401: "unauthorized", 403: "forbidden", 404: "
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def _api_error(_: Request, exc: ApiError) -> Response:
-        return error_response(exc.status, exc.code, exc.message)
+        return error_response(exc.status, exc.code, exc.message, exc.detail)
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(_: Request, exc: StarletteHTTPException) -> Response:

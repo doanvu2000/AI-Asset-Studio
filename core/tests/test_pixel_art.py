@@ -157,4 +157,48 @@ def test_dark_outline_counts_toward_colors():
         res = pixel_art(noisy, size=96, colors=colors, outline="dark")
         used = set().union(*(colors_of(f) for f in res.frames))
         assert len(res.palette) <= colors and len(used) <= colors, (colors, len(res.palette), len(used))
-        assert res.outline_colors
+        assert res.outline_colors or colors == 2
+
+
+def test_two_colors_keep_both_fills_and_still_outline():
+    res = pixel_art(frames(2), size=48, colors=2, outline="dark")
+    assert len(res.palette) == 2 and not res.outline_colors
+    plain = pixel_art(frames(2), size=48, colors=2, outline="none")
+    a, b = np.array(res.frames[0]), np.array(plain.frames[0])
+    ring = (a[..., 3] > 0) & (b[..., 3] == 0)
+    assert ring.any() and colors_of(res.frames[0]) <= set(res.palette)
+
+
+def test_existing_darks_do_not_cost_fill_colors():
+    from studio_core.ops.pixel import from_oklab, to_oklab
+
+    hues = np.linspace(0, 2 * np.pi, 7, endpoint=False)
+    light_lab = np.stack([np.full(7, 0.42), 0.06 * np.cos(hues), 0.06 * np.sin(hues)], 1)
+    lights = from_oklab(light_lab)
+    lab = to_oklab(lights)
+    darks = from_oklab(np.stack([lab[:, 0] * 0.45, lab[:, 1] * 0.7, lab[:, 2] * 0.7], 1))
+    img = np.zeros((64, 64, 4), np.uint8)
+    for i, (lc, dc) in enumerate(zip(lights, darks)):
+        y = 4 + i * 8
+        img[y:y + 8, 4:32, :3], img[y:y + 8, 32:60, :3] = lc, dc
+        img[y:y + 8, 4:60, 3] = 255
+    res = pixel_art([Image.fromarray(img, "RGBA")], size=64, colors=16, outline="dark", cleanup=False)
+    want = {tuple(int(v) for v in c) for c in np.concatenate([lights, darks])}
+    assert len(want) == 14 and set(res.palette) == want and not res.outline_colors
+
+
+async def test_pixel_size_bounds_and_normal_downscale(tmp_path: Path):
+    ctx = FakeCtx(tmp_path)
+    reg = ExecutorRegistry()
+    register(reg, None, None, None)
+    refs = [await put_img(ctx, f, f"dir_{i * 90:03d}_n.png") for i, f in enumerate(frames(2))]
+    for size in (4, 513):
+        with pytest.raises(StepError) as ei:
+            await reg.resolve("op.pixel_art").run(ctx, {"size": size}, {"images": refs})
+        assert ei.value.code == "op_bad_params"
+    res = await reg.resolve("op.downscale").run(ctx, {"factor": 2, "normal": True}, {"images": refs})
+    assert [r.name for r in res.outputs["images"]] == ["dir_000_down_n.png", "dir_090_down_n.png"]
+    assert res.meta == {"normal": True}
+    for rid in ("sprite-8dir-3d", "sprite-8dir-3d-mv", "sprite-8dir-3d-brief", "sprite-8dir-anim"):
+        _, issues = validate((RECIPES / f"{rid}.yaml").read_text(encoding="utf-8"), None)
+        assert not [i for i in issues if "normal" in str(i.get("message", ""))], (rid, issues)

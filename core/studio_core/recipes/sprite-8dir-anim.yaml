@@ -214,7 +214,7 @@ steps:
   - id: anim_ndown
     kind: op.downscale
     in: {images: anim.normal_frames}
-    params: {factor: 2, resample: box, optional: true}
+    params: {factor: 2, resample: box, normal: true, optional: true}
   - id: anim_nsheet
     kind: op.sheet
     in: {images: anim_ndown.images, pivot: anim.meta}

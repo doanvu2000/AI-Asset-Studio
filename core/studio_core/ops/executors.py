@@ -41,6 +41,12 @@ def _out_name(ref: BlobRef, i: int, suffix: str) -> str:
     return f"{stem}_{suffix}.png"
 
 
+def _normal_name(ref: BlobRef, i: int, suffix: str) -> str:
+    """Viewers tell normal frames apart by the trailing `_n`, so it stays last."""
+    stem = _out_name(ref, i, suffix)[:-len(f"_{suffix}.png")]
+    return f"{stem.removesuffix('_n')}_{suffix}_n.png"
+
+
 async def _load(ctx: StepContext, ref: BlobRef) -> Image.Image:
     try:
         return await asyncio.to_thread(im.open_image, ctx.blobs.path(ref.hash))
@@ -95,6 +101,7 @@ class PerImageOp(OpExecutor):
             return StepResult(outputs={"images": []})
         refs = _images_in(inputs)
         fn = self.transform(params)
+        normal = bool(params.get("normal"))
         out: list[BlobRef] = []
         for i, ref in enumerate(refs):
             if ctx.cancelled.is_set():
@@ -104,9 +111,10 @@ class PerImageOp(OpExecutor):
                 res = await asyncio.to_thread(fn, src)
             except ValueError as e:
                 raise StepError("op_bad_params", str(e)) from e
-            out.append(await _put_png(ctx, res, _out_name(ref, i, self.suffix)))
+            out.append(await _put_png(ctx, res, _normal_name(ref, i, self.suffix) if normal
+                                      else _out_name(ref, i, self.suffix)))
             ctx.progress(i + 1, len(refs))
-        return StepResult(outputs={"images": out})
+        return StepResult(outputs={"images": out}, meta={"normal": True} if normal else {})
 
 
 class TrimPadResize(PerImageOp):

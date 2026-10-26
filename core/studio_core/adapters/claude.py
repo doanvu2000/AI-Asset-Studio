@@ -123,11 +123,23 @@ async def sdk_query(content: list[dict[str, Any]], options: Any) -> ClaudeReply:
                         "model": options.model, "seconds": round(time.perf_counter() - t0, 2)})
 
 
+def timeout_limit(raw: Any) -> float | None:
+    """Only an explicit numeric 0 disables the timeout; None/"" (unset form fields) fall back to the default."""
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return DEFAULT_TIMEOUT_S
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_TIMEOUT_S
+    if value == 0:
+        return None
+    return value if value > 0 else DEFAULT_TIMEOUT_S
+
+
 async def ask(query_fn: QueryFn, params: dict[str, Any], prompt: str, cwd: str,
               images: list[tuple[bytes, str]] | None = None, **option_kw: Any) -> ClaudeReply:
     content = await asyncio.to_thread(build_content, prompt, images or [])
-    raw = params.get("_timeout_s", DEFAULT_TIMEOUT_S)
-    limit = float(raw) if raw else None
+    limit = timeout_limit(params.get("_timeout_s"))
     try:
         async with asyncio.timeout(limit):
             return await query_fn(content, build_options(params, cwd, **option_kw))
@@ -266,7 +278,7 @@ class ClaudeBriefExecutor:
             raise StepError("claude_bad_params", "params.idea is required")
         target = str(params.get("target") or "generic")
         q = {"model": params.get("model") or DEFAULT_MODEL, "max_turns": 2, "system": BRIEF_SYSTEM, "schema": BRIEF_SCHEMA,
-             "_timeout_s": params.get("_timeout_s", DEFAULT_TIMEOUT_S)}
+             "_timeout_s": params.get("_timeout_s")}
         await asyncio.to_thread(ctx.job_dir.mkdir, parents=True, exist_ok=True)
         ctx.progress(0, 1, "brief")
         reply = await ask(self.query, q, brief_prompt(idea, target, str(params.get("style") or "")),

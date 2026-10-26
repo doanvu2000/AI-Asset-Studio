@@ -94,6 +94,42 @@ async def test_zero_timeout_means_no_inner_limit(tmp_path: Path, monkeypatch) ->
     async def ok(content: list[dict[str, Any]], options: Any) -> ClaudeReply:
         return ClaudeReply(None, "hi", {})
 
-    for p in ({"_timeout_s": 0}, {"_timeout_s": None}, {}):
+    d = claude.DEFAULT_TIMEOUT_S
+    for p in ({"_timeout_s": 0}, {"_timeout_s": None}, {"_timeout_s": ""}, {}, {"_timeout_s": 900},
+              {"_timeout_s": "0"}):
         await ask(ok, p, "hi", str(tmp_path))
-    assert limits == [None, None, claude.DEFAULT_TIMEOUT_S]
+    assert limits == [None, d, d, d, 900.0, None]
+
+
+async def test_brief_forwards_raw_timeout(tmp_path: Path) -> None:
+    import pytest
+
+    from studio_core.adapters import claude
+    from studio_core.config import Settings
+
+    seen: list[Any] = []
+
+    class Stop(Exception):
+        pass
+
+    async def fake_ask(query_fn: Any, params: dict[str, Any], *a: Any, **kw: Any) -> ClaudeReply:
+        seen.append(params["_timeout_s"])
+        raise Stop
+
+    class Ctx:
+        job_dir = tmp_path / "job"
+
+        @staticmethod
+        def progress(*a: Any) -> None:
+            return None
+
+    orig = claude.ask
+    claude.ask = fake_ask
+    try:
+        ex = claude.ClaudeBriefExecutor(Settings())
+        for p in ({"idea": "knight"}, {"idea": "knight", "_timeout_s": 0}):
+            with pytest.raises(Stop):
+                await ex.run(Ctx(), p, {})  # type: ignore[arg-type]
+    finally:
+        claude.ask = orig
+    assert seen == [None, 0]

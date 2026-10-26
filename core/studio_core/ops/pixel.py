@@ -32,6 +32,7 @@ PALETTES: dict[str, tuple[str, ...]] = {
 PALETTE_CHOICES = ["auto", *PALETTES]
 OUTLINES = ("none", "dark")
 DITHERS = ("none", "bayer")
+MIN_SIZE, MAX_SIZE = 8, 512
 
 _M1 = np.array([[0.4122214708, 0.5363325363, 0.0514459929],
                 [0.2119034982, 0.6806995451, 0.1073969566],
@@ -216,6 +217,8 @@ def _despeckle(idx: np.ndarray, pal_lab: np.ndarray, tol: float) -> None:
 def _dark_map(pal: np.ndarray, synthesize: bool = True, budget: int | None = None) -> tuple[np.ndarray, np.ndarray]:
     """For each palette entry, a darker entry of similar hue; synthesizes extra colors (auto palettes only, at most
     `budget` of them) when the palette has none, otherwise falls back to its darkest entry."""
+    if budget is not None and budget <= 0:
+        synthesize = False
     lab = to_oklab(pal)
     extra: list[np.ndarray] = []
     out = np.zeros(len(pal), np.int64)
@@ -288,8 +291,8 @@ def pixel_scale(frames: Sequence[Image.Image], size: int | None, factor: float |
             raise ValueError("factor must be >= 1")
         return 1.0 / float(factor)
     if size:
-        if size < 4:
-            raise ValueError("size must be >= 4")
+        if not MIN_SIZE <= size <= MAX_SIZE:
+            raise ValueError(f"size must be within {MIN_SIZE}..{MAX_SIZE}")
         return min(1.0, float(size) / canvas)
     raise ValueError("give size or factor")
 
@@ -311,15 +314,19 @@ def plan_palette(smalls: Sequence[tuple[np.ndarray, np.ndarray]], scale: float, 
     colors = int(colors)
     samples = np.concatenate([a[..., :3][m] for a, m in smalls]) if any(m.any() for _, m in smalls) \
         else np.zeros((0, 3), np.uint8)
-    # Synthesized outline darks share the colour budget, so `colors` stays a hard cap.
-    n_dark = max(1, colors // 4) if outline == "dark" else 0
     if palette_image is not None:
         ref = np.array(palette_image.convert("RGBA"))
         pal, source = kmeans_palette(ref[..., :3][ref[..., 3] >= 128], colors), "image"
     elif palette != "auto":
         pal, source = _preset_palette(palette, colors, samples), palette
     else:
-        pal, source = kmeans_palette(samples, colors - n_dark), "auto"
+        pal, source = kmeans_palette(samples, colors), "auto"
+        if outline == "dark":
+            # Synthesized outline darks share the colour budget, so `colors` stays a hard cap; fills only give
+            # up slots when the palette lacks darks of its own.
+            n_extra = len(_dark_map(pal)[1])
+            if len(pal) + n_extra > colors:
+                pal = kmeans_palette(samples, colors - min(n_extra, colors - 2))
 
     out_lines: np.ndarray = np.zeros((0, 3), np.uint8)
     dark = None

@@ -120,7 +120,8 @@ async def stop_resource(request: Request, name: str, force: bool = False) -> Res
     status = (await r.health()).status
     if not force and status in ("busy", "starting"):
         raise ApiError(409, "resource_busy", f"{name} is {'starting' if status == 'starting' else 'running a job'}; "
-                                             "wait or cancel the run first, or stop with force=true")
+                                             "wait or cancel the run first, or stop with force=true",
+                       detail={"resource": name, "status": status})
     await r.stop()
     return _json(await r.health())
 

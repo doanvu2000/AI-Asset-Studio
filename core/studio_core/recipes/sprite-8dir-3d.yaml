@@ -51,7 +51,7 @@ steps:
   - id: ndown
     kind: op.downscale
     in: {images: ndirs.images}
-    params: {factor: 2, resample: box, optional: true}
+    params: {factor: 2, resample: box, normal: true, optional: true}
   - id: nsheet
     kind: op.sheet
     in: {images: ndown.images, pivot: render.meta}

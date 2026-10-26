@@ -231,6 +231,7 @@ async def test_stop_busy_resource_is_refused(app_ctx: tuple[FastAPI, httpx.Async
     app.state.resources = {**app.state.resources, "blender": r}
     resp = await client.post("/api/resources/blender/stop", headers=AUTH)
     assert resp.status_code == 409 and resp.json()["error"]["code"] == "resource_busy" and r.stopped == 0
+    assert resp.json()["error"]["detail"] == {"resource": "blender", "status": "busy"}
     resp = await client.post("/api/resources/blender/stop?force=true", headers=AUTH)
     assert resp.status_code == 200 and r.stopped == 1
 
@@ -254,3 +255,4 @@ async def test_stop_starting_resource_is_refused(app_ctx: tuple[FastAPI, httpx.A
     app.state.resources = {**app.state.resources, "comfyui": r}
     resp = await client.post("/api/resources/comfyui/stop", headers=AUTH)
     assert resp.status_code == 409 and resp.json()["error"]["code"] == "resource_busy" and r.stopped == 0
+    assert resp.json()["error"]["detail"] == {"resource": "comfyui", "status": "starting"}

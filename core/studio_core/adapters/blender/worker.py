@@ -171,26 +171,33 @@ def normal_pass(scene, mat):
 
 def render_shots(scene, shots, normal_mat, emit):
     """Each shot is (path, setup, label); renders colour frames, then `<stem>_n.png` normal frames in a second pass so
-    a Workbench job switches engine once instead of twice per frame. Returns per-shot (seconds, normal path or None)."""
+    a Workbench job switches engine once instead of twice per frame. Returns per-shot
+    (seconds, normal path or None, normal seconds or None)."""
     passes = 2 if normal_mat is not None else 1
     total, done = len(shots) * passes, 0
     out = []
-    for path, setup, label in shots:
-        setup()
-        scene.render.filepath = path
-        t = time.perf_counter()
-        bpy.ops.render.render(write_still=True)
-        out.append([round(time.perf_counter() - t, 3), None])
-        done += 1
-        emit({"event": "progress", "value": done, "max": total, "label": label})
-    if normal_mat is not None:
-        with normal_pass(scene, normal_mat):
-            for rec, (path, setup, label) in zip(out, shots):
-                setup()
-                rec[1] = scene.render.filepath = path[:-4] + "_n.png"
-                bpy.ops.render.render(write_still=True)
-                done += 1
-                emit({"event": "progress", "value": done, "max": total, "label": f"normal · {label}"})
+    prev_path = scene.render.filepath
+    try:
+        for path, setup, label in shots:
+            setup()
+            scene.render.filepath = path
+            t = time.perf_counter()
+            bpy.ops.render.render(write_still=True)
+            out.append([round(time.perf_counter() - t, 3), None, None])
+            done += 1
+            emit({"event": "progress", "value": done, "max": total, "label": label})
+        if normal_mat is not None:
+            with normal_pass(scene, normal_mat):
+                for rec, (path, setup, label) in zip(out, shots):
+                    setup()
+                    rec[1] = scene.render.filepath = path[:-4] + "_n.png"
+                    t = time.perf_counter()
+                    bpy.ops.render.render(write_still=True)
+                    rec[2] = round(time.perf_counter() - t, 3)
+                    done += 1
+                    emit({"event": "progress", "value": done, "max": total, "label": f"normal · {label}"})
+    finally:
+        scene.render.filepath = prev_path
     return out
 
 
@@ -252,8 +259,8 @@ def render_dirs(p, emit):
         return lambda: setattr(pivot, "rotation_euler", (0, 0, math.radians(-a)))
 
     shots = [(os.path.join(out_dir, f"dir_{round(a):03d}.png"), turn(a), f"{round(a)}°") for a in angles]
-    frames = [{"angle": a, "file": path, "s": s, **({"normal": npath} if npath else {})}
-              for a, (path, _, _), (s, npath) in zip(angles, shots, render_shots(scene, shots, nmat, emit))]
+    frames = [{"angle": a, "file": path, "s": s, **({"normal": npath, "normal_s": ns} if npath else {})}
+              for a, (path, _, _), (s, npath, ns) in zip(angles, shots, render_shots(scene, shots, nmat, emit))]
     return {"import_s": round(t_import, 2), "total_s": round(time.perf_counter() - t0, 2),
             "engine": scene.render.engine, "ortho_scale": round(ortho, 4), "radius": round(r, 4),
             "height": round(zmax - zmin, 4), "verts": int(len(v)), "res": res, "supersample": supersample,
@@ -885,8 +892,8 @@ def animate_dirs(p, emit):
                 shots.append((path, setup(name, fi, n, bool(clip.get("loop", True)), a),
                               f"{name} · {round(a)}° · khung {fi + 1}"))
                 info.append({"clip": name, "angle": a, "frame": fi, "file": path})
-    frames = [{**rec, **({"normal": npath} if npath else {})}
-              for rec, (_, npath) in zip(info, render_shots(scene, shots, nmat, emit))]
+    frames = [{**rec, "s": s, **({"normal": npath, "normal_s": ns} if npath else {})}
+              for rec, (s, npath, ns) in zip(info, render_shots(scene, shots, nmat, emit))]
     return {"total_s": round(time.perf_counter() - t0, 2), "engine": scene.render.engine, "ortho_scale": round(ortho, 4),
             "res": res, "supersample": supersample, "elevation": p.get("elevation", 30), "frames": frames,
             "frames_per_dir": max(int(c["frames"]) for c in clips), "weights": weights, "height": round(height, 4),
