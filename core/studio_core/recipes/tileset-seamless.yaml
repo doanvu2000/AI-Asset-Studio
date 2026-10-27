@@ -9,6 +9,14 @@ inputs:
   flatten: {type: float, default: 0.5, min: 0, max: 1, label: San phẳng ánh sáng}
   normal: {type: bool, default: true, label: Tạo normal map}
   review: {type: bool, default: true, label: Duyệt trước khi xong}
+rules:
+  - when: {mode: wang}
+    min_items: {lines: prompt, times: count, min: 2}
+    message: "Wang cần 2 dòng vật liệu, hoặc số ảnh mỗi vật liệu ≥ 2"
+  - when: {mode: wang}
+    max_lines: {prompt: 2}
+  - when: {mode: edge}
+    max_lines: {prompt: 1}
 steps:
   - id: gen
     kind: comfy.t2i_zimage_turbo

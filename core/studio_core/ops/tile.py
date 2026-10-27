@@ -140,6 +140,7 @@ GRID_SOLO_STRENGTH = 0.17
 GRID_MIN_SIDE = 384
 STAMP_STRENGTH = 0.4
 GRID_SIDE = 384
+CROSS_KEEP = 0.6
 
 
 def _reduce(lum: np.ndarray, side: int) -> tuple[np.ndarray, int]:
@@ -357,16 +358,23 @@ def wrap_overlap(a: np.ndarray, frac: float, min_ncc: float = 0.5) -> tuple[int 
     # Edge strength is blind to polarity: on a checkerboard the half-period lag matches every edge while turning
     # light into dark. A lag only counts when the signed brightness profile agrees too.
     sp = lum - soft_blur(lum, max(4, n // 16), axes=(1,), wrap=False)
+    # High-passed across the axis instead: keeps what varies across the wrap direction (the staggered joints of a
+    # running bond) and drops what runs along it (grout rows), so it tells an odd course lag from an even one.
+    cp = lum - soft_blur(lum, max(4, lum.shape[0] // 16), axes=(0,), wrap=False)
 
-    def signed(j: int) -> float:
+    def signed(src: np.ndarray, j: int) -> float:
         m = int(valid[j])
-        x, y = sp[:, :m] - sp[:, :m].mean(), sp[:, lags[j]:lags[j] + m] - sp[:, lags[j]:lags[j] + m].mean()
+        x, y = src[:, :m] - src[:, :m].mean(), src[:, lags[j]:lags[j] + m] - src[:, lags[j]:lags[j] + m].mean()
         return float((x * y).sum() / max(float(np.linalg.norm(x) * np.linalg.norm(y)), 1e-9))
 
     peaks = [i for i in range(len(lags)) if ncc[i] >= 0.85 * best and (i == 0 or ncc[i] >= ncc[i - 1])
-             and (i == len(lags) - 1 or ncc[i] >= ncc[i + 1]) and signed(i) > 0]
+             and (i == len(lags) - 1 or ncc[i] >= ncc[i + 1]) and signed(sp, i) > 0]
     if not peaks:
         return None, best
+    cross = {i: signed(cp, i) for i in peaks}
+    top = max(cross.values())
+    if top > 0:
+        peaks = [i for i in peaks if cross[i] >= CROSS_KEEP * top]
     o0 = round(n * frac)
     i = min(peaks, key=lambda j: abs((n - lags[j]) - o0))
     return int(n - lags[i]), float(ncc[i])
@@ -427,9 +435,10 @@ def seamless_info(img: Image.Image, overlap: float = 0.125, feather: int = 3, fl
 
 def _worst_seam(a: np.ndarray) -> float:
     # The wrap-aware blur stands in for tile_report's 4× reduction, which would crop a size that is not a multiple
-    # of 4 and so compare the wrong columns.
-    r = _seam_ratio(a)
-    r.update({f"{k}b": v for k, v in _seam_ratio(box_blur(a, 2)).items()})
+    # of 4 and so compare the wrong columns. 99th percentile: an aligned wrap lands on a grout line, which is as
+    # sharp as the few interior joint lines — at 95 a 1024px running bond read as a bad seam and fell back to plain.
+    r = _seam_ratio(a, 99)
+    r.update({f"{k}b": v for k, v in _seam_ratio(box_blur(a, 2), 99).items()})
     return max(r.values())
 
 
@@ -488,7 +497,7 @@ def tile_grid(tiles: Sequence[Image.Image], n: int = 3, cell: int | None = None,
     return out
 
 
-def _seam_ratio(a: np.ndarray) -> dict[str, float]:
+def _seam_ratio(a: np.ndarray, pct: float = 95) -> dict[str, float]:
     """Mean colour step across each wrap edge over a high percentile of the steps between interior neighbour lines
     (≤1 when seamless): grout or plank lines make some interior lines legitimately sharp, so the mean misleads."""
     out: dict[str, float] = {}
@@ -497,7 +506,7 @@ def _seam_ratio(a: np.ndarray) -> dict[str, float]:
         other = tuple(i for i in range(a.ndim) if i != ax)
         lines = np.abs(np.diff(a, axis=ax)).mean(axis=other)
         wrap = np.abs(np.take(a, [0], axis=ax) - np.take(a, [n - 1], axis=ax)).mean()
-        out[name] = float(wrap / max(float(np.percentile(lines, 95)), 1e-4))
+        out[name] = float(wrap / max(float(np.percentile(lines, pct)), 1e-4))
     return out
 
 

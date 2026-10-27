@@ -7,6 +7,7 @@ from PIL import Image
 
 from studio_core.contracts import ExecutorRegistry, Lane, StepError, StepRow, StepStatus
 from studio_core.engine.library import validate
+from studio_core.engine.recipe import RecipeError, parse_recipe
 from studio_core.ops import register
 from studio_core.ops.tile import (_lum, _rgb, _scale_profile, detect_grid, detrend, rectify_pitch, seamless, seamless_info, soft_blur,
                                   stamp_repeat, tile_report, wang_arrangement, wang_index, wang_labels, wang_layout,
@@ -68,6 +69,14 @@ def test_grid_auto_keeps_courses_in_phase_across_the_wrap():
     assert not info_off["grid"] and info["grid"] and "y" in info["aligned"], info
     assert course_jump(auto) <= 2 < course_jump(off), (course_jump(auto), course_jump(off))
     assert tile_report(auto)["seam_score"] >= 90
+
+
+@pytest.mark.parametrize("n,course,brick,seed", [(512, 20.3, 55.1, 2), (640, 18.2, 47.9, 4), (1024, 27.5, 73.3, 5)])
+def test_running_bond_wraps_whole_bricks_and_an_even_course_count(n, course, brick, seed):
+    out, info = seamless_info(bricks(n=n, course=course, brick=brick, seed=seed), grid="auto")
+    assert info["aligned"] == ["x", "y"] and "fallback" not in info, info
+    assert _multiple(out.width, brick), (out.size, info)
+    assert _multiple(out.height, 2 * course), (out.size, info)
 
 
 def test_non_periodic_texture_is_unchanged_by_grid_auto():
@@ -274,6 +283,33 @@ def test_recipes_accept_wang_and_grid_inputs():
     assert tex is not None and issues == [] and tex.inputs["grid"]["options"] == ["auto", "off"]
     text = tex.step("gen").params["57:27.text"]
     assert "uniform pattern" not in text and "no perspective" in text and "non-repeating" in text and "no tile grid" in text
+
+
+def test_tileset_rules_refuse_one_image_wang_and_trim_unused_lines():
+    recipe, _ = validate((RECIPES / "tileset-seamless.yaml").read_text(encoding="utf-8"), None)
+    with pytest.raises(RecipeError, match="Wang cần 2 dòng"):
+        recipe.coerce_inputs({"prompt": "grass", "mode": "wang", "count": 1})
+    assert recipe.coerce_inputs({"prompt": "grass", "mode": "wang", "count": 2})["prompt"] == "grass"
+    wang = recipe.coerce_inputs({"prompt": "grass\n\n dirt \nsand", "mode": "wang", "count": 1})
+    assert wang["prompt"] == "grass\ndirt"
+    edge = recipe.coerce_inputs({"prompt": "grass\ndirt", "mode": "edge"})
+    assert edge["prompt"] == "grass"
+    assert recipe.resolve_params(recipe.step("gen"), edge)["57:27.text"][0].startswith("grass, seamless")
+    assert len(recipe.resolve_params(recipe.step("gen"), edge)["57:27.text"]) == 1
+
+
+@pytest.mark.parametrize("rules", [
+    "{when: {nope: 1}, max_lines: {p: 1}}",
+    "{max_lines: {p: 0}}",
+    "{max_lines: {n: 1}}",
+    "{min_items: {lines: p, times: p, min: 2}}",
+    "{min_items: {lines: p, min: 2}, max_lines: {p: 1}}",
+])
+def test_bad_rules_are_rejected(rules: str):
+    doc = ("id: r\ninputs: {p: {type: text}, n: {type: int, default: 1}}\n"
+           f"rules: [{rules}]\nsteps: [{{id: a, kind: op.noop}}]\n")
+    with pytest.raises(RecipeError, match="rules"):
+        parse_recipe(doc.encode())
 
 
 async def test_tile_resize_square_option(tmp_path: Path):

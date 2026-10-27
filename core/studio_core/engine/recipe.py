@@ -106,6 +106,7 @@ class Recipe:
     outputs: dict[str, Binding]
     hash: str
     path: Path | None = None
+    rules: list[dict[str, Any]] = field(default_factory=list)
 
     def step(self, key: str) -> StepSpec:
         for s in self.steps:
@@ -124,6 +125,7 @@ class Recipe:
                 raise RecipeError(f"input '{name}' is required")
             else:
                 out[name] = None
+        apply_rules(self.rules, out)
         return out
 
     def resolve_params(self, step: StepSpec, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -196,6 +198,62 @@ def split_lines(v: Any) -> list[str]:
     if v is None:
         return []
     return [ln.strip() for ln in str(v).splitlines() if ln.strip()]
+
+
+RULE_KINDS = ("min_items", "max_lines")
+
+
+def _parse_rules(where: str, raw: Any, inputs: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    """`rules:` cross-input checks run before any step, so a combination that can only fail after GPU work is
+    refused up front — for API/MCP callers too, not just the app.
+    min_items: {lines: <text>, times: <int>, min: N} — non-empty lines × times must be ≥ N.
+    max_lines: {<text>: N} — keep only the first N lines of that input."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise RecipeError(f"{where}: rules must be a list")
+    out: list[dict[str, Any]] = []
+    for i, r in enumerate(raw):
+        if not isinstance(r, dict):
+            raise RecipeError(f"{where}: rules[{i}] must be a mapping")
+        when = r.get("when") or {}
+        if not isinstance(when, dict) or set(when) - inputs.keys():
+            raise RecipeError(f"{where}: rules[{i}].when must map known inputs to values")
+        kinds = [k for k in RULE_KINDS if k in r]
+        if len(kinds) != 1:
+            raise RecipeError(f"{where}: rules[{i}] needs exactly one of {'/'.join(RULE_KINDS)}")
+        body = r[kinds[0]]
+        if not isinstance(body, dict):
+            raise RecipeError(f"{where}: rules[{i}].{kinds[0]} must be a mapping")
+        if kinds[0] == "min_items":
+            text, times = body.get("lines"), body.get("times")
+            if inputs.get(text, {}).get("type") != "text" or (times is not None and
+                                                              inputs.get(times, {}).get("type") != "int"):
+                raise RecipeError(f"{where}: rules[{i}].min_items needs a text 'lines' and an int 'times' input")
+            if not isinstance(body.get("min"), int):
+                raise RecipeError(f"{where}: rules[{i}].min_items.min must be an int")
+        else:
+            if not body or any(inputs.get(k, {}).get("type") != "text" or not isinstance(v, int) or v < 1
+                               for k, v in body.items()):
+                raise RecipeError(f"{where}: rules[{i}].max_lines maps text inputs to a line count ≥ 1")
+        out.append({"when": when, "kind": kinds[0], "body": body, "message": str(r.get("message") or "")})
+    return out
+
+
+def apply_rules(rules: list[dict[str, Any]], values: dict[str, Any]) -> None:
+    for r in rules:
+        if any(values.get(k) != v for k, v in r["when"].items()):
+            continue
+        body = r["body"]
+        if r["kind"] == "min_items":
+            times = int(values.get(body["times"]) or 1) if body.get("times") else 1
+            have = len(split_lines(values.get(body["lines"]))) * times
+            if have < body["min"]:
+                raise RecipeError(r["message"] or f"input '{body['lines']}': need ≥ {body['min']} items, got {have}")
+        else:
+            for name, n in body.items():
+                if values.get(name) is not None:
+                    values[name] = "\n".join(split_lines(values[name])[:n])
 
 
 def _scalar_sub(value: str, inputs: dict[str, Any]) -> str:
@@ -363,7 +421,8 @@ def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
 
     return Recipe(id=rid, name=str(doc.get("name") or rid), description=str(doc.get("description") or ""),
                   inputs=inputs, steps=_toposort(specs, where), outputs=outputs,
-                  hash=blake3(raw_bytes).hexdigest(), path=path)
+                  hash=blake3(raw_bytes).hexdigest(), path=path,
+                  rules=_parse_rules(where, doc.get("rules"), inputs))
 
 
 
