@@ -189,6 +189,8 @@ async def test_agent_flow(core: tuple[Path, int], tmp_path: Path) -> None:
         assert [v["version_id"] for v in versions] == [vid]
         runs = payload(await c.call_tool("list_runs", {"only_mcp": True}))["runs"]
         assert run_id in [r["run_id"] for r in runs]
+        stats = payload(await c.call_tool("recipe_stats", {"days": 1}))
+        assert stats["totals"]["succeeded"] >= 1 and "mcp-cpu" in [r["recipe_id"] for r in stats["recipes"]]
     assert progress
 
 

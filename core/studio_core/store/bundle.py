@@ -134,6 +134,36 @@ def _is_glb(ref: BlobRef) -> bool:
     return ref.mime == "model/gltf-binary" or (ref.name or "").lower().endswith(".glb")
 
 
+TILE_REPORT = "tile_check.json"
+_TILE_ROLES = (("images", "color"), ("sizes", "color"), ("nmap", "normal"), ("pixel", "pixel"), ("atlas", "atlas"))
+
+
+def tile_report(step: StepRow, blobs: BlobStore) -> dict[str, Any] | None:
+    """op.tile_check's report, also when a gate passed it through: marks the step's images as tileable textures."""
+    for ref in step.outputs.get("report") or []:
+        if (ref.name or "") != TILE_REPORT:
+            continue
+        try:
+            rep = json.loads(blobs.path(ref.hash).read_bytes())
+        except (OSError, ValueError):
+            return None
+        return rep if isinstance(rep, dict) and rep.get("tileable") else None
+    return None
+
+
+def _tile_textures(step: StepRow, blobs: BlobStore) -> list[tuple[str, Path, str]]:
+    out: list[tuple[str, Path, str]] = []
+    names: set[str] = set()
+    hashes: set[str] = set()
+    for port, role in _TILE_ROLES:
+        for r in step.outputs.get(port) or []:
+            if r.hash in hashes or not r.mime.startswith("image/"):
+                continue
+            hashes.add(r.hash)
+            out.append((_unique(safe_filename(None, r), names), blobs.path(r.hash), role))
+    return out
+
+
 def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asset: str, ppu: float = 100.0,
                   pixel: bool | None = None) -> Source:
     src = Source(asset=asset, uid=step.id, clip_hint=step.key, ppu=ppu, pixel=pixel,
@@ -148,6 +178,8 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
         src.spine_atlas = (safe_filename(None, atlas[0]), blobs.path(atlas[0].hash))
         pages = step.outputs.get("texture") or []
         src.spine_pages = list(zip(_page_names(pages, src.spine_atlas[1]), (blobs.path(r.hash) for r in pages)))
+    if tile_report(step, blobs) is not None:
+        src.textures = _tile_textures(step, blobs)
     hashes: set[str] = set()
     names: set[str] = set()
     for refs in step.outputs.values():
@@ -160,7 +192,7 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
 
 def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
     src = engine_source(step, [], blobs, "x")
-    return src.sheet is not None or src.spine_json is not None or bool(src.glb)
+    return src.sheet is not None or src.spine_json is not None or bool(src.glb) or bool(src.textures)
 
 
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,
@@ -173,7 +205,8 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
     src = engine_source(step, siblings, blobs, ident(folder, "asset"), ppu, pixel)
     files = exporter(src)
     if not files:
-        raise BundleError("nothing to export for a game engine (needs a sprite sheet, Spine export or GLB)")
+        raise BundleError("nothing to export for a game engine (needs a sprite sheet, Spine export, GLB or tileable "
+                          "texture)")
     dst = root / "bundles" / f"{step.id[:12]}-{engine}" / folder
     dst.parent.mkdir(parents=True, exist_ok=True)
     written = _write(dst, files)

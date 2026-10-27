@@ -7,6 +7,9 @@ inputs:
   image: {type: image, label: Ảnh nhân vật (mặt trước)}
   size: {type: int, default: 512, options: [128, 256, 512, 1024]}
   preset: {type: preset, default: studio, label: Preset xuất}
+  fx_shadow: {type: enum, default: none, options: [none, drop, blob], label: Bóng đổ (hậu kỳ)}
+  fx_outline: {type: enum, default: none, options: [none, "#000000", "#ffffff"], label: Viền hậu kỳ}
+  fx_width: {type: int, default: 1, options: [1, 2, 3, 4], label: Độ dày viền hậu kỳ (px)}
 steps:
   - id: angles
     kind: comfy.multi_angles_qwen2511
@@ -30,10 +33,14 @@ steps:
     kind: op.normalize
     in: {images: rmbg.images}
     params: {size: "${inputs.size}", pad: 0.06, anchor: bottom}
+  - id: fx
+    kind: op.sprite_fx
+    in: {images: norm.images}
+    params: {shadow: "${inputs.fx_shadow}", outline: "${inputs.fx_outline}", width: "${inputs.fx_width}"}
   - id: sheet
     kind: op.sheet
-    in: {images: norm.images}
+    in: {images: fx.images}
     params: {cols: 8, order: [0, 45, 90, 135, 180, 225, 270, 315], preset: "${inputs.preset}"}
 outputs:
-  final: norm.images
+  final: fx.images
   sheet: sheet.sheet

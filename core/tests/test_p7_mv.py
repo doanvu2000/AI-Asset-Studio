@@ -22,7 +22,7 @@ def _mv_recipe() -> Any:
 def test_mv_recipe_shape() -> None:
     r = _mv_recipe()
     assert [s.id for s in r.steps] == ["concept", "pick", "views", "check", "mesh", "cleanup", "render", "dirs", "ndirs",
-                                       "down", "ndown", "sheet", "nsheet"]
+                                       "down", "ndown", "fx", "nfx", "sheet", "nsheet"]
     assert r.step("views").kind == "views.qwen_checked"
     assert r.step("check").kind == "gate.approve"
     assert r.resolve_params(r.step("check"), r.coerce_inputs({"prompt": "x"}))["enabled"] is False
@@ -67,7 +67,7 @@ def test_mv_recipe_kinds_resolve(tmp_path: Path) -> None:
 def test_mv_tail_matches_single_view_recipe() -> None:
     recipes = load_recipes(Settings().recipes_dir)
     mv, sv = recipes["sprite-8dir-3d-mv"], recipes["sprite-8dir-3d"]
-    for sid in ("cleanup", "render", "dirs", "down", "sheet", "ndirs", "ndown", "nsheet"):
+    for sid in ("cleanup", "render", "dirs", "down", "fx", "nfx", "sheet", "ndirs", "ndown", "nsheet"):
         assert mv.step(sid).kind == sv.step(sid).kind
         assert mv.step(sid).params == sv.step(sid).params
     assert mv.inputs.keys() - sv.inputs.keys() == {"review_views", "consistency_check"}

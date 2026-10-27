@@ -9,6 +9,9 @@ inputs:
   faces: {type: int, default: 30000, min: 2000, max: 200000, label: Số mặt}
   preset: {type: preset, default: studio, label: Preset xuất}
   normals: {type: bool, default: false, label: Thêm normal map (sheet riêng)}
+  fx_shadow: {type: enum, default: none, options: [none, drop, blob], label: Bóng đổ (hậu kỳ)}
+  fx_outline: {type: enum, default: none, options: [none, "#000000", "#ffffff"], label: Viền hậu kỳ}
+  fx_width: {type: int, default: 1, options: [1, 2, 3, 4], label: Độ dày viền hậu kỳ (px)}
 steps:
   - id: concept
     kind: comfy.t2i_zimage_turbo
@@ -39,9 +42,13 @@ steps:
     kind: op.downscale
     in: {images: dirs.images}
     params: {factor: 2, resample: box}
+  - id: fx
+    kind: op.sprite_fx
+    in: {images: down.images, pivot: render.meta}
+    params: {shadow: "${inputs.fx_shadow}", outline: "${inputs.fx_outline}", width: "${inputs.fx_width}"}
   - id: sheet
     kind: op.sheet
-    in: {images: down.images, pivot: render.meta}
+    in: {images: fx.images, pivot: render.meta}
     params: {cols: 8, order: [0, 45, 90, 135, 180, 225, 270, 315], preset: "${inputs.preset}"}
   # Normal steps pass through empty when normals are off; same factor and preset keep the layout identical.
   - id: ndirs
@@ -52,14 +59,18 @@ steps:
     kind: op.downscale
     in: {images: ndirs.images}
     params: {factor: 2, resample: box, normal: true, optional: true}
+  - id: nfx
+    kind: op.sprite_fx
+    in: {images: ndown.images}
+    params: {outline: "${inputs.fx_outline}", width: "${inputs.fx_width}", normal: true, optional: true}
   - id: nsheet
     kind: op.sheet
-    in: {images: ndown.images, pivot: render.meta}
+    in: {images: nfx.images, pivot: render.meta}
     params: {cols: 8, order: [0, 45, 90, 135, 180, 225, 270, 315], preset: "${inputs.preset}", normal: true,
              optional: true}
 outputs:
   final: sheet.sheet
   meta: sheet.meta
-  frames: down.images
+  frames: fx.images
   normal_sheet: nsheet.sheet
   normal_meta: nsheet.meta

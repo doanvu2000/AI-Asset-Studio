@@ -15,6 +15,7 @@ from ...contracts import BlobRef, Executor, Lane, Outputs, StepContext, StepErro
 from ...ops import image as im
 from ...ops.viewcheck import ViewCheckConfig, check_view, config_dict, silhouette
 from ..claude import DEFAULT_MODEL, QueryFn, ask, load_images, sdk_query
+from ...store.stats import meta_cost
 
 DEFAULT_WORKFLOW = "multi_angles_qwen2511"
 RETRY_PROMPT = (" The character is standing upright on the ground, full body, vertical, head at the top and feet at"
@@ -177,6 +178,7 @@ class CheckedViewsExecutor:
                     verdicts, cmeta = await self._judge(ctx, params, fronts[0], shape_ok)
                     claude_cost += float(cmeta.get("cost_usd") or 0)
                 except StepError as e:
+                    claude_cost += meta_cost(e.detail)
                     # Fail open: an unavailable model must not throw away views the silhouette check accepted.
                     ctx.log(f"consistency check skipped: {e.code} {str(e)[:200]}")
                     for v, _ in shape_ok:

@@ -61,7 +61,7 @@ class _Table[M: BaseModel]:
 
 _RUNS = _Table("runs", RunRow, {"inputs", "params"})
 _STEPS = _Table("steps", StepRow, {"deps", "params", "inputs", "outputs", "error", "meta"})
-_VERSIONS = _Table("versions", VersionRow, {"blob"})
+_VERSIONS = _Table("versions", VersionRow, {"blob", "qa"})
 _BLOBS = _Table("blobs", BlobRow, set(), pk="hash")
 _PROJECTS = _Table("projects", ProjectRow, {"style"})
 _OUTPUTS: TypeAdapter[Outputs] = TypeAdapter(Outputs)
@@ -192,6 +192,15 @@ class SqliteRepo:
         row = await self.db.fetchone("SELECT * FROM versions WHERE id = ?", (version_id,))
         return _VERSIONS.decode(row) if row else None
 
+    async def set_version_qa(self, version_id: str, qa: dict[str, Any] | None) -> VersionRow | None:
+        await self._update(_VERSIONS, version_id, {"qa": qa})
+        row = await self.db.fetchone("SELECT * FROM versions WHERE id = ?", (version_id,))
+        return _VERSIONS.decode(row) if row else None
+
+    async def get_version(self, version_id: str) -> VersionRow | None:
+        row = await self.db.fetchone("SELECT * FROM versions WHERE id = ?", (version_id,))
+        return _VERSIONS.decode(row) if row else None
+
     async def list_versions(self, run_id: str | None = None, status: VersionStatus | None = None,
                             limit: int = 200, project_id: str | None = None) -> list[VersionRow]:
         where: list[str] = []
@@ -211,6 +220,23 @@ class SqliteRepo:
         sql += " ORDER BY created_at DESC LIMIT ?"
         rows = await self.db.fetchall(sql, [*params, limit])
         return [_VERSIONS.decode(r) for r in rows]
+
+    async def versions_to_score(self, run_id: str | None = None, project_id: str | None = None,
+                                stale_than: int | None = None, limit: int = 500) -> list[VersionRow]:
+        """Image versions, oldest first; with `stale_than`, only those unscored or scored by another QA version."""
+        where = ["json_extract(blob, '$.mime') LIKE 'image/%'"]
+        params: list[Any] = []
+        if project_id is not None:
+            where.append("project_id = ?")
+            params.append(project_id)
+        if run_id is not None:
+            where.append("run_id = ?")
+            params.append(run_id)
+        if stale_than is not None:
+            where.append("(qa IS NULL OR json_extract(qa, '$.version') IS NOT ?)")
+            params.append(stale_than)
+        sql = f"SELECT * FROM versions WHERE {' AND '.join(where)} ORDER BY created_at LIMIT ?"
+        return [_VERSIONS.decode(r) for r in await self.db.fetchall(sql, [*params, limit])]
 
     async def put_blob_row(self, b: BlobRow) -> None:
         await self.db.write(_BLOBS.insert_sql("INSERT OR IGNORE"), _BLOBS.to_params(b))

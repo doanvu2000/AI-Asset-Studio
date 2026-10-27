@@ -1,0 +1,53 @@
+id: texture-seamless
+name: Texture liền mạch (Z-Image)
+description: Prompt vật liệu → N ảnh Z-Image → chọn → làm liền mạch (chồng mép phải lên mép trái, cắt theo đường ít lệch nhất) → chấm điểm mối nối + xem lát 3×3 → bản nhỏ, normal map, pixel art (tuỳ chọn) → duyệt
+inputs:
+  prompt: {type: text, label: Vật liệu, placeholder: "mossy cobblestone floor"}
+  count: {type: int, default: 4, min: 1, max: 8, label: Số biến thể}
+  size: {type: int, default: 1024, options: [256, 512, 1024], label: Cỡ texture (px)}
+  levels: {type: int, default: 2, min: 0, max: 4, label: "Số bản nhỏ thêm (½, ¼…)"}
+  flatten: {type: float, default: 0.5, min: 0, max: 1, label: San phẳng ánh sáng}
+  normal: {type: bool, default: true, label: Tạo normal map}
+  pixel: {type: int, default: 0, options: [0, 32, 64, 128], label: "Pixel art (px, 0 = tắt)"}
+  colors: {type: int, default: 16, options: [8, 12, 16, 24, 32], label: Số màu pixel art}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: gen
+    kind: comfy.t2i_zimage_turbo
+    params: {"57:27.text": "${inputs.prompt}, seamless tileable texture, top-down orthographic view of a flat surface, flat even lighting, no shadows, no perspective, no vignette, uniform pattern filling the whole frame, game texture",
+             "57:13.batch_size": "${inputs.count}", "57:13.width": 1168, "57:13.height": 1168}
+  - id: pick
+    kind: gate.pick
+    in: {images: gen.images}
+    params: {k: 1}
+  - id: seam
+    kind: op.seamless
+    in: {images: pick.images}
+    params: {flatten: "${inputs.flatten}"}
+  - id: fit
+    kind: op.tile_resize
+    in: {images: seam.images}
+    params: {size: "${inputs.size}", levels: "${inputs.levels}"}
+  - id: nmap
+    kind: op.tile_normal
+    in: {images: fit.images}
+    params: {enabled: "${inputs.normal}"}
+  - id: pix
+    kind: op.tile_pixel
+    in: {images: fit.images}
+    params: {size: "${inputs.pixel}", colors: "${inputs.colors}"}
+  - id: check
+    kind: op.tile_check
+    in: {images: fit.images, nmap: nmap.images, pixel: pix.images, sizes: fit.sizes}
+  - id: approve
+    kind: gate.approve
+    in: {images: check.images, preview: check.preview, report: check.report, nmap: check.nmap,
+         pixel: check.pixel, sizes: check.sizes}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  report: approve.report
+  nmap: approve.nmap
+  pixel: approve.pixel
+  sizes: approve.sizes

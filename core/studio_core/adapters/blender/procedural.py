@@ -217,7 +217,7 @@ class Procedural3DExecutor:
         summary = [{k: v for k, v in r.items() if k not in ("frames", "glb")} for r in rounds]
         if best is None:
             raise StepError("procedural_failed", f"no round produced a mesh in {len(rounds)} round(s)",
-                            detail={"rounds": summary})
+                            detail={"rounds": summary, "cost_usd": round(cost, 4)})
         outputs: Outputs = {
             "meshes": [await ctx.blobs.put_file(Path(best["glb"]), name="procedural.glb", mime="model/gltf-binary")],
             "images": await put_frames(ctx, best["frames"]),

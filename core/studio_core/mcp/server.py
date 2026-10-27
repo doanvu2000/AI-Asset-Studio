@@ -9,6 +9,7 @@ import os
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
@@ -542,6 +543,22 @@ def build_server(link: CoreLink) -> MCPServer:
     async def set_version_status(version_id: str, status: Literal["approved", "rejected"]) -> dict[str, Any]:
         """Approve or reject a Library version (version_id from get_outputs or list_versions)."""
         return await tools.set_version_status(version_id, status)
+
+    @mcp.tool(annotations=read_only)
+    async def recipe_stats(days: int | None = 30, project_id: str | None = None) -> dict[str, Any]:
+        """Cost and time per recipe over the last `days` calendar days including today (from local midnight, the
+        same window as the app's dashboard; None = all time): run counts by status, failure rate, active duration
+        avg/p50/p90 in seconds (succeeded runs; union of step run times, so gate waits and idle gaps are excluded),
+        Claude/API cost in USD, cache-hit ratio, plus totals and the most expensive step kinds."""
+        params: dict[str, Any] = {}
+        if days is not None:
+            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            params["since"] = (today - timedelta(days=max(1, days) - 1)).timestamp()
+        if project_id:
+            params["project_id"] = project_id
+        body = await tools._call("GET", "/api/stats/recipes", params=params)
+        body["steps"] = (await tools._call("GET", "/api/stats/steps", params=params))["steps"]
+        return body
 
     return mcp
 

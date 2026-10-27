@@ -1,6 +1,6 @@
 id: sprite-8dir-3d-pixel
 name: Sprite 8 hướng pixel art (3D)
-description: Text → concept → chọn → TRELLIS mesh → Blender dọn mesh → render 8 hướng ortho → pixel art (bảng màu chung, viền 1px) → sprite sheet (pivot = tâm chân) + JSON + bảng màu
+description: Text → concept → chọn → TRELLIS mesh → Blender dọn mesh → render 8 hướng ortho → pixel art (bảng màu chung, viền 1px) → sprite sheet (pivot = tâm chân) + JSON + bảng màu; bóng/viền hậu kỳ (tuỳ chọn) có cạnh cứng, bóng dither, màu của chúng nằm ngoài bảng màu
 inputs:
   prompt: {type: text, label: Prompt}
   elevation: {type: int, default: 30, options: [30, 45, 60, 90], label: Góc nghiêng}
@@ -12,6 +12,9 @@ inputs:
   mirror: {type: bool, default: false, label: Lật gương (5 hướng → 8)}
   faces: {type: int, default: 30000, min: 2000, max: 200000, label: Số mặt}
   preset: {type: preset, default: pixel, label: Preset xuất}
+  fx_shadow: {type: enum, default: none, options: [none, drop, blob], label: Bóng đổ (hậu kỳ)}
+  fx_outline: {type: enum, default: none, options: [none, "#000000", "#ffffff"], label: Viền hậu kỳ}
+  fx_width: {type: int, default: 1, options: [1, 2, 3, 4], label: Độ dày viền hậu kỳ (px)}
 steps:
   - id: concept
     kind: comfy.t2i_zimage_turbo
@@ -42,13 +45,17 @@ steps:
     in: {images: dirs.images}
     params: {size: "${inputs.pixel}", colors: "${inputs.colors}", palette: "${inputs.palette}",
              outline: "${inputs.outline}", dither: "${inputs.dither}"}
+  - id: fx
+    kind: op.sprite_fx
+    in: {images: pixel.images, pivot: render.meta}
+    params: {shadow: "${inputs.fx_shadow}", outline: "${inputs.fx_outline}", width: "${inputs.fx_width}", pixel: true}
   - id: sheet
     kind: op.sheet
-    in: {images: pixel.images, pivot: render.meta}
+    in: {images: fx.images, pivot: render.meta}
     params: {cols: 8, order: [0, 45, 90, 135, 180, 225, 270, 315], preset: "${inputs.preset}"}
 outputs:
   final: sheet.sheet
   meta: sheet.meta
-  frames: pixel.images
+  frames: fx.images
   palette: pixel.palette
   swatch: pixel.swatch

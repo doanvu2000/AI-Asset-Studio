@@ -23,6 +23,9 @@ class Source:
     spine_pages: list[tuple[str, Path]] = field(default_factory=list)
     ppu: float = 100.0
     pixel: bool | None = None
+    # Tileable textures (texture-seamless): (file name, path, role) with role color | normal | pixel | atlas; they import
+    # with wrap = Repeat instead of as sprites.
+    textures: list[tuple[str, Path, str]] = field(default_factory=list)
 
     def is_pixel(self) -> bool:
         if self.pixel is not None:

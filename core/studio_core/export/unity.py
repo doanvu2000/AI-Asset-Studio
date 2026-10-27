@@ -73,7 +73,7 @@ def _sprite_entry(asset: str, name: str, x: int, y: int, w: int, h: int, pivot: 
 
 
 def texture_meta(asset: str, tex_guid: str, lay: Layout | None, size: tuple[int, int], ppu: float, pixel: bool,
-                 normal_guid: str | None = None, is_normal: bool = False) -> str:
+                 normal_guid: str | None = None, is_normal: bool = False, repeat: bool = False) -> str:
     max_size = 32
     while max_size < max(size) and max_size < 16384:
         max_size *= 2
@@ -94,7 +94,7 @@ TextureImporter:
   serializedVersion: 13
   mipmaps:
     mipMapMode: 0
-    enableMipMap: 0
+    enableMipMap: {1 if repeat and not pixel else 0}
     sRGBTexture: {0 if is_normal else 1}
     linearTexture: 0
     fadeOut: 0
@@ -125,13 +125,13 @@ TextureImporter:
     filterMode: {0 if pixel else 1}
     aniso: 1
     mipBias: 0
-    wrapU: 1
-    wrapV: 1
-    wrapW: 1
+    wrapU: {0 if repeat else 1}
+    wrapV: {0 if repeat else 1}
+    wrapW: {0 if repeat else 1}
   nPOTScale: 0
   lightmap: 0
   compressionQuality: 50
-  spriteMode: {2 if sprites else (0 if is_normal else 1)}
+  spriteMode: {2 if sprites else (0 if is_normal or repeat else 1)}
   spriteExtrude: 1
   spriteMeshType: {0 if sprites else 1}
   alignment: 9
@@ -140,9 +140,9 @@ TextureImporter:
   spriteBorder: {{x: 0, y: 0, z: 0, w: 0}}
   spriteGenerateFallbackPhysicsShape: 0
   alphaUsage: 1
-  alphaIsTransparency: {0 if is_normal else 1}
+  alphaIsTransparency: {0 if is_normal or repeat else 1}
   spriteTessellationDetail: -1
-  textureType: {1 if is_normal else 8}
+  textureType: {1 if is_normal else (0 if repeat else 8)}
   textureShape: 1
   singleChannelComponent: 0
   flipbookRows: 1
@@ -499,6 +499,18 @@ README_SHEET = """- {asset}.png: sprite sheet đã cắt sẵn (Sprite Mode Mult
 - {asset}.prefab: SpriteRenderer + Animator gắn sẵn. Sprite không cần script hay package thêm."""
 
 
+README_TEXTURES = """- Textures/: texture liền mạch, import sẵn Wrap Mode = Repeat, có mipmap (bản pixel art: Point, không mipmap);
+  *_normal.png đã đặt Texture Type = Normal map. Kéo vào ô Base Map / Normal Map của material, chỉnh Tiling để lặp.
+  tileset.png (nếu có): các biến thể xếp một hàng, mỗi ô vuông cạnh = chiều cao ảnh, dùng làm Tile Palette."""
+
+
+def _image_size(p: Path) -> tuple[int, int]:
+    from PIL import Image
+
+    with Image.open(p) as im:
+        return im.size
+
+
 def export(src: Source) -> Files:
     a, u = src.asset, src.uid
     files: Files = []
@@ -543,6 +555,13 @@ def export(src: Source) -> Files:
         files.append((f"Models/{n}", p))
     if src.glb:
         notes.append("- Models/*.glb: cần package glTFast (com.unity.cloud.gltfast) để import.")
+    for n, p, role in src.textures:
+        rel = f"Textures/{n}"
+        point = role == "pixel" or src.pixel is True
+        files += [(rel, p), (f"{rel}.meta", texture_meta(a, guid(u, a, rel), None, _image_size(p), src.ppu, point,
+                                                         is_normal=role == "normal", repeat=role != "atlas").encode())]
+    if src.textures:
+        notes.append(README_TEXTURES)
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

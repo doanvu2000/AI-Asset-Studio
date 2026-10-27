@@ -16,6 +16,9 @@ inputs:
   anims: {type: text, default: "idle, walk, run, attack", label: "Anim (idle, walk, run, attack — cách nhau dấu phẩy)"}
   walk_frames: {type: int, default: 8, options: [6, 8, 12], label: Số khung đi bộ}
   normals: {type: bool, default: false, label: Thêm normal map (sheet riêng)}
+  fx_shadow: {type: enum, default: none, options: [none, drop, blob], label: Bóng đổ (hậu kỳ)}
+  fx_outline: {type: enum, default: none, options: [none, "#000000", "#ffffff"], label: Viền hậu kỳ}
+  fx_width: {type: int, default: 1, options: [1, 2, 3, 4], label: Độ dày viền hậu kỳ (px)}
 steps:
   - id: concept
     kind: comfy.t2i_zimage_turbo
@@ -74,9 +77,13 @@ steps:
     kind: op.downscale
     in: {images: dirs.images}
     params: {factor: 2, resample: box}
+  - id: fx
+    kind: op.sprite_fx
+    in: {images: down.images, pivot: render.meta}
+    params: {shadow: "${inputs.fx_shadow}", outline: "${inputs.fx_outline}", width: "${inputs.fx_width}"}
   - id: sheet
     kind: op.sheet
-    in: {images: down.images, pivot: render.meta}
+    in: {images: fx.images, pivot: render.meta}
     params: {cols: 8, order: [0, 45, 90, 135, 180, 225, 270, 315], preset: "${inputs.preset}"}
   # Joints are marked on a straight-on render so pixels map back onto the mesh's front plane.
   - id: front
@@ -207,22 +214,30 @@ steps:
     kind: op.downscale
     in: {images: anim.images}
     params: {factor: 2, resample: box}
+  - id: anim_fx
+    kind: op.sprite_fx
+    in: {images: anim_down.images, pivot: anim.meta}
+    params: {shadow: "${inputs.fx_shadow}", outline: "${inputs.fx_outline}", width: "${inputs.fx_width}"}
   # anim.meta carries the clips, so op.sheet lays out one 8-row block per clip.
   - id: anim_sheet
     kind: op.sheet
-    in: {images: anim_down.images, pivot: anim.meta}
+    in: {images: anim_fx.images, pivot: anim.meta}
   - id: anim_ndown
     kind: op.downscale
     in: {images: anim.normal_frames}
     params: {factor: 2, resample: box, normal: true, optional: true}
+  - id: anim_nfx
+    kind: op.sprite_fx
+    in: {images: anim_ndown.images}
+    params: {outline: "${inputs.fx_outline}", width: "${inputs.fx_width}", normal: true, optional: true}
   - id: anim_nsheet
     kind: op.sheet
-    in: {images: anim_ndown.images, pivot: anim.meta}
+    in: {images: anim_nfx.images, pivot: anim.meta}
     params: {normal: true, optional: true}
 outputs:
   final: sheet.sheet
   meta: sheet.meta
-  frames: down.images
+  frames: fx.images
   anim: anim_sheet.sheet
   anim_meta: anim_sheet.meta
   normal_sheet: anim_nsheet.sheet

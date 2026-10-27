@@ -4,9 +4,11 @@ from typing import Any
 
 from ..contracts import ExecutorRegistry, Resource
 from .executors import ALL_OPS, Sheet
+from .fx import FX_OPS
 from .pixel import PIXEL_OPS
 from .presets import PresetStore
 from .rig import RIG_OPS
+from .tile import TILE_OPS
 
 
 def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, blobs: Any = None) -> list[Resource]:
@@ -15,4 +17,8 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(Sheet(presets) if cls is Sheet else cls())
     for rig_cls in (*RIG_OPS, *PIXEL_OPS):
         registry.register(rig_cls())
+    for fx_cls in FX_OPS:
+        registry.register(fx_cls())
+    for tile_cls in TILE_OPS:
+        registry.register(tile_cls())
     return []

@@ -1,0 +1,41 @@
+id: tileset-seamless
+name: Tileset biến thể liền mạch (Z-Image)
+description: Prompt vật liệu → N ảnh Z-Image → ảnh đầu làm liền mạch, các ảnh sau mượn mép của nó (lát trộn lẫn được) → chấm điểm + xem lát trộn 4×4 → normal map → duyệt
+inputs:
+  prompt: {type: text, label: Vật liệu, placeholder: "grass with small flowers"}
+  count: {type: int, default: 4, min: 2, max: 8, label: Số biến thể}
+  size: {type: int, default: 512, options: [128, 256, 512, 1024], label: Cỡ ô (px)}
+  flatten: {type: float, default: 0.5, min: 0, max: 1, label: San phẳng ánh sáng}
+  normal: {type: bool, default: true, label: Tạo normal map}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: gen
+    kind: comfy.t2i_zimage_turbo
+    params: {"57:27.text": "${inputs.prompt}, seamless tileable texture, top-down orthographic view of a flat surface, flat even lighting, no shadows, no perspective, no vignette, uniform pattern filling the whole frame, game texture",
+             "57:13.batch_size": "${inputs.count}"}
+  - id: seam
+    kind: op.seamless
+    in: {images: gen.images}
+    params: {match_edges: true, flatten: "${inputs.flatten}", name: tile}
+  - id: fit
+    kind: op.tile_resize
+    in: {images: seam.images}
+    params: {size: "${inputs.size}", levels: 0}
+  - id: nmap
+    kind: op.tile_normal
+    in: {images: fit.images}
+    params: {enabled: "${inputs.normal}"}
+  - id: check
+    kind: op.tile_check
+    in: {images: fit.images, nmap: nmap.images}
+    params: {grid: 4}
+  - id: approve
+    kind: gate.approve
+    in: {images: check.images, preview: check.preview, report: check.report, atlas: check.atlas, nmap: check.nmap}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  report: approve.report
+  atlas: approve.atlas
+  nmap: approve.nmap

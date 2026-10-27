@@ -56,7 +56,8 @@ CREATE TABLE IF NOT EXISTS versions (
     step_id TEXT NOT NULL,
     blob TEXT NOT NULL,
     status TEXT NOT NULL,
-    created_at REAL NOT NULL
+    created_at REAL NOT NULL,
+    qa TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_versions_run_id ON versions(run_id);
 CREATE INDEX IF NOT EXISTS idx_versions_created_at ON versions(created_at);
@@ -120,6 +121,9 @@ class Database:
                 cols = {r["name"] for r in await cur.fetchall()}
             if "project_id" not in cols:
                 await self.conn.execute(f"ALTER TABLE {table} ADD COLUMN project_id TEXT NOT NULL DEFAULT 'default'")
+        async with self.conn.execute("PRAGMA table_info(versions)") as cur:
+            if "qa" not in {r["name"] for r in await cur.fetchall()}:
+                await self.conn.execute("ALTER TABLE versions ADD COLUMN qa TEXT")
         # After the ALTER: a DB from before projects has no column for these indexes to name.
         await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_project ON runs(project_id, created_at)")
         await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_versions_project ON versions(project_id, created_at)")

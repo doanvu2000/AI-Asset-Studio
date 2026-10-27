@@ -113,10 +113,11 @@ async def sdk_query(content: list[dict[str, Any]], options: Any) -> ClaudeReply:
         raise StepError("claude_no_result", "SDK stream ended without a result", retryable=True)
     if result.is_error:
         raise StepError("claude_error", str(result.result or result.subtype)[:500], retryable=True,
-                        detail={"subtype": result.subtype, "errors": getattr(result, "errors", None)})
+                        detail={"subtype": result.subtype, "errors": getattr(result, "errors", None),
+                                "cost_usd": result.total_cost_usd})
     if getattr(options, "output_format", None) and result.structured_output is None:
         raise StepError("claude_no_structured_output", "schema requested but no structured output",
-                        retryable=True, detail={"text": (result.result or "")[:2000]})
+                        retryable=True, detail={"text": (result.result or "")[:2000], "cost_usd": result.total_cost_usd})
     return ClaudeReply(result.structured_output, result.result if result.result is not None else "\n".join(texts),
                        {"cost_usd": result.total_cost_usd, "duration_ms": result.duration_ms,
                         "duration_api_ms": result.duration_api_ms, "num_turns": result.num_turns,

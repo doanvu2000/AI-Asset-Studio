@@ -94,6 +94,56 @@ def helper(lay: Layout) -> str:
     return HELPER.replace("__DIR_ANGLES__", pairs)
 
 
+def texture_material(albedo: str | None, normal: str | None, pixel: bool) -> str:
+    ext, props = [], []
+    if albedo:
+        ext.append(f'[ext_resource type="Texture2D" path="{albedo}" id="1_albedo"]')
+        props.append('albedo_texture = ExtResource("1_albedo")')
+    if normal:
+        ext.append(f'[ext_resource type="Texture2D" path="{normal}" id="2_normal"]')
+        props += ["normal_enabled = true", 'normal_texture = ExtResource("2_normal")']
+    if pixel:
+        props.append("texture_filter = 0")
+    props.append("texture_repeat = true")
+    return ('[gd_resource type="StandardMaterial3D" format=3]\n\n' + "\n".join(ext) + "\n\n[resource]\n"
+            + "\n".join(props) + "\n")
+
+
+def tiled_scene(name: str, tex: str, size: tuple[int, int], pixel: bool, n: int = 3) -> str:
+    """TextureRect in tile stretch mode: repeats in 2D without touching the import settings."""
+    lines = ['[gd_scene format=3]', '', f'[ext_resource type="Texture2D" path="{tex}" id="1_tex"]', '',
+             f'[node name="{name}" type="TextureRect"]', f"offset_right = {_num(size[0] * n)}",
+             f"offset_bottom = {_num(size[1] * n)}", 'texture = ExtResource("1_tex")', "expand_mode = 1",
+             "stretch_mode = 1", "texture_repeat = 2"]
+    if pixel:
+        lines.append("texture_filter = 1")
+    return "\n".join(lines) + "\n"
+
+
+def tileset(atlas: str, size: tuple[int, int]) -> str:
+    """TileSet with one atlas source: the variants side by side, each a square cell as tall as the atlas."""
+    cell = size[1]
+    lines = ['[gd_resource type="TileSet" format=3]', '',
+             f'[ext_resource type="Texture2D" path="{atlas}" id="1_atlas"]', '',
+             '[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_1"]', 'texture = ExtResource("1_atlas")',
+             f"texture_region_size = Vector2i({cell}, {cell})",
+             *(f"{i}:0/0 = 0" for i in range(max(1, size[0] // cell))), '', '[resource]',
+             f"tile_size = Vector2i({cell}, {cell})", 'sources/0 = SubResource("TileSetAtlasSource_1")']
+    return "\n".join(lines) + "\n"
+
+
+def _image_size(p: Path) -> tuple[int, int]:
+    from PIL import Image
+
+    with Image.open(p) as im:
+        return im.size
+
+
+README_TEXTURES = """- Textures/: texture liền mạch (lặp được). {asset}_material.tres: StandardMaterial3D đã gắn albedo{normal},
+  texture_repeat bật — chỉnh uv1_scale để lặp nhiều lần. {asset}_tiled.tscn: TextureRect lát 3×3 cho 2D
+  (stretch_mode Tile). Sprite2D/TileMap muốn lặp thì bật texture_repeat của node."""
+
+
 README_HEAD = "{asset} — xuất từ AI Asset Studio cho Godot 4. Chép cả thư mục này vào project (res://...).\n\n"
 README_SHEET = """- {asset}.tres: SpriteFrames, animation <clip>_<hướng> (S, SW, W, NW, N, NE, E, SE; S = quay mặt xuống
   màn hình), mỗi khung là AtlasTexture cắt từ {asset}.png, tốc độ = fps, loop theo clip.
@@ -125,6 +175,19 @@ def export(src: Source) -> Files:
         files.append((f"Models/{n}", p))
     if src.glb:
         notes.append("- Models/*.glb: Godot import GLB sẵn, kéo vào scene là dùng được.")
+    if src.textures:
+        rels = [(f"Textures/{n}", p, role) for n, p, role in src.textures]
+        files += [(rel, p) for rel, p, _ in rels]
+        color = next(((r, p) for r, p, role in rels if role == "color"), None) or (rels[0][0], rels[0][1])
+        normal = next((r for r, _, role in rels if role == "normal"), None)
+        pixel = src.pixel is True or not any(role == "color" for _, _, role in rels)
+        files += [(f"{a}_material.tres", texture_material(color[0], normal, pixel).encode()),
+                  (f"{a}_tiled.tscn", tiled_scene(f"{a}_tiled", color[0], _image_size(color[1]), pixel).encode())]
+        notes.append(README_TEXTURES.format(asset=a, normal=" + normal map" if normal else ""))
+        atlas = next(((r, p) for r, p, role in rels if role == "atlas"), None)
+        if atlas:
+            files.append((f"{a}_tileset.tres", tileset(atlas[0], _image_size(atlas[1])).encode()))
+            notes.append(f"- {a}_tileset.tres: TileSet từ {atlas[0]} (mỗi biến thể một ô) cho TileMapLayer.")
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

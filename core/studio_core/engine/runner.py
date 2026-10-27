@@ -37,8 +37,10 @@ from .cache import executor_cache_key
 from .gates import GATES, gate_enabled
 from .library import RecipeLibrary
 from .projects import apply_style
+from .qa import version_qa
 from .recipe import BLOB_TYPES, Recipe, RecipeError, find_step_refs, ref_value, substitute_refs
 from .scheduler import LaneScheduler
+from ..store.stats import meta_cost
 
 log = logging.getLogger(__name__)
 
@@ -78,6 +80,17 @@ def _err(code: str, message: str, detail: Any = None, retryable: bool = False) -
     return {"code": code, "message": message, "detail": detail, "retryable": retryable}
 
 
+def _prior(meta: dict[str, Any]) -> float:
+    v = meta.get("prior_cost_usd")
+    return float(v) if isinstance(v, (int, float)) else 0.0
+
+
+def _spent_on(e: StepError) -> float:
+    """API spend of the failed call(s) behind `e`: set by the runner while unwinding, else reported in detail."""
+    v = getattr(e, "spent_usd", None)
+    return float(v) if isinstance(v, (int, float)) else meta_cost(e.detail)
+
+
 @dataclass
 class _RunState:
     run: RunRow
@@ -103,6 +116,7 @@ class _Ctx:
         self._engine = engine
         self._step = step
         self._item = (0, 1)
+        self.spent = 0.0  # API spend not yet on the step row: failed auto-retry tries + finished map items
         self._last_pub = 0.0
         self._last_persist = 0.0
         self._last_preview = 0.0
@@ -151,6 +165,7 @@ class StudioEngine:
         self._runs: dict[str, _RunState] = {}
         self._control: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
         self._bg: set[asyncio.Task[Any]] = set()
+        self._qa_sem = asyncio.Semaphore(1)
         self._closed = False
 
     # recipes
@@ -336,6 +351,7 @@ class StudioEngine:
         return True
 
     async def _finish_success(self, st: _RunState) -> None:
+        made: list[tuple[VersionRow, StepRow]] = []
         for s in st.ordered():
             spec = s.meta.get("spec", {})
             for out_name in (spec.get("publish") or {}).values():
@@ -345,12 +361,40 @@ class StudioEngine:
                                    run_id=st.run.id, step_id=s.id, blob=b, created_at=_now())
                     await self.repo.add_version(v)
                     self.bus.publish("version.updated", v.model_dump(mode="json"), run_id=st.run.id, step_id=s.id)
+                    made.append((v, s))
         await self._set_run(st.run, status=RunStatus.SUCCEEDED, error=None, ended_at=_now())
+        if made:
+            # Scoring takes seconds on big sheets; it runs after SUCCEEDED and outside the run lock.
+            steps = {s.id: s.model_copy(deep=True) for s in st.steps.values()}
+            self._spawn_bg(self._score_versions([(v, steps[s.id]) for v, s in made], list(steps.values())))
+
+    async def _score_versions(self, made: list[tuple[VersionRow, StepRow]], steps: list[StepRow]) -> None:
+        async with self._qa_sem:
+            for v, s in made:
+                if self._closed:
+                    return
+                try:
+                    qa = await version_qa(self.blobs, steps, s, v.blob)
+                    if qa is None:
+                        continue
+                    out = await self.repo.set_version_qa(v.id, qa)
+                    if out is not None:
+                        self.bus.publish("version.updated", out.model_dump(mode="json"), run_id=v.run_id,
+                                         step_id=s.id)
+                except Exception as e:
+                    log.warning("qa scoring failed for version %s: %s", v.id, e)
+
+    async def wait_qa(self) -> None:
+        """Test helper: wait for background QA scoring to finish."""
+        while pending := [t for t in self._bg if not t.done()]:
+            await asyncio.gather(*pending, return_exceptions=True)
 
     async def _abort(self, st: _RunState, run_status: RunStatus, error: str | None) -> None:
         interrupted = run_status == RunStatus.INTERRUPTED
         st.closing = True
         live = {k: t for k, t in st.tasks.items() if not t.done()}
+        # A finished task drops its ctx; keep each one's unrecorded spend before awaiting the cancellations.
+        spent_by = {k: c.spent for k in live if (c := st.ctxs.get(k)) is not None}
         for k, t in live.items():
             ctx = st.ctxs.get(k)
             if ctx is not None:
@@ -363,11 +407,14 @@ class StudioEngine:
             if s.status in STEP_TERMINAL:
                 continue
             if s.key in live or s.status in _ACTIVE:
+                spent = spent_by.get(s.key, 0.0)
+                extra = {"meta": {**s.meta, "prior_cost_usd": round(_prior(s.meta) + spent, 6)}} if spent else {}
                 if interrupted:
                     await self._set_step(s, status=StepStatus.FAILED, ended_at=now,
-                                         error=_err(INTERRUPTED, "core stopped while step was active", retryable=True))
+                                         error=_err(INTERRUPTED, "core stopped while step was active", retryable=True),
+                                         **extra)
                 else:
-                    await self._set_step(s, status=StepStatus.CANCELLED, ended_at=now)
+                    await self._set_step(s, status=StepStatus.CANCELLED, ended_at=now, **extra)
             elif interrupted:
                 continue
             elif s.status == StepStatus.AWAITING_HUMAN and run_status == RunStatus.CANCELLED:
@@ -474,8 +521,10 @@ class StudioEngine:
         except asyncio.CancelledError:
             raise
         except StepError as e:
+            spent = _spent_on(e)
+            extra = {"meta": {**step.meta, "prior_cost_usd": round(_prior(step.meta) + spent, 6)}} if spent else {}
             await self._set_step(step, status=StepStatus.FAILED, ended_at=_now(),
-                                 error=_err(e.code, e.message, e.detail, e.retryable))
+                                 error=_err(e.code, e.message, e.detail, e.retryable), **extra)
         except Exception as e:
             log.exception("step %s (%s) crashed", step.key, step.kind)
             await self._set_step(step, status=StepStatus.FAILED, ended_at=_now(),
@@ -493,11 +542,15 @@ class StudioEngine:
                                    params: dict[str, Any]) -> StepResult:
         """GPU/Blender crashes near the VRAM ceiling are usually transient; one in-place rerun saves a manual retry."""
         retries = int(params.get("_auto_retry", getattr(ex, "auto_retry", 0)))
+        lost = 0.0
         for n in range(retries + 1):
+            ctx.spent = lost
             try:
                 result = await self._run_executor(ex, ctx, step, inputs, params)
             except StepError as e:
+                lost += _spent_on(e)
                 if not e.retryable or n == retries or ctx.cancelled.is_set():
+                    e.spent_usd = lost  # type: ignore[attr-defined]
                     raise
                 log.warning("step %s (%s) failed with %s, auto-retry %d/%d", step.key, step.kind, e.code, n + 1,
                             retries)
@@ -508,6 +561,8 @@ class StudioEngine:
                 continue
             if n:
                 result.meta["auto_retries"] = n
+            if lost:
+                result.meta["prior_cost_usd"] = round(_prior(step.meta) + lost, 6)
             return result
         raise AssertionError("unreachable")
 
@@ -527,10 +582,15 @@ class StudioEngine:
         metas: list[dict[str, Any]] = []
         for i, (params, item_inputs) in enumerate(calls):
             ctx.set_item(i, len(calls))
-            res = await ex.run(ctx, params, item_inputs)
+            try:
+                res = await ex.run(ctx, params, item_inputs)
+            except StepError as e:
+                e.spent_usd = _spent_on(e) + sum(meta_cost(m) for m in metas)  # type: ignore[attr-defined]
+                raise
             for name, refs in res.outputs.items():
                 outputs.setdefault(name, []).extend(refs)
             metas.append(res.meta)
+            ctx.spent += meta_cost(res.meta)
             self.bus.publish("step.progress", {"value": i + 1, "max": len(calls), "label": f"{i + 1}/{len(calls)}",
                                                "node": None}, run_id=step.run_id, step_id=step.id)
         return StepResult(outputs=outputs, meta={"items": metas} if any(metas) else {})
@@ -629,10 +689,13 @@ class StudioEngine:
                                                                                     StepStatus.CANCELLED):
                         if s.key in st.tasks:
                             continue
+                        # The reset wipes meta; spend already paid for this step must still show in the stats.
+                        spent = round(meta_cost(s.meta), 6)
                         await self._set_step(
                             s, status=StepStatus.PENDING, attempt=s.attempt + (1 if s.started_at else 0),
                             error=None, outputs={}, inputs={}, progress=None, cache_key=None, started_at=None,
                             ended_at=None, meta={"spec": s.meta.get("spec", {}),
+                                                 **({"prior_cost_usd": spent} if spent else {}),
                                                  **({"fresh": True} if regen and s.key == target.key else {})})
                 if st.run.status != RunStatus.RUNNING:
                     await self._set_run(st.run, status=RunStatus.RUNNING, error=None, ended_at=None)
