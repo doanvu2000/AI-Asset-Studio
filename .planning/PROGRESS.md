@@ -414,3 +414,4 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 - [x] W20 sửa audit: checkerboard NCC có dấu + fallback plain, tile_report BOX cỡ lẻ, wang chọn ảnh tốt nhất mỗi dòng + app chặn sớm, normal=false không xuất wang normal, viewer index/watch, wangSet 32 ô, export prefix `<asset>_wang*`.
 - [x] Kiểm cuối: pytest 394 pass / 4 skip; vue-tsc web 0, tsc node 0. 25 file thay đổi, CHƯA commit/build (chờ chủ nhân).
 - [x] Commit 609701c/ba65230/ff2c402 pushed; build + smoke OK; Portable 10:19. Handoff mới: `.planning/HANDOFF-2026-10-27-1020.md`
+- [x] Xoá thư mục asset test: godot-test (Live, W6Knight, W18Grass, W18Stone, W20Meadow), unity-test-batch/Assets (+ Ref, .meta). Giữ script kiểm *_check.gd, Editor/*.cs.
