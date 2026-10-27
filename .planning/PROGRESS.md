@@ -514,3 +514,10 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   `_drop_stray_arms` (pixel tay dưới tâm thân không nối phần tay trên → bỏ nhãn cho lớp kề nhận): arm_l 21761→9149,
   leg_l 9357→21969, mọi khớp claude; dựng lại offline (`r6/full_re.py`, ảnh `r6/girl4_re_v.png`) đúng. Test +1.
   pytest 419 pass / 4 skip. Chưa commit.
+- [x] Commit + push `core: spine heads tilt less…` (master = origin).
+- [x] Lượt thật `r6/data5` (samurai/dwarf/witch, 95–105 s): dwarf, witch (áo choàng sau tay vá liền) đạt; samurai hỏng —
+  SAM gán tay áo kimono vào `cape`, tay chỉ là cẳng tay trần → tay áo đứng yên khi hạ tay. Sửa `_claim_sleeves`: pixel
+  torso/cape ngoài bề ngang torso (ở hàng của tay), chạm tay, đáy trên eo (đáy torso) → nhập vào tay; áo choàng dài quá
+  eo giữ `cape`. Dựng lại 7 nhân vật: samurai tay 8860→36018 px, witch/knight/rogue không đổi. Test +2 (tham số).
+- [x] Lượt thật `r6/data6` (samurai 104 s, girl 102 s) với code mới: samurai tay áo theo tay, girl ủng đúng chỗ.
+  Ảnh `r6/v6_*.png`. pytest 421 pass / 4 skip. Chưa commit.

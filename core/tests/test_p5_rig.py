@@ -399,3 +399,17 @@ def test_a_boot_in_the_arm_mask_goes_back_to_the_leg() -> None:
     assert np.isin(boot, [names.index("leg_l") + 1, names.index("leg_r") + 1]).all()
     assert (boot == names.index("leg_l") + 1).mean() > 0.8
     assert meta["joints"]["wrist_l"][1] < 200
+
+
+@pytest.mark.parametrize("bottom, sleeve", [(215, True), (420, False)])
+def test_cape_hanging_off_an_arm_is_a_sleeve_only_above_the_waist(bottom: int, sleeve: bool) -> None:
+    img, masks = figure()
+    d = ImageDraw.Draw(img)
+    d.rectangle((150, 180, 215, bottom), fill=(20, 20, 20, 255))
+    cape = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(cape).rectangle((150, 180, 215, bottom), fill=255)
+    masks[5] = cape
+    meta, labels, _ = rig.run_parts(img, masks, rig.DEFAULT_ROLES)
+    lab = np.asarray(labels)[190:210, 160:200]
+    want = meta["names"].index("arm_r" if sleeve else "cape") + 1
+    assert (lab == want).mean() > 0.9

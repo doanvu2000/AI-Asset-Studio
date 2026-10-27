@@ -205,6 +205,7 @@ def partition(alpha: np.ndarray, masks: dict[str, np.ndarray]) -> Partition:
         labels[~sil] = 0
     if _drop_stray_arms(labels, names, center):
         labels = grow_labels(labels, sil)
+    _claim_sleeves(labels, names)
 
     part = Partition(labels, names, {}, center_x)
     hand = seeds.get("hand")
@@ -233,6 +234,40 @@ def _drop_stray_arms(labels: np.ndarray, names: list[str], torso_center: Point |
             labels[stray] = 0
             changed = True
     return changed
+
+
+def _claim_sleeves(labels: np.ndarray, names: list[str]) -> None:
+    """Wide sleeves often come back from SAM as cape or torso. Body-part pixels outside the torso's width at arm
+    height that touch the arm and end above the waist are a sleeve, so they join the arm; a cape that falls
+    past the waist stays a cape."""
+    if "torso" not in names:
+        return
+    torso = labels == names.index("torso") + 1
+    tys = np.nonzero(torso.any(axis=1))[0]
+    if not len(tys):
+        return
+    waist = int(tys[-1])
+    body = [names.index(n) + 1 for n in ("torso", "cape") if n in names]
+    cols = np.arange(labels.shape[1])[None, :]
+    for side in SIDES:
+        name = f"arm_{side}"
+        if name not in names:
+            continue
+        arm = labels == names.index(name) + 1
+        rows = np.nonzero(arm.any(axis=1))[0]
+        if not len(rows):
+            continue
+        txs = np.nonzero(torso[rows[0]:rows[-1] + 1].any(axis=0))[0]
+        if not len(txs):
+            continue
+        outside = cols > txs[-1] if np.nonzero(arm)[1].mean() > txs.mean() else cols < txs[0]
+        cand = np.isin(labels, body) & outside
+        touch = _boundary(cand, arm)
+        if not touch.any():
+            continue
+        sleeve = grow_labels(touch.astype(np.int16), cand) > 0
+        if np.nonzero(sleeve.any(axis=1))[0][-1] < waist:
+            labels[sleeve] = names.index(name) + 1
 
 
 def _shoulder(ch: Chain, arm: np.ndarray, neck: Point, min_dx: float) -> Point:
