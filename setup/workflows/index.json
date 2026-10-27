@@ -1,0 +1,348 @@
+{
+  "t2i_zimage_turbo": {
+    "file": "t2i_zimage_turbo.api.json",
+    "template": "image_z_image_turbo",
+    "images": [],
+    "texts": [
+      {
+        "key": "57:27.text",
+        "node": "CLIPTextEncode",
+        "title": "CLIP Text Encode (Prompt)",
+        "default": "Latina female with thick wavy hair, harbor boats and pastel houses behind. Breezy seaside light, warm tones, cinematic close-up. "
+      }
+    ],
+    "seeds": [
+      "57:3.seed"
+    ],
+    "outputs": [
+      {
+        "node": "9",
+        "class": "SaveImage"
+      }
+    ]
+  },
+  "t2i_zimage_controlnet": {
+    "file": "t2i_zimage_controlnet.api.json",
+    "template": "image_z_image_turbo_fun_union_controlnet",
+    "images": [
+      {
+        "key": "58.image",
+        "title": "Load Image",
+        "default": "image_z_image_turbo_fun_union_controlnet_input_image.png"
+      }
+    ],
+    "texts": [
+      {
+        "key": "70:45.text",
+        "node": "CLIPTextEncode",
+        "title": "CLIP Text Encode (Prompt)",
+        "default": "Realistic photo, close-up of a latina model peeking through pine branches, dappled sunlight on her face, natural, moody, smooth skin, a little bit film grain.\n"
+      }
+    ],
+    "seeds": [
+      "70:44.seed"
+    ],
+    "outputs": [
+      {
+        "node": "9",
+        "class": "SaveImage"
+      }
+    ]
+  },
+  "remove_bg_birefnet": {
+    "file": "remove_bg_birefnet.api.json",
+    "template": "utility_birefnet_remove_background",
+    "images": [
+      {
+        "key": "17.image",
+        "title": "Load Image",
+        "default": "the_lily_veil.png"
+      }
+    ],
+    "texts": [],
+    "seeds": [],
+    "outputs": [
+      {
+        "node": "save_rgba",
+        "class": "SaveImage"
+      }
+    ]
+  },
+  "img2mesh_hunyuan21": {
+    "file": "img2mesh_hunyuan21.api.json",
+    "template": "3d_hunyuan3d-v2.1",
+    "images": [
+      {
+        "key": "2.image",
+        "title": "Load Image",
+        "default": "3d_hunyuan3d-v2.1_input_image.png"
+      }
+    ],
+    "texts": [],
+    "seeds": [
+      "7.seed"
+    ],
+    "outputs": [
+      {
+        "node": "10",
+        "class": "SaveGLB"
+      }
+    ]
+  },
+  "img2mesh_trellis2_textured": {
+    "file": "img2mesh_trellis2_textured.api.json",
+    "template": "3d_pixal3d_trellis2_image_to_model",
+    "images": [
+      {
+        "key": "122.image",
+        "title": "Load Image",
+        "default": "viking_wolf_rune_axe.png"
+      }
+    ],
+    "texts": [],
+    "seeds": [
+      "12.seed",
+      "18.seed",
+      "3.seed",
+      "23.seed"
+    ],
+    "outputs": [
+      {
+        "node": "322",
+        "class": "Save3DAdvanced"
+      }
+    ]
+  },
+  "edit_flux2_klein4b": {
+    "file": "edit_flux2_klein4b.api.json",
+    "template": "image_flux2_klein_image_edit_4b_base",
+    "images": [
+      {
+        "key": "76.image",
+        "title": "Load Image",
+        "default": "robed_women.png"
+      }
+    ],
+    "texts": [
+      {
+        "key": "75:74.text",
+        "node": "CLIPTextEncode",
+        "title": "CLIP Text Encode (Positive Prompt)",
+        "default": "Change the background to a cozy, softly lit interior space with warm beige tones, soft natural window light filtering through, and a relaxed, intimate atmosphere similar to the original image's mood. Keep the person in the exact same position, scale, and pose. Maintain identical camera angle, framing, and perspective. The lighting should be soft, even, and warm - not harsh or bright. Only replace the room environment, preserving all facial features, hairstyle, expression, clothing, and pose exactly as they are."
+      }
+    ],
+    "seeds": [
+      "75:73.noise_seed"
+    ],
+    "outputs": [
+      {
+        "node": "9",
+        "class": "SaveImage"
+      }
+    ]
+  },
+  "multi_angles_qwen2511": {
+    "file": "multi_angles_qwen2511.api.json",
+    "template": "templates-1_click_multiple_character_angles-v1.0",
+    "images": [
+      {
+        "key": "25.image",
+        "title": "Load Character Image",
+        "default": "character_input.png"
+      }
+    ],
+    "texts": [
+      {
+        "key": "427:221:151.prompt",
+        "node": "TextEncodeQwenImageEditPlus",
+        "title": "TextEncodeQwenImageEditPlus (Positive)",
+        "default": " Turn the camera to a close-up."
+      },
+      {
+        "key": "427:246:228.prompt",
+        "node": "TextEncodeQwenImageEditPlus",
+        "title": "TextEncodeQwenImageEditPlus (Positive)",
+        "default": "Rotate the camera 45 degrees to the right.\n"
+      },
+      {
+        "key": "427:271:253.prompt",
+        "node": "TextEncodeQwenImageEditPlus",
+        "title": "TextEncodeQwenImageEditPlus (Positive)",
+        "default": "Turn the camera to an aerial view."
+      },
+      {
+        "key": "427:296:278.prompt",
+        "node": "TextEncodeQwenImageEditPlus",
+        "title": "TextEncodeQwenImageEditPlus (Positive)",
+        "default": "Turn the camera to a wide-angle lens."
+      },
+      {
+        "key": "427:321:303.prompt",
+        "node": "TextEncodeQwenImageEditPlus",
+        "title": "TextEncodeQwenImageEditPlus (Positive)",
+        "default": "Rotate the camera 90 degrees to the right.\n"
+      },
+      {
+        "key": "427:346:328.prompt",
+        "node": "TextEncodeQwenImageEditPlus",
+        "title": "TextEncodeQwenImageEditPlus (Positive)",
+        "default": "Turn the camera to a low-angle view."
+      },
+      {
+        "key": "427:371:353.prompt",
+        "node": "TextEncodeQwenImageEditPlus",
+        "title": "TextEncodeQwenImageEditPlus (Positive)",
+        "default": "Rotate the camera 90 degrees to the left."
+      },
+      {
+        "key": "427:423:405.prompt",
+        "node": "TextEncodeQwenImageEditPlus",
+        "title": "TextEncodeQwenImageEditPlus (Positive)",
+        "default": "Rotate the camera 45 degrees to the left."
+      }
+    ],
+    "seeds": [
+      "427:221:169.seed",
+      "427:246:242.seed",
+      "427:271:267.seed",
+      "427:296:292.seed",
+      "427:321:317.seed",
+      "427:346:342.seed",
+      "427:371:367.seed",
+      "427:423:419.seed"
+    ],
+    "outputs": [
+      {
+        "node": "373",
+        "class": "SaveImage"
+      },
+      {
+        "node": "374",
+        "class": "SaveImage"
+      },
+      {
+        "node": "376",
+        "class": "SaveImage"
+      },
+      {
+        "node": "377",
+        "class": "SaveImage"
+      },
+      {
+        "node": "379",
+        "class": "SaveImage"
+      },
+      {
+        "node": "380",
+        "class": "SaveImage"
+      },
+      {
+        "node": "381",
+        "class": "SaveImage"
+      },
+      {
+        "node": "424",
+        "class": "SaveImage"
+      }
+    ]
+  },
+  "segment_sam3": {
+    "file": "segment_sam3.api.json",
+    "template": "Image Segmentation (SAM3) blueprint",
+    "images": [
+      {
+        "key": "2.image",
+        "title": "Load Image",
+        "default": "example.png"
+      }
+    ],
+    "texts": [
+      {
+        "key": "3.text",
+        "node": "CLIPTextEncode",
+        "title": "Part prompt (comma = several concepts, ':N' = max detections)",
+        "default": "head"
+      }
+    ],
+    "seeds": [],
+    "outputs": [
+      {
+        "node": "6",
+        "class": "SaveImage"
+      }
+    ]
+  },
+  "inpaint_flux2_klein4b": {
+    "file": "inpaint_flux2_klein4b.api.json",
+    "template": "image_flux2_klein_image_edit_4b_base (masked)",
+    "images": [
+      {
+        "key": "10.image",
+        "title": "Load Image (alpha 0 = area to fill)",
+        "default": "example.png"
+      }
+    ],
+    "texts": [
+      {
+        "key": "14.text",
+        "node": "CLIPTextEncode",
+        "title": "Positive",
+        "default": "Repaint the masked area as a seamless continuation of this body part and its clothing. Keep the same art style, colors, shading and outline thickness. No background inside the masked area."
+      },
+      {
+        "key": "15.text",
+        "node": "CLIPTextEncode",
+        "title": "Negative",
+        "default": ""
+      }
+    ],
+    "seeds": [
+      "24.noise_seed"
+    ],
+    "outputs": [
+      {
+        "node": "9",
+        "class": "SaveImage"
+      }
+    ]
+  },
+  "img2mesh_trellis2_mv_textured": {
+    "file": "img2mesh_trellis2_mv_textured.api.json",
+    "template": "3d_pixal3d_trellis2_image_to_model (multi-view: Pixal3DMultiViewConditioning)",
+    "images": [
+      {
+        "key": "122.image",
+        "title": "Front",
+        "default": "front.png"
+      },
+      {
+        "key": "401.image",
+        "title": "Left (az 90)",
+        "default": "left.png"
+      },
+      {
+        "key": "402.image",
+        "title": "Back (az 180)",
+        "default": "back.png"
+      },
+      {
+        "key": "403.image",
+        "title": "Right (az 270)",
+        "default": "right.png"
+      }
+    ],
+    "texts": [],
+    "seeds": [
+      "12.seed",
+      "18.seed",
+      "3.seed",
+      "23.seed"
+    ],
+    "outputs": [
+      {
+        "node": "322",
+        "class": "Save3DAdvanced"
+      }
+    ]
+  }
+}

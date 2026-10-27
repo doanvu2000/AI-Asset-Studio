@@ -589,3 +589,7 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   held items in the outstretched hand`.
 - Giới hạn còn: SAM "head, hair" có khi ôm cả áo choàng lông (viking `r7/data7`) → áo choàng xoay theo đầu (nhẹ);
   mũi tên vắt 2 tay: nửa phía tay trái đi theo tay trái.
+
+- 23:43 commit `7e29602` (weighted mesh vai, lead_hand, prompt concept, prop -mv) + push origin/master. Build Portable 23:43, đã mở.
+
+- 23:5x README viết lại cho người dùng (mô tả + cài đặt + dùng lần đầu + lỗi hay gặp), ảnh UI mới chụp qua CDP (`docs/screenshots/`: dashboard, new-run, library, run-sprite, settings-tools, spine-frames). Thêm `setup/comfyui-models.ps1` (-Root) + `setup/workflows/` (chép từ L:\AI\setup). Plan cài một chạm: `.planning/PLAN-one-click-setup.md` (chưa làm).

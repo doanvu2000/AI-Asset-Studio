@@ -1,97 +1,133 @@
 # AI Asset Studio
 
-Ứng dụng desktop Windows để tạo asset game bằng AI, chạy hoàn toàn trên máy. App Electron + Vue (`app/`) điều khiển một
-core Python (`core/`, package `studio_core`). Core chạy các **quy trình (recipe)**: chuỗi bước gọi ComfyUI (model ảnh và
-mesh trên GPU), Blender (bpy headless), model cloud (Claude, Codex) và các bước duyệt tay. Kết quả xuất thẳng sang
-Unity, Godot hoặc Spine. Core cũng là một MCP server, nên Claude Code / Codex điều khiển được.
+App Windows tạo asset game bằng AI, chạy ngay trên máy: gõ mô tả → chọn ảnh ưng → nhận sprite, texture, tileset, model 3D
+hoặc nhân vật Spine có xương, xuất thẳng cho Unity / Godot / Spine.
 
-![Tổng quan: chi phí, số lượt, thời gian theo recipe](docs/screenshots/dashboard.png)
+![Tổng quan](docs/screenshots/dashboard.png)
+
+- [Làm được gì](#làm-được-gì)
+- [Cài đặt](#cài-đặt)
+- [Dùng lần đầu](#dùng-lần-đầu)
+- [Lỗi hay gặp](#lỗi-hay-gặp)
 
 ## Làm được gì
 
-| Nhóm | Recipe | Ra cái gì |
-|------|--------|-----------|
-| Concept 2D | `concept-2d`, `concept-2d-brief`, `concept-2d-codex`, `variants-2d` | Ảnh nền trong, biến thể, sprite sheet |
-| Texture | `texture-seamless` | Texture liền mạch (tự nhận lưới gạch / ván), chấm điểm mối nối, normal map, pixel art |
-| Tileset | `tileset-seamless` | Bộ ô chung mép, hoặc bộ **Wang góc 16 ô** từ 2 vật liệu (cỏ / đất…) |
-| Sprite 8 hướng | `sprite-8dir-2d*`, `sprite-8dir-3d*`, `sprite-8dir-glb`, `sprite-8dir-pixel` | Sheet 8 hướng (2D nhanh, hoặc qua mesh TRELLIS + Blender), bản pixel art |
-| Hoạt ảnh | `sprite-8dir-anim`, `sprite-8dir-walk` | Rig thủ tục + clip đứng / đi / chạy / đánh, 8 hướng, kèm normal |
-| Spine (R&D) | `spine-character`, `spine-character-mv` | Tách part + xương, xuất Spine 4.2 |
-| 3D | `prop-3d`, `procedural-3d` | GLB đã dọn + turntable; hoặc Claude viết bpy rồi tự soát |
+| Muốn | Quy trình | Ra cái gì |
+|------|-----------|-----------|
+| Ảnh vật phẩm / nhân vật nền trong | **Concept 2D** (Z-Image, Codex, hoặc *ý tưởng → brief* để Claude viết prompt giúp) | PNG nền trong suốt |
+| Nhiều biến thể từ ảnh có sẵn | **Biến thể 2D (Flux.2 Klein)** | Biến thể + sprite sheet |
+| Texture lát liền mạch | **Texture liền mạch** | Texture + điểm mối nối, normal map, bản pixel art |
+| Bộ ô nền (cỏ / đất…) | **Tileset liền mạch** | Ô chung mép, hoặc bộ Wang 16 ô từ 2 vật liệu |
+| Nhân vật nhìn 8 hướng | **Sprite 8 hướng** (2D nhanh từ ảnh, hoặc 3D qua mesh: đều hơn) | Sprite sheet 8 hướng + JSON, tuỳ chọn normal map / pixel art |
+| Nhân vật biết đứng / đi / chạy / đánh | **Sprite 8 hướng hoạt ảnh** | Clip 8 hướng, kèm normal |
+| Nhân vật Spine có xương | **Nhân vật Spine** (hoặc *trước + sau*) | Spine 4.2: JSON + atlas + PNG, 6 animation |
+| Vật thể 3D | **Prop 3D (TRELLIS)** hoặc **Procedural 3D** (Claude viết code Blender) | GLB đã dọn + ảnh xoay vòng |
 
-Hiệp sĩ 8 hướng, clip tấn công (góc 45°) và đi bộ (góc 0°), render bằng Blender từ một mesh TRELLIS:
+Mẹo prompt: viết tiếng Anh, mô tả vật thể trước, phong cách sau. Chip gợi ý dưới ô prompt thêm sẵn chất liệu / phong
+cách. Muốn cả loạt asset cùng phong cách → tạo **Dự án**, khoá style + palette pixel ở đó.
+
+Sprite hiệp sĩ 8 hướng (đánh 45°, đi 0°) dựng qua mesh 3D:
 
 ![Clip tấn công 45°](docs/screenshots/knight-attack-45.png)
 ![Clip đi bộ 0°](docs/screenshots/knight-walk-0.png)
 
-## Giao diện
+Nhân vật Spine tự tách part + gắn xương; vũ khí cầm tay đi theo bàn tay:
 
-**Tạo mới** — chọn recipe, điền input; chip gợi ý vật liệu, chạy một prompt hoặc nhiều prompt.
+![Khung hình Spine: viking và cung thủ](docs/screenshots/spine-frames.png)
+### Một lượt chạy
 
-![Form tạo lượt chạy tileset](docs/screenshots/new-run.png)
+Mỗi lượt chạy là một chuỗi bước, mỗi bước ghi rõ chạy ở đâu (GPU / Blender / CPU / Cloud / Thủ công) và mất bao lâu.
+Kết quả hiện ngay bên phải: xoay hướng, đổi tốc độ, phóng to, bật lưới pixel.
 
-**Lượt chạy** — từng bước với lane (GPU / Blender / CPU / thủ công), thời gian, kết quả xem ngay: lát 3×3 / 5×5, ranh
-giới ô, xếp lại Wang, màu / normal; xuất file hoặc xuất cho engine.
+![Chi tiết lượt chạy sprite](docs/screenshots/run-sprite.png)
 
-![Tileset Wang cỏ / đất, điểm liền mạch 100](docs/screenshots/run-tileset-wang.png)
-![Texture gạch so le lát 3×3](docs/screenshots/run-texture-bricks.png)
+- **Bước "Thủ công"** (chọn ảnh, duyệt kết quả) dừng chờ bạn. Mọi bước đang chờ gom ở **Cần duyệt**.
+- Bước lỗi → bấm **Thử lại** trên bước đó, không phải chạy lại từ đầu.
+- **Xuất cho engine**: Unity (sprite đã cắt, animation 8 hướng, prefab), Godot 4 (SpriteFrames, scene, TileSet),
+  Spine (JSON + atlas + PNG), GLB.
 
-**Thư viện** — mọi asset theo loại (2D, 3D, Sprite, Spine, Texture), trạng thái nháp / đã duyệt / từ chối, theo dự án.
+Texture và tileset có chế độ xem lát 3×3 / 5×5 để soi mối nối:
 
-![Thư viện asset](docs/screenshots/library.png)
+![Tileset Wang cỏ / đất](docs/screenshots/run-tileset-wang.png)
+![Texture gạch lát 3×3](docs/screenshots/run-texture-bricks.png)
 
-Các màn khác: Cần duyệt (gate chọn ảnh / duyệt kết quả), Quy trình (xem + sửa recipe YAML), Hàng loạt (nhiều prompt một
-lần), Dự án (khoá style, palette pixel cho cả nhóm asset), Cài đặt (đường dẫn công cụ + kiểm tra). Phím tắt `Ctrl+1..8`,
-command palette `Ctrl+K`.
+**Thư viện** giữ mọi asset theo loại, lọc nháp / đã duyệt / từ chối, theo dự án:
 
-## Xuất sang engine
+![Thư viện](docs/screenshots/library.png)
 
-- **Unity** (`core/studio_core/export/unity.py`): texture đã slice + `.meta`, AnimationClip, Animator blend tree 8
-  hướng, prefab, `_NormalMap` secondary texture; tileset Wang thành 16 sprite.
-- **Godot 4** (`export/godot.py`): `SpriteFrames.tres`, scene AnimatedSprite2D, `CanvasTexture` có normal, TileSet
-  terrain Match Corners cho Wang, material texture lặp.
-- **Spine**: JSON + atlas + PNG. **GLB** xuất thẳng.
+Màn khác: **Hàng loạt** (nhiều prompt một lần), **Quy trình** (xem + chỉnh các bước), **Dự án**. Phím tắt `Ctrl+1..8`
+đổi màn, `Ctrl+K` tìm mọi thứ.
 
-## Chạy và build
+## Cài đặt
 
-Yêu cầu: Windows 10/11 x64, Node 24, [uv](https://docs.astral.sh/uv/) ≥ 0.11 (tự lấy Python 3.13), ComfyUI có sẵn
-workflow, Blender 5.2. Máy chuẩn đang dùng: RTX 5070 12 GB, 64 GB RAM (recipe anim đỉnh ~28 GB RAM). Bước Claude cần
-`claude` trên PATH. Đường dẫn mặc định ở `core/studio_core/config.py`, đổi trong màn **Cài đặt**.
+### 1. Máy cần có
 
-```bash
-# dev
-cd app && npm install && npm run dev        # npm run dev:mock = core giả, không cần GPU
-# kiểm tra
-cd core && uv run pytest -q
-cd app && npm run typecheck
-# build bộ cài (core PyInstaller + Electron)
-cd app && npm run dist                       # → app/release/<version>/AI-Asset-Studio-Setup-<version>-x64.exe
-cd app && npm run dist:core && npm run dist:portable   # → app/release/<version>/win-unpacked/ (thêm file rỗng `portable` cạnh exe)
+| Thứ | Ghi chú |
+|-----|---------|
+| Windows 10/11 x64, GPU NVIDIA ≥ 12 GB VRAM | Máy chuẩn: RTX 5070 12 GB, 64 GB RAM. Quy trình hoạt ảnh dùng đỉnh ~28 GB RAM |
+| ComfyUI 0.41 + model (~80 GB, nên để ổ SSD) | Chạy model ảnh / 3D. Cách cài ở bước 2 |
+| Blender 5.2 | Chỉ cần cho quy trình 3D và sprite 8 hướng 3D |
+| Claude Code (`claude`) | Cho các bước "Claude viết brief / soát khớp xương". Đăng nhập một lần bằng `claude` |
+| Codex CLI | Tuỳ chọn, chỉ cho `Concept 2D (Codex)` |
+
+ComfyUI, model, Blender không đi kèm app (quá nặng); cài một lần rồi trỏ đường dẫn ở bước 4.
+
+### 2. Cài ComfyUI + model
+
+Cần [git](https://git-scm.com/download/win) và [uv](https://docs.astral.sh/uv/getting-started/installation/). Mở
+PowerShell:
+
+```powershell
+git clone --branch v0.41.0 https://github.com/comfy-org/ComfyUI D:\AI\comfyUI
+cd D:\AI\comfyUI
+uv venv --python 3.13 .venv
+uv pip install --python .venv torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
+uv pip install --python .venv -r requirements.txt
 ```
 
-Chi tiết build, bản portable và chỗ lưu dữ liệu: [BUILD.md](BUILD.md). Tích hợp ComfyUI:
-[COMFYUI-INTEGRATION.md](COMFYUI-INTEGRATION.md), [COMFYUI-WORKFLOWS.md](COMFYUI-WORKFLOWS.md).
+Tải model (22 file ~80 GB, tải dở chạy lại lệnh là tải tiếp):
 
-## MCP (Claude Code / Codex)
-
-`studio-core.exe mcp [--data-dir …]` mở MCP server qua stdio, nối vào core đang chạy. Lệnh đăng ký đúng máy có sẵn ở
-**Tổng quan → Kết nối agent CLI**, dạng:
-
-```bash
-claude mcp add -s user asset-studio -- "<đường dẫn>/studio-core.exe" mcp
+```powershell
+powershell -ExecutionPolicy Bypass -File setup\comfyui-models.ps1 -Root E:\AI\comfyUI_models
 ```
 
-Tool: `list_recipes`, `describe_recipe`, `start_run`, `wait_run`, `get_run`, `resolve_gate`, `retry_step`,
-`cancel_run`, `get_outputs`, `list_runs`, `list_versions`, `set_version_status`, `list_projects`, `recipe_stats`.
-Lượt chạy từ MCP hiện luôn trong app.
+Workflow ComfyUI có sẵn trong thư mục `setup\workflows` của dự án.
 
-## Ghi chú kỹ thuật
+### 3. Mở app
 
-- Recipe là YAML trong `core/studio_core/recipes/`; mục `rules:` kiểm input chéo trước khi tốn GPU (vd. Wang cần 2 dòng
-  vật liệu hoặc ≥ 2 ảnh).
-- Skinning cho rig thủ tục (`core/studio_core/adapters/blender/skin_math.py`) đo khoảng cách theo bề mặt mesh, nên áo
-  choàng sát tay không bị kéo theo khi vung tay (hàng trên: trước khi sửa, hàng dưới: sau):
+- **Bản portable** (khuyên dùng): chép thư mục `AI Asset Studio Portable` ra đâu cũng được, chạy `AI Asset Studio.exe`.
+  Dữ liệu nằm ngay trong thư mục đó (`data\`), mang sang máy khác vẫn còn.
+- **Bản cài**: chạy `AI-Asset-Studio-Setup-<version>-x64.exe`. Dữ liệu ở `%APPDATA%\AI Asset Studio\data`.
 
-![Trước / sau: vạt áo choàng bám tay khi đánh, góc 45°](docs/screenshots/skinning-cape-before-after.png)
+SmartScreen báo "Windows protected your PC" → **More info → Run anyway** (app chưa ký số).
 
-- Kế hoạch và nhật ký phát triển: `.planning/` (`PROGRESS.md`, các file `HANDOFF-*`).
+### 4. Trỏ đường dẫn công cụ
+
+**Cài đặt → Đường dẫn công cụ** → bấm **Chọn…** từng dòng → **Kiểm tra lại** đến khi tất cả có dấu ✓ xanh → **Lưu**.
+
+![Đường dẫn công cụ](docs/screenshots/settings-tools.png)
+
+Không cần tự bật ComfyUI / Blender: app tự khởi động khi lượt chạy cần, và tắt khi đóng app. Thanh trên cùng của
+**Tổng quan** cho biết trạng thái từng công cụ.
+
+## Dùng lần đầu
+
+1. Bấm **Tạo mới** (`Ctrl+N` hoặc nút xanh góc phải).
+2. Chọn một quy trình, ví dụ **Concept 2D (Z-Image)**.
+3. Gõ prompt tiếng Anh, vd. `crystal sword with a dragon hilt, game item`, bấm **Bắt đầu chạy**.
+4. Khi app sinh xong vài ảnh, mục **Cần duyệt** sáng lên → bấm chọn ảnh ưng nhất.
+5. Lượt chạy làm nốt (tách nền, căn chỉnh) → bấm **Đưa vào thư viện** hoặc **Xuất… / Xuất cho engine**.
+
+![Chọn quy trình](docs/screenshots/new-run.png)
+
+## Lỗi hay gặp
+
+| Triệu chứng | Cách xử lý |
+|-------------|------------|
+| Dòng ComfyUI / Blender có dấu đỏ | **Cài đặt → Đường dẫn công cụ**, sửa đường dẫn, **Kiểm tra lại**, rồi khởi động lại công cụ ở **Tổng quan** |
+| Bước Claude lỗi | Chạy `claude` trong terminal một lần để đăng nhập, rồi **Thử lại** bước đó |
+| Lần mở đầu báo core chưa sẵn sàng sau 60 giây | Defender đang quét; mở lại app hoặc thêm thư mục app vào exclusion |
+| GPU hết bộ nhớ / ComfyUI tắt giữa chừng | Đóng app nặng khác (game, trình duyệt nhiều tab), chạy từng lượt một |
+| Cần gửi log báo lỗi | **Cài đặt → Nhật ký chẩn đoán → Copy** |
+
+Tự build từ mã nguồn: [BUILD.md](BUILD.md).

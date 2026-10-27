@@ -1,0 +1,227 @@
+{
+  "58": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "image_z_image_turbo_fun_union_controlnet_input_image.png"
+    },
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "56": {
+    "class_type": "PreviewImage",
+    "inputs": {
+      "images": [
+        "57",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "57": {
+    "class_type": "Canny",
+    "inputs": {
+      "low_threshold": 0.1,
+      "high_threshold": 0.32,
+      "image": [
+        "58",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Detect Edges (Canny)"
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "filename_prefix": "z-image-turbo",
+      "images": [
+        "70:43",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "70:39": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "qwen_3_4b.safetensors",
+      "type": "lumina2",
+      "device": "default"
+    },
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "70:46": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "z_image_turbo_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "70:40": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "70:64": {
+    "class_type": "ModelPatchLoader",
+    "inputs": {
+      "name": "Z-Image-Turbo-Fun-Controlnet-Union.safetensors"
+    },
+    "_meta": {
+      "title": "Load Model Patch"
+    }
+  },
+  "70:43": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "70:44",
+        0
+      ],
+      "vae": [
+        "70:40",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "70:47": {
+    "class_type": "ModelSamplingAuraFlow",
+    "inputs": {
+      "shift": 3,
+      "model": [
+        "70:60",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "ModelSamplingAuraFlow"
+    }
+  },
+  "70:44": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 729703840979498,
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "res_multistep",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "70:47",
+        0
+      ],
+      "positive": [
+        "70:45",
+        0
+      ],
+      "negative": [
+        "70:42",
+        0
+      ],
+      "latent_image": [
+        "70:41",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "70:42": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {
+      "conditioning": [
+        "70:45",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Conditioning Zero Out"
+    }
+  },
+  "70:60": {
+    "class_type": "QwenImageDiffsynthControlnet",
+    "inputs": {
+      "strength": 1,
+      "model": [
+        "70:46",
+        0
+      ],
+      "model_patch": [
+        "70:64",
+        0
+      ],
+      "vae": [
+        "70:40",
+        0
+      ],
+      "image": [
+        "57",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Apply Qwen Image DiffSynth ControlNet"
+    }
+  },
+  "70:41": {
+    "class_type": "EmptySD3LatentImage",
+    "inputs": {
+      "width": [
+        "70:69",
+        0
+      ],
+      "height": [
+        "70:69",
+        1
+      ],
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "EmptySD3LatentImage"
+    }
+  },
+  "70:45": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "Realistic photo, close-up of a latina model peeking through pine branches, dappled sunlight on her face, natural, moody, smooth skin, a little bit film grain.\n",
+      "clip": [
+        "70:39",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "CLIP Text Encode (Prompt)"
+    }
+  },
+  "70:69": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": [
+        "57",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  }
+}
