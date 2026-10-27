@@ -326,6 +326,32 @@ def final_parts(p: Partition, joints: dict[str, Point]) -> dict[str, np.ndarray]
     return out
 
 
+SPECK_CORE = 3
+
+
+def absorb_specks(parts: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """Hand slivers that hold no solid core (thinner than 2*SPECK_CORE+1 px and not attached to one) to the
+    neighboring part, so they move with it instead of floating once limbs rotate."""
+    names = list(parts)
+    lab = np.zeros(next(iter(parts.values())).shape, np.int16)
+    loose = np.zeros(lab.shape, bool)
+    for i, n in enumerate(names):
+        m = parts[n]
+        core = m.copy()
+        for _ in range(SPECK_CORE):
+            e = core.copy()
+            for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                e &= _shift(core, dy, dx)
+            core = e
+        kept = grow_labels(core.astype(np.int16), m) > 0
+        lab[kept] = i + 1
+        loose |= m & ~kept
+    if not loose.any():
+        return parts
+    grown = grow_labels(lab, loose)
+    return {n: (grown == i + 1) | (parts[n] & loose & (grown == 0)) for i, n in enumerate(names)}
+
+
 def draw_order(names: list[str]) -> list[str]:
     known = [n for n in DRAW_ORDER if n in names]
     return known + [n for n in names if n not in DRAW_ORDER]
@@ -336,6 +362,78 @@ def thickness(mask: np.ndarray, a: Point, b: Point) -> float:
     return float(mask.sum()) / length
 
 
+UNDER_WIDTH_SLACK = 1.2
+ARM_PARTS = tuple(f"{p}_{s}" for s in SIDES for p in ("upper_arm", "lower_arm", "hand"))
+BEHIND_ARMS = ("head", "cape", "torso")
+BEHIND_REACH = 4
+BEHIND_GAP = 32
+
+
+def behind_arms(parts: dict[str, np.ndarray], max_run: int) -> dict[str, np.ndarray]:
+    """Pixels where a T-pose arm crosses hair, a cape or the body: the same part shows right above and right
+    below the arm in that column, so that part continues underneath and is exposed once the arm lowers."""
+    h, w = next(iter(parts.values())).shape
+    cover = np.zeros((h, w), bool)
+    for n in ARM_PARTS:
+        if n in parts:
+            cover |= parts[n]
+    lab = np.zeros((h, w), np.int8)
+    names = [n for n in BEHIND_ARMS if n in parts]
+    for i, n in enumerate(names):
+        lab[parts[n] & ~cover] = i + 1
+    out = {n: np.zeros((h, w), bool) for n in names}
+    for x in np.nonzero(cover.any(axis=0))[0]:
+        ys = np.nonzero(cover[:, x])[0]
+        for run in np.split(ys, np.nonzero(np.diff(ys) > 1)[0] + 1):
+            y0, y1 = int(run[0]), int(run[-1])
+            if y1 - y0 + 1 > max_run:
+                continue
+            above = lab[max(y0 - BEHIND_REACH, 0):y0, x][::-1]
+            below = lab[y1 + 1:y1 + 1 + BEHIND_REACH, x]
+            a = above[above > 0][:1]
+            b = below[below > 0][:1]
+            if len(a) and len(b) and a[0] == b[0]:
+                out[names[a[0] - 1]][y0:y1 + 1, x] = True
+    return {n: _close_rows(m, cover, BEHIND_GAP) for n, m in out.items() if m.any()}
+
+
+def _close_rows(m: np.ndarray, within: np.ndarray, gap: int) -> np.ndarray:
+    """Fill horizontal gaps of at most `gap` pixels between set pixels, staying inside `within`."""
+    w = m.shape[1]
+    idx = np.arange(w)[None, :]
+    left = np.maximum.accumulate(np.where(m, idx, -1), axis=1)
+    right = np.minimum.accumulate(np.where(m, idx, w)[:, ::-1], axis=1)[:, ::-1]
+    return m | (within & (left >= 0) & (right < w) & (right - left <= gap + 1))
+
+
+def hull_mask(mask: np.ndarray) -> np.ndarray:
+    from PIL import ImageDraw
+
+    ys, xs = np.nonzero(mask)
+    if len(xs) < 3:
+        return mask.copy()
+    rows = np.unique(ys)
+    lo = np.full(rows.max() + 1, np.iinfo(np.int64).max)
+    hi = np.full(rows.max() + 1, -1)
+    np.minimum.at(lo, ys, xs)
+    np.maximum.at(hi, ys, xs)
+    pts = sorted({(int(lo[y]), int(y)) for y in rows} | {(int(hi[y]), int(y)) for y in rows})
+
+    def half(seq: list[tuple[int, int]]) -> list[tuple[int, int]]:
+        out: list[tuple[int, int]] = []
+        for p in seq:
+            while len(out) >= 2 and ((out[-1][0] - out[-2][0]) * (p[1] - out[-2][1])
+                                     - (out[-1][1] - out[-2][1]) * (p[0] - out[-2][0])) <= 0:
+                out.pop()
+            out.append(p)
+        return out[:-1]
+
+    poly = half(pts) + half(pts[::-1])
+    img = Image.new("1", (mask.shape[1], mask.shape[0]), 0)
+    ImageDraw.Draw(img).polygon(poly, fill=1, outline=1)
+    return np.asarray(img, bool) | mask
+
+
 def joint_fills(parts: dict[str, np.ndarray], joints: dict[str, Point], overlap: float
                 ) -> dict[str, np.ndarray]:
     """under part -> extra pixels (taken from the over part near the shared joint) it must also cover."""
@@ -344,6 +442,8 @@ def joint_fills(parts: dict[str, np.ndarray], joints: dict[str, Point], overlap:
     fills: dict[str, np.ndarray] = {}
     bone_end = {f"{s}_{side}": f"{e}_{side}" for side in SIDES for segs in LIMB_SEGMENTS.values()
                 for s, e, _ in segs}
+    bone_of = {f"{part}_{side}": (f"{s}_{side}", f"{e}_{side}") for side in SIDES
+               for segs in LIMB_SEGMENTS.values() for s, e, part in segs}
     for under, over, joint in JOINT_OVERLAPS:
         if under not in parts or over not in parts or joint not in joints:
             continue
@@ -355,6 +455,15 @@ def joint_fills(parts: dict[str, np.ndarray], joints: dict[str, Point], overlap:
             size = thickness(parts[over], joints[joint], joints[bone_end.get(joint, joint)])
         r = max(6.0, overlap * size)
         region = parts[over] & ((xx - jx) ** 2 + (yy - jy) ** 2 <= r * r)
+        # The covered area must keep the under part's own shape, or a pauldron or skirt edge gets baked into it
+        # and shows as a blob once the limb swings away.
+        if under == "torso":
+            region &= hull_mask(parts["torso"])
+        elif under in bone_of:
+            a, b = (joints.get(j) for j in bone_of[under])
+            if a is not None and b is not None:
+                half = thickness(parts[under], a, b) / 2 * UNDER_WIDTH_SLACK
+                region &= _seg_dist(xx, yy, a, b) <= max(half, 3.0)
         if region.any():
             fills[under] = fills.get(under, np.zeros((h, w), bool)) | region
     return fills

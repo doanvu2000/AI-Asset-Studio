@@ -70,8 +70,8 @@ const RECIPE_PITCH: Record<string, string> = {
   'sprite-8dir-anim': 'Prompt → sprite 8 hướng + bộ anim đứng / đi / chạy / chém, kèm normal map',
   'sprite-8dir-pixel': 'Mesh GLB có sẵn → sprite sheet 8 hướng pixel art, một bảng màu chung',
   'sprite-8dir-3d-pixel': 'Prompt → sprite sheet 8 hướng pixel art, dựng qua mesh 3D',
-  'spine-character': 'Prompt → nhân vật Spine 4.2 có xương + 6 anim (thử nghiệm)',
-  'spine-character-mv': 'Prompt → 2 bộ Spine mặt trước + mặt sau, cùng 6 anim (thử nghiệm)',
+  'spine-character': 'Prompt → nhân vật Spine 4.2 có xương + 6 anim',
+  'spine-character-mv': 'Prompt → 2 bộ Spine mặt trước + mặt sau, cùng 6 anim',
   'texture-seamless': 'Prompt vật liệu → texture lặp liền mạch + điểm mối nối, normal map, bản nhỏ',
   'tileset-seamless': 'Prompt vật liệu → nhiều biến thể chung mép, lát trộn lẫn không lộ nối'
 }

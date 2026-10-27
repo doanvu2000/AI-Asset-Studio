@@ -139,7 +139,30 @@ def atlas_text(page: str, w: int, h: int, regions: list[tuple[str, int, int, int
     return "\n".join(lines) + "\n"
 
 
-def animations(bones: list[Bone], height: float) -> dict[str, Any]:
+WIDE_SLEEVE = 3.0
+MIN_ARM_DROP = 0.4
+
+
+def arm_drop(layers: list[Layer], joints: dict[str, Point]) -> float:
+    """Share of the usual arm lowering to apply. A sleeve much wider than the hand hangs below the T-pose arm;
+    rotating it far swings that cloth up into wings, so wide sleeves only lower part way."""
+    by = {l.name: l for l in layers}
+    ratios = []
+    for s in "lr":
+        fore, hand = by.get(f"lower_arm_{s}"), by.get(f"hand_{s}")
+        need = (f"elbow_{s}", f"wrist_{s}", f"hand_tip_{s}")
+        if fore is None or hand is None or any(j not in joints for j in need):
+            continue
+        e, w, t = (joints[j] for j in need)
+        fore_w = (np.asarray(fore.image)[..., 3] > 0).sum() / max(math.dist(e, w), 1.0)
+        hand_w = (np.asarray(hand.image)[..., 3] > 0).sum() / max(math.dist(w, t), 1.0)
+        if hand_w > 0:
+            ratios.append(fore_w / hand_w)
+    r = max(ratios, default=1.0)
+    return 1.0 if r <= WIDE_SLEEVE else max(MIN_ARM_DROP, WIDE_SLEEVE / r)
+
+
+def animations(bones: list[Bone], height: float, drop: float = 1.0) -> dict[str, Any]:
     """Deterministic clips for a front-view rig: loops `idle`, `relax`, `walk`; one-shots `attack`, `hurt`, `jump`.
     Limb directions come from the setup pose (which image side each limb sits on), never from an assumed sign."""
     by = {b.name: b for b in bones}
@@ -189,7 +212,7 @@ def animations(bones: list[Bone], height: float) -> dict[str, Any]:
 
     def down(s: str, deg: float) -> float:
         """Arm rotation that lowers a T-pose arm by `deg` (clockwise on the +x side)."""
-        return -side[s] * deg
+        return -side[s] * deg * drop
 
     rest = 62.0
 
@@ -297,7 +320,7 @@ def build_skeleton(layers: list[Layer], joints: dict[str, Point], origin: Point,
         "skins": [{"name": "default", "attachments": attachments}],
     }
     if with_animations:
-        anims = animations(bones, max(ys) - min(ys))
+        anims = animations(bones, max(ys) - min(ys), arm_drop(layers, joints))
         if "hurt" in anims:
             flash = [{"time": 0, "color": "ffffffff"}, {"time": 0.08, "color": "ff7070ff"}, {"time": 0.3, "color": "ffffffff"}]
             anims["hurt"]["slots"] = {s["name"]: {"rgba": flash} for s in slots}

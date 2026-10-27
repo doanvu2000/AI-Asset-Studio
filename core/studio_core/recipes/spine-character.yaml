@@ -1,6 +1,6 @@
 id: spine-character
-name: Nhân vật Spine (R&D)
-description: Prompt → concept T-pose → chọn → tách nền → SAM3.1 tách part → Claude chỉnh khớp → layers → Flux2 Klein vá chỗ khuất ở khớp → Spine 4.2 (JSON + atlas + png, anim idle/relax) → duyệt
+name: Nhân vật Spine
+description: Prompt → concept T-pose → chọn → tách nền → SAM3.1 tách part → Claude chỉnh khớp → layers → Flux2 Klein vá chỗ khuất ở khớp → Spine 4.2 (JSON + atlas + png, 6 anim) → duyệt
 inputs:
   prompt: {type: text, label: Nhân vật, placeholder: "young adventurer girl with red scarf and short cape, leather armor"}
   name: {type: text, default: character, label: Tên skeleton}
@@ -75,7 +75,7 @@ steps:
     kind: op.layers
     in: {image: rmbg.images, labels: parts.labels, parts: parts.meta, bones: bones.json}
     params: {rig: "${inputs.rig}", fill: "${inputs.fill}", overlap: "${inputs.overlap}",
-             inpaint: [torso, upper_arm_l, upper_arm_r, thigh_l, thigh_r]}
+             inpaint: [torso, upper_arm_l, upper_arm_r, thigh_l, thigh_r, head, cape]}
   - id: fill
     kind: comfy.inpaint_flux2_klein4b
     in: {image: layers.holes}

@@ -1,5 +1,5 @@
 id: spine-character-mv
-name: Nhân vật Spine trước + sau (R&D)
+name: Nhân vật Spine trước + sau
 description: 'Như Nhân vật Spine, thêm mặt sau: Qwen xoay 180° từ ảnh T-pose đã chọn (kiểm tra góc + Claude soát) → tách nền,
   SAM3.1, Claude chỉnh khớp, layers, vá chỗ khuất → bộ Spine thứ 2 (tên _back, trái/phải theo giải phẫu) → duyệt cả hai'
 inputs:
@@ -171,7 +171,7 @@ steps:
     rig: ${inputs.rig}
     fill: ${inputs.fill}
     overlap: ${inputs.overlap}
-    inpaint: [torso, upper_arm_l, upper_arm_r, thigh_l, thigh_r]
+    inpaint: [torso, upper_arm_l, upper_arm_r, thigh_l, thigh_r, head, cape]
 - id: fill
   kind: comfy.inpaint_flux2_klein4b
   in: {image: layers.holes}
@@ -343,7 +343,7 @@ steps:
     rig: ${inputs.rig}
     fill: ${inputs.fill}
     overlap: ${inputs.overlap}
-    inpaint: [torso, upper_arm_l, upper_arm_r, thigh_l, thigh_r]
+    inpaint: [torso, upper_arm_l, upper_arm_r, thigh_l, thigh_r, head, cape]
 - id: back_fill
   kind: comfy.inpaint_flux2_klein4b
   in: {image: back_layers.holes}

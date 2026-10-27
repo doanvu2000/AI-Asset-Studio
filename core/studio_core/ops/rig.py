@@ -16,7 +16,8 @@ from . import spine as sp
 from .executors import OpExecutor, _images_in, _load, _put_png
 
 DEFAULT_ROLES = ["head", "torso", "arm", "hand", "leg", "cape"]
-DEFAULT_INPAINT = ["torso", "upper_arm_l", "upper_arm_r", "thigh_l", "thigh_r"]
+DEFAULT_INPAINT = ["torso", "upper_arm_l", "upper_arm_r", "thigh_l", "thigh_r", "head", "cape"]
+BEHIND_MAX_RUN = 0.12
 
 
 async def _put_json(ctx: StepContext, payload: Any, name: str) -> BlobRef:
@@ -107,9 +108,13 @@ def run_layers(rgba: Image.Image, labels_img: Image.Image, meta: dict[str, Any],
     joints, sources = pt.merge_joints(auto, use, labels, names, float(meta["center_x"]),
                                       float(params.get("tolerance", 0.06)) * fig_h)
     p = pt.Partition(labels, names, joints, float(meta["center_x"]))
-    split = pt.final_parts(p, joints)
+    split = pt.absorb_specks(pt.final_parts(p, joints))
     fills = pt.joint_fills(split, joints, float(params.get("overlap", 0.6)))
     inpaint = set(params.get("inpaint", DEFAULT_INPAINT) or []) if params.get("fill", True) else set()
+    # Without inpainting these pixels would keep the arm's own colors, which reads worse than a gap.
+    for name, m in pt.behind_arms(split, round(BEHIND_MAX_RUN * fig_h)).items():
+        if name in inpaint:
+            fills[name] = fills.get(name, np.zeros_like(sil)) | m
     order = pt.draw_order(list(split))
     crops: list[Image.Image] = []
     entries: list[dict[str, Any]] = []

@@ -311,7 +311,7 @@ const RECIPES: MockRecipe[] = [
   {
     info: {
       id: 'spine-character',
-      name: 'Nhân vật Spine (R&D)',
+      name: 'Nhân vật Spine',
       description: 'Prompt → concept T-pose → chọn → tách nền → tách part → layers → Spine 4.2 (JSON + atlas + png) → duyệt',
       hash: 'b3c0sp1ne6',
       inputs: { prompt: { type: 'text', label: 'Nhân vật', required: true }, name: { type: 'text', default: 'character', label: 'Tên skeleton' } },

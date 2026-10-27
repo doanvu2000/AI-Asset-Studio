@@ -199,6 +199,53 @@ def test_pack_fits_power_of_two() -> None:
             assert a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1]
 
 
+def test_joint_fills_keep_the_under_part_shape() -> None:
+    def box(x0: int, y0: int, x1: int, y1: int) -> np.ndarray:
+        m = np.zeros((H, W), bool)
+        m[y0:y1, x0:x1] = True
+        return m
+
+    torso = box(200, 150, 312, 320)
+    pauldron = box(150, 110, 210, 190)  # rises well above the chest line
+    arm = pauldron | box(60, 160, 200, 185)
+    thigh = box(270, 320, 300, 420)
+    skirt = box(180, 300, 340, 340)  # much wider than the thigh, drawn over it
+    parts = {"torso": torso | skirt, "upper_arm_r": arm & ~torso, "thigh_l": thigh & ~skirt}
+    joints = {"shoulder_r": (205.0, 165.0), "elbow_r": (120.0, 172.0), "hip_l": (285.0, 325.0),
+              "knee_l": (285.0, 420.0)}
+    fills = pt.joint_fills(parts, joints, 1.5)
+    assert fills["torso"].any() and not fills["torso"][:150].any()
+    tx = np.nonzero(fills["thigh_l"])[1]
+    assert len(tx) and tx.min() >= 285 - 15 * pt.UNDER_WIDTH_SLACK - 2 and tx.max() <= 285 + 15 * pt.UNDER_WIDTH_SLACK + 2
+
+
+def test_hair_behind_a_t_pose_arm_is_queued_for_fill() -> None:
+    hair = np.zeros((H, W), bool)
+    hair[100:400, 300:420] = True
+    arm = np.zeros((H, W), bool)
+    arm[200:226, 250:470] = True
+    hair[196:200, 351:357] = False  # a jagged edge the column scan misses must still be bridged
+    parts = {"head": hair & ~arm, "upper_arm_l": arm}
+    got = pt.behind_arms(parts, 60)
+    assert set(got) == {"head"}
+    hidden = got["head"]
+    assert hidden[200:226, 300:420].all()
+    assert not hidden[:, 420:].any() and not hidden[:, :300].any()  # arm over background stays out
+
+
+def test_slivers_join_the_part_they_touch() -> None:
+    torso = np.zeros((H, W), bool)
+    torso[100:300, 200:300] = True
+    arm = np.zeros((H, W), bool)
+    arm[120:150, 300:450] = True
+    sliver = np.zeros((H, W), bool)
+    sliver[150:152, 330:440] = True  # 2 px fringe under the sleeve, labeled as cape
+    out = pt.absorb_specks({"torso": torso, "upper_arm_l": arm, "cape": sliver})
+    assert out["upper_arm_l"][150:152, 330:440].all()
+    assert not out["cape"].any()
+    assert (out["torso"] == torso).all()
+
+
 def test_parts_missing_roles_is_a_step_error() -> None:
     img, masks = figure()
     masks[2] = Image.new("L", (W, H), 0)
@@ -284,3 +331,16 @@ def test_preview_html_escapes_name() -> None:
     page = sp.preview_html("<b>x</script>", b"{}", b"", "p.png", b"", ["idle"])
     assert "<title>&lt;b&gt;x&lt;/script&gt; · Spine" in page and "<footer>&lt;b&gt;x" in page
     assert page.count("</script>") == 2
+
+
+def test_wide_sleeves_lower_only_part_way() -> None:
+    joints = {"elbow_l": (300.0, 160.0), "wrist_l": (400.0, 160.0), "hand_tip_l": (440.0, 160.0)}
+
+    def layers(sleeve: int) -> list[sp.Layer]:
+        fore = Image.new("RGBA", (100, sleeve), (0, 0, 255, 255))
+        hand = Image.new("RGBA", (40, 20), (250, 200, 160, 255))
+        return [sp.Layer("lower_arm_l", fore, (300, 150)), sp.Layer("hand_l", hand, (400, 150))]
+
+    assert sp.arm_drop(layers(24), joints) == 1.0
+    wide = sp.arm_drop(layers(120), joints)
+    assert sp.MIN_ARM_DROP <= wide < 0.6

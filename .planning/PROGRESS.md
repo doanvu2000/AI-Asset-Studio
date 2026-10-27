@@ -480,3 +480,21 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 - [x] Chủ nhân: "mặc định light theme" → `main/index.ts` `loadTheme` đặt `themeSource = 'light'` khi chưa có `ui.json`;
   `composables/theme.ts` ref mặc định `'light'`. Portable `userdata/` chưa có `ui.json` → bản build sau sẽ mở sáng.
   typecheck OK; dev:mock `prefers-color-scheme: dark` = false. Chưa commit, chưa build.
+- [x] Commit `4940c9a` (light theme mặc định). Đi trước origin 11 commit.
+- [ ] Ngưỡng QA sprite: DB Portable 112 version đều `draft` → chủ nhân chưa đánh dấu, chưa so được. Backlog NIGHT/ideas
+  đã xong (xem dòng trên). Còn chờ: build Portable, push, đánh dấu sprite.
+
+## Phiên 2026-10-27 16:xx — chủ nhân: "Spine R6 kìa làm đi" (đưa R6 ra khỏi R&D)
+- [x] 7 lượt thật `spine-character` (driver `scratchpad b257437f…/r6/spine_live.py`, data `r6/data` code cũ: girl/wizard/
+  goblin/rogue; `r6/data2` code mới: girl/wizard/knight), mỗi lượt 89–112 s, succeeded hết.
+- [x] Lỗi thấy ở code cũ → sửa (`ops/parts.py`, `ops/rig.py`, `ops/spine.py`):
+  1. Vá torso phình ra ngoài dáng ngực (giáp vai thành 2 "tai" xanh khi hạ tay) → `joint_fills` kẹp torso trong
+     `hull_mask`, chi kẹp trong ống quanh xương (`UNDER_WIDTH_SLACK` 1.2). Hiệp sĩ cũ: vùng vá torso 18152 → 4789 px.
+  2. Tóc dài / áo choàng sau tay T-pose rách ngang khi hạ tay → `behind_arms` (cột có cùng lớp head/cape/torso ở trên
+     và dưới đoạn tay, nối khe ≤ `BEHIND_GAP` 32 px) đưa vào vùng vá; `inpaint` thêm head, cape (2 recipe + default).
+  3. Mảnh vụn không lõi (cape pháp sư 1910/6578 px) trôi lơ lửng → `absorb_specks` gán sang lớp kề.
+  4. Tay áo rộng xoay thành "cánh" → `arm_drop` (cẳng tay dày > 3× bàn tay ⇒ hạ tay ×3/r, tối thiểu 0.4); pháp sư 0.52.
+  Ảnh: `r6/data2/out/*/view_*.png`, `r6/wiz2_re0.png`, `r6/cmp_holes.png`.
+- [x] Bỏ nhãn "(R&D)" / "(thử nghiệm)" ở 2 recipe Spine + art index + mock. Test mới 4 (`test_p5_rig.py`);
+  pytest 415 pass / 4 skip; typecheck OK. Chưa commit.
+- [ ] Còn nhỏ: mép tóc có bậc vuông ở ngang vai; vệt nối đầu gối khi chân nhích (walk); đầu nghiêng tách tóc trước/sau.
