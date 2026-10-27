@@ -31,6 +31,7 @@ withDefaults(defineProps<{ view: AssetView; compact?: boolean }>(), { compact: f
     :pixel="view.pixel"
     :normals="view.normals"
     :pixels="view.pixels"
+    :wang="view.wang"
     :compact="compact"
   />
   <TextViewer v-else-if="view.kind === 'text'" :blob="view.blob" />

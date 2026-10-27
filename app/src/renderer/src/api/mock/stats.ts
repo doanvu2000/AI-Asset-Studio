@@ -7,7 +7,7 @@ function num(v: unknown): number {
 }
 
 function costOf(meta: Record<string, unknown>): number {
-  const own = num(meta.cost_usd) + num(meta.claude_cost_usd) + num(meta.prior_cost_usd)
+  const own = num(meta.cost_usd) + num(meta.claude_cost_usd) + num(meta.prior_cost_usd) + num(meta.spent_live_usd)
   const items = Array.isArray(meta.items) ? meta.items : []
   return own + items.reduce<number>((a, it) => {
     if (!it || typeof it !== 'object' || Array.isArray(it)) return a

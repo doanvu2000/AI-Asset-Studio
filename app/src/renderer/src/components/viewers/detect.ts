@@ -24,6 +24,8 @@ export interface AssetView {
   /** Per-variant maps, index-aligned with `tiles` (missing entries fall back to the colour texture). */
   normals?: (BlobRef | undefined)[]
   pixels?: (BlobRef | undefined)[]
+  /** `tiles` are a 16-tile corner Wang set (`wang_<nn>_<NW NE SW SE>`), previewed as a random valid arrangement. */
+  wang?: boolean
 }
 
 export const VIEW_LABEL: Record<ViewKind, string> = {
@@ -80,11 +82,49 @@ const isTileReport = (b: BlobRef): boolean => isJson(b) && stem(b) === 'tile_che
 // Main textures only: op.tile_resize names the extra sizes `<stem>_<px>`.
 const isTileMain = (b: BlobRef): boolean => isTileImage(b) && /(^|_)seamless$/.test(stem(b)) && !isNormalBlob(b)
 
+// op.tile_wang names its tiles `wang_<index>_<corner labels a|b in NW NE SW SE order>`.
+const WANG_TILE = /^wang_(\d{2})_([ab]{4})$/
+export const isWangTile = (b: BlobRef): boolean => isImage(b) && WANG_TILE.test(stem(b))
+/** Corner bits (NW=8, NE=4, SW=2, SE=1, b = 1) of a Wang tile, or -1. */
+export function wangIndex(b: BlobRef): number {
+  const m = WANG_TILE.exec(stem(b))
+  if (!m) return -1
+  return [...m[2]!].reduce((acc, c) => acc * 2 + (c === 'b' ? 1 : 0), 0)
+}
+
 // op.tile_normal / op.tile_pixel name their maps `<stem>_normal` / `<stem>_pixel`, so each variant finds its own.
 const mapOf = (t: BlobRef, all: BlobRef[], suffix: string): BlobRef | undefined =>
   all.find((b) => isImage(b) && stem(b) === `${stem(t)}_${suffix}`)
 
+/** The 16-tile Wang set `blob` belongs to (else the last complete one). A retried step leaves several sets among the
+ * siblings; each step lists its tiles in index order, so a set ends where the index stops rising. */
+function wangSet(blob: BlobRef | null, all: BlobRef[]): BlobRef[] | null {
+  const groups: BlobRef[][] = []
+  for (const b of all.filter(isWangTile)) {
+    const g = groups[groups.length - 1]
+    if (g && wangIndex(b) > wangIndex(g[g.length - 1]!)) g.push(b)
+    else groups.push([b])
+  }
+  const full = groups.filter((g) => g.length === 16)
+  return (blob && full.find((g) => g.some((b) => b.hash === blob.hash))) ?? full[full.length - 1] ?? null
+}
+
+function wangView(blob: BlobRef, all: BlobRef[]): AssetView {
+  const tiles = wangSet(blob, all) ?? [blob]
+  const normals = tiles.map((t) => mapOf(t, all, 'normal'))
+  const report = all.find(isTileReport)
+  return {
+    kind: 'tile',
+    blob,
+    tiles,
+    wang: true,
+    ...(report ? { report } : {}),
+    ...(normals.some((n) => n) ? { normal: normals.find((n) => n), normals } : {})
+  }
+}
+
 function tileView(blob: BlobRef, all: BlobRef[]): AssetView {
+  if (isWangTile(blob) && wangSet(blob, all)) return wangView(blob, all)
   const main = all.filter(isTileMain)
   const tiles = isTileMain(blob) ? [blob, ...main.filter((b) => b.hash !== blob.hash)] : [blob]
   const normals = isTileMain(blob) ? tiles.map((t) => mapOf(t, all, 'normal')) : []
@@ -144,7 +184,7 @@ export function viewsFor(blob: BlobRef, siblings: BlobRef[] = []): AssetView[] {
 
   if (spine && (inSpine || blob.mime === 'text/html')) out.push({ kind: 'spine', blob, spine })
   if (pair && inSprite) out.push({ kind: 'sprite', blob, ...pair })
-  if (isTileImage(blob)) out.push(tileView(blob, all))
+  if (isTileImage(blob) || isWangTile(blob)) out.push(tileView(blob, all))
   if (isImage(blob)) out.push({ kind: 'image', blob })
   if (isTextual(blob)) out.push({ kind: 'text', blob })
   if (!out.length) out.push({ kind: 'file', blob })
@@ -167,7 +207,7 @@ export function featuredAsset(blobs: BlobRef[]): AssetView | null {
   const normal = all.find(isNormalSheet)
   const nmeta = all.find(isNormalMeta)
   if (normal && nmeta) return { kind: 'sprite', blob: normal, sheet: normal, meta: nmeta }
-  const tile = all.find(isTileMain)
+  const tile = wangSet(null, all)?.[0] ?? all.find(isTileMain)
   if (tile && all.some(isTileReport)) return tileView(tile, all)
   return null
 }

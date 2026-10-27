@@ -203,6 +203,7 @@ export interface RecipeInputSpec {
   options?: Array<string | number>
   help?: string
   required?: boolean
+  multiline?: boolean
 }
 
 export interface RecipeStepInfo {

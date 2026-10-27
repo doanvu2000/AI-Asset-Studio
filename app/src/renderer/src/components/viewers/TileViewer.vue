@@ -5,6 +5,7 @@ import type { BlobRef } from '@/api/types'
 import { blobUrl } from '@/stores/connection'
 import TweenNumber from '@/components/TweenNumber.vue'
 import { blobJson } from './fetchBlob'
+import { wangIndex } from './detect'
 
 interface TileReport {
   score?: number
@@ -24,22 +25,29 @@ const props = withDefaults(
     normals?: (BlobRef | undefined)[]
     pixels?: (BlobRef | undefined)[]
     compact?: boolean
+    wang?: boolean
   }>(),
-  { tiles: () => [], report: undefined, normal: undefined, pixel: undefined, normals: () => [], pixels: () => [], compact: false }
+  { tiles: () => [], report: undefined, normal: undefined, pixel: undefined, normals: () => [], pixels: () => [], compact: false, wang: false }
 )
 
 type MapKind = 'color' | 'normal' | 'pixel'
 const REPEATS = [1, 3, 5] as const
-const repeat = ref<(typeof REPEATS)[number]>(3)
+const repeat = ref<(typeof REPEATS)[number]>(props.wang ? 5 : 3)
 const map = ref<MapKind>('color')
 const mix = ref(true)
 const seams = ref(false)
+watch(
+  () => props.wang,
+  (w) => (repeat.value = w ? 5 : 3)
+)
 
 const variants = computed(() => (props.tiles.length ? props.tiles : [props.blob]))
 const shown = computed<BlobRef[]>(() => {
   const per = map.value === 'normal' ? props.normals : map.value === 'pixel' ? props.pixels : null
   const one = map.value === 'normal' ? props.normal : map.value === 'pixel' ? props.pixel : undefined
   if (!per) return variants.value
+  // Wang cells are looked up by position, so the list must stay index-aligned: a missing map shows the colour tile.
+  if (props.wang) return variants.value.map((t, i) => per[i] ?? t)
   const list = variants.value.map((_, i) => per[i] ?? (i === 0 ? one : undefined)).filter((b): b is BlobRef => !!b)
   return list.length ? list : one ? [one] : variants.value
 })
@@ -48,16 +56,24 @@ const aspect = computed(() => {
   const b = shown.value[0]
   return b?.width && b?.height ? b.width / b.height : 1
 })
-const mixing = computed(() => mix.value && shown.value.length > 1)
+const mixing = computed(() => props.wang || (mix.value && shown.value.length > 1))
 const crisp = computed(() => map.value === 'pixel' || Math.max(shown.value[0]?.width ?? 999, shown.value[0]?.height ?? 999) <= 128)
 
+const hash = (x: number, y: number, seed = 0): number => Math.imul((x * 73856093) ^ (y * 19349663) ^ (seed * 83492791), 2654435761) >>> 0
+// Wang: a random a/b label per grid corner, each cell the tile whose corners match, so the preview is always valid.
+const wangSeed = ref(1)
+const wangPos = computed(() => new Map(variants.value.map((t, i) => [wangIndex(t), i])))
+const wangCell = (x: number, y: number): BlobRef => {
+  const c = (cx: number, cy: number): number => (hash(cx, cy, wangSeed.value) >>> 7) & 1
+  const k = (c(x, y) << 3) | (c(x + 1, y) << 2) | (c(x, y + 1) << 1) | c(x + 1, y + 1)
+  return shown.value[wangPos.value.get(k) ?? 0] ?? shown.value[0]!
+}
 // Fixed pseudo-random pick per cell, so toggling the grid size does not reshuffle the cells already on screen.
 const cells = computed(() =>
   Array.from({ length: repeat.value * repeat.value }, (_, i) => {
     const x = i % repeat.value
     const y = Math.floor(i / repeat.value)
-    const h = Math.imul(x * 73856093 ^ y * 19349663, 2654435761) >>> 0
-    return shown.value[h % shown.value.length]!
+    return props.wang ? wangCell(x, y) : shown.value[hash(x, y) % shown.value.length]!
   })
 )
 const fieldStyle = computed(() => ({
@@ -87,7 +103,8 @@ const ISSUE_LABEL: Record<string, string> = {
   seam: 'Lộ mối nối ở mép',
   gradient: 'Sáng tối lệch một phía',
   repetition: 'Có mảng lớn dễ thấy lặp',
-  duplicate: 'Ảnh lặp lại chính nó trong một ô'
+  duplicate: 'Ảnh lặp lại chính nó trong một ô',
+  self_repeat: 'Hoạ tiết lớn tự lặp lại (lát sẽ lộ)'
 }
 const entry = computed(() => report.value?.textures?.find((t) => t.hash === props.blob.hash) ?? null)
 const score = computed(() => entry.value?.score ?? report.value?.score ?? null)
@@ -113,7 +130,8 @@ const tone = computed(() => (score.value === null ? '' : score.value >= 85 ? 'go
 
     <div class="vw-chip vw-glass num">
       <span v-if="blob.width"><b>{{ blob.width }}×{{ blob.height }}</b> px</span>
-      <span v-if="variants.length > 1"><b>{{ variants.length }}</b> biến thể</span>
+      <span v-if="wang"><b>16</b> ô Wang</span>
+      <span v-else-if="variants.length > 1"><b>{{ variants.length }}</b> biến thể</span>
       <span v-if="score !== null" class="score" :class="tone" :title="report?.seam_score != null ? `Mối nối: ${report.seam_score}` : undefined">
         <CircleCheck v-if="tone === 'good'" :size="13" />
         <TriangleAlert v-else :size="13" />
@@ -140,7 +158,10 @@ const tone = computed(() => (score.value === null ? '' : score.value >= 85 ? 'go
       <button class="vw-btn" :aria-pressed="seams" title="Hiện ranh giới ô để soi mối nối" aria-label="Ranh giới ô" @click="seams = !seams">
         <ScanLine /><span v-if="!compact">Ranh giới</span>
       </button>
-      <button v-if="variants.length > 1" class="vw-btn" :aria-pressed="mix" title="Trộn các biến thể khi lát" aria-label="Trộn biến thể" @click="mix = !mix">
+      <button v-if="wang" class="vw-btn" title="Xếp ngẫu nhiên kiểu khác (luôn khớp nhãn góc)" aria-label="Xếp lại ngẫu nhiên" @click="wangSeed++">
+        <Shuffle /><span v-if="!compact">Xếp lại</span>
+      </button>
+      <button v-else-if="variants.length > 1" class="vw-btn" :aria-pressed="mix" title="Trộn các biến thể khi lát" aria-label="Trộn biến thể" @click="mix = !mix">
         <Shuffle /><span v-if="!compact">Trộn</span>
       </button>
       <template v-if="normal || pixel">

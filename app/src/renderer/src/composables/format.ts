@@ -180,6 +180,7 @@ const KIND_SHORT: Record<string, string> = {
   'op.tile_resize': 'Đổi cỡ texture',
   'op.tile_normal': 'Normal map',
   'op.tile_pixel': 'Pixel art texture',
+  'op.tile_wang': 'Bộ Wang 16 ô',
   'op.tile_check': 'Chấm điểm mối nối',
   'comfy.t2i_zimage_turbo': 'Sinh ảnh',
   'comfy.t2i_zimage_controlnet': 'Sinh ảnh theo khung',

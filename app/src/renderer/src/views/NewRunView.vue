@@ -254,6 +254,23 @@ function validate(name: string, spec: RecipeInputSpec): boolean {
   return !errors[name]
 }
 
+// tileset-seamless: Wang mixes the first image of prompt line 1 with line 2 (or two variants of one line); edge mode
+// only uses line 1. Checked here because the recipe would only fail after the GPU generation.
+const wangRecipe = computed(() => !!selected.value?.inputs.mode?.options?.includes('wang'))
+const promptLines = computed(() => String(values.prompt ?? '').split('\n').filter((l) => l.trim()).length)
+const wangBlock = computed<string | null>(() => {
+  if (!wangRecipe.value || values.mode !== 'wang' || Number(values.count ?? 1) >= 2) return null
+  if (mode.value === 'batch' && varying.value === 'prompt') return 'Wang chạy nhiều lượt: mỗi lượt 1 dòng, cần số ảnh ≥ 2'
+  return promptLines.value < 2 ? 'Wang cần 2 dòng vật liệu, hoặc số ảnh mỗi vật liệu ≥ 2' : null
+})
+const tilesetHint = computed<string | null>(() => {
+  if (!wangRecipe.value || mode.value === 'batch') return null
+  if (values.mode !== 'wang' && promptLines.value > 1) return 'Kiểu edge chỉ dùng dòng 1; dòng sau vẫn được sinh ảnh nhưng bỏ qua.'
+  if (values.mode === 'wang' && Number(values.count ?? 1) > 1)
+    return 'Wang lấy ảnh liền mạch tốt nhất của mỗi dòng, các ảnh còn lại chỉ để chọn.'
+  return null
+})
+
 // Why the run button is disabled, said next to it instead of a silently dimmed button.
 const blockReason = computed<string | null>(() => {
   if (!conn.transport) return 'Đang chờ kết nối tới core'
@@ -268,7 +285,7 @@ const blockReason = computed<string | null>(() => {
   if (missingFiles.length) return `Cần thêm: ${missingFiles.join(', ')}`
   const emptyText = fields.value.find(([n, s]) => s.type === 'text' && errorFor(n, s))
   if (emptyText) return `Nhập ${label(emptyText[0], emptyText[1]).toLowerCase()} để chạy`
-  return null
+  return wangBlock.value
 })
 
 function collectInputs(): Record<string, unknown> {
@@ -582,6 +599,7 @@ ${r.description}`" @click="pick(r.id)">
                 :model-value="String(values[name] ?? '')"
                 :subjects="quickSubjects"
                 :hide-styles="!!quickSubjects"
+                :batch="!!spec.multiline && !!quickSubjects"
                 @update:model-value="(v) => ((values[name] = v), validate(name, spec))"
               />
               <textarea
@@ -595,6 +613,7 @@ ${r.description}`" @click="pick(r.id)">
                 @input="values[name] = ($event.target as HTMLTextAreaElement).value"
                 @blur="validate(name, spec)"
               />
+              <p v-if="name === 'prompt' && tilesetHint" class="caption">{{ tilesetHint }}</p>
               <div v-if="spec.type === 'text' && translatable && hasVi(values[name])" class="vi-row">
                 <span class="caption">Model ảnh hiểu tiếng Anh tốt hơn — sẽ tự dịch khi chạy.</span>
                 <button type="button" class="btn btn-plain small" :disabled="!!translating" @click="translateField(name)">
