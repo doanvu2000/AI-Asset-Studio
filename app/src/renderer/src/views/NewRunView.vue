@@ -255,7 +255,7 @@ function validate(name: string, spec: RecipeInputSpec): boolean {
 }
 
 // tileset-seamless: Wang mixes the first image of prompt line 1 with line 2 (or two variants of one line); edge mode
-// only uses line 1. Checked here because the recipe would only fail after the GPU generation.
+// only uses line 1. The recipe's `rules` enforce the same in core; checked here too so the button says why.
 const wangRecipe = computed(() => !!selected.value?.inputs.mode?.options?.includes('wang'))
 const promptLines = computed(() => String(values.prompt ?? '').split('\n').filter((l) => l.trim()).length)
 const wangBlock = computed<string | null>(() => {
@@ -265,7 +265,8 @@ const wangBlock = computed<string | null>(() => {
 })
 const tilesetHint = computed<string | null>(() => {
   if (!wangRecipe.value || mode.value === 'batch') return null
-  if (values.mode !== 'wang' && promptLines.value > 1) return 'Kiểu edge chỉ dùng dòng 1; dòng sau vẫn được sinh ảnh nhưng bỏ qua.'
+  if (values.mode !== 'wang' && promptLines.value > 1) return 'Kiểu edge chỉ dùng dòng 1; các dòng sau bị bỏ, không sinh ảnh.'
+  if (values.mode === 'wang' && promptLines.value > 2) return 'Wang chỉ dùng 2 dòng đầu; dòng 3 trở đi bị bỏ.'
   if (values.mode === 'wang' && Number(values.count ?? 1) > 1)
     return 'Wang lấy ảnh liền mạch tốt nhất của mỗi dòng, các ảnh còn lại chỉ để chọn.'
   return null
