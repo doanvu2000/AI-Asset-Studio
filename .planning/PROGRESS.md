@@ -415,3 +415,13 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 - [x] Kiểm cuối: pytest 394 pass / 4 skip; vue-tsc web 0, tsc node 0. 25 file thay đổi, CHƯA commit/build (chờ chủ nhân).
 - [x] Commit 609701c/ba65230/ff2c402 pushed; build + smoke OK; Portable 10:19. Handoff mới: `.planning/HANDOFF-2026-10-27-1020.md`
 - [x] Xoá thư mục asset test: godot-test (Live, W6Knight, W18Grass, W18Stone, W20Meadow), unity-test-batch/Assets (+ Ref, .meta). Giữ script kiểm *_check.gd, Editor/*.cs.
+
+## Phiên 2026-10-27 chiều (sau HANDOFF-1020) — "việc còn mở"; chưa có quyền commit/build
+- [x] Recipe `rules:` (engine/recipe.py `_parse_rules`/`apply_rules`, chạy trong `coerce_inputs` → app/API/MCP đều qua):
+  `min_items` (dòng × count ≥ N) + `max_lines` (cắt dòng thừa). tileset-seamless: Wang 1 dòng + count 1 bị từ chối trước GPU;
+  edge chỉ giữ dòng 1, Wang giữ 2 dòng → không sinh ảnh thừa. App NewRun đổi câu gợi ý.
+- [x] Gạch so le: `wrap_overlap` lọc đỉnh theo tương quan high-pass vuông góc (`CROSS_KEEP` 0.6) → trục y chọn số hàng chẵn
+  (trước 2/6 ca lẻ, mạch đứng lệch nửa viên ở mép); `_worst_seam` dùng p99 (1024px running bond trước bị fallback plain).
+  Test `test_running_bond_wraps_whole_bricks_and_an_even_course_count`, `test_tileset_rules_*`, `test_bad_rules_are_rejected`.
+- [x] `uv run pytest -q` → 403 pass / 4 skip. Chưa commit, chưa build.
+- [ ] Còn: cape 45° (cần Blender live), chu kỳ yếu + QA ngưỡng (cần ảnh thật).
