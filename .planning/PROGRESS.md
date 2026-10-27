@@ -545,3 +545,26 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   mảng áo nhọn khi hạ tay. Lỗi do prompt bắt tay cầm đồ trước mặt, chưa sửa (giới hạn đã biết). Ảnh `r7/v2_*.png`.
 - [ ] Chờ chủ nhân: commit `core: spine walks keep gowns whole; coat skirts in the arm mask go to the cape`
   (`ops/spine.py`, `ops/parts.py`, `tests/test_p5_rig.py`, `.planning/PROGRESS.md`).
+- [x] Commit `bd00a14` (gown stride + coat tails) theo lệnh chủ nhân.
+- [x] Detective: cả 8 concept của 2 lượt đều vẽ thêm "tay thứ 3" cầm kính lúp (lỗi của Z-image khi prompt có "holding X"
+  đi cùng T-pose). Chọn tay ảnh 2 (kính lúp trên mặt, tay sạch) thì rig ổn, trừ đai cổ tay áo phải bị SAM gán `torso`
+  → đứng yên lơ lửng. Sửa `_claim_sleeves`: bề ngang torso chỉ tính các cột torso cao ≥ 25% cột cao nhất
+  (`TORSO_CORE_COL`). So HEAD↔mới trên 25 lượt (`r7/cmp_head.py`): đổi ở detective/pirate/samurai…, dựng lại xem ổn.
+  Test `test_cuff_strap_segmented_as_torso_joins_the_arm` (fail khi chưa sửa).
+- [x] Archer (cung chắn ngang thân): cung vỡ làm đôi (phần theo tay, phần đứng yên). Thêm vai `prop`: SAM prompt thứ 7
+  "weapon:2, bow, staff, sword, shield, wand" (chỉ `spine-character`, chưa sửa `-mv`); `ROLE_PRIORITY` prop sau arm;
+  `parts._attach_props`: tràn từ chỗ prop chạm tay → `prop_l`/`prop_r`, phần không chạm tay trả lại lớp kề;
+  `spine.PART_BONE` prop_* → hand_*; vẽ sau cùng (ngoài DRAW_ORDER). Test +1. pytest 426 pass / 4 skip.
+  Build Portable 20:48. Chưa commit.
+- [x] Lượt `r7/data4` (bản 20:48) lộ lỗi prompt prop: "staff" khớp cả người (nghĩa nhân sự); nhân vật không vũ khí
+  SAM trả mask cả người (girl fail `parts_missing`); "shield" khớp giáp ngực knight. Thử SAM trực tiếp
+  (`r7/samtry.py`, ComfyUI 8188): prompt mới "weapon:2, bow, arrow, sword, axe, spear, wand"; `PROP_MAX_OF_FIGURE`
+  0.35 (mask prop > 35% hình → bỏ); prop ưu tiên thấp nhất (sau cape) → pixel trong mask thân giữ cho thân. Dựng lại
+  offline (`r7/re_prop.py`): archer cung theo tay phải (mũi tên chia 2 nửa theo 2 tay), knight kiếm theo tay, giáp
+  liền. Test +1; pytest 427 pass / 4 skip. Build Portable 20:57.
+- [x] Lượt Portable `r7/data5` (bản 20:57, 106–117 s, problems [] cả 3): knight kiếm `prop_r` theo tay, giáp liền;
+  girl không vũ khí đúng như cũ (mask cả người bị bỏ); druid gậy vắt trước áo đi liền theo tay. Ảnh `r7/v_data5_*.png`.
+- [ ] Chờ chủ nhân: commit `core: spine rigs carry held weapons on the hand; cuff straps in the torso join the arm`
+  (`ops/parts.py`, `ops/spine.py`, `recipes/spine-character.yaml`, `tests/test_p5_rig.py`, `.planning/PROGRESS.md`).
+- [ ] Tiếp: thêm prop cho `spine-character-mv` (mặt sau ghép theo tên lớp — cần kiểm); concept hay vẽ "tay thứ 3" khi
+  prompt có "holding X" (chỉ né được bằng chọn ảnh ở gate).

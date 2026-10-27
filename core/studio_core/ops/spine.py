@@ -35,7 +35,8 @@ BONES: tuple[tuple[str, str | None, str, str, float], ...] = (
     *((f"foot_{s}", f"shin_{s}", f"ankle_{s}", f"foot_tip_{s}", 1.0) for s in "lr"),
 )
 # Pauldron layers share the clavicle bone names, but no clip rotates clavicles; they must ride the upper arm.
-PART_BONE = {"cape": "torso", "shoulder_l": "upper_arm_l", "shoulder_r": "upper_arm_r"}
+PART_BONE = {"cape": "torso", "shoulder_l": "upper_arm_l", "shoulder_r": "upper_arm_r",
+             "prop_l": "hand_l", "prop_r": "hand_r"}
 
 
 def _rot(deg: float) -> np.ndarray:

@@ -8,9 +8,9 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-BODY_ROLES = ("head", "torso", "arm", "hand", "leg", "cape")
+BODY_ROLES = ("head", "torso", "arm", "hand", "leg", "cape", "prop")
 # Overlapping SAM masks resolve to the earlier role; "hand" only hints the wrist and merges into the arm chain.
-ROLE_PRIORITY = ("head", "hand", "arm", "leg", "foot", "torso", "cape")
+ROLE_PRIORITY = ("head", "hand", "arm", "leg", "foot", "torso", "cape", "prop")
 REQUIRED = ("head", "torso", "arm_l", "arm_r", "leg_l", "leg_r")
 SIDES = ("l", "r")
 
@@ -20,6 +20,7 @@ ARM_ELBOW_OF_WRIST = 0.52
 LEG_ANKLE_T = 0.9
 LEG_KNEE_OF_ANKLE = 0.5
 SHOULDER_MIN_OF_HEAD_W = 0.75
+PROP_MAX_OF_FIGURE = 0.35
 
 JOINT_NAMES = ("head_top", "neck", "pelvis",
                "shoulder_l", "elbow_l", "wrist_l", "hand_tip_l", "shoulder_r", "elbow_r", "wrist_r", "hand_tip_r",
@@ -166,6 +167,9 @@ def partition(alpha: np.ndarray, masks: dict[str, np.ndarray]) -> Partition:
     if solid.sum() < 64:
         raise PartsError("parts_empty", "the character image has no opaque pixels")
     seeds = {r: m & sil for r, m in masks.items() if m is not None}
+    # With nothing to find, SAM answers a weapon prompt with the whole character.
+    if "prop" in seeds and seeds["prop"].sum() > PROP_MAX_OF_FIGURE * sil.sum():
+        seeds["prop"] = np.zeros_like(sil)
     torso = seeds.get("torso")
     center = _centroid(torso) if torso is not None and torso.any() else None
     center_x = center[0] if center else _centroid(solid)[0]  # type: ignore[index]
@@ -207,6 +211,8 @@ def partition(alpha: np.ndarray, masks: dict[str, np.ndarray]) -> Partition:
         labels = grow_labels(labels, sil)
     _claim_sleeves(labels, names)
     _shed_coat_tails(labels, names, center, center_x)
+    if _attach_props(labels, names):
+        labels = grow_labels(labels, sil)
 
     part = Partition(labels, names, {}, center_x)
     hand = seeds.get("hand")
@@ -237,6 +243,9 @@ def _drop_stray_arms(labels: np.ndarray, names: list[str], torso_center: Point |
     return changed
 
 
+TORSO_CORE_COL = 0.25
+
+
 def _claim_sleeves(labels: np.ndarray, names: list[str]) -> None:
     """Wide sleeves often come back from SAM as cape or torso. Body-part pixels outside the torso's width at arm
     height that touch the arm and end above the waist are a sleeve, so they join the arm; a cape that falls
@@ -248,6 +257,9 @@ def _claim_sleeves(labels: np.ndarray, names: list[str]) -> None:
     if not len(tys):
         return
     waist = int(tys[-1])
+    # A cuff or strap SAM put in the torso would otherwise stretch the torso's width out along the arm.
+    col_h = torso.sum(axis=0)
+    core_cols = col_h >= TORSO_CORE_COL * col_h.max()
     body = [names.index(n) + 1 for n in ("torso", "cape") if n in names]
     cols = np.arange(labels.shape[1])[None, :]
     for side in SIDES:
@@ -258,7 +270,7 @@ def _claim_sleeves(labels: np.ndarray, names: list[str]) -> None:
         rows = np.nonzero(arm.any(axis=1))[0]
         if not len(rows):
             continue
-        txs = np.nonzero(torso[rows[0]:rows[-1] + 1].any(axis=0))[0]
+        txs = np.nonzero(torso[rows[0]:rows[-1] + 1].any(axis=0) & core_cols)[0]
         if not len(txs):
             continue
         outside = cols > txs[-1] if np.nonzero(arm)[1].mean() > txs.mean() else cols < txs[0]
@@ -269,6 +281,29 @@ def _claim_sleeves(labels: np.ndarray, names: list[str]) -> None:
         sleeve = grow_labels(touch.astype(np.int16), cand) > 0
         if np.nonzero(sleeve.any(axis=1))[0][-1] < waist:
             labels[sleeve] = names.index(name) + 1
+
+
+def _attach_props(labels: np.ndarray, names: list[str]) -> bool:
+    """A held weapon or tool becomes `prop_l` / `prop_r` after the hand it touches, so it rides that hand; prop
+    pixels that touch no hand (a sheathed sword, a quiver) are unlabeled for the body around them to take."""
+    if "prop" not in names:
+        return False
+    i = names.index("prop")
+    prop = labels == i + 1
+    names[i] = "prop_r"
+    if not prop.any():
+        return False
+    seeds = np.zeros(labels.shape, np.int16)
+    for k, side in enumerate(SIDES, 1):
+        if f"arm_{side}" in names:
+            seeds[_boundary(prop, labels == names.index(f"arm_{side}") + 1)] = k
+    held = grow_labels(seeds, prop)
+    labels[prop] = 0
+    if (held == 1).any():
+        names.append("prop_l")
+        labels[held == 1] = len(names)
+    labels[held == 2] = i + 1
+    return True
 
 
 ARM_OUTER_REACH = 0.6

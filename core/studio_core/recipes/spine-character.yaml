@@ -24,12 +24,12 @@ steps:
     in: {image: pick.images}
     map_param: "3.text"
     params:
-      "3.text": ["head, hair", "torso, skirt, belt", "arm:2, glove:2, shoulder:2", "hand:2", "leg:2, boot:2, shoe:2", "cape, cloak"]
+      "3.text": ["head, hair", "torso, skirt, belt", "arm:2, glove:2, shoulder:2", "hand:2", "leg:2, boot:2, shoe:2", "cape, cloak", "weapon:2, bow, arrow, sword, axe, spear, wand"]
       "4.threshold": 0.35
   - id: parts
     kind: op.parts
     in: {image: rmbg.images, masks: segment.images}
-    params: {roles: [head, torso, arm, hand, leg, cape]}
+    params: {roles: [head, torso, arm, hand, leg, cape, prop]}
   - id: bones
     kind: claude.task
     in: {images: [rmbg.images, parts.preview]}

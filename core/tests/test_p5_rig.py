@@ -438,3 +438,41 @@ def test_coat_skirt_in_the_arm_mask_goes_to_the_cape_only_past_the_torso_center(
     want = meta["names"].index("cape" if coat else "arm_r") + 1
     assert (lab == want).mean() > 0.9
     assert meta["joints"]["shoulder_r"][1] < 185
+
+
+def test_cuff_strap_segmented_as_torso_joins_the_arm() -> None:
+    img, masks = figure()
+    torso = masks[1].copy()
+    ImageDraw.Draw(torso).rectangle((70, 150, 78, 180), fill=255)
+    masks[1] = torso
+    meta, labels, _ = rig.run_parts(img, masks, rig.DEFAULT_ROLES)
+    assert (np.asarray(labels)[155:176, 71:78] == meta["names"].index("arm_r") + 1).all()
+
+
+def test_held_prop_rides_its_hand_and_a_sheathed_one_stays_on_the_body() -> None:
+    img, masks = figure()
+    d = ImageDraw.Draw(img)
+    d.rectangle((46, 184, 54, 330), fill=(110, 70, 30, 255))
+    d.rectangle((280, 230, 290, 260), fill=(110, 70, 30, 255))
+    prop = Image.new("L", (W, H), 0)
+    pd = ImageDraw.Draw(prop)
+    pd.rectangle((46, 186, 54, 330), fill=255)
+    pd.rectangle((280, 230, 290, 260), fill=255)
+    meta, labels, _ = rig.run_parts(img, masks + [prop], rig.DEFAULT_ROLES + ["prop"])
+    lab = np.asarray(labels)
+    names = meta["names"]
+    assert (lab[200:320, 47:54] == names.index("prop_r") + 1).all()
+    assert "prop_l" not in names
+    assert (lab[235:255, 282:289] == names.index("torso") + 1).all()
+    layers_meta, crops, _, _ = rig.run_layers(img, labels, meta, None, {"fill": False})
+    layers = [sp.Layer(e["name"], c, tuple(e["offset"])) for c, e in zip(crops, layers_meta["parts"])]
+    doc, _ = sp.build_skeleton(layers, {k: tuple(v) for k, v in layers_meta["joints"].items()},
+                               tuple(layers_meta["origin"]), "t", with_animations=False)
+    assert {s["name"]: s["bone"] for s in doc["slots"]}["prop_r"] == "hand_r"
+
+
+def test_a_weapon_mask_covering_the_whole_figure_is_ignored() -> None:
+    img, masks = figure()
+    everything = Image.fromarray(((np.asarray(img)[..., 3] > 0) * 255).astype(np.uint8), "L")
+    meta, _, _ = rig.run_parts(img, masks + [everything], rig.DEFAULT_ROLES + ["prop"])
+    assert meta["areas"].get("prop_r", 0) == 0 and meta["areas"]["torso"] > 5000
