@@ -179,7 +179,39 @@ def head_swing(layers: list[Layer], joints: dict[str, Point]) -> float:
     return 1.0 if r <= LONG_HAIR else max(MIN_HEAD_SWING, LONG_HAIR / r)
 
 
-def animations(bones: list[Bone], height: float, drop: float = 1.0, swing: float = 1.0) -> dict[str, Any]:
+JOINED_LEGS = 0.4
+
+
+def leg_stride(layers: list[Layer]) -> float:
+    """0 when the two legs meet along a long seam (a gown or robe split down the middle by segmentation):
+    lifting one side would tear the cloth apart, so the walk keeps only the body bob."""
+    by = {l.name: l for l in layers}
+    sides = {s: [by[f"{p}_{s}"] for p in ("thigh", "shin") if f"{p}_{s}" in by] for s in "lr"}
+    if not sides["l"] or not sides["r"]:
+        return 1.0
+    every = sides["l"] + sides["r"]
+    x0 = min(l.offset[0] for l in every)
+    y0 = min(l.offset[1] for l in every)
+    x1 = max(l.offset[0] + l.image.width for l in every)
+    y1 = max(l.offset[1] + l.image.height for l in every)
+    masks = {}
+    for s, ls in sides.items():
+        m = np.zeros((y1 - y0, x1 - x0), bool)
+        for l in ls:
+            a = np.asarray(l.image)[..., 3] > 0
+            ox, oy = l.offset[0] - x0, l.offset[1] - y0
+            m[oy:oy + a.shape[0], ox:ox + a.shape[1]] |= a
+        masks[s] = m
+    near = masks["r"].copy()
+    near[:, 1:] |= masks["r"][:, :-1]
+    near[:, :-1] |= masks["r"][:, 1:]
+    seam_rows = (masks["l"] & near).any(axis=1).sum()
+    height = (masks["l"] | masks["r"]).any(axis=1).sum()
+    return 0.0 if seam_rows > JOINED_LEGS * max(height, 1) else 1.0
+
+
+def animations(bones: list[Bone], height: float, drop: float = 1.0, swing: float = 1.0, stride: float = 1.0
+               ) -> dict[str, Any]:
     """Deterministic clips for a front-view rig: loops `idle`, `relax`, `walk`; one-shots `attack`, `hurt`, `jump`.
     Limb directions come from the setup pose (which image side each limb sits on), never from an assumed sign."""
     by = {b.name: b for b in bones}
@@ -256,8 +288,8 @@ def animations(bones: list[Bone], height: float, drop: float = 1.0, swing: float
     add("walk", "torso", "rotate", lambda u: 2.0 * wave(u), d, n)
     add("walk", "head", "rotate", lambda u: -1.5 * swing * wave(u), d, n)
     for s, ph in (("l", 0.0), ("r", math.pi)):
-        add("walk", f"thigh_{s}", "translate", lambda u, ph=ph: in_hip(0.0, 0.045 * h * max(0.0, wave(u, ph))), d, n)
-        add("walk", f"thigh_{s}", "rotate", lambda u, s=s, ph=ph: side[s] * 4.0 * max(0.0, wave(u, ph)), d, n)
+        add("walk", f"thigh_{s}", "translate", lambda u, ph=ph: in_hip(0.0, 0.045 * h * stride * max(0.0, wave(u, ph))), d, n)
+        add("walk", f"thigh_{s}", "rotate", lambda u, s=s, ph=ph: side[s] * 4.0 * stride * max(0.0, wave(u, ph)), d, n)
         add("walk", f"upper_arm_{s}", "rotate", lambda u, s=s, ph=ph: down(s, rest + 6.0 * wave(u, ph + math.pi)), d, n)
         add("walk", f"lower_arm_{s}", "rotate", lambda u, s=s: down(s, 8.0), d, n)
 
@@ -287,7 +319,7 @@ def animations(bones: list[Bone], height: float, drop: float = 1.0, swing: float
     for s in "lr":
         add("jump", f"upper_arm_{s}", "rotate", ease((0, down(s, rest)), (0.18, down(s, 75)), (0.5, down(s, -20)),
                                                      (0.82, down(s, rest)), (1, down(s, rest))), d, n)
-        add("jump", f"thigh_{s}", "rotate", ease((0, 0), (0.5, side[s] * 8), (0.82, 0), (1, 0)), d, n)
+        add("jump", f"thigh_{s}", "rotate", ease((0, 0), (0.5, side[s] * 8 * stride), (0.82, 0), (1, 0)), d, n)
 
     return {name: {"bones": tl} for name, tl in clips.items()}
 
@@ -337,7 +369,8 @@ def build_skeleton(layers: list[Layer], joints: dict[str, Point], origin: Point,
         "skins": [{"name": "default", "attachments": attachments}],
     }
     if with_animations:
-        anims = animations(bones, max(ys) - min(ys), arm_drop(layers, joints), head_swing(layers, joints))
+        anims = animations(bones, max(ys) - min(ys), arm_drop(layers, joints), head_swing(layers, joints),
+                           leg_stride(layers))
         if "hurt" in anims:
             flash = [{"time": 0, "color": "ffffffff"}, {"time": 0.08, "color": "ff7070ff"}, {"time": 0.3, "color": "ffffffff"}]
             anims["hurt"]["slots"] = {s["name"]: {"rgba": flash} for s in slots}

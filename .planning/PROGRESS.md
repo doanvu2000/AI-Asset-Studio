@@ -521,3 +521,27 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   eo giữ `cape`. Dựng lại 7 nhân vật: samurai tay 8860→36018 px, witch/knight/rogue không đổi. Test +2 (tham số).
 - [x] Lượt thật `r6/data6` (samurai 104 s, girl 102 s) với code mới: samurai tay áo theo tay, girl ủng đúng chỗ.
   Ảnh `r6/v6_*.png`. pytest 421 pass / 4 skip. Chưa commit.
+- [x] Commit + push `core: spine rigs take wide sleeves…`.
+- [x] Lượt thật `r6/data7` (princess/catgirl/barbarian, 95–105 s): catgirl ổn (đuôi theo đúng; dây áo đứt nhẹ ở attack).
+  Princess: váy dài bị SAM chia vào 2 chân → khung walk xé váy dọc. Sửa `spine.leg_stride` (lớp đùi+cẳng chân trái/phải
+  giáp nhau > 40% chiều cao chân ⇒ walk/jump không nhấc chân, chỉ nhún). 11 nhân vật: chỉ princess = 0. Dựng lại
+  offline (`r6/re_princess_v.png`) hết toác. Test +1; pytest 422 pass / 4 skip. Chưa commit.
+- [ ] Giới hạn đã biết (chưa sửa): khăn lông vai barbarian gán vào upper_arm, khớp vai nằm giữa khăn → phần trong vai
+  dựng lên khi hạ tay. Tách sang torso sẽ xẻ đôi giáp vai kim loại (hiệp sĩ) → để nguyên.
+
+## Phiên 2026-10-27 19:xx — chủ nhân: "check handoff + progress, tiếp tục, tự build lên test"
+- [x] pytest 422 pass / 4 skip. `npm run dist:core` + `dist:portable` OK; tắt process Portable, `update-portable.ps1`
+  (19:06), mở lại app. Portable giờ có leg_stride (chưa commit).
+- [~] Test bản build: 3 lượt `spine-character` chạy bằng `resources/core/studio-core.exe` của Portable
+  (driver `scratchpad edad5c82…/r7/portable_live.py`, data `r7/data`): princess / druid / pirate.
+- [x] Kết quả lượt Portable `r7/data`: princess (stride 0, váy liền), druid (áo choàng liền) đạt, problems [] cả 3.
+  Pirate hỏng: SAM gộp vạt áo khoác dài vào mask `arm` → vai auto rơi xuống vạt (y 648), vai Claude (y 290) bị loại vì
+  xa auto > 4×tol → hạ tay thì vạt áo xoè như cánh. Sửa `parts._shed_coat_tails` (sau `_claim_sleeves`): pixel tay
+  dưới phần vươn xa của tay (≥ 0.6 tầm với), chạm torso/cape/chân, đáy quá tâm thân → nhãn `cape` (không có → torso).
+  Dựng lại 21 mẫu cũ: chỉ pirate/goblin/catgirl đổi, cả 3 xem ảnh đều ổn (`r7/re_*_s.png`). Test +2 (tham số);
+  pytest 424 pass / 4 skip. Build Portable lại 19:17. Chưa commit.
+- [x] Lượt Portable `r7/data2` (bản 19:17, 100–109 s, problems [], mọi khớp claude): pirate hạ tay gọn, vạt áo đứng
+  yên; vampire (áo đuôi tôm) đạt. Detective: concept không T-pose (tay phải cầm kính lúp lên mặt) → vai phải lòi một
+  mảng áo nhọn khi hạ tay. Lỗi do prompt bắt tay cầm đồ trước mặt, chưa sửa (giới hạn đã biết). Ảnh `r7/v2_*.png`.
+- [ ] Chờ chủ nhân: commit `core: spine walks keep gowns whole; coat skirts in the arm mask go to the cape`
+  (`ops/spine.py`, `ops/parts.py`, `tests/test_p5_rig.py`, `.planning/PROGRESS.md`).

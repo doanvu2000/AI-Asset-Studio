@@ -206,6 +206,7 @@ def partition(alpha: np.ndarray, masks: dict[str, np.ndarray]) -> Partition:
     if _drop_stray_arms(labels, names, center):
         labels = grow_labels(labels, sil)
     _claim_sleeves(labels, names)
+    _shed_coat_tails(labels, names, center, center_x)
 
     part = Partition(labels, names, {}, center_x)
     hand = seeds.get("hand")
@@ -268,6 +269,36 @@ def _claim_sleeves(labels: np.ndarray, names: list[str]) -> None:
         sleeve = grow_labels(touch.astype(np.int16), cand) > 0
         if np.nonzero(sleeve.any(axis=1))[0][-1] < waist:
             labels[sleeve] = names.index(name) + 1
+
+
+ARM_OUTER_REACH = 0.6
+
+
+def _shed_coat_tails(labels: np.ndarray, names: list[str], torso_center: Point | None, center_x: float) -> None:
+    """SAM often takes a long coat's skirts as part of the sleeve. Arm pixels under the outstretched part of the
+    arm that lean on the body and hang past the torso center are coat, so they go to the cape (or torso)."""
+    if torso_center is None:
+        return
+    body = [names.index(n) + 1 for n in ("torso", "cape", "leg_l", "leg_r") if n in names]
+    target = names.index("cape" if "cape" in names else "torso") + 1
+    rows = np.arange(labels.shape[0])[:, None]
+    for side in SIDES:
+        name = f"arm_{side}"
+        if name not in names:
+            continue
+        arm = labels == names.index(name) + 1
+        ys, xs = np.nonzero(arm)
+        if not len(xs):
+            continue
+        reach = np.abs(xs - center_x)
+        outer = reach >= ARM_OUTER_REACH * reach.max()
+        low = arm & (rows > ys[outer].max())
+        touch = _boundary(low, np.isin(labels, body))
+        if not touch.any():
+            continue
+        tail = grow_labels(touch.astype(np.int16), low) > 0
+        if np.nonzero(tail.any(axis=1))[0][-1] > torso_center[1]:
+            labels[tail] = target
 
 
 def _shoulder(ch: Chain, arm: np.ndarray, neck: Point, min_dx: float) -> Point:

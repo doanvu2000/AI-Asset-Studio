@@ -413,3 +413,28 @@ def test_cape_hanging_off_an_arm_is_a_sleeve_only_above_the_waist(bottom: int, s
     lab = np.asarray(labels)[190:210, 160:200]
     want = meta["names"].index("arm_r" if sleeve else "cape") + 1
     assert (lab == want).mean() > 0.9
+
+
+def test_legs_split_out_of_a_gown_do_not_stride() -> None:
+    def leg(name: str, x: int, w: int) -> sp.Layer:
+        return sp.Layer(name, Image.new("RGBA", (w, 200), (90, 120, 200, 255)), (x, 300))
+
+    apart = [leg("thigh_r", 200, 40), leg("thigh_l", 260, 40)]
+    gown = [leg("thigh_r", 150, 100), leg("thigh_l", 250, 100)]
+    assert sp.leg_stride(apart) == 1.0
+    assert sp.leg_stride(gown) == 0.0
+
+
+
+@pytest.mark.parametrize("bottom,coat", [(290, True), (205, False)])
+def test_coat_skirt_in_the_arm_mask_goes_to_the_cape_only_past_the_torso_center(bottom: int, coat: bool) -> None:
+    img, masks = figure()
+    ImageDraw.Draw(img).rectangle((180, 180, 215, bottom), fill=(20, 20, 60, 255))
+    arms = masks[2].copy()
+    ImageDraw.Draw(arms).rectangle((180, 180, 215, bottom), fill=255)
+    masks[2] = arms
+    meta, labels, _ = rig.run_parts(img, masks, rig.DEFAULT_ROLES)
+    lab = np.asarray(labels)[185:200, 185:210]
+    want = meta["names"].index("cape" if coat else "arm_r") + 1
+    assert (lab == want).mean() > 0.9
+    assert meta["joints"]["shoulder_r"][1] < 185
