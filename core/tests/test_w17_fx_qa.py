@@ -298,6 +298,37 @@ async def test_qa_follows_lineage_not_sibling_fx(tmp_path: Path) -> None:
     assert ctx.shadow and (255, 255, 255) not in ctx.extra_colors
 
 
+async def test_seamless_texture_versions_are_scored_as_tiles(tmp_path: Path) -> None:
+    from studio_core.engine.qa import build_context, version_qa
+    from test_w18_tiles import plain_noise, tileable_noise
+
+    blobs = FakeBlobs(tmp_path)
+
+    async def put(img: Image.Image, name: str) -> BlobRef:
+        buf = io.BytesIO()
+        img.save(buf, "PNG")
+        return await blobs.put_bytes(buf.getvalue(), name=name, mime="image/png")
+
+    good = await put(tileable_noise(256, seed=1), "texture_seamless.png")
+    bad = await put(plain_noise(256, r=8, seed=2), "texture_seamless_512.png")
+    preview = await put(tileable_noise(256, seed=3), "tile_preview.png")
+    steps = [StepRow(id="a", run_id="r", key="seam", kind="op.seamless", lane=Lane.CPU, outputs={"images": [good]}),
+             StepRow(id="b", run_id="r", key="fit", kind="op.tile_resize", lane=Lane.CPU, deps=["seam"],
+                     outputs={"images": [bad]}),
+             StepRow(id="c", run_id="r", key="check", kind="op.tile_check", lane=Lane.CPU, deps=["fit"],
+                     outputs={"preview": [preview]}),
+             StepRow(id="d", run_id="r", key="approve", kind="gate.approve", lane=Lane.NONE, deps=["check"])]
+    qa_good = await version_qa(blobs, steps, steps[3], good)
+    qa_bad = await version_qa(blobs, steps, steps[3], bad)
+    assert qa_good["tile"] and qa_good["score"] >= 90 and not qa_good["issues"], qa_good
+    assert qa_bad["score"] < 70 and "Mối nối lộ khi lát" in qa_bad["issues"], qa_bad
+    assert (await version_qa(blobs, steps, steps[3], preview))["skipped"] == "opaque"
+    wang = [*steps[:1], StepRow(id="w", run_id="r", key="wang", kind="op.tile_wang", lane=Lane.CPU, deps=["seam"]),
+            StepRow(id="b", run_id="r", key="fit", kind="op.tile_resize", lane=Lane.CPU, deps=["wang"],
+                    outputs={"images": [bad]})]
+    assert not (await build_context(blobs, wang, wang[2], bad)).tile
+
+
 async def test_recompute_reaches_old_unscored_and_keeps_scores(client) -> None:
     app, c = client
     repo = app.state.repo

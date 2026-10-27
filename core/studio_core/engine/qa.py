@@ -13,14 +13,21 @@ from PIL import Image
 
 from ..contracts import BlobRef, BlobStore, StepRow
 from ..ops.fx import FxParams, fx_colors
+from ..ops.tile import tile_report
 
 log = logging.getLogger(__name__)
 
-QA_VERSION = 1
+QA_VERSION = 2
 SOLID, VISIBLE = 128, 16
 LABELS = {"alpha": "Độ sạch alpha", "framing": "Khung hình", "empty": "Khung rỗng",
-          "consistency": "Nhất quán các hướng", "palette": "Bảng màu"}
-WEIGHTS = {"alpha": 25, "framing": 25, "empty": 20, "consistency": 20, "palette": 10}
+          "consistency": "Nhất quán các hướng", "palette": "Bảng màu",
+          "seam": "Mối nối", "gradient": "Độ đều sáng", "repetition": "Mảng lặp lớn", "duplicate": "Ảnh nhân đôi"}
+WEIGHTS = {"alpha": 25, "framing": 25, "empty": 20, "consistency": 20, "palette": 10,
+           "seam": 50, "gradient": 20, "repetition": 15, "duplicate": 15}
+TILE_KINDS = ("op.seamless", "op.tile_resize", "op.tile_pixel")
+TILE_ISSUES = {"seam": "Mối nối lộ khi lát", "gradient": "Sáng tối lệch theo một hướng",
+               "repetition": "Có mảng lớn dễ thấy khi lặp", "duplicate": "Ảnh gồm hai bản sao của chính nó",
+               "self_repeat": "Ảnh tự lặp một mảng lớn"}
 _N4 = ((-1, 0), (1, 0), (0, -1), (0, 1))
 
 
@@ -32,6 +39,7 @@ class QaContext:
     shadow: bool = False
     shadow_color: tuple[int, int, int] | None = None
     normal: bool = False
+    tile: bool = False
 
 
 @dataclass
@@ -169,6 +177,8 @@ def _part(key: str, score: float, detail: str, **extra: Any) -> dict[str, Any]:
 
 def score_image(img: Image.Image, ctx: QaContext | None = None) -> dict[str, Any]:
     ctx = ctx or QaContext()
+    if ctx.tile and not ctx.normal:
+        return score_tile(img)
     arr = np.array(img.convert("RGBA"))
     if int(arr[..., 3].min()) == 255:
         return {"version": QA_VERSION, "score": None, "skipped": "opaque",
@@ -271,6 +281,20 @@ def score_image(img: Image.Image, ctx: QaContext | None = None) -> dict[str, Any
             "cells": len(expected), "normal": ctx.normal or None, "pixel": ctx.palette is not None or None}
 
 
+def score_tile(img: Image.Image) -> dict[str, Any]:
+    r = tile_report(img)
+    worst = max(r["seam_ratio"].values())
+    parts = [_part("seam", r["seam_score"], f"Bước nhảy ở mép / dòng bên trong: {worst:.2f}"),
+             _part("gradient", 100 * (1 - min(1.0, max(0.0, (r["gradient"] - 0.04) / 0.16))),
+                   f"Độ nghiêng sáng {r['gradient']:.3f}"),
+             _part("repetition", 100 * (1 - min(1.0, max(0.0, (r["lowfreq"] - 0.35) / 0.4))),
+                   f"Tương phản mảng lớn {r['lowfreq']:.2f}"),
+             _part("duplicate", 100 * (1 - min(1.0, max(0.0, (r["duplicate"] - 0.08) * 4))),
+                   f"Trùng nửa ảnh {r['duplicate'] * 100:.1f}%")]
+    return {"version": QA_VERSION, "score": int(round(_clamp(r["score"]))), "parts": parts,
+            "issues": [TILE_ISSUES[k] for k in r["issues"] if k in TILE_ISSUES], "tile": True}
+
+
 async def _json_blob(blobs: BlobStore, ref: BlobRef) -> Any:
     try:
         return json.loads(await asyncio.to_thread(blobs.path(ref.hash).read_bytes))
@@ -309,7 +333,11 @@ async def build_context(blobs: BlobStore, steps: Iterable[StepRow], step: StepRo
         ctx.meta = meta if isinstance(meta, dict) else None
     name = (ref.name or "").lower()
     ctx.normal = bool((ctx.meta or {}).get("normal")) or name.endswith("_n.png") or "_normal" in name
-    for s in lineage(steps, step):
+    chain = lineage(steps, step)
+    # Wang tiles only tile against their labelled neighbours, never with themselves.
+    ctx.tile = not any(s.kind == "op.tile_wang" for s in chain) and any(
+        s.kind in TILE_KINDS and any(b.hash == ref.hash for outs in s.outputs.values() for b in outs) for s in chain)
+    for s in chain:
         if s.kind == "op.sprite_fx":
             try:
                 fx = FxParams.from_params(s.params)
