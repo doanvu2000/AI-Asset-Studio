@@ -106,6 +106,50 @@ def test_fused_cape_reached_only_over_shoulder_leaves_arm():
     assert w[lower].max() < 0.1
 
 
+HAND_NAMES = ["spine", "upper_arm_l", "forearm_l", "hand_l"]
+HAND_HEADS = np.array([[0, 0, 0.9], [0.2, 0, 1.45], [0.2, 0, 1.15], [0.2, 0, 0.95]], np.float32)
+HAND_TAILS = np.array([[0, 0, 1.5], [0.2, 0, 1.15], [0.2, 0, 0.95], [0.2, 0, 0.82]], np.float32)
+
+
+def _shoulder_linked(arm, ae, torso, te):
+    pts, edges = _merge((arm, ae), (torso, te))
+    top_arm = np.nonzero(np.isclose(arm[:, 2], arm[:, 2].max()))[0]
+    top_torso = len(arm) + np.nonzero(np.isclose(torso[:, 2], torso[:, 2].max()))[0][:len(top_arm)]
+    return pts, np.concatenate([edges, np.stack([top_arm, top_torso], 1)])
+
+
+def test_cape_edge_touching_the_hand_is_not_hand_skin():
+    # Same shell as the arm (joined at the shoulder) and as close to the hand bone as the arm skin; only a detour over
+    # the shoulder reaches it from the forearm.
+    arm, ae = _tube(0.2, 0.0, 0.82, 1.45, 0.03, rings=14)
+    torso, te = _tube(0.0, 0.0, 0.9, 1.5, 0.08, rings=24)
+    body, be = _shoulder_linked(arm, ae, torso, te)
+    edge, ee = _strip(0.232, -0.01, 0.01, 0.8, 1.1, nz=8)
+    pts, edges = _merge((body, be), (edge, ee))
+    ring = len(arm) + np.nonzero(np.isclose(torso[:, 2], np.unique(torso[:, 2])[10]))[0]
+    top = len(body) + np.nonzero(np.isclose(edge[:, 2], 1.1))[0]
+    edges = np.concatenate([edges, np.stack([top, ring[:len(top)]], 1)])
+    near, w = distance_weights(pts, HAND_HEADS, HAND_TAILS, HAND_NAMES, height=1.8, edges=edges)
+    on_arm = (w * (np.array(HAND_NAMES)[near] != "spine")).sum(1)
+    assert on_arm[:len(arm)].min() > 0.9
+    assert on_arm[len(body):].max() < 0.1
+
+
+def test_shield_face_fused_to_the_hand_still_follows_it():
+    arm, ae = _tube(0.2, 0.0, 0.82, 1.45, 0.03, rings=14)
+    torso, te = _tube(0.0, 0.0, 0.9, 1.5, 0.08, rings=24)
+    body, be = _shoulder_linked(arm, ae, torso, te)
+    face, fe = _strip(0.2, -0.1, -0.034, 0.84, 0.94, nz=4, ny=4)
+    pts, edges = _merge((body, be), (face, fe))
+    grip = len(body) + np.nonzero(np.isclose(face[:, 1], -0.034))[0]
+    front = np.nonzero((arm[:, 1] < -0.025) & (arm[:, 2] < 0.95))[0]
+    hold = front[np.linalg.norm(pts[grip][:, None] - arm[front][None], axis=2).argmin(1)]
+    edges = np.concatenate([edges, np.stack([grip, hold], 1)])
+    near, w = distance_weights(pts, HAND_HEADS, HAND_TAILS, HAND_NAMES, height=1.8, edges=edges)
+    on_arm = (w * (np.array(HAND_NAMES)[near] != "spine")).sum(1)
+    assert on_arm[len(body):].min() > 0.9
+
+
 def test_shield_shell_on_forearm_follows_arm_only():
     arm, ae = _tube(0.2, 0.0, 0.95, 1.4, 0.03)
     torso, te = _tube(0.0, 0.0, 0.9, 1.5, 0.08)

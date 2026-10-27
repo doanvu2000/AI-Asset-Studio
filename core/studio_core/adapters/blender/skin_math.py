@@ -13,6 +13,7 @@ TUBE_SECTORS = 12
 TUBE_COVERAGE = 0.75
 SMOOTH_ITER = 12
 SURFACE_CAP = 0.5
+DETOUR_RATIO = 2.5
 
 
 def _segment_distances(pts, heads, tails):
@@ -83,6 +84,26 @@ def _coverage(offsets, axis, comp, n_comp):
     return (hits >= 2).mean(1)
 
 
+def _nearest_distance(a, b):
+    out = np.empty(len(a), np.float32)
+    b2 = (b ** 2).sum(1)
+    chunk = max(1, 4_000_000 // max(len(b), 1))
+    for i in range(0, len(a), chunk):
+        q = a[i:i + chunk]
+        d2 = (q ** 2).sum(1)[:, None] + b2[None] - 2.0 * q @ b.T
+        out[i:i + chunk] = np.sqrt(np.maximum(d2.min(1), 0.0))
+    return out
+
+
+def _chain_rank(name):
+    return next(i for i, p in enumerate(ARM_PREFIXES) if name.startswith(p))
+
+
+def _chain_parent(name):
+    i = _chain_rank(name)
+    return ARM_PREFIXES[i - 1] + name[len(ARM_PREFIXES[i]):] if i else None
+
+
 def _surface(pts, edges, height):
     rep = _weld(pts, WELD_TOL * float(height))
     n = int(rep.max()) + 1
@@ -115,7 +136,10 @@ def surface_arm_distances(pts, surf, d, closest, heads, tails, names, arm, heigh
     arm_idx = np.nonzero(arm)[0]
     seeds = np.full((n, len(arm_idx)), np.inf, np.float32)
     wraps = np.zeros(n_comp, bool)
-    for k, j in enumerate(arm_idx):
+    lengths = np.linalg.norm(x[e[:, 0]] - x[e[:, 1]], axis=1).astype(np.float32)
+    slot = {names[j]: k for k, j in enumerate(arm_idx)}
+    for k in sorted(range(len(arm_idx)), key=lambda k: _chain_rank(names[arm_idx[k]])):
+        j = arm_idx[k]
         own = nearest == j
         if not own.any():
             continue
@@ -124,8 +148,22 @@ def surface_arm_distances(pts, surf, d, closest, heads, tails, names, arm, heigh
         wraps |= present & (cover >= TUBE_COVERAGE)
         skin = present & ((cover >= TUBE_COVERAGE) | (cover == cover[present].max()))
         core = own & skin[comp] & (dw[:, j] <= SEED_RADIUS * np.percentile(dw[own, j], 25))
+        parent = slot.get(_chain_parent(names[j]))
+        if parent is not None and core.any():
+            # A cape edge touching the hanging hand sits as close to the hand bone as the glove does, but over the
+            # surface it is only reached from the forearm skin via the shoulder; a shield face fused to the hand is
+            # reached almost straight. So a seed is dropped when that surface path is a long detour.
+            up = np.isfinite(seeds[:, parent])
+            linked = np.zeros(n_comp, bool)
+            linked[comp[up]] = True
+            check = core & linked[comp]
+            if up.any() and check.any():
+                reach = _geodesic(np.where(up, 0.0, np.inf).astype(np.float32)[:, None], e, lengths,
+                                  SURFACE_CAP * float(height))[:, 0]
+                ids = np.nonzero(check)[0]
+                straight = _nearest_distance(x[ids], x[up])
+                core[ids] = reach[ids] <= DETOUR_RATIO * np.maximum(straight, float(np.median(dw[ids, j])))
         seeds[core, k] = dw[core, j]
-    lengths = np.linalg.norm(x[e[:, 0]] - x[e[:, 1]], axis=1).astype(np.float32)
     g = _geodesic(seeds, e, lengths, SURFACE_CAP * float(height))
     plain = dw[:, arm_idx]
     seedless = ~np.isfinite(seeds).any(0)
