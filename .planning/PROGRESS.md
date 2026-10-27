@@ -377,3 +377,23 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 - [x] Cape theo tay: `adapters/blender/skin_math.py` (`distance_weights`, phạt xương tay cho đỉnh nằm sau tay >0.04h, x3); worker dùng nó, hash worker + spec PyInstaller có `skin_math.py`; `tests/test_skin_math.py`.
   Blender thật (mesh walk4, attack): weights=distance 19s; ảnh `scratchpad 6ad407b8/w16/compare.png` — mặt lưng hết cape dựng theo tay, mặt trước còn dải mép áo bên hông.
 - [x] `uv run pytest -q` → 324 pass / 4 skip. Chưa commit, chưa build (chờ chủ nhân).
+- [x] Commit+push `6d19023` (3 sửa mở). Chủ nhân: "làm cả 3" = commit/push + build/Portable + 4 ý tưởng.
+- [~] Plan `.planning/PLAN-2026-10-27-ideas.md`; agent W17 (sprite_fx + QA score), W18 (texture-seamless), W19 (stats dashboard) chạy song song, không git.
+- [x] W17 xong: `ops/fx.py` (op.sprite_fx shadow drop/blob + outline, normal → flat outline), bước `fx` trong 10 recipe sprite-8dir-*; `engine/qa.py` điểm QA lưu `versions.qa`, `api/qa.py` recompute, app badge/lọc/sắp xếp/lightbox. pytest 350 pass. Ảnh `scratchpad 6ad407b8/w17/fx_modes.png` OK.
+- [x] W19 xong: `store/stats.py`, `api/stats.py` (/recipes /steps /daily /overview), MCP `recipe_stats`, app `CostStats.vue` trong Tổng quan. Khớp DB thật $0.2682/5 lượt. Ảnh `w19/shots/`. Lỗi nhỏ thấy: đường kẻ dòng bảng recipe đứt giữa cột.
+- [~] W18 texture-seamless đang chạy.
+- [x] Audit W19: H1 duration theo wall (retry/resume thổi phồng), M1 mất cost khi retry/fail, M2 KPI≠chart range, M3 kẻ bảng đứt + 9 LOW → giao lại W19 sửa.
+- [x] Audit W17: không HIGH; M1 QA chạy trong lock trước SUCCEEDED, M2 recompute missing_only bỏ sót, M3 None đếm là updated, M4 grid dồn hướng + 6 LOW → giao lại W17 sửa.
+- [x] W17 sửa hết 10 mục audit (QA nền sau SUCCEEDED, versions_to_score SQL, skipped:error, grid 1 hướng/ô, pixel shadow dither opaque…). pytest 358 pass.
+- [x] W19 sửa audit (duration = hợp khoảng step, prior_cost_usd giữ chi phí retry/fail, since căn nửa đêm, bảng box-shadow, ...). pytest 358 pass. Chưa chụp lại (5173 bị W18 giữ).
+- [x] W18 xong: `ops/tile.py` (seamless/tile_resize/tile_normal/tile_pixel/tile_check), recipe texture-seamless + tileset-seamless, export textures Unity (Repeat) / Godot (material + tiled scene), TileViewer. Live r4 stone 86, r5 grass 4 biến thể 97–100; Unity/Godot fails=0. Ảnh `scratchpad 6ad407b8/w18/`. Còn: sọc mờ trên texture phẳng (desert).
+- [~] Audit W18 + audit tích hợp chéo (runner W17+W19, shared files, PyInstaller hiddenimports) đang chạy.
+- [x] Audit tích hợp: ghép sạch, không HIGH; M1 cancel map mất cost; LOW: views judge cost, Lightbox QA cho ảnh đục, nút chấm điểm chớp, mock thiếu tile, MCP days, Gallery thiếu loại Texture.
+- [x] Audit W18: H1 op.seamless nhân đôi nửa ảnh (nguyên nhân sọc/lặp desert) → đổi sang wrap-overlap quilting; H2 tile_check không bắt ảnh lặp; M1 tileset ghost; M2/M3 RAM; M4 normal sai biến thể; M5 méo ảnh không vuông + 8 LOW.
+- [~] Giao sửa: W18 (H1–M5, LOW, mock tile, chạy live lại), W19 (cancel cost, judge cost, MCP days), W17 (Lightbox/Gallery QA, loại Texture, mockQa).
+- [x] W17 sửa tích hợp: Lightbox ẩn QA ảnh đục/tile, nút chấm bỏ version <60s, mockQa skipped opaque, loại Texture ở Thư viện.
+- [x] W19 sửa tích hợp: cancel/shutdown giữ cost item map đã xong (ctx.spent → prior_cost_usd), views judge + procedural cost, MCP recipe_stats căn nửa đêm. pytest 359 pass.
+- [x] W18 sửa audit: quilting wrap-overlap + detrend, duplicate score, tileset quilt mép, RAM float32/pad, normal theo biến thể, viewer aspect. Live v4b desert/stone/grass 100, Unity/Godot fails=0.
+- [x] pytest 362 pass / 4 skip; typecheck web+node exit 0. Commit `e941693` core + `cc8107d` app, pushed.
+- [x] Build core + app, smoke bản đóng gói OK; Portable chép 08:15 (đã dừng studio-core MCP từ Portable).
+- [x] 08:20 Handoff mới: `.planning/HANDOFF-2026-10-27-0820.md`
