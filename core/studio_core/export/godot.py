@@ -132,6 +132,58 @@ def tileset(atlas: str, size: tuple[int, int]) -> str:
     return "\n".join(lines) + "\n"
 
 
+WANG_COLORS = ("Color(0.36, 0.62, 0.3, 1)", "Color(0.66, 0.5, 0.33, 1)")
+_PEERING = {"nw": "top_left_corner", "ne": "top_right_corner", "sw": "bottom_left_corner", "se": "bottom_right_corner"}
+
+
+def wang_tileset(atlas: str, size: tuple[int, int], normal: str | None = None) -> str:
+    """TileSet whose 4×4 corner-Wang atlas carries a Match Corners terrain set (terrain 0 = material a, 1 = b), so
+    TileMapLayer terrain painting picks the matching tile; with a normal atlas the source is a CanvasTexture."""
+    from studio_core.ops.tile import wang_layout
+
+    cell = size[0] // 4
+    ext = [f'[ext_resource type="Texture2D" path="{atlas}" id="1_atlas"]']
+    subs = []
+    tex = 'ExtResource("1_atlas")'
+    if normal:
+        ext.append(f'[ext_resource type="Texture2D" path="{normal}" id="2_normal"]')
+        subs += ['[sub_resource type="CanvasTexture" id="CanvasTexture_1"]', 'diffuse_texture = ExtResource("1_atlas")',
+                 'normal_texture = ExtResource("2_normal")', '']
+        tex = 'SubResource("CanvasTexture_1")'
+    lines = [f'[gd_resource type="TileSet" load_steps={len(ext) + len(subs) // 4 + 2} format=3]', '', *ext, '',
+             *subs, '[sub_resource type="TileSetAtlasSource" id="TileSetAtlasSource_1"]', f"texture = {tex}",
+             f"texture_region_size = Vector2i({cell}, {cell})"]
+    for t in wang_layout():
+        bits = [int(t["corners"][c] == "b") for c in _PEERING]
+        major = int(sum(bits) >= 2)
+        # Godot paints a cell's centre with the brush terrain, so a cell on the rim of a painted area needs its
+        # mixed-corner tile with either centre; alternative 1 is the same image with the other centre terrain.
+        centres = [major] if sum(bits) in (0, 4) else [major, 1 - major]
+        for alt, centre in enumerate(centres):
+            k = f"{t['col']}:{t['row']}/{alt}"
+            lines += [f"{k} = {alt}", f"{k}/terrain_set = 0", f"{k}/terrain = {centre}"]
+            lines += [f"{k}/terrains_peering_bit/{_PEERING[c]} = {b}" for c, b in zip(_PEERING, bits)]
+    lines += ['', '[resource]', f"tile_size = Vector2i({cell}, {cell})", "terrain_set_0/mode = 1"]
+    for i, name in enumerate("ab"):
+        lines += [f'terrain_set_0/terrain_{i}/name = "{name}"', f"terrain_set_0/terrain_{i}/color = {WANG_COLORS[i]}"]
+    lines.append('sources/0 = SubResource("TileSetAtlasSource_1")')
+    return "\n".join(lines) + "\n"
+
+
+def wang_file(asset: str, name: str) -> str:
+    """Wang atlases get the asset prefix: two exported sets dropped into one project must not overwrite each other."""
+    return f"{asset}_{name}" if Path(name).stem in ("wang", "wang_normal") else name
+
+
+def _wang_doc() -> bytes:
+    import json
+
+    from studio_core.ops.tile import WANG_CORNERS, WANG_TYPE, wang_layout
+
+    return json.dumps({"type": WANG_TYPE, "corner_order": list(WANG_CORNERS), "grid": [4, 4],
+                       "tiles": wang_layout()}, indent=1).encode()
+
+
 def _image_size(p: Path) -> tuple[int, int]:
     from PIL import Image
 
@@ -142,6 +194,11 @@ def _image_size(p: Path) -> tuple[int, int]:
 README_TEXTURES = """- Textures/: texture liền mạch (lặp được). {asset}_material.tres: StandardMaterial3D đã gắn albedo{normal},
   texture_repeat bật — chỉnh uv1_scale để lặp nhiều lần. {asset}_tiled.tscn: TextureRect lát 3×3 cho 2D
   (stretch_mode Tile). Sprite2D/TileMap muốn lặp thì bật texture_repeat của node."""
+
+
+README_WANG = """- {asset}_wang_tileset.tres: TileSet Wang góc từ {atlas} (4×4 ô), terrain set 0 kiểu Match Corners: terrain
+  "a" = vật liệu 1, "b" = vật liệu 2. Gắn vào TileMapLayer, tab Terrains vẽ a/b là Godot tự chọn ô khớp góc.
+  Tên ô wang_<số>_<góc NW NE SW SE> (vd wang_06_abba), chi tiết nhãn góc/cạnh trong Textures/{asset}_wang.json."""
 
 
 README_HEAD = "{asset} — xuất từ AI Asset Studio cho Godot 4. Chép cả thư mục này vào project (res://...).\n\n"
@@ -176,7 +233,7 @@ def export(src: Source) -> Files:
     if src.glb:
         notes.append("- Models/*.glb: Godot import GLB sẵn, kéo vào scene là dùng được.")
     if src.textures:
-        rels = [(f"Textures/{n}", p, role) for n, p, role in src.textures]
+        rels = [(f"Textures/{wang_file(a, n)}", p, role) for n, p, role in src.textures]
         files += [(rel, p) for rel, p, _ in rels]
         color = next(((r, p) for r, p, role in rels if role == "color"), None) or (rels[0][0], rels[0][1])
         normal = next((r for r, _, role in rels if role == "normal"), None)
@@ -184,8 +241,14 @@ def export(src: Source) -> Files:
         files += [(f"{a}_material.tres", texture_material(color[0], normal, pixel).encode()),
                   (f"{a}_tiled.tscn", tiled_scene(f"{a}_tiled", color[0], _image_size(color[1]), pixel).encode())]
         notes.append(README_TEXTURES.format(asset=a, normal=" + normal map" if normal else ""))
-        atlas = next(((r, p) for r, p, role in rels if role == "atlas"), None)
-        if atlas:
+        wang = next(((r, p) for r, p, role in rels if role == "atlas" and Path(r).stem == f"{a}_wang"), None)
+        wang_n = next((r for r, _, role in rels if role == "atlas" and Path(r).stem == f"{a}_wang_normal"), None)
+        atlas = next(((r, p) for r, p, role in rels if role == "atlas" and r not in (wang and wang[0], wang_n)), None)
+        if wang:
+            files += [(f"{a}_wang_tileset.tres", wang_tileset(wang[0], _image_size(wang[1]), wang_n).encode()),
+                      (f"Textures/{a}_wang.json", _wang_doc())]
+            notes.append(README_WANG.format(asset=a, atlas=wang[0]))
+        elif atlas:
             files.append((f"{a}_tileset.tres", tileset(atlas[0], _image_size(atlas[1])).encode()))
             notes.append(f"- {a}_tileset.tres: TileSet từ {atlas[0]} (mỗi biến thể một ô) cho TileMapLayer.")
     if not files:

@@ -205,12 +205,13 @@ async def test_prior_cost_and_aligned_overview(ctx: tuple[httpx.AsyncClient, Sql
     await _run(repo, "p", RunStatus.SUCCEEDED, now - 3600, 10, [
         {"kind": "claude.task", "lane": Lane.CLOUD, "t": (0, 5), "meta": {"cost_usd": 0.1, "prior_cost_usd": 0.05}},
         {"kind": "claude.task", "lane": Lane.CLOUD, "status": StepStatus.PENDING, "meta": {"prior_cost_usd": 0.02}},
+        {"kind": "claude.task", "lane": Lane.CLOUD, "status": StepStatus.RUNNING, "meta": {"spent_live_usd": 0.03}},
     ])
     await _run(repo, "p", RunStatus.SUCCEEDED, now - 6 * DAY - 600, 10)
     t = (await _get(c, "/api/stats/recipes"))["totals"]
-    assert t["cost_usd"] == pytest.approx(0.17)
+    assert t["cost_usd"] == pytest.approx(0.2)
     steps = (await _get(c, "/api/stats/steps"))["steps"]
-    assert steps == [{"kind": "claude.task", "steps": 1, "failed": 0, "cached": 0, "cost_usd": 0.17, "total_s": 5.0,
+    assert steps == [{"kind": "claude.task", "steps": 1, "failed": 0, "cached": 0, "cost_usd": 0.2, "total_s": 5.0,
                       "avg_s": 5.0}]
     for tz in (0, 7 * 3600, -5 * 3600):
         body = await _get(c, "/api/stats/overview", since=now - 7 * DAY, days=7, tz_offset_s=tz)
@@ -324,3 +325,199 @@ async def test_cancelled_map_step_keeps_cost_of_finished_items(tmp_path: Path) -
     await asyncio.wait_for(env.engine.wait_idle(run_id), 5)
     step = env.steps(run_id)["each"]
     assert step.status == StepStatus.SUCCEEDED and meta_cost(step.meta) == pytest.approx(0.5)
+
+
+async def test_mapped_success_counts_cost_once(tmp_path: Path) -> None:
+    from test_engine_runner import Env, FakeExec
+
+    env = Env(tmp_path, [FakeExec("t.gen"), CostExec("t.each", 0.1)], {"mapped": MAPPED})
+    run_id = await env.run("mapped")
+    step = env.steps(run_id)["each"]
+    assert step.status == StepStatus.SUCCEEDED and "spent_live_usd" not in step.meta
+    assert meta_cost(step.meta) == pytest.approx(0.3) and "prior_cost_usd" not in step.meta
+
+
+async def test_hard_kill_mid_map_keeps_live_cost(tmp_path: Path) -> None:
+    from test_engine_runner import Env, FakeExec, FakeRepo, until
+
+    each = SlowThird("t.each", 0.1)
+    env = Env(tmp_path, [FakeExec("t.gen"), each], {"mapped": MAPPED})
+    run_id = await env.engine.start_run("mapped", {})
+    await until(lambda: each.calls == 3)
+    live = env.steps(run_id)["each"]
+    assert live.meta["spent_live_usd"] == pytest.approx(0.2) and meta_cost(live.meta) == pytest.approx(0.2)
+
+    # A hard kill leaves only what reached the DB: snapshot it and recover with a fresh engine.
+    disk = FakeRepo()
+    disk.runs = {k: v.model_copy(deep=True) for k, v in env.repo.runs.items()}
+    disk.steps = {k: v.model_copy(deep=True) for k, v in env.repo.steps.items()}
+    await env.engine.shutdown()
+    each2 = CostExec("t.each", 0.1)
+    env2 = Env(tmp_path, [FakeExec("t.gen"), each2], {"mapped": MAPPED}, repo=disk, blobs=env.blobs)
+    await env2.engine.recover()
+    step = env2.steps(run_id)["each"]
+    assert env2.status(run_id) == RunStatus.INTERRUPTED and step.status == StepStatus.FAILED
+    assert "spent_live_usd" not in step.meta and step.meta["prior_cost_usd"] == pytest.approx(0.2)
+
+    await env2.engine.retry_step(step.id)
+    await asyncio.wait_for(env2.engine.wait_idle(run_id), 5)
+    step = env2.steps(run_id)["each"]
+    assert step.status == StepStatus.SUCCEEDED and meta_cost(step.meta) == pytest.approx(0.5)
+
+
+class PayingExec:
+    """Pays `per_call` `calls` times via ctx.add_cost; `meta_total` decides whether the result also totals it."""
+
+    lane = Lane.CLOUD
+    version = "1"
+
+    def __init__(self, kind: str, calls: int = 2, per_call: float = 0.1, meta_total: bool = True,
+                 fail: StepError | None = None, hang: bool = False) -> None:
+        self.kind, self.n, self.per, self.meta_total, self.fail, self.hang = kind, calls, per_call, meta_total, fail, hang
+        self.runs = 0
+
+    def cacheable(self, params: dict[str, Any]) -> bool:
+        return False
+
+    def cache_material(self, params: dict[str, Any]) -> str:
+        return ""
+
+    async def run(self, ctx: Any, params: dict[str, Any], inputs: Any) -> StepResult:
+        self.runs += 1
+        for _ in range(self.n):
+            await ctx.add_cost(self.per)
+        if self.hang and self.runs == 1:
+            await asyncio.sleep(10)
+        if self.fail and self.runs == 1:
+            raise self.fail
+        ref = await ctx.blobs.put_bytes(f"{self.kind}:{self.runs}:{inputs}".encode())
+        return StepResult(outputs={"images": [ref]},
+                          meta={"cost_usd": round(self.n * self.per, 6)} if self.meta_total else {})
+
+
+PAY = """
+id: pay
+steps:
+  - {id: ask, kind: t.pay}
+"""
+
+PAY_MAP = """
+id: paymap
+steps:
+  - {id: gen, kind: t.gen, params: {count: 3}}
+  - {id: ask, kind: t.pay, in: {image: gen.images}, map: image}
+"""
+
+
+@pytest.mark.parametrize("meta_total", [True, False])
+async def test_add_cost_and_meta_total_count_once(tmp_path: Path, meta_total: bool) -> None:
+    from test_engine_runner import Env, FakeExec
+
+    env = Env(tmp_path, [PayingExec("t.pay", meta_total=meta_total), FakeExec("t.gen")],
+              {"pay": PAY, "paymap": PAY_MAP})
+    one = env.steps(await env.run("pay"))["ask"]
+    many = env.steps(await env.run("paymap"))["ask"]
+    for step, want in ((one, 0.2), (many, 0.6)):
+        assert step.status == StepStatus.SUCCEEDED and "spent_live_usd" not in step.meta
+        assert meta_cost(step.meta) == pytest.approx(want)
+
+
+async def test_add_cost_and_error_detail_count_once(tmp_path: Path) -> None:
+    from test_engine_runner import Env
+
+    err = StepError("claude_error", "bad", retryable=False, detail={"cost_usd": 0.1})
+    env = Env(tmp_path, [PayingExec("t.pay", calls=1, fail=err)], {"pay": PAY})
+    step = env.steps(await env.run("pay"))["ask"]
+    assert step.status == StepStatus.FAILED and step.meta["prior_cost_usd"] == pytest.approx(0.1)
+    assert "spent_live_usd" not in step.meta
+
+
+async def test_hard_kill_mid_executor_keeps_reported_cost(tmp_path: Path) -> None:
+    from test_engine_runner import Env, FakeRepo, until
+
+    ex = PayingExec("t.pay", hang=True)
+    env = Env(tmp_path, [ex], {"pay": PAY})
+    run_id = await env.engine.start_run("pay", {})
+    await until(lambda: env.steps(run_id)["ask"].meta.get("spent_live_usd") == pytest.approx(0.2))
+    disk = FakeRepo()
+    disk.runs = {k: v.model_copy(deep=True) for k, v in env.repo.runs.items()}
+    disk.steps = {k: v.model_copy(deep=True) for k, v in env.repo.steps.items()}
+    await env.engine.shutdown()
+    ex2 = PayingExec("t.pay")
+    ex2.runs = 1
+    env2 = Env(tmp_path, [ex2], {"pay": PAY}, repo=disk, blobs=env.blobs)
+    await env2.engine.recover()
+    step = env2.steps(run_id)["ask"]
+    assert step.status == StepStatus.FAILED and step.meta["prior_cost_usd"] == pytest.approx(0.2)
+    await env2.engine.retry_step(step.id)
+    await asyncio.wait_for(env2.engine.wait_idle(run_id), 5)
+    assert meta_cost(env2.steps(run_id)["ask"].meta) == pytest.approx(0.4)
+
+
+async def test_ask_reports_each_paid_call(tmp_path: Path) -> None:
+    from studio_core.adapters.claude import ClaudeReply, ask
+
+    class Ctx:
+        def __init__(self) -> None:
+            self.costs: list[float] = []
+
+        async def add_cost(self, usd: float) -> None:
+            self.costs.append(usd)
+
+    replies: list[Any] = [ClaudeReply(None, "ok", {"cost_usd": 0.03}),
+                          StepError("claude_error", "x", detail={"cost_usd": 0.02})]
+
+    async def query(content: Any, options: Any) -> ClaudeReply:
+        r = replies.pop(0)
+        if isinstance(r, StepError):
+            raise r
+        return r
+
+    ctx = Ctx()
+    await ask(query, {}, "hi", str(tmp_path), ctx=ctx)
+    with pytest.raises(StepError):
+        await ask(query, {}, "hi", str(tmp_path), ctx=ctx)
+    assert ctx.costs == [0.03, 0.02]
+    await ask(lambda c, o: asyncio.sleep(0, ClaudeReply(None, "ok", {"cost_usd": 0.5})), {}, "hi", str(tmp_path))
+
+
+async def test_rounded_meta_total_leaves_no_residue(tmp_path: Path) -> None:
+    from test_engine_runner import Env, FakeExec
+
+    class Rounded(PayingExec):
+        async def run(self, ctx: Any, params: dict[str, Any], inputs: Any) -> StepResult:
+            res = await super().run(ctx, params, inputs)
+            res.meta["cost_usd"] = round(self.n * self.per, 4)
+            return res
+
+    env = Env(tmp_path, [Rounded("t.pay", calls=3, per_call=0.012345), FakeExec("t.gen")],
+              {"pay": PAY, "paymap": PAY_MAP})
+    for recipe in ("pay", "paymap"):
+        step = env.steps(await env.run(recipe))["ask"]
+        assert step.status == StepStatus.SUCCEEDED and "prior_cost_usd" not in step.meta
+
+
+async def test_parallel_add_cost_writes_latest_total(tmp_path: Path) -> None:
+    from test_engine_runner import Env
+
+    class Parallel(PayingExec):
+        async def run(self, ctx: Any, params: dict[str, Any], inputs: Any) -> StepResult:
+            self.runs += 1
+            await asyncio.gather(*(ctx.add_cost(0.1) for _ in range(5)))
+            self.seen = ctx  # type: ignore[attr-defined]
+            await asyncio.sleep(10)
+            raise AssertionError("unreachable")
+
+    ex = Parallel("t.pay")
+    env = Env(tmp_path, [ex], {"pay": PAY})
+    run_id = await env.engine.start_run("pay", {})
+
+    def written() -> Any:
+        return env.repo.steps[env.steps(run_id)["ask"].id].meta.get("spent_live_usd")
+
+    from test_engine_runner import until
+
+    await until(lambda: hasattr(ex, "seen"))
+    assert written() == pytest.approx(0.5)
+    await env.engine.cancel_run(run_id)
+    assert env.steps(run_id)["ask"].meta["prior_cost_usd"] == pytest.approx(0.5)

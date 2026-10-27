@@ -662,23 +662,15 @@ def _distance_weights(meshes, arm, height):
         m = np.array(o.matrix_world, dtype=np.float32)
         pts = co.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3]
         pts = pts @ inv[:3, :3].T + inv[:3, 3]
-        near, w = skin_math.distance_weights(pts, heads, tails, names, height)
+        edges = np.empty(len(o.data.edges) * 2, dtype=np.int32)
+        o.data.edges.foreach_get("vertices", edges)
+        near, w = skin_math.distance_weights(pts, heads, tails, names, height, edges=edges.reshape(-1, 2))
         o.vertex_groups.clear()
         groups = [o.vertex_groups.new(name=b.name) for b in bones]
         for i in range(n):
-            for k in range(2):
+            for k in range(near.shape[1]):
                 if w[i, k] > 0.01:
                     groups[near[i, k]].add([i], float(w[i, k]), "REPLACE")
-        # Neighbouring robe/cape vertices can land on opposite legs and tear apart mid-stride; smoothing along the
-        # surface turns that seam into a stretch.
-        bpy.ops.object.select_all(action="DESELECT")
-        o.select_set(True)
-        bpy.context.view_layer.objects.active = o
-        try:
-            bpy.ops.object.vertex_group_smooth(group_select_mode="ALL", factor=0.5, repeat=12)
-            bpy.ops.object.vertex_group_normalize_all(lock_active=False)
-        except RuntimeError as e:
-            print(f"weight smooth skipped: {e}", flush=True)
 
 
 def _unbind(meshes):

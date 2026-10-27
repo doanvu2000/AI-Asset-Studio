@@ -181,7 +181,7 @@ class Procedural3DExecutor:
             rec: dict[str, Any] = {"round": n, "accepted": False}
             rounds.append(rec)
             ctx.progress(3 * (n - 1), 3 * max_rounds, f"round {n}: writing bpy")
-            reply = await ask(self.query, code_q, write_prompt(idea, style, height, prev), cwd)
+            reply = await ask(self.query, code_q, write_prompt(idea, style, height, prev), cwd, ctx=ctx)
             cost += reply.meta.get("cost_usd") or 0
             code = _strip_fences(str((reply.structured or {}).get("code") or ""))
             rec |= {"code": code, "notes": (reply.structured or {}).get("notes"), "write_s": reply.meta.get("seconds")}
@@ -203,7 +203,7 @@ class Procedural3DExecutor:
             ctx.progress(3 * (n - 1) + 2, 3 * max_rounds, f"round {n}: reviewing")
             images = await asyncio.to_thread(lambda: [(Path(f["file"]).read_bytes(), "image/png") for f in frames])
             qa = await ask(self.query, qa_q, qa_prompt(idea, style, [f["angle"] for f in frames], report,
-                                                       rec["contract"]), cwd, images)
+                                                       rec["contract"]), cwd, images, ctx=ctx)
             cost += qa.meta.get("cost_usd") or 0
             verdict = qa.structured if isinstance(qa.structured, dict) else {}
             rec |= {"qa": verdict, "qa_s": qa.meta.get("seconds")}

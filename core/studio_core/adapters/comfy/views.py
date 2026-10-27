@@ -97,7 +97,8 @@ class CheckedViewsExecutor:
         await asyncio.to_thread(ctx.job_dir.mkdir, parents=True, exist_ok=True)
         opts = {"model": params.get("consistency_model") or DEFAULT_MODEL, "max_turns": 2, "schema": CONSISTENCY_SCHEMA,
                 "_timeout_s": 300}
-        reply = await ask(self.query, opts, CONSISTENCY_PROMPT.format(listing=listing), str(ctx.job_dir), images)
+        reply = await ask(self.query, opts, CONSISTENCY_PROMPT.format(listing=listing), str(ctx.job_dir), images,
+                          ctx=ctx)
         got = {str(x.get("name")): (bool(x.get("ok")), str(x.get("reason") or ""))
                for x in (reply.structured or {}).get("views", []) if isinstance(x, dict)}
         # A candidate the model skipped counts as passing: the silhouette check already accepted it.

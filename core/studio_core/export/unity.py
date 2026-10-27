@@ -504,6 +504,27 @@ README_TEXTURES = """- Textures/: texture liền mạch, import sẵn Wrap Mode 
   tileset.png (nếu có): các biến thể xếp một hàng, mỗi ô vuông cạnh = chiều cao ảnh, dùng làm Tile Palette."""
 
 
+README_WANG = """- Textures/{asset}_wang.png: bộ Wang góc 16 ô (4×4), đã cắt sẵn 16 sprite tên wang_<số>_<góc NW NE SW SE>
+  (a = vật liệu 1, b = vật liệu 2, vd wang_06_abba). Đặt ô sao cho hai ô cạnh nhau cùng nhãn ở góc chung là liền
+  mạch; Textures/{asset}_wang.json ghi nhãn góc/cạnh từng ô (index = nw*8 + ne*4 + sw*2 + se).
+  {asset}_wang_normal.png (nếu có) gắn sẵn làm _NormalMap."""
+
+
+def wang_sprites(size: tuple[int, int]) -> Layout:
+    from studio_core.export.sheet import Cell
+    from studio_core.ops.tile import wang_layout
+
+    c = size[0] // 4
+    return Layout(width=size[0], height=size[1], frame_w=c, frame_h=c, pivot=(c / 2, c / 2),
+                  cells=[Cell(t["name"], t["col"] * c, t["row"] * c, c, c) for t in wang_layout()])
+
+
+def _wang_json() -> bytes:
+    from studio_core.export.godot import _wang_doc
+
+    return _wang_doc()
+
+
 def _image_size(p: Path) -> tuple[int, int]:
     from PIL import Image
 
@@ -555,11 +576,24 @@ def export(src: Source) -> Files:
         files.append((f"Models/{n}", p))
     if src.glb:
         notes.append("- Models/*.glb: cần package glTFast (com.unity.cloud.gltfast) để import.")
+    from studio_core.export.godot import wang_file
+
+    wang_n = next((f"Textures/{wang_file(a, n)}" for n, _, role in src.textures
+                   if role == "atlas" and Path(n).stem == "wang_normal"), None)
     for n, p, role in src.textures:
-        rel = f"Textures/{n}"
+        rel = f"Textures/{wang_file(a, n)}"
         point = role == "pixel" or src.pixel is True
+        if role == "atlas" and Path(n).stem == "wang":
+            size = _image_size(p)
+            normal_guid = guid(u, a, wang_n) if wang_n else None
+            files += [(rel, p), (f"{rel}.meta", texture_meta(a, guid(u, a, rel), wang_sprites(size), size, src.ppu,
+                                                             point, normal_guid).encode()),
+                      (f"Textures/{a}_wang.json", _wang_json())]
+            notes.append(README_WANG.format(asset=a))
+            continue
         files += [(rel, p), (f"{rel}.meta", texture_meta(a, guid(u, a, rel), None, _image_size(p), src.ppu, point,
-                                                         is_normal=role == "normal", repeat=role != "atlas").encode())]
+                                                         is_normal=role == "normal" or rel == wang_n,
+                                                         repeat=role != "atlas").encode())]
     if src.textures:
         notes.append(README_TEXTURES)
     if not files:

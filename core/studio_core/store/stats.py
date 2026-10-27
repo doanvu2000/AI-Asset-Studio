@@ -9,6 +9,7 @@ from typing import Any
 from studio_core.store.db import Database
 
 TERMINAL = ("succeeded", "failed", "cancelled", "interrupted")
+LIVE_COST = "spent_live_usd"
 MAX_DAYS = 366
 
 
@@ -21,8 +22,10 @@ def _cost(doc: str) -> str:
 
 
 # Executors report Claude spend as cost_usd or claude_cost_usd; mapped steps keep one meta per item under items[];
-# the runner carries spend of failed or reset attempts in prior_cost_usd. meta_cost() is the Python twin.
+# the runner carries spend of failed or reset attempts in prior_cost_usd, and spend of the attempt still running in
+# spent_live_usd (folded into prior or replaced by the result when it ends). meta_cost() is the Python twin.
 _STEP_COST = (f"(CASE WHEN json_valid(st.meta) THEN {_cost('st.meta')} + {_num('st.meta', '$.prior_cost_usd')} + "
+              f"{_num('st.meta', '$.' + LIVE_COST)} + "
               f"COALESCE((SELECT SUM({_cost('j.value')}) FROM json_each(st.meta, '$.items') AS j "
               "WHERE j.type = 'object'), 0) ELSE 0 END)")
 _TIMED = "st.started_at IS NOT NULL AND st.ended_at >= st.started_at"
@@ -37,7 +40,8 @@ def meta_cost(meta: Any) -> float:
     if not isinstance(meta, dict):
         return 0.0
     items = meta.get("items")
-    own = _n(meta.get("cost_usd")) + _n(meta.get("claude_cost_usd")) + _n(meta.get("prior_cost_usd"))
+    own = (_n(meta.get("cost_usd")) + _n(meta.get("claude_cost_usd")) + _n(meta.get("prior_cost_usd"))
+           + _n(meta.get(LIVE_COST)))
     return own + sum(_n(i.get("cost_usd")) + _n(i.get("claude_cost_usd"))
                      for i in (items if isinstance(items, list) else []) if isinstance(i, dict))
 

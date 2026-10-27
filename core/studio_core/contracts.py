@@ -223,6 +223,17 @@ class StepContext(Protocol):
 
     def preview(self, data: bytes, mime: str = "image/jpeg") -> None: ...
 
+    async def add_cost(self, usd: float) -> None:
+        """Record API spend (USD) as each paid call returns, so a kill mid-step keeps it. The runner counts
+        max(add_cost total, cost in result meta / StepError detail) per call: reporting both never double counts."""
+
+
+async def report_cost(ctx: Any, usd: Any) -> None:
+    """ctx.add_cost when the context supports it (test fakes may not)."""
+    fn = getattr(ctx, "add_cost", None)
+    if fn is not None and isinstance(usd, (int, float)) and not isinstance(usd, bool) and usd > 0:
+        await fn(float(usd))
+
 
 class StepResult(BaseModel):
     outputs: Outputs = {}

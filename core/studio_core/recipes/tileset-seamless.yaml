@@ -1,9 +1,10 @@
 id: tileset-seamless
 name: Tileset biến thể liền mạch (Z-Image)
-description: Prompt vật liệu → N ảnh Z-Image → ảnh đầu làm liền mạch, các ảnh sau mượn mép của nó (lát trộn lẫn được) → chấm điểm + xem lát trộn 4×4 → normal map → duyệt
+description: Prompt vật liệu → N ảnh Z-Image → edge = ảnh đầu làm liền mạch, các ảnh sau mượn mép của nó (lát trộn lẫn được); wang = 2 vật liệu (dòng 1, dòng 2 — hoặc 2 biến thể của 1 vật liệu) thành bộ Wang góc 16 ô, xếp kiểu gì khớp nhãn góc cũng liền → chấm điểm + xem lát → normal map → duyệt
 inputs:
-  prompt: {type: text, label: Vật liệu, placeholder: "grass with small flowers"}
-  count: {type: int, default: 4, min: 2, max: 8, label: Số biến thể}
+  prompt: {type: text, multiline: true, label: "Vật liệu (Wang: dòng 2 = vật liệu thứ hai)", placeholder: "lush green grass\ndry dirt path"}
+  mode: {type: enum, default: edge, options: [edge, wang], label: "Kiểu bộ ô (edge = chung mép, wang = góc 2 vật liệu)"}
+  count: {type: int, default: 4, min: 1, max: 8, label: Số ảnh mỗi vật liệu}
   size: {type: int, default: 512, options: [128, 256, 512, 1024], label: Cỡ ô (px)}
   flatten: {type: float, default: 0.5, min: 0, max: 1, label: San phẳng ánh sáng}
   normal: {type: bool, default: true, label: Tạo normal map}
@@ -11,27 +12,33 @@ inputs:
 steps:
   - id: gen
     kind: comfy.t2i_zimage_turbo
-    params: {"57:27.text": "${inputs.prompt}, seamless tileable texture, top-down orthographic view of a flat surface, flat even lighting, no shadows, no perspective, no vignette, uniform pattern filling the whole frame, game texture",
+    params: {"57:27.text": "${inputs.prompt | lines}, seamless tileable texture, one continuous surface photographed straight down from directly above, orthographic, no perspective, no vanishing point, flat even diffuse lighting, no shadows, no vignette, natural irregular variation, every detail unique and non-repeating, no tile grid, no seams, no borders, fills the whole frame, game texture",
              "57:13.batch_size": "${inputs.count}"}
+    map_param: "57:27.text"
   - id: seam
     kind: op.seamless
     in: {images: gen.images}
-    params: {match_edges: true, flatten: "${inputs.flatten}", name: tile}
+    params: {match_edges: true, mode: "${inputs.mode}", group: "${inputs.count}", flatten: "${inputs.flatten}", name: tile}
+  - id: wang
+    kind: op.tile_wang
+    in: {images: seam.images}
+    params: {mode: "${inputs.mode}", size: "${inputs.size}", normal: "${inputs.normal}"}
   - id: fit
     kind: op.tile_resize
-    in: {images: seam.images}
-    params: {size: "${inputs.size}", levels: 0}
+    in: {images: wang.images}
+    params: {size: "${inputs.size}", levels: 0, square: true}
   - id: nmap
     kind: op.tile_normal
-    in: {images: fit.images}
+    in: {images: fit.images, nmap: wang.nmap}
     params: {enabled: "${inputs.normal}"}
   - id: check
     kind: op.tile_check
-    in: {images: fit.images, nmap: nmap.images}
+    in: {images: fit.images, nmap: nmap.images, atlas: wang.atlas, wang: wang.wang}
     params: {grid: 4}
   - id: approve
     kind: gate.approve
-    in: {images: check.images, preview: check.preview, report: check.report, atlas: check.atlas, nmap: check.nmap}
+    in: {images: check.images, preview: check.preview, report: check.report, atlas: check.atlas, nmap: check.nmap,
+         wang: check.wang}
     params: {enabled: "${inputs.review}"}
 outputs:
   final: approve.images
@@ -39,3 +46,4 @@ outputs:
   report: approve.report
   atlas: approve.atlas
   nmap: approve.nmap
+  wang: approve.wang

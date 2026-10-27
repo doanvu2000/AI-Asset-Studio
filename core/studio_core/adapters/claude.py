@@ -14,6 +14,7 @@ from typing import Any, AsyncIterator, Awaitable, Callable
 
 from ..config import Settings
 from ..contracts import BlobRef, Lane, Outputs, ResourceHealth, StepContext, StepError, StepResult
+from ..contracts import report_cost
 
 MAX_IMAGE_BYTES = 3_500_000
 DEFAULT_TIMEOUT_S = 300.0
@@ -138,14 +139,22 @@ def timeout_limit(raw: Any) -> float | None:
 
 
 async def ask(query_fn: QueryFn, params: dict[str, Any], prompt: str, cwd: str,
-              images: list[tuple[bytes, str]] | None = None, **option_kw: Any) -> ClaudeReply:
+              images: list[tuple[bytes, str]] | None = None, *, ctx: StepContext | None = None,
+              **option_kw: Any) -> ClaudeReply:
+    """With `ctx`, each answered call's cost (also of an error reply) is reported via ctx.add_cost."""
     content = await asyncio.to_thread(build_content, prompt, images or [])
     limit = timeout_limit(params.get("_timeout_s"))
     try:
         async with asyncio.timeout(limit):
-            return await query_fn(content, build_options(params, cwd, **option_kw))
+            reply = await query_fn(content, build_options(params, cwd, **option_kw))
     except TimeoutError as e:
         raise StepError("claude_timeout", f"Claude did not answer within {limit:.0f}s", retryable=True) from e
+    except StepError as e:
+        if isinstance(e.detail, dict):
+            await report_cost(ctx, e.detail.get("cost_usd"))
+        raise
+    await report_cost(ctx, reply.meta.get("cost_usd"))
+    return reply
 
 
 async def load_images(ctx: StepContext, refs: list[BlobRef]) -> list[tuple[bytes, str]]:
@@ -208,7 +217,7 @@ class ClaudeTaskExecutor:
         images = await load_images(ctx, inputs.get("images", []))
         await asyncio.to_thread(ctx.job_dir.mkdir, parents=True, exist_ok=True)
         ctx.progress(0, 1, "claude")
-        reply = await ask(self.query, params, prompt, str(ctx.job_dir), images)
+        reply = await ask(self.query, params, prompt, str(ctx.job_dir), images, ctx=ctx)
         outputs = {"json": [await put_json(ctx, reply.payload, "result.json")]}
         if reply.structured is None:
             outputs["text"] = [await ctx.blobs.put_bytes(reply.text.encode("utf-8"), name="result.txt",
@@ -283,7 +292,7 @@ class ClaudeBriefExecutor:
         await asyncio.to_thread(ctx.job_dir.mkdir, parents=True, exist_ok=True)
         ctx.progress(0, 1, "brief")
         reply = await ask(self.query, q, brief_prompt(idea, target, str(params.get("style") or "")),
-                          str(ctx.job_dir))
+                          str(ctx.job_dir), ctx=ctx)
         brief = reply.structured if isinstance(reply.structured, dict) else {}
         prompt = str(brief.get("prompt") or "").strip().rstrip(".").strip()
         if not prompt:

@@ -89,7 +89,7 @@ class BlenderAgentExecutor:
         async with self._lock:
             ctx.progress(0, 1, "agent")
             try:
-                reply = await ask(self.query, q, prompt, str(ctx.job_dir), mcp_servers=servers,
+                reply = await ask(self.query, q, prompt, str(ctx.job_dir), ctx=ctx, mcp_servers=servers,
                                   allowed_tools=allowed_tools(params.get("tools")))
             except StepError as e:
                 if e.code != "claude_timeout":
