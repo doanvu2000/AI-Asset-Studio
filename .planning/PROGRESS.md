@@ -425,3 +425,8 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   Test `test_running_bond_wraps_whole_bricks_and_an_even_course_count`, `test_tileset_rules_*`, `test_bad_rules_are_rejected`.
 - [x] `uv run pytest -q` → 403 pass / 4 skip. Chưa commit, chưa build.
 - [ ] Còn: cape 45° (cần Blender live), chu kỳ yếu + QA ngưỡng (cần ảnh thật).
+- [x] Cape 45°: `skin_math` seed xương con (cẳng tay/bàn tay) phải tới được từ seed xương cha theo bề mặt, bỏ khi đường
+  vòng > 2.5× đường thẳng (`DETOUR_RATIO`). Sim: cape-edge 0.66→0 trọng số tay, attack xé 290→152 cạnh, walk 124→8; khiên
+  dính chung shell vẫn theo tay. Blender 5.2 thật A/B (attack/walk 8 hướng) hết vạt cape kéo lên ở 45°. 308k verts 10.1s.
+  Commit `bb59623`. pytest 405 pass / 4 skip.
+- [x] README.md mới + `docs/screenshots/` (dashboard, new-run, wang, gạch, thư viện, sprite hiệp sĩ, cape trước/sau).
