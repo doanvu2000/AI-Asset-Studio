@@ -91,6 +91,18 @@ def test_thin_plank_joints_are_found_from_the_projected_edges():
     assert "y" in info["aligned"] and _multiple(out.height, 41.3), (out.size, info)
 
 
+def test_flagstone_joints_are_found_from_the_projected_brightness():
+    rng = np.random.default_rng(7)
+    n, cell = 768, 97.3
+    y, x = np.mgrid[0:n, 0:n].astype(np.float64)
+    joint = ((x / cell) % 1 < 0.07) | ((y / cell) % 1 < 0.07)
+    tone = 0.45 + 0.15 * rng.random((9, 9))[(y // cell).astype(int) % 9, (x // cell).astype(int) % 9]
+    lum = np.where(joint, 0.2, tone + 0.18 * soft_blur(rng.random((n, n, 1)), 1)[..., 0])
+    src = Image.fromarray((np.clip(np.stack([lum] * 3, -1), 0, 1) * 255).astype(np.uint8)).convert("RGBA")
+    g = detect_grid(detrend(_rgb(src)))
+    assert g["x"]["strong"] and _multiple(g["x"]["period"], cell), g
+
+
 def test_a_single_repeat_across_the_frame_is_not_a_grid():
     half = np.asarray(plain_noise(256, r=12, seed=5).convert("RGB"))
     src = Image.fromarray(np.concatenate([half, half, half[:, :40]], 1)).convert("RGBA")

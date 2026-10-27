@@ -430,3 +430,9 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   dính chung shell vẫn theo tay. Blender 5.2 thật A/B (attack/walk 8 hướng) hết vạt cape kéo lên ở 45°. 308k verts 10.1s.
   Commit `bb59623`. pytest 405 pass / 4 skip.
 - [x] README.md mới + `docs/screenshots/` (dashboard, new-run, wang, gạch, thư viện, sprite hiệp sĩ, cape trước/sau).
+- [x] Texture lưới trên ảnh thật W20 (17 ảnh Z-Image): gạch thật trước chỉ căn x (kiểm dấu độ sáng `signed>0` loại hết vì mỗi
+  viên một tông) → ngưỡng `SIGNED_MIN` -0.5 (bàn cờ lệch pha ≈ -0.85) → 4/4 gạch căn cả x+y; lọc chẵn/lẻ chỉ khi tín hiệu ≥ 0.2.
+  Thêm `_line_period` (chiếu profile cạnh/độ sáng): ván `live_planks01` nhận hàng 127px (trước mất 1 ranh ở mối nối → ván
+  cao gấp rưỡi), đá lát 01 căn x. Chu kỳ < 3 lần/ảnh không căn (cỏ trước bị "lưới" 502px); `stamp_repeat` dùng `periodic`.
+  tile_report giữ p95 (p99 làm ảnh thô qua ngưỡng 70). Commit `6c02fdc` + commit này. pytest 409 pass / 4 skip.
+- [ ] Còn: đá lát nghiêng (keystone mạnh) chưa nhận; ngưỡng QA cần thêm run thật có duyệt/từ chối.

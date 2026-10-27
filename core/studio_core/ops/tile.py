@@ -146,6 +146,8 @@ SIGNED_MIN = -0.5
 GRID_MIN_REPEATS = 3
 LINE_MIN_STRENGTH = 0.5
 LINE_MIN_HARMONIC = 0.35
+# Brightness profiles of grass and noise reach ~0.45 / 0.45 on their own, so this one needs a wider margin.
+BRIGHT_LINE_MIN = (0.6, 0.55)
 
 
 def _reduce(lum: np.ndarray, side: int) -> tuple[np.ndarray, int]:
@@ -233,21 +235,30 @@ def detect_grid(a: np.ndarray) -> dict[str, Any]:
         entry = {"period": round(period, 2), "strength": round(strength, 3), "strong": bool(strong),
                  "periodic": bool(periodic)}
         if not strong:
-            llag, lstr, lh2 = _line_period(lum, ax)
-            if lstr >= LINE_MIN_STRENGTH and lh2 >= LINE_MIN_HARMONIC:
+            for edges, need in ((True, (LINE_MIN_STRENGTH, LINE_MIN_HARMONIC)), (False, BRIGHT_LINE_MIN)):
+                llag, lstr, lh2 = _line_period(lum, ax, edges)
+                if lstr >= need[0] and lh2 >= need[1]:
+                    break
+            else:
+                llag = 0.0
+            if llag:
                 entry = {"period": round(llag, 2), "strength": round(lstr, 3), "strong": True, "periodic": True,
                          "source": "lines"}
         info[name] = entry
     return info
 
 
-def _line_period(lum: np.ndarray, ax: int) -> tuple[float, float, float]:
-    """(lag, strength, 2nd-harmonic) of the edge-strength profile projected across the axis. Plank rows and thin
-    grout lines run straight through the whole image, so averaging along them keeps them while grain, stone speckle
-    and per-plank tone (which swamp the 2D autocorrelation) average out."""
-    e = np.abs(np.diff(lum, axis=ax, append=np.take(lum, [-1], axis=ax))).mean(axis=1 - ax)[None]
-    e = soft_blur(e, 1, axes=(1,), wrap=False)
-    p = (e - soft_blur(e, max(4, e.shape[1] // 32), axes=(1,), wrap=False))[0]
+def _line_period(lum: np.ndarray, ax: int, edges: bool = True) -> tuple[float, float, float]:
+    """(lag, strength, 2nd-harmonic) of a profile projected across the axis. Plank rows and thin grout lines run
+    straight through the whole image, so averaging along them keeps them while grain, stone speckle and per-plank
+    tone (which swamp the 2D autocorrelation) average out. Edge strength suits planks (tone changes per board);
+    plain brightness suits flagstones, whose dark joints are wider than one edge."""
+    if edges:
+        e = np.abs(np.diff(lum, axis=ax, append=np.take(lum, [-1], axis=ax))).mean(axis=1 - ax)[None]
+        e = soft_blur(e, 1, axes=(1,), wrap=False)
+        p = (e - soft_blur(e, max(4, e.shape[1] // 32), axes=(1,), wrap=False))[0]
+    else:
+        p = (lum - soft_blur(lum, max(4, min(lum.shape) // 8), axes=(ax,), wrap=False)).mean(axis=1 - ax)
     n = len(p)
     f = np.fft.rfft(p - p.mean(), 2 * n)
     acf = np.fft.irfft(f * np.conj(f), 2 * n)[:n] / (n - np.arange(n))
