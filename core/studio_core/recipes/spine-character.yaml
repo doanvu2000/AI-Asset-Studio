@@ -10,7 +10,7 @@ inputs:
 steps:
   - id: concept
     kind: comfy.t2i_zimage_turbo
-    params: {"57:27.text": "${inputs.prompt}, holding nothing, full body, front view facing the camera, T-pose, arms stretched straight out horizontally to the sides, legs slightly apart, whole figure visible head to feet, isolated on plain white background, centered, 2D game character, flat cel shading",
+    params: {"57:27.text": "${inputs.prompt}, exactly two arms, any held item gripped in the hand at the end of a straight outstretched arm, full body, front view facing the camera, T-pose, arms stretched straight out horizontally to the sides, legs slightly apart, whole figure visible head to feet, isolated on plain white background, centered, 2D game character, flat cel shading",
              "57:13.batch_size": 4}
   - id: pick
     kind: gate.pick

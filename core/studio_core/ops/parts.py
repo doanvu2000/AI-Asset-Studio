@@ -211,7 +211,7 @@ def partition(alpha: np.ndarray, masks: dict[str, np.ndarray]) -> Partition:
         labels = grow_labels(labels, sil)
     _claim_sleeves(labels, names)
     _shed_coat_tails(labels, names, center, center_x)
-    if _attach_props(labels, names):
+    if _attach_props(labels, names, center_x):
         labels = grow_labels(labels, sil)
 
     part = Partition(labels, names, {}, center_x)
@@ -283,9 +283,10 @@ def _claim_sleeves(labels: np.ndarray, names: list[str]) -> None:
             labels[sleeve] = names.index(name) + 1
 
 
-def _attach_props(labels: np.ndarray, names: list[str]) -> bool:
+def _attach_props(labels: np.ndarray, names: list[str], center_x: float) -> bool:
     """A held weapon or tool becomes `prop_l` / `prop_r` after the hand it touches, so it rides that hand; prop
-    pixels that touch no hand (a sheathed sword, a quiver) are unlabeled for the body around them to take."""
+    pixels that touch no hand (a sheathed sword, a quiver, a strap SAM took for a weapon where it meets the
+    shoulder) are unlabeled for the body around them to take."""
     if "prop" not in names:
         return False
     i = names.index("prop")
@@ -295,8 +296,15 @@ def _attach_props(labels: np.ndarray, names: list[str]) -> bool:
         return False
     seeds = np.zeros(labels.shape, np.int16)
     for k, side in enumerate(SIDES, 1):
-        if f"arm_{side}" in names:
-            seeds[_boundary(prop, labels == names.index(f"arm_{side}") + 1)] = k
+        if f"arm_{side}" not in names:
+            continue
+        arm = labels == names.index(f"arm_{side}") + 1
+        xs = np.nonzero(arm)[1]
+        if not len(xs):
+            continue
+        reach = np.abs(np.arange(labels.shape[1]) - center_x)[None, :]
+        hand = arm & (reach >= ARM_OUTER_REACH * np.abs(xs - center_x).max())
+        seeds[_boundary(prop, hand)] = k
     held = grow_labels(seeds, prop)
     labels[prop] = 0
     if (held == 1).any():

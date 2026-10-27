@@ -476,3 +476,39 @@ def test_a_weapon_mask_covering_the_whole_figure_is_ignored() -> None:
     everything = Image.fromarray(((np.asarray(img)[..., 3] > 0) * 255).astype(np.uint8), "L")
     meta, _, _ = rig.run_parts(img, masks + [everything], rig.DEFAULT_ROLES + ["prop"])
     assert meta["areas"].get("prop_r", 0) == 0 and meta["areas"]["torso"] > 5000
+
+
+def test_attack_swings_the_hand_that_holds_the_weapon() -> None:
+    def prop(name: str, n: int) -> sp.Layer:
+        return sp.Layer(name, Image.new("RGBA", (n, 10), (200, 200, 200, 255)), (0, 0))
+
+    assert sp.lead_hand([]) == "r"
+    assert sp.lead_hand([prop("prop_l", 80), prop("prop_r", 5)]) == "l"
+    assert sp.lead_hand([prop("prop_r", 80)]) == "r"
+
+
+def test_upper_arms_are_weighted_meshes_that_keep_the_shoulder_on_the_torso(built: dict) -> None:
+    layers = [sp.Layer(e["name"], c, tuple(e["offset"])) for c, e in zip(built["crops"], built["layers"]["parts"])]
+    doc, _ = sp.build_skeleton(layers, {k: tuple(v) for k, v in built["layers"]["joints"].items()},
+                               tuple(built["layers"]["origin"]), "x")
+    names = [b["name"] for b in doc["bones"]]
+    att = doc["skins"][0]["attachments"]["upper_arm_l"]["upper_arm_l"]
+    assert att["type"] == "mesh" and sp._mesh_problems(att, len(names)) == []
+    rest = sp.mesh_points(att, sp.world_transforms(doc), names)
+    posed = sp.mesh_points(att, sp.world_transforms(doc, "relax", 1.2), names)
+    moved = np.linalg.norm(posed - rest, axis=1)
+    inner = rest[:, 0] <= rest[:, 0].min() + 1e-6
+    outer = rest[:, 0] >= rest[:, 0].max() - 1e-6
+    assert moved[inner].max() < 3 and moved[outer].min() > 20
+
+    broken = {**att, "vertices": [1, len(names), 0.0, 0.0, 1.0] + att["vertices"][5:]}
+    assert sp._mesh_problems(broken, len(names))
+
+
+def test_a_weapon_mask_touching_only_the_shoulder_is_not_held() -> None:
+    img, masks = figure()
+    ImageDraw.Draw(img).rectangle((290, 175, 300, 240), fill=(110, 70, 30, 255))
+    prop = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(prop).rectangle((290, 175, 300, 240), fill=255)
+    meta, labels, _ = rig.run_parts(img, masks + [prop], rig.DEFAULT_ROLES + ["prop"])
+    assert "prop_l" not in meta["names"] and meta["areas"].get("prop_r", 0) == 0

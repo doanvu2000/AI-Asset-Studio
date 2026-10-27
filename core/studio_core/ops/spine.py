@@ -211,8 +211,14 @@ def leg_stride(layers: list[Layer]) -> float:
     return 0.0 if seam_rows > JOINED_LEGS * max(height, 1) else 1.0
 
 
-def animations(bones: list[Bone], height: float, drop: float = 1.0, swing: float = 1.0, stride: float = 1.0
-               ) -> dict[str, Any]:
+def lead_hand(layers: list[Layer]) -> str:
+    """The side that swings in `attack`: the one holding the bigger prop, else the character's right."""
+    held = {s: sum(int((np.asarray(l.image)[..., 3] > 0).sum()) for l in layers if l.name == f"prop_{s}") for s in "lr"}
+    return "l" if held["l"] > held["r"] else "r"
+
+
+def animations(bones: list[Bone], height: float, drop: float = 1.0, swing: float = 1.0, stride: float = 1.0,
+               lead: str = "r") -> dict[str, Any]:
     """Deterministic clips for a front-view rig: loops `idle`, `relax`, `walk`; one-shots `attack`, `hurt`, `jump`.
     Limb directions come from the setup pose (which image side each limb sits on), never from an assumed sign."""
     by = {b.name: b for b in bones}
@@ -295,12 +301,13 @@ def animations(bones: list[Bone], height: float, drop: float = 1.0, swing: float
         add("walk", f"lower_arm_{s}", "rotate", lambda u, s=s: down(s, 8.0), d, n)
 
     d, n = 0.9, 18
-    g = side["r"]
-    add("attack", "upper_arm_r", "rotate", ease((0, down("r", rest)), (0.3, down("r", -50)), (0.5, down("r", 85)),
-                                                (1, down("r", rest))), d, n)
-    add("attack", "lower_arm_r", "rotate", ease((0, down("r", 8)), (0.3, down("r", -25)), (0.5, down("r", 5)),
-                                                (1, down("r", 8))), d, n)
-    add("attack", "upper_arm_l", "rotate", ease((0, down("l", rest)), (0.4, down("l", rest - 8)), (1, down("l", rest))),
+    a, o = lead, "l" if lead == "r" else "r"
+    g = side[a]
+    add("attack", f"upper_arm_{a}", "rotate", ease((0, down(a, rest)), (0.3, down(a, -50)), (0.5, down(a, 85)),
+                                                   (1, down(a, rest))), d, n)
+    add("attack", f"lower_arm_{a}", "rotate", ease((0, down(a, 8)), (0.3, down(a, -25)), (0.5, down(a, 5)),
+                                                   (1, down(a, 8))), d, n)
+    add("attack", f"upper_arm_{o}", "rotate", ease((0, down(o, rest)), (0.4, down(o, rest - 8)), (1, down(o, rest))),
         d, n)
     add("attack", "torso", "rotate", ease((0, 0), (0.3, -g * 4), (0.5, g * 6), (1, 0)), d, n)
     hip_x = ease((0, 0), (0.3, -g * 0.01 * h), (0.5, g * 0.025 * h), (1, 0))
@@ -332,13 +339,62 @@ class Layer:
     offset: tuple[int, int]  # top-left in source pixels
 
 
+MESH_CELLS = 6
+# Along the upper arm (0 = shoulder, 1 = elbow): skin inside T0 stays with the torso, past T1 rides the arm.
+ARM_BLEND = (-0.05, 0.35)
+
+
+def _smoothstep(a: float, b: float, x: float) -> float:
+    k = min(1.0, max(0.0, (x - a) / (b - a)))
+    return k * k * (3 - 2 * k)
+
+
+def arm_mesh(layer: Layer, origin: Point, arm: Bone, body: Bone, index: dict[str, int]) -> dict[str, Any]:
+    """Weighted grid mesh for an upper arm: whatever sits inside the shoulder (a fur mantle, the inner rim of a
+    pauldron) keeps to the torso and the skin stretches across the joint instead of swinging up with the arm."""
+    w, h = layer.image.size
+    step = min(24.0, max(8.0, min(w, h) / MESH_CELLS))
+    nx, ny = max(1, round(w / step)), max(1, round(h / step))
+    hull = ([(i, 0) for i in range(nx)] + [(nx, j) for j in range(ny)] + [(i, ny) for i in range(nx, 0, -1)]
+            + [(0, j) for j in range(ny, 0, -1)])
+    order = hull + [(i, j) for j in range(1, ny) for i in range(1, nx)]
+    at = {v: k for k, v in enumerate(order)}
+    triangles: list[int] = []
+    for j in range(ny):
+        for i in range(nx):
+            a, b, c, d = at[(i, j)], at[(i + 1, j)], at[(i + 1, j + 1)], at[(i, j + 1)]
+            triangles += [a, b, c, a, c, d]
+    ux, uy = math.cos(math.radians(arm.world_rot)), math.sin(math.radians(arm.world_rot))
+    uvs: list[float] = []
+    vertices: list[float] = []
+    for i, j in order:
+        uvs += [round(i / nx, 6), round(j / ny, 6)]
+        sx, sy = to_spine((layer.offset[0] + w * i / nx, layer.offset[1] + h * j / ny), origin)
+        t = ((sx - arm.world_pos[0]) * ux + (sy - arm.world_pos[1]) * uy) / (arm.length or 1.0)
+        w_arm = round(_smoothstep(*ARM_BLEND, t), 4)
+        ent: list[float] = []
+        for bone, wt in ((body, round(1.0 - w_arm, 4)), (arm, w_arm)):
+            if wt <= 0:
+                continue
+            lx, ly = _rot(-bone.world_rot) @ np.array([sx - bone.world_pos[0], sy - bone.world_pos[1]])
+            ent += [index[bone.name], round(float(lx), 3), round(float(ly), 3), wt]
+        vertices += [len(ent) // 4, *ent]
+    return {"type": "mesh", "uvs": uvs, "triangles": triangles, "vertices": vertices, "hull": len(hull),
+            "width": w, "height": h}
+
+
 def build_skeleton(layers: list[Layer], joints: dict[str, Point], origin: Point, name: str,
                    with_animations: bool = True) -> tuple[dict[str, Any], list[Bone]]:
     bones = build_bones(joints, origin)
     world = {b.name: b for b in bones}
+    index = {b.name: i for i, b in enumerate(bones)}
     slots, attachments = [], {}
     for layer in layers:
         w, h = layer.image.size
+        if layer.name.startswith("upper_arm_") and layer.name in world and "torso" in world:
+            slots.append({"name": layer.name, "bone": layer.name, "attachment": layer.name})
+            attachments[layer.name] = {layer.name: arm_mesh(layer, origin, world[layer.name], world["torso"], index)}
+            continue
         c = to_spine((layer.offset[0] + w / 2, layer.offset[1] + h / 2), origin)
         bname = bone_for(layer.name, c, bones)
         b = world[bname]
@@ -371,7 +427,7 @@ def build_skeleton(layers: list[Layer], joints: dict[str, Point], origin: Point,
     }
     if with_animations:
         anims = animations(bones, max(ys) - min(ys), arm_drop(layers, joints), head_swing(layers, joints),
-                           leg_stride(layers))
+                           leg_stride(layers), lead_hand(layers))
         if "hurt" in anims:
             flash = [{"time": 0, "color": "ffffffff"}, {"time": 0.08, "color": "ff7070ff"}, {"time": 0.3, "color": "ffffffff"}]
             anims["hurt"]["slots"] = {s["name"]: {"rgba": flash} for s in slots}
@@ -410,8 +466,10 @@ def validate_skeleton(doc: dict[str, Any], atlas: str) -> list[str]:
             if slot not in slot_names:
                 bad.append(f"skin {skin.get('name')} references unknown slot {slot}")
             for att_name, att in atts.items():
-                if att.get("type", "region") == "region" and att.get("path", att_name) not in regions:
+                if att.get("type", "region") in ("region", "mesh") and att.get("path", att_name) not in regions:
                     bad.append(f"attachment {att_name} has no atlas region")
+                if att.get("type") == "mesh":
+                    bad += [f"mesh {att_name}: {p}" for p in _mesh_problems(att, len(bones))]
                 if not (att.get("width", 0) > 0 and att.get("height", 0) > 0):
                     bad.append(f"attachment {att_name} has no size")
     for aname, anim in (doc.get("animations") or {}).items():
@@ -422,6 +480,33 @@ def validate_skeleton(doc: dict[str, Any], atlas: str) -> list[str]:
                 times = [k.get("time", 0) for k in keys]
                 if times != sorted(times):
                     bad.append(f"animation {aname}/{bname}/{tname} keys out of order")
+    return bad
+
+
+def _mesh_problems(att: dict[str, Any], n_bones: int) -> list[str]:
+    uvs, tris, verts = att.get("uvs") or [], att.get("triangles") or [], att.get("vertices") or []
+    n = len(uvs) // 2
+    bad = []
+    if len(uvs) % 2 or not n:
+        bad.append("uvs must be pairs")
+    if len(tris) % 3 or any(not 0 <= t < n for t in tris):
+        bad.append("triangle index out of range")
+    if not 0 < att.get("hull", 0) <= n:
+        bad.append("bad hull count")
+    k = count = 0
+    while k < len(verts):
+        c = int(verts[k])
+        ent = verts[k + 1:k + 1 + 4 * c]
+        if c < 1 or len(ent) != 4 * c or any(not 0 <= int(b) < n_bones for b in ent[0::4]):
+            bad.append(f"vertex {count} has bad bone weights")
+            break
+        if abs(sum(ent[3::4]) - 1.0) > 1e-3:
+            bad.append(f"vertex {count} weights do not sum to 1")
+            break
+        k += 1 + 4 * c
+        count += 1
+    if not bad and count != n:
+        bad.append(f"{count} weighted vertices for {n} uvs")
     return bad
 
 
@@ -463,6 +548,7 @@ def compose(doc: dict[str, Any], regions: dict[str, Image.Image], origin: Point,
     """Draw every slot's region attachment in draw order onto a canvas in source-pixel space."""
     canvas = Image.new("RGBa", size, (0, 0, 0, 0))
     world = world_transforms(doc, anim, t)
+    bone_names = [b["name"] for b in doc["bones"]]
     atts = doc["skins"][0]["attachments"]
     ox, oy = origin[0] + shift[0], origin[1] + shift[1]
     for slot in doc["slots"]:
@@ -471,6 +557,9 @@ def compose(doc: dict[str, Any], regions: dict[str, Image.Image], origin: Point,
             continue
         att = atts[slot["name"]][att_name]
         img = regions[att.get("path", att_name)]
+        if att.get("type") == "mesh":
+            canvas = _over(canvas, _draw_mesh(img, att, world, bone_names, size, ox, oy))
+            continue
         w, h = img.size
         bm, bp = world[slot["bone"]]
         am = _rot(att.get("rotation", 0.0)) @ np.diag([att.get("scaleX", 1.0) * att["width"] / w,
@@ -493,6 +582,64 @@ def compose(doc: dict[str, Any], regions: dict[str, Image.Image], origin: Point,
                                                    resample=Image.Resampling.BICUBIC)
         canvas = _over(canvas, layer)
     return canvas.convert("RGBA")
+
+
+def _bilinear(src: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    h, w = src.shape[:2]
+    x0, y0 = np.floor(x).astype(int), np.floor(y).astype(int)
+    fx, fy = (x - x0)[:, None], (y - y0)[:, None]
+    out = np.zeros((len(x), src.shape[2]), np.float32)
+    for dy, dx, wt in ((0, 0, (1 - fx) * (1 - fy)), (0, 1, fx * (1 - fy)), (1, 0, (1 - fx) * fy), (1, 1, fx * fy)):
+        xx, yy = x0 + dx, y0 + dy
+        ok = (xx >= 0) & (xx < w) & (yy >= 0) & (yy < h)
+        out[ok] += src[yy[ok], xx[ok]] * wt[ok]
+    return out
+
+
+def mesh_points(att: dict[str, Any], world: dict[str, tuple[np.ndarray, np.ndarray]], bone_names: list[str]
+                ) -> np.ndarray:
+    """World (y-up) position of every weighted mesh vertex in the given pose."""
+    verts, k = att["vertices"], 0
+    out = np.zeros((len(att["uvs"]) // 2, 2))
+    for i in range(len(out)):
+        c = int(verts[k])
+        for bi, bx, by, wt in np.array(verts[k + 1:k + 1 + 4 * c], np.float64).reshape(-1, 4):
+            m, pos = world[bone_names[int(bi)]]
+            out[i] += wt * (m @ np.array([bx, by]) + pos)
+        k += 1 + 4 * c
+    return out
+
+
+def _draw_mesh(img: Image.Image, att: dict[str, Any], world: dict[str, tuple[np.ndarray, np.ndarray]],
+               bone_names: list[str], size: tuple[int, int], ox: float, oy: float) -> Image.Image:
+    """Deform a weighted mesh with the posed bones and rasterize its triangles (pixel centers, bilinear source)."""
+    w, h = img.size
+    uv = np.array(att["uvs"], np.float64).reshape(-1, 2) * (w, h)
+    dst = mesh_points(att, world, bone_names) * (1, -1) + (ox, oy)
+    src = np.asarray(img.convert("RGBa"), np.float32)
+    out = np.zeros((size[1], size[0], 4), np.float32)
+    done = np.zeros((size[1], size[0]), bool)
+    for a, b, c in np.array(att["triangles"]).reshape(-1, 3):
+        P, S = dst[[a, b, c]], uv[[a, b, c]]
+        x0, x1 = max(int(math.floor(P[:, 0].min())), 0), min(int(math.ceil(P[:, 0].max())) + 1, size[0])
+        y0, y1 = max(int(math.floor(P[:, 1].min())), 0), min(int(math.ceil(P[:, 1].max())) + 1, size[1])
+        T = np.array([[P[1, 0] - P[0, 0], P[2, 0] - P[0, 0]], [P[1, 1] - P[0, 1], P[2, 1] - P[0, 1]]])
+        if x0 >= x1 or y0 >= y1 or abs(np.linalg.det(T)) < 1e-9:
+            continue
+        gx, gy = np.meshgrid(np.arange(x0, x1) + 0.5, np.arange(y0, y1) + 0.5)
+        inv = np.linalg.inv(T)
+        dx, dy = gx - P[0, 0], gy - P[0, 1]
+        l1, l2 = inv[0, 0] * dx + inv[0, 1] * dy, inv[1, 0] * dx + inv[1, 1] * dy
+        inside = (l1 >= -1e-6) & (l2 >= -1e-6) & (l1 + l2 <= 1 + 1e-6) & ~done[y0:y1, x0:x1]
+        if not inside.any():
+            continue
+        l1, l2 = l1[inside], l2[inside]
+        su = S[0, 0] + l1 * (S[1, 0] - S[0, 0]) + l2 * (S[2, 0] - S[0, 0])
+        sv = S[0, 1] + l1 * (S[1, 1] - S[0, 1]) + l2 * (S[2, 1] - S[0, 1])
+        ys, xs = np.nonzero(inside)
+        out[ys + y0, xs + x0] = _bilinear(src, su - 0.5, sv - 0.5)
+        done[ys + y0, xs + x0] = True
+    return Image.fromarray(out.clip(0, 255).astype(np.uint8), "RGBa")
 
 
 def _over(dst: Image.Image, src: Image.Image) -> Image.Image:

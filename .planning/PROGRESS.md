@@ -532,7 +532,7 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 ## Phiên 2026-10-27 19:xx — chủ nhân: "check handoff + progress, tiếp tục, tự build lên test"
 - [x] pytest 422 pass / 4 skip. `npm run dist:core` + `dist:portable` OK; tắt process Portable, `update-portable.ps1`
   (19:06), mở lại app. Portable giờ có leg_stride (chưa commit).
-- [~] Test bản build: 3 lượt `spine-character` chạy bằng `resources/core/studio-core.exe` của Portable
+- [x] Test bản build: 3 lượt `spine-character` chạy bằng `resources/core/studio-core.exe` của Portable
   (driver `scratchpad edad5c82…/r7/portable_live.py`, data `r7/data`): princess / druid / pirate.
 - [x] Kết quả lượt Portable `r7/data`: princess (stride 0, váy liền), druid (áo choàng liền) đạt, problems [] cả 3.
   Pirate hỏng: SAM gộp vạt áo khoác dài vào mask `arm` → vai auto rơi xuống vạt (y 648), vai Claude (y 290) bị loại vì
@@ -543,7 +543,7 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 - [x] Lượt Portable `r7/data2` (bản 19:17, 100–109 s, problems [], mọi khớp claude): pirate hạ tay gọn, vạt áo đứng
   yên; vampire (áo đuôi tôm) đạt. Detective: concept không T-pose (tay phải cầm kính lúp lên mặt) → vai phải lòi một
   mảng áo nhọn khi hạ tay. Lỗi do prompt bắt tay cầm đồ trước mặt, chưa sửa (giới hạn đã biết). Ảnh `r7/v2_*.png`.
-- [ ] Chờ chủ nhân: commit `core: spine walks keep gowns whole; coat skirts in the arm mask go to the cape`
+- [x] (đã commit `bd00a14`) `core: spine walks keep gowns whole; coat skirts in the arm mask go to the cape`
   (`ops/spine.py`, `ops/parts.py`, `tests/test_p5_rig.py`, `.planning/PROGRESS.md`).
 - [x] Commit `bd00a14` (gown stride + coat tails) theo lệnh chủ nhân.
 - [x] Detective: cả 8 concept của 2 lượt đều vẽ thêm "tay thứ 3" cầm kính lúp (lỗi của Z-image khi prompt có "holding X"
@@ -564,7 +564,28 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   liền. Test +1; pytest 427 pass / 4 skip. Build Portable 20:57.
 - [x] Lượt Portable `r7/data5` (bản 20:57, 106–117 s, problems [] cả 3): knight kiếm `prop_r` theo tay, giáp liền;
   girl không vũ khí đúng như cũ (mask cả người bị bỏ); druid gậy vắt trước áo đi liền theo tay. Ảnh `r7/v_data5_*.png`.
-- [ ] Chờ chủ nhân: commit `core: spine rigs carry held weapons on the hand; cuff straps in the torso join the arm`
-  (`ops/parts.py`, `ops/spine.py`, `recipes/spine-character.yaml`, `tests/test_p5_rig.py`, `.planning/PROGRESS.md`).
-- [ ] Tiếp: thêm prop cho `spine-character-mv` (mặt sau ghép theo tên lớp — cần kiểm); concept hay vẽ "tay thứ 3" khi
-  prompt có "holding X" (chỉ né được bằng chọn ảnh ở gate).
+- [x] Commit `9763a9c` (prop + đai cổ tay) theo "ok cứ tiếp tục".
+- [x] `spine-character-mv`: thêm prompt/role prop cho cả segment trước và sau (2 skeleton độc lập, không ghép tên).
+- [x] "Tay thứ 3": so prompt concept bằng `r7/concepts.py` (core dev, dừng ở pick, huỷ): "holding nothing" (A) →
+  "exactly two arms, any held item gripped in the hand at the end of a straight outstretched arm" (B). Detective A 4/4
+  mọc tay → B 3/4 sạch; knight B 4/4 cầm kiếm; mage B 4/4 cầm đũa; girl/princess B tay không, không thêm đồ. Áp B cho
+  cả 2 recipe (`r7/cdata/AB_*.png`, `B_plain.png`).
+- [x] Lượt thật mv knight (core dev, `r7/data6`, 179 s): trước `prop_l` 8802, sau `prop_r` 8859, problems [] cả 2.
+  Attack vung tay không cầm kiếm → `spine.lead_hand` (bên có prop lớn hơn, mặc định r) + `animations(lead=…)`.
+  Dựng lại offline: attack giơ tay cầm kiếm. Test +1; pytest 428 pass / 4 skip. Build Portable 21:29. Chưa commit.
+- [x] Vệt nối đầu gối khi walk: soi khung walk knight `r7/data5` (cắt cận) → liền, không thấy vệt (walk xoay cả chân
+  như một khối). Coi như hết.
+- [x] Weighted mesh vai (chủ nhân: "sửa luôn đi", plan `.planning/PLAN-spine-weighted-mesh.md`): `spine.arm_mesh` —
+  upper_arm_* thành mesh lưới (ô ~min(w,h)/6, 8–24 px), trọng số torso↔upper_arm theo t dọc vai→khuỷu (smoothstep
+  `ARM_BLEND` −0.05→0.35); `compose` vẽ mesh (`mesh_points` + raster tam giác barycentric, bilinear);
+  `validate_skeleton` kiểm mesh (`_mesh_problems`). Đối chiếu runtime thật `@esotericsoftware/spine-core@4.2.43`
+  (`scratchpad edad5c82…/spinecheck/check.mjs`): đỉnh mesh barbarian setup/relax/attack lệch ≤ 0.0001 px.
+  Dựng lại barbarian (hết "tai" lông), knight (mép giáp vai liền, hết gai), girl, samurai ổn.
+- [x] Lượt thật Portable 22:33 `r7/data7`: barbarian khăn lông nằm yên trên vai. Viking lộ: SAM "weapon" bắt dây đeo
+  chéo ngực, chạm vai trái → `prop_l` kéo theo tay, thủng ngực. Sửa `_attach_props`: chỉ gieo prop ở chỗ chạm phần
+  ngoài tay (tầm với ≥ 0.6 · tầm với tay, như bàn tay). Test +2 (mesh, dây vai — fail khi chưa sửa).
+  pytest 430 pass / 4 skip. Build Portable 22:41; lượt thật `r7/data8` viking (rìu theo tay, ngực liền), archer OK.
+- [ ] Chờ chủ nhân: commit `core: spine upper arms are weighted meshes; attacks swing the weapon hand; concepts keep
+  held items in the outstretched hand`.
+- Giới hạn còn: SAM "head, hair" có khi ôm cả áo choàng lông (viking `r7/data7`) → áo choàng xoay theo đầu (nhẹ);
+  mũi tên vắt 2 tay: nửa phía tay trái đi theo tay trái.
