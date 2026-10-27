@@ -498,3 +498,19 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 - [x] Bỏ nhãn "(R&D)" / "(thử nghiệm)" ở 2 recipe Spine + art index + mock. Test mới 4 (`test_p5_rig.py`);
   pytest 415 pass / 4 skip; typecheck OK. Chưa commit.
 - [ ] Còn nhỏ: mép tóc có bậc vuông ở ngang vai; vệt nối đầu gối khi chân nhích (walk); đầu nghiêng tách tóc trước/sau.
+- [x] Commit `af50377` (spine fill/specks/sleeves, bỏ R&D) theo lệnh "commit rồi làm tiếp".
+- [x] Lượt thật `spine-character-mv` (`r6/data3`, mvgirl) 174 s succeeded, 2 bộ problems [], mặt sau iou 0.999 → không hồi quy.
+- [x] Đầu nghiêng làm tóc dài văng/tách (khung hurt) → `spine.head_swing` (cao lớp head / dài head_top→neck > 1.6 ⇒ xoay
+  đầu ×1.6/r, tối thiểu 0.25); girl 0.6. Ảnh so: `r6/hurt_cmp.png`.
+- [x] Khớp chân lệch: `merge_joints` nhận từng khớp riêng → hông trái Claude (y 598), hông phải auto (699). Vẽ so
+  (`r6/knees.png`): gối Claude đúng (giữa giáp gối / chân lộ, ~0.35 hông→cổ chân), gối auto (0.5) quá thấp.
+  `_keep_limbs_sane`: hông/vai cùng độ cao (lệch nguồn ⇒ theo bên Claude; cùng nguồn lệch > tol/2 ⇒ trung bình);
+  khớp giữa ngoài 20–80% chiều dài chi ⇒ cả chi về auto. 9 mẫu: chỉ pháp sư (áo che chân) dùng auto hông/gối.
+  Test +2; pytest 417 pass / 4 skip. Chưa commit.
+- [x] Mép tóc bậc vuông ngang vai → `behind_arms` vá cả cột chỉ thấy tóc 1 phía nhưng thuôn dần (`_taper`: sâu ≤
+  1 − khoảng cách/độ dài đoạn) → mép chéo nối mép tóc trên/dưới. Test +1.
+- [x] Lượt thật `r6/data4` (girl 124 s, wizard 101 s): pháp sư hạ tay gọn; girl lộ lỗi cũ: SAM gộp ủng trái vào mask
+  `arm` → auto chuỗi tay trái kéo xuống ủng, Claude bị loại (xa auto > 4×tol), ủng bay theo tay. Sửa
+  `_drop_stray_arms` (pixel tay dưới tâm thân không nối phần tay trên → bỏ nhãn cho lớp kề nhận): arm_l 21761→9149,
+  leg_l 9357→21969, mọi khớp claude; dựng lại offline (`r6/full_re.py`, ảnh `r6/girl4_re_v.png`) đúng. Test +1.
+  pytest 419 pass / 4 skip. Chưa commit.

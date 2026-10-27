@@ -203,11 +203,36 @@ def partition(alpha: np.ndarray, masks: dict[str, np.ndarray]) -> Partition:
     if (sil & (labels == 0)).any():
         labels = grow_labels(labels, np.ones_like(sil))
         labels[~sil] = 0
+    if _drop_stray_arms(labels, names, center):
+        labels = grow_labels(labels, sil)
 
     part = Partition(labels, names, {}, center_x)
     hand = seeds.get("hand")
     part.joints, part.hints = estimate_joints(part, hand)
     return part
+
+
+def _drop_stray_arms(labels: np.ndarray, names: list[str], torso_center: Point | None) -> bool:
+    """SAM sometimes adds a boot or a strand of hair to the arm mask. A T-pose arm reaches out at shoulder
+    height, so arm pixels below the torso center that do not connect to the arm's upper part are unlabeled
+    for their neighbors to take."""
+    if torso_center is None:
+        return False
+    below = np.arange(labels.shape[0])[:, None] > torso_center[1]
+    changed = False
+    for side in SIDES:
+        name = f"arm_{side}"
+        if name not in names:
+            continue
+        arm = labels == names.index(name) + 1
+        anchor = arm & ~below
+        if not anchor.any():
+            continue
+        stray = arm & ~(grow_labels(anchor.astype(np.int16), arm) > 0)
+        if stray.any():
+            labels[stray] = 0
+            changed = True
+    return changed
 
 
 def _shoulder(ch: Chain, arm: np.ndarray, neck: Point, min_dx: float) -> Point:
@@ -293,7 +318,44 @@ def merge_joints(auto: dict[str, Point], proposed: dict[str, Any] | None, labels
         if d <= tolerance and math.dist((x, y), auto[k]) <= tolerance * 4:
             out[k] = (round(x, 1), round(y, 1))
             sources[k] = "claude"
+    _keep_limbs_sane(out, sources, auto, tolerance)
     return out, sources
+
+
+MID_JOINT_SPAN = (0.2, 0.8)
+
+
+def _keep_limbs_sane(out: dict[str, Point], sources: dict[str, str], auto: dict[str, Point], tolerance: float
+                     ) -> None:
+    """Hips and shoulders sit level, at the proposed height when only one side was accepted; a limb chain whose
+    middle joint lands near either end (a knee at the hip) falls back to the estimate whole."""
+    def level_pairs() -> None:
+        for root in ("hip", "shoulder"):
+            a, b = (f"{root}_{s}" for s in SIDES)
+            if a not in out or b not in out:
+                continue
+            ya, yb = out[a][1], out[b][1]
+            if sources.get(a) != sources.get(b):
+                y = ya if sources.get(a) == "claude" else yb
+            elif abs(ya - yb) > tolerance / 2:
+                y = round((ya + yb) / 2, 1)
+            else:
+                continue
+            out[a], out[b] = (out[a][0], y), (out[b][0], y)
+
+    level_pairs()
+    for side in SIDES:
+        for segs in LIMB_SEGMENTS.values():
+            keys = [f"{segs[0][0]}_{side}", f"{segs[0][1]}_{side}", f"{segs[1][1]}_{side}", f"{segs[2][1]}_{side}"]
+            if not all(k in out for k in keys[:3]):
+                continue
+            a, m, b = (out[k] for k in keys[:3])
+            upper, lower = math.dist(a, m), math.dist(m, b)
+            if not MID_JOINT_SPAN[0] <= upper / ((upper + lower) or 1.0) <= MID_JOINT_SPAN[1]:
+                for k in keys:
+                    if k in auto:
+                        out[k], sources[k] = auto[k], "auto"
+    level_pairs()
 
 
 def _seg_dist(xs: np.ndarray, ys: np.ndarray, a: Point, b: Point) -> np.ndarray:
@@ -371,7 +433,8 @@ BEHIND_GAP = 32
 
 def behind_arms(parts: dict[str, np.ndarray], max_run: int) -> dict[str, np.ndarray]:
     """Pixels where a T-pose arm crosses hair, a cape or the body: the same part shows right above and right
-    below the arm in that column, so that part continues underneath and is exposed once the arm lowers."""
+    below the arm in that column, so that part continues underneath and is exposed once the arm lowers.
+    Where the part shows on one side only, the fill tapers off so its edge runs diagonally between the two."""
     h, w = next(iter(parts.values())).shape
     cover = np.zeros((h, w), bool)
     for n in ARM_PARTS:
@@ -381,7 +444,9 @@ def behind_arms(parts: dict[str, np.ndarray], max_run: int) -> dict[str, np.ndar
     names = [n for n in BEHIND_ARMS if n in parts]
     for i, n in enumerate(names):
         lab[parts[n] & ~cover] = i + 1
-    out = {n: np.zeros((h, w), bool) for n in names}
+    both = {n: np.zeros((h, w), bool) for n in names}
+    # depth from the side the part shows on: 0 at that edge of the arm, 1 at the far edge
+    depth = {n: np.full((h, w), np.inf, np.float32) for n in names}
     for x in np.nonzero(cover.any(axis=0))[0]:
         ys = np.nonzero(cover[:, x])[0]
         for run in np.split(ys, np.nonzero(np.diff(ys) > 1)[0] + 1):
@@ -390,11 +455,40 @@ def behind_arms(parts: dict[str, np.ndarray], max_run: int) -> dict[str, np.ndar
                 continue
             above = lab[max(y0 - BEHIND_REACH, 0):y0, x][::-1]
             below = lab[y1 + 1:y1 + 1 + BEHIND_REACH, x]
-            a = above[above > 0][:1]
-            b = below[below > 0][:1]
-            if len(a) and len(b) and a[0] == b[0]:
-                out[names[a[0] - 1]][y0:y1 + 1, x] = True
-    return {n: _close_rows(m, cover, BEHIND_GAP) for n, m in out.items() if m.any()}
+            a = int(above[above > 0][0]) if (above > 0).any() else 0
+            b = int(below[below > 0][0]) if (below > 0).any() else 0
+            rel = (np.arange(y0, y1 + 1) - y0 + 0.5) / (y1 - y0 + 1)
+            if a and a == b:
+                both[names[a - 1]][y0:y1 + 1, x] = True
+                continue
+            if a:
+                depth[names[a - 1]][y0:y1 + 1, x] = rel
+            if b:
+                depth[names[b - 1]][y0:y1 + 1, x] = 1 - rel
+    out = {}
+    for n in names:
+        if not both[n].any():
+            continue
+        full = _close_rows(both[n], cover, BEHIND_GAP)
+        out[n] = full | _taper(full, depth[n])
+    return out
+
+
+def _taper(full: np.ndarray, depth: np.ndarray) -> np.ndarray:
+    """One-sided pixels next to `full` along a row: keep those shallower than 1 - (distance / one-sided span)."""
+    w = full.shape[1]
+    idx = np.arange(w)[None, :]
+    one = np.isfinite(depth) & ~full
+    left = np.maximum.accumulate(np.where(full, idx, -1), axis=1)
+    right = np.minimum.accumulate(np.where(full, idx, w)[:, ::-1], axis=1)[:, ::-1]
+    gap_l = np.maximum.accumulate(np.where(~one, idx, -1), axis=1)
+    gap_r = np.minimum.accumulate(np.where(~one, idx, w)[:, ::-1], axis=1)[:, ::-1]
+    from_left = (left >= 0) & (left == gap_l)
+    from_right = (right < w) & (right == gap_r)
+    dist = np.where(from_left, idx - left, np.where(from_right, right - idx, 0))
+    span = np.where(from_left, gap_r - left, right - gap_l)
+    reach = 1 - dist / np.maximum(span, 1)
+    return one & (from_left | from_right) & (depth <= reach)
 
 
 def _close_rows(m: np.ndarray, within: np.ndarray, gap: int) -> np.ndarray:

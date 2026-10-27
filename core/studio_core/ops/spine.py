@@ -162,7 +162,24 @@ def arm_drop(layers: list[Layer], joints: dict[str, Point]) -> float:
     return 1.0 if r <= WIDE_SLEEVE else max(MIN_ARM_DROP, WIDE_SLEEVE / r)
 
 
-def animations(bones: list[Bone], height: float, drop: float = 1.0) -> dict[str, Any]:
+LONG_HAIR = 1.6
+MIN_HEAD_SWING = 0.25
+
+
+def head_swing(layers: list[Layer], joints: dict[str, Point]) -> float:
+    """Share of the usual head rotation. Long hair rides the head bone, so a full tilt swings it like a pendulum
+    and tears it away from the shoulders."""
+    head = next((l for l in layers if l.name == "head"), None)
+    if head is None or "head_top" not in joints or "neck" not in joints:
+        return 1.0
+    ys = np.nonzero((np.asarray(head.image)[..., 3] > 0).any(axis=1))[0]
+    if not len(ys):
+        return 1.0
+    r = (ys[-1] - ys[0] + 1) / max(math.dist(joints["head_top"], joints["neck"]), 1.0)
+    return 1.0 if r <= LONG_HAIR else max(MIN_HEAD_SWING, LONG_HAIR / r)
+
+
+def animations(bones: list[Bone], height: float, drop: float = 1.0, swing: float = 1.0) -> dict[str, Any]:
     """Deterministic clips for a front-view rig: loops `idle`, `relax`, `walk`; one-shots `attack`, `hurt`, `jump`.
     Limb directions come from the setup pose (which image side each limb sits on), never from an assumed sign."""
     by = {b.name: b for b in bones}
@@ -220,7 +237,7 @@ def animations(bones: list[Bone], height: float, drop: float = 1.0) -> dict[str,
     add("idle", "torso", "rotate", lambda u: 1.2 * wave(u), d, n)
     add("idle", "torso", "scale", lambda u: (1.0, 1.0 + 0.015 * wave(u)), d, n)
     add("idle", "hip", "translate", lambda u: (0.0, -1.5 * (1 - math.cos(2 * math.pi * u)) / 2), d, n)
-    add("idle", "head", "rotate", lambda u: -2.0 * wave(u, 0.6), d, n)
+    add("idle", "head", "rotate", lambda u: -2.0 * swing * wave(u, 0.6), d, n)
     for s in "lr":
         add("idle", f"upper_arm_{s}", "rotate", lambda u, s=s: down(s, -3.0 * wave(u)), d, n)
         add("idle", f"lower_arm_{s}", "rotate", lambda u, s=s: down(s, -4.0 * wave(u, -0.8)), d, n)
@@ -230,14 +247,14 @@ def animations(bones: list[Bone], height: float, drop: float = 1.0) -> dict[str,
         add("relax", f"upper_arm_{s}", "rotate", lambda u, s=s: down(s, 60.0 * (1 - math.cos(2 * math.pi * u)) / 2), d, n)
         add("relax", f"lower_arm_{s}", "rotate", lambda u, s=s: down(s, 12.0 * (1 - math.cos(2 * math.pi * u)) / 2), d, n)
         add("relax", f"hand_{s}", "rotate", lambda u, s=s: down(s, 8.0 * (1 - math.cos(2 * math.pi * u)) / 2), d, n)
-    add("relax", "head", "rotate", lambda u: 4.0 * wave(u), d, n)
+    add("relax", "head", "rotate", lambda u: 4.0 * swing * wave(u), d, n)
 
     # Front view: stepping is depth, so a walk reads as a bob, alternating leg lifts and a small arm swing.
     d, n = 1.0, 16
     add("walk", "hip", "translate",
         lambda u: (0.008 * h * wave(u), -0.02 * h * (1 - math.cos(4 * math.pi * u)) / 2), d, n)
     add("walk", "torso", "rotate", lambda u: 2.0 * wave(u), d, n)
-    add("walk", "head", "rotate", lambda u: -1.5 * wave(u), d, n)
+    add("walk", "head", "rotate", lambda u: -1.5 * swing * wave(u), d, n)
     for s, ph in (("l", 0.0), ("r", math.pi)):
         add("walk", f"thigh_{s}", "translate", lambda u, ph=ph: in_hip(0.0, 0.045 * h * max(0.0, wave(u, ph))), d, n)
         add("walk", f"thigh_{s}", "rotate", lambda u, s=s, ph=ph: side[s] * 4.0 * max(0.0, wave(u, ph)), d, n)
@@ -258,7 +275,7 @@ def animations(bones: list[Bone], height: float, drop: float = 1.0) -> dict[str,
 
     d, n = 0.6, 12
     add("hurt", "torso", "rotate", ease((0, 0), (0.15, 8), (1, 0)), d, n)
-    add("hurt", "head", "rotate", ease((0, 0), (0.15, 12), (1, 0)), d, n)
+    add("hurt", "head", "rotate", ease((0, 0), (0.15, 12 * swing), (1, 0)), d, n)
     knock = ease((0, 0), (0.15, -0.02 * h), (1, 0))
     add("hurt", "hip", "translate", lambda u: (knock(u), 0.0), d, n)
     for s in "lr":
@@ -320,7 +337,7 @@ def build_skeleton(layers: list[Layer], joints: dict[str, Point], origin: Point,
         "skins": [{"name": "default", "attachments": attachments}],
     }
     if with_animations:
-        anims = animations(bones, max(ys) - min(ys), arm_drop(layers, joints))
+        anims = animations(bones, max(ys) - min(ys), arm_drop(layers, joints), head_swing(layers, joints))
         if "hurt" in anims:
             flash = [{"time": 0, "color": "ffffffff"}, {"time": 0.08, "color": "ff7070ff"}, {"time": 0.3, "color": "ffffffff"}]
             anims["hurt"]["slots"] = {s["name"]: {"rgba": flash} for s in slots}

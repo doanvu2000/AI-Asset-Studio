@@ -176,6 +176,23 @@ def test_merge_joints_validates_and_unswaps(built: dict) -> None:
     assert out["elbow_l"] == (auto["elbow_l"][0] + 4, auto["elbow_l"][1]) and src["elbow_l"] == "claude"
 
 
+def test_merge_joints_keeps_hips_level_and_knees_off_the_hip(built: dict) -> None:
+    meta = built["meta"]
+    labels = np.asarray(built["labels"]).astype(np.int16)
+    auto = {k: tuple(v) for k, v in meta["joints"].items()}
+    prop = {k: list(v) for k, v in auto.items()}
+    prop["hip_l"] = [auto["hip_l"][0], auto["hip_l"][1] - 12]
+    prop["hip_r"] = [auto["hip_r"][0] - 200, auto["hip_r"][1]]  # off the leg: rejected
+    out, src = pt.merge_joints(auto, prop, labels, meta["names"], meta["center_x"], 30)
+    assert src["hip_l"] == "claude" and src["hip_r"] == "auto"
+    assert out["hip_l"][1] == out["hip_r"][1] == auto["hip_l"][1] - 12
+
+    prop = {k: list(v) for k, v in auto.items()}
+    prop["knee_r"] = [auto["hip_r"][0], auto["hip_r"][1] + 6]  # collapses the thigh
+    out, src = pt.merge_joints(auto, prop, labels, meta["names"], meta["center_x"], 30)
+    assert out["knee_r"] == auto["knee_r"] and src["knee_r"] == "auto"
+
+
 def test_merge_fills_writes_only_hole_pixels(built: dict) -> None:
     layers = [sp.Layer(e["name"], c.copy(), tuple(e["offset"])) for c, e in zip(built["crops"], built["layers"]["parts"])]
     before = {l.name: np.asarray(l.image).copy() for l in layers}
@@ -344,3 +361,41 @@ def test_wide_sleeves_lower_only_part_way() -> None:
     assert sp.arm_drop(layers(24), joints) == 1.0
     wide = sp.arm_drop(layers(120), joints)
     assert sp.MIN_ARM_DROP <= wide < 0.6
+
+
+def test_long_hair_tilts_the_head_less() -> None:
+    joints = {"head_top": (256.0, 60.0), "neck": (256.0, 140.0)}
+
+    def head(h: int) -> list[sp.Layer]:
+        return [sp.Layer("head", Image.new("RGBA", (90, h), (40, 160, 60, 255)), (211, 60))]
+
+    assert sp.head_swing(head(95), joints) == 1.0
+    assert sp.MIN_HEAD_SWING <= sp.head_swing(head(360), joints) < 0.5
+
+
+def test_hair_fill_tapers_where_hair_shows_on_one_side() -> None:
+    hair = np.zeros((H, W), bool)
+    hair[100:200, 300:380] = True
+    hair[226:400, 300:440] = True  # hair widens below the arm
+    arm = np.zeros((H, W), bool)
+    arm[200:226, 250:470] = True
+    hidden = pt.behind_arms({"head": hair, "upper_arm_l": arm}, 60)["head"]
+    assert hidden[200:226, 300:380].all()
+    assert hidden[225, 430] and not hidden[201, 430]  # near the outer edge only the bottom rows
+    assert hidden[201:226, 385].sum() > hidden[201:226, 430].sum()
+    assert not hidden[:, 440:].any()
+
+
+def test_a_boot_in_the_arm_mask_goes_back_to_the_leg() -> None:
+    img, masks = figure()
+    arm = masks[2].copy()
+    ImageDraw.Draw(arm).rectangle((258, 472, 294, 488), fill=255)  # SAM lumps the left boot into "arm"
+    masks[2] = arm
+    meta, labels, _ = rig.run_parts(img, masks, rig.DEFAULT_ROLES)
+    lab = np.asarray(labels)
+    names = meta["names"]
+    assert not (lab[300:] == names.index("arm_l") + 1).any()
+    boot = lab[472:488, 262:290]
+    assert np.isin(boot, [names.index("leg_l") + 1, names.index("leg_r") + 1]).all()
+    assert (boot == names.index("leg_l") + 1).mean() > 0.8
+    assert meta["joints"]["wrist_l"][1] < 200
