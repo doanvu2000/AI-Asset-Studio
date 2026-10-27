@@ -397,3 +397,19 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 - [x] pytest 362 pass / 4 skip; typecheck web+node exit 0. Commit `e941693` core + `cc8107d` app, pushed.
 - [x] Build core + app, smoke bản đóng gói OK; Portable chép 08:15 (đã dừng studio-core MCP từ Portable).
 - [x] 08:20 Handoff mới: `.planning/HANDOFF-2026-10-27-0820.md`
+
+## Phiên 2026-10-27 08:3x (sau HANDOFF-0820) — "làm tiếp mấy mục còn mở"; chưa có quyền commit/build (hỏi lại khi xong)
+- [~] W20 texture: grid period-aware, prompt chống tự lặp, Wang/corner tileset (+Godot terrain, Unity slice) → `w20/`.
+- [~] W21 cape mặt trước (skin_math, kiểm Blender attack/walk/idle) → `w21/`.
+- [~] W19b chi phí khi core bị kill cứng (lưu spent bền, recover gộp prior).
+- [ ] QA hiệu chỉnh ngưỡng: cần thêm dữ liệu thật (để sau). Spine trong engine: chủ nhân chốt không cài runtime.
+- [x] W19b xong: spent_live_usd ghi bền theo item/auto-retry, recover gộp prior; ctx.add_cost (max rule chống đếm trùng) cho claude/views/procedural/agent. pytest 369 pass.
+- [x] W21 v1: skin_math geodesic arm distance + shell components (weld UV seams), cape mặt trước sạch, 45° còn mảnh nhỏ; phát hiện vertex_group_smooth headless chưa từng chạy. Ảnh w21/compare_*. [~] v2: smoothing numpy, shell cứng 1 xương, thử 45°.
+- [x] W21 v2: smoothing numpy (smooth_body_weights, bỏ bpy smooth chết), shell cứng gắn 1 xương (khiên → hand_l), 3 xương/vertex. Stretch walk 53→23, attack 183→90. 45° mảnh cape dính tay: để lại. pytest 384 pass. Ảnh w21/v2_compare_*.
+- [x] W20 xong: `op.seamless grid: auto|off` (detect_grid autocorr + keystone rectify_pitch + wrap_overlap khớp pha theo profile cạnh; ảnh tự nhiên không đổi), prompt Z-Image mới (bỏ "uniform pattern", thêm orthographic/no tile grid/non-repeating; cfg=1 nên negative vô tác dụng), `tile_check.self_repeat` (chỉ báo). Tileset `mode: edge|wang` + `op.tile_wang` (16 ô corner-Wang, atlas 4×4 + wang.json), Godot TileSet Match Corners + alternative tâm (headless 4.7.2: 0 góc lệch), Unity 16 sprite `wang_nn_xxxx` (batchmode fails=0), viewer Wang 5×5 + Xếp lại, chip vật liệu thêm dòng ở prompt nhiều dòng, `tile_resize square`. pytest 386 pass. Ảnh `w20/` (live_textures, live_wang_view, shots/). Còn: đá lát không đều/ván chu kỳ yếu không nhận lưới; gạch so le chỉ căn trục dọc; roll chưa nắn.
+- [x] Audit W19b/W20/W21: H1 tay/tay áo rời bị coi shell cứng (khuỷu không gập); M geodesic chậm 300k=176s + NaN, xương ít đỉnh mất seed, checkerboard lệch nửa chu kỳ, wang 1 dòng fail sau GPU + phí gen, normal=false vẫn xuất wang normal; LOW viewer index, detect 32 ô, export prefix, add_cost tolerance.
+- [~] Giao sửa: W21 (H1, M1, M2, L1, L2), W20 (M3–M5, L4–L6), W19b (L7).
+- [x] W19b L7: lock per ctx cho add_cost, COST_EPS 1e-4 bỏ dư làm tròn. pytest 388.
+- [x] W21 v3: shell cứng chỉ khi không quấn trục tay, geodesic frontier + cap 0.5h + guard NaN (308k verts 9.2s, knight 0.32s), xương ít đỉnh fallback plain, bincount, xương dài 0. Blender v3 trùng pixel v2.
+- [x] W20 sửa audit: checkerboard NCC có dấu + fallback plain, tile_report BOX cỡ lẻ, wang chọn ảnh tốt nhất mỗi dòng + app chặn sớm, normal=false không xuất wang normal, viewer index/watch, wangSet 32 ô, export prefix `<asset>_wang*`.
+- [x] Kiểm cuối: pytest 394 pass / 4 skip; vue-tsc web 0, tsc node 0. 25 file thay đổi, CHƯA commit/build (chờ chủ nhân).
