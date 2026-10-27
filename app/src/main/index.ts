@@ -131,11 +131,12 @@ const THEMES: readonly ThemeMode[] = ['system', 'light', 'dark']
 const uiPrefsFile = (): string => join(app.getPath('userData'), 'ui.json')
 
 function loadTheme(): void {
+  nativeTheme.themeSource = 'light'
   try {
     const t = (JSON.parse(readFileSync(uiPrefsFile(), 'utf8')) as { theme?: unknown }).theme
     if (THEMES.includes(t as ThemeMode)) nativeTheme.themeSource = t as ThemeMode
   } catch {
-    /* no prefs yet → follow Windows */
+    /* no prefs yet → light */
   }
 }
 

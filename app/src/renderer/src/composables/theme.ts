@@ -7,7 +7,7 @@ export const THEME_OPTIONS: ReadonlyArray<readonly [ThemeMode, string]> = [
   ['dark', 'Tối']
 ]
 
-const mode = ref<ThemeMode>('system')
+const mode = ref<ThemeMode>('light')
 let loaded = false
 
 export function useTheme() {

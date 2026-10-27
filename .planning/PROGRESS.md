@@ -473,3 +473,10 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   Kho / Công cụ, tiêu đề toolbar 15px, công tắc màu accent, thanh lọc Thư viện 26px. typecheck OK; ảnh trước/sau sáng+tối:
   scratchpad b257437f…/ui_before, ui_after. Chưa commit, chưa build.
 - [x] 15:25 Handoff mới: `.planning/HANDOFF-2026-10-27-1525.md`
+
+## Phiên 2026-10-27 15:4x (sau HANDOFF-1525) — chủ nhân: "commit xong đọc handoff + progress và tiếp tục"
+- [x] Commit `16e0978` (core QA texture) + `97e2857` (app macOS UI + Tổng quan + plan/handoff). Đi trước origin 10 commit.
+- [x] Ô chọn dự án màn Tạo mới: đo thật dev:mock → weight 400 (đã đúng sau sửa `ProjectSelect`), không cần sửa thêm.
+- [x] Chủ nhân: "mặc định light theme" → `main/index.ts` `loadTheme` đặt `themeSource = 'light'` khi chưa có `ui.json`;
+  `composables/theme.ts` ref mặc định `'light'`. Portable `userdata/` chưa có `ui.json` → bản build sau sẽ mở sáng.
+  typecheck OK; dev:mock `prefers-color-scheme: dark` = false. Chưa commit, chưa build.
