@@ -413,3 +413,4 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 - [x] W21 v3: shell cứng chỉ khi không quấn trục tay, geodesic frontier + cap 0.5h + guard NaN (308k verts 9.2s, knight 0.32s), xương ít đỉnh fallback plain, bincount, xương dài 0. Blender v3 trùng pixel v2.
 - [x] W20 sửa audit: checkerboard NCC có dấu + fallback plain, tile_report BOX cỡ lẻ, wang chọn ảnh tốt nhất mỗi dòng + app chặn sớm, normal=false không xuất wang normal, viewer index/watch, wangSet 32 ô, export prefix `<asset>_wang*`.
 - [x] Kiểm cuối: pytest 394 pass / 4 skip; vue-tsc web 0, tsc node 0. 25 file thay đổi, CHƯA commit/build (chờ chủ nhân).
+- [x] Commit 609701c/ba65230/ff2c402 pushed; build + smoke OK; Portable 10:19. Handoff mới: `.planning/HANDOFF-2026-10-27-1020.md`
