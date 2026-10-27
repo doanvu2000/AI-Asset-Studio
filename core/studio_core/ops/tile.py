@@ -141,6 +141,11 @@ GRID_MIN_SIDE = 384
 STAMP_STRENGTH = 0.4
 GRID_SIDE = 384
 CROSS_KEEP = 0.6
+CROSS_MIN = 0.2
+SIGNED_MIN = -0.5
+GRID_MIN_REPEATS = 3
+LINE_MIN_STRENGTH = 0.5
+LINE_MIN_HARMONIC = 0.35
 
 
 def _reduce(lum: np.ndarray, side: int) -> tuple[np.ndarray, int]:
@@ -222,9 +227,33 @@ def detect_grid(a: np.ndarray) -> dict[str, Any]:
         period = _refine(hp_ax, ax, lag * s) if lag else 0.0
         # Cobbles and grass clumps give one bump at their mean spacing; a real grid repeats at twice the period too.
         h2 = _harmonic(prof, 2 * lag) if lag else None
-        strong = strength >= GRID_MIN_STRENGTH and (strength >= GRID_SOLO_STRENGTH or (h2 or 0.0) >= 0.06)
-        info[name] = {"period": round(period, 2), "strength": round(strength, 3), "strong": bool(strong)}
+        periodic = strength >= GRID_MIN_STRENGTH and (strength >= GRID_SOLO_STRENGTH or (h2 or 0.0) >= 0.06)
+        # A repeat that fits fewer than three times is a stamped patch (stamp_repeat reports it), not a grid to align.
+        strong = periodic and period * GRID_MIN_REPEATS <= lum.shape[ax]
+        entry = {"period": round(period, 2), "strength": round(strength, 3), "strong": bool(strong),
+                 "periodic": bool(periodic)}
+        if not strong:
+            llag, lstr, lh2 = _line_period(lum, ax)
+            if lstr >= LINE_MIN_STRENGTH and lh2 >= LINE_MIN_HARMONIC:
+                entry = {"period": round(llag, 2), "strength": round(lstr, 3), "strong": True, "periodic": True,
+                         "source": "lines"}
+        info[name] = entry
     return info
+
+
+def _line_period(lum: np.ndarray, ax: int) -> tuple[float, float, float]:
+    """(lag, strength, 2nd-harmonic) of the edge-strength profile projected across the axis. Plank rows and thin
+    grout lines run straight through the whole image, so averaging along them keeps them while grain, stone speckle
+    and per-plank tone (which swamp the 2D autocorrelation) average out."""
+    e = np.abs(np.diff(lum, axis=ax, append=np.take(lum, [-1], axis=ax))).mean(axis=1 - ax)[None]
+    e = soft_blur(e, 1, axes=(1,), wrap=False)
+    p = (e - soft_blur(e, max(4, e.shape[1] // 32), axes=(1,), wrap=False))[0]
+    n = len(p)
+    f = np.fft.rfft(p - p.mean(), 2 * n)
+    acf = np.fft.irfft(f * np.conj(f), 2 * n)[:n] / (n - np.arange(n))
+    acf = acf / max(float(acf[0]), 1e-12)
+    lag, strength = _fundamental(acf[:n // GRID_MIN_REPEATS], max(3, n // 64))
+    return lag, strength, ((_harmonic(acf[:n // 2], 2 * lag) or 0.0) if lag else 0.0)
 
 
 def _period_near(x: np.ndarray, est: float, tol: float = 0.3) -> float | None:
@@ -356,7 +385,8 @@ def wrap_overlap(a: np.ndarray, frac: float, min_ncc: float = 0.5) -> tuple[int 
     if best < min_ncc:
         return None, best
     # Edge strength is blind to polarity: on a checkerboard the half-period lag matches every edge while turning
-    # light into dark. A lag only counts when the signed brightness profile agrees too.
+    # light into dark (signed ≈ -0.85). Real bricks and planks sit near 0 because every brick has its own tone, so
+    # only a clear inversion rules a lag out.
     sp = lum - soft_blur(lum, max(4, n // 16), axes=(1,), wrap=False)
     # High-passed across the axis instead: keeps what varies across the wrap direction (the staggered joints of a
     # running bond) and drops what runs along it (grout rows), so it tells an odd course lag from an even one.
@@ -368,12 +398,12 @@ def wrap_overlap(a: np.ndarray, frac: float, min_ncc: float = 0.5) -> tuple[int 
         return float((x * y).sum() / max(float(np.linalg.norm(x) * np.linalg.norm(y)), 1e-9))
 
     peaks = [i for i in range(len(lags)) if ncc[i] >= 0.85 * best and (i == 0 or ncc[i] >= ncc[i - 1])
-             and (i == len(lags) - 1 or ncc[i] >= ncc[i + 1]) and signed(sp, i) > 0]
+             and (i == len(lags) - 1 or ncc[i] >= ncc[i + 1]) and signed(sp, i) > SIGNED_MIN]
     if not peaks:
         return None, best
     cross = {i: signed(cp, i) for i in peaks}
     top = max(cross.values())
-    if top > 0:
+    if top >= CROSS_MIN:
         peaks = [i for i in peaks if cross[i] >= CROSS_KEEP * top]
     o0 = round(n * frac)
     i = min(peaks, key=lambda j: abs((n - lags[j]) - o0))
@@ -530,7 +560,7 @@ def stamp_repeat(a: np.ndarray) -> dict[str, Any] | None:
         return None
     g = detect_grid(a)
     hits = {k: g[k]["period"] for k, n in (("x", a.shape[1]), ("y", a.shape[0]))
-            if g[k]["strong"] and g[k]["strength"] >= STAMP_STRENGTH and g[k]["period"] >= n / 3.5}
+            if g[k]["periodic"] and g[k]["strength"] >= STAMP_STRENGTH and g[k]["period"] >= n / 3.5}
     return {"period": hits, "strength": max(g[k]["strength"] for k in hits)} if hits else None
 
 

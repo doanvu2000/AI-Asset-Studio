@@ -71,6 +71,43 @@ def test_grid_auto_keeps_courses_in_phase_across_the_wrap():
     assert tile_report(auto)["seam_score"] >= 90
 
 
+def planks(n: int = 768, row: float = 41.3, seed: int = 0) -> Image.Image:
+    """Plank rows with their own tone each, strong grain and a thin dark joint: the joints are the only regular part."""
+    rng = np.random.default_rng(seed)
+    y, x = np.mgrid[0:n, 0:n].astype(np.float64)
+    r = np.floor(y / row).astype(int)
+    tone = 0.45 + 0.2 * rng.random(r.max() + 1)[r]
+    grain = 0.12 * np.sin(x / rng.uniform(3, 9, r.max() + 1)[r] + 7 * rng.random(r.max() + 1)[r])
+    lum = tone + grain + 0.06 * rng.standard_normal((n, n))
+    lum = np.where((y / row - r) < 0.04, 0.2, lum)
+    rgb = np.stack([lum, lum * 0.75, lum * 0.5], -1)
+    return Image.fromarray((np.clip(rgb, 0, 1) * 255).astype(np.uint8)).convert("RGBA")
+
+
+def test_thin_plank_joints_are_found_from_the_projected_edges():
+    g = detect_grid(detrend(_rgb(planks())))
+    assert g["y"]["strong"] and _multiple(g["y"]["period"], 41.3), g
+    out, info = seamless_info(planks(), grid="auto")
+    assert "y" in info["aligned"] and _multiple(out.height, 41.3), (out.size, info)
+
+
+def test_a_single_repeat_across_the_frame_is_not_a_grid():
+    half = np.asarray(plain_noise(256, r=12, seed=5).convert("RGB"))
+    src = Image.fromarray(np.concatenate([half, half, half[:, :40]], 1)).convert("RGBA")
+    g = detect_grid(detrend(_rgb(src)))
+    assert not g["x"]["strong"], g
+
+
+def test_bricks_with_varying_grout_tone_still_align_both_axes():
+    # AI bricks: the grout drifts from light to dark down the image, so the plain brightness correlation of the right
+    # lag is near zero rather than positive.
+    src = np.asarray(bricks(seed=3), np.float64)
+    shade = np.linspace(1.15, 0.55, src.shape[0])[:, None, None]
+    src = Image.fromarray(np.clip(src[..., :3] * shade, 0, 255).astype(np.uint8)).convert("RGBA")
+    _, info = seamless_info(src, grid="auto")
+    assert info["aligned"] == ["x", "y"], info
+
+
 @pytest.mark.parametrize("n,course,brick,seed", [(512, 20.3, 55.1, 2), (640, 18.2, 47.9, 4), (1024, 27.5, 73.3, 5)])
 def test_running_bond_wraps_whole_bricks_and_an_even_course_count(n, course, brick, seed):
     out, info = seamless_info(bricks(n=n, course=course, brick=brick, seed=seed), grid="auto")
