@@ -23,9 +23,12 @@ import type {
   RunRow,
   RunStatus,
   StartRunBody,
+  StatsOverview,
+  StatsQuery,
   StepRow,
   VersionRow,
-  VersionStatus
+  VersionStatus,
+  QaRecomputeResult
 } from './types'
 import type { CoreDiagnostics } from '../../../preload/types'
 import { devlog } from '@/composables/devlog'
@@ -97,6 +100,11 @@ export interface StudioApi {
   patchProject(id: string, body: ProjectPatchBody): Promise<ProjectRow>
   archiveProject(id: string): Promise<ProjectRow>
   projectSummary(id: string): Promise<ProjectSummary>
+  /** Cost/time per recipe + per-day totals + most expensive step kinds for one period. */
+  statsOverview(q?: StatsQuery): Promise<StatsOverview>
+  /** Scores Library versions that have no QA yet (or all of them with `missing_only: false`). */
+  recomputeQa(body?: { run_id?: string; project_id?: string; missing_only?: boolean; limit?: number }): Promise<QaRecomputeResult>
+  recomputeVersionQa(id: string): Promise<VersionRow>
 }
 
 export type RecipeBody = { yaml: string } | { doc: RecipeDoc }
@@ -204,6 +212,10 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     createProject: (body) => call('POST', '/api/projects', body),
     patchProject: (id, body) => call('PATCH', `/api/projects/${enc(id)}`, body),
     archiveProject: (id) => call('DELETE', `/api/projects/${enc(id)}`),
-    projectSummary: (id) => call('GET', `/api/projects/${enc(id)}/summary`)
+    projectSummary: (id) => call('GET', `/api/projects/${enc(id)}/summary`),
+    statsOverview: (q = {}) =>
+      call('GET', `/api/stats/overview${query({ since: q.since, until: q.until, project_id: q.project_id, days: q.days, tz_offset_s: q.tz_offset_s })}`),
+    recomputeQa: (body = {}) => call('POST', '/api/qa/recompute', body, SLOW_TIMEOUT_MS),
+    recomputeVersionQa: (id) => call('POST', `/api/qa/versions/${enc(id)}`, undefined, SLOW_TIMEOUT_MS)
   }
 }

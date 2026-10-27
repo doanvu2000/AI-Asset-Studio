@@ -19,6 +19,8 @@ import procedural3d from './recipe-procedural-3d.webp'
 import spineCharacter from './recipe-spine-character.webp'
 import spineCharacterMv from './recipe-spine-character-mv.webp'
 import spriteWalk from './recipe-sprite-8dir-walk.webp'
+import textureSeamless from './recipe-texture-seamless.webp'
+import tilesetSeamless from './recipe-tileset-seamless.webp'
 
 export const ART = { appIcon, emptyRuns, emptyGates, emptyGallery, coreDisconnected, gettingStarted } as const
 
@@ -41,7 +43,9 @@ const RECIPE_ART: Record<string, string> = {
   'prop-3d': prop3d,
   'procedural-3d': procedural3d,
   'spine-character': spineCharacter,
-  'spine-character-mv': spineCharacterMv
+  'spine-character-mv': spineCharacterMv,
+  'texture-seamless': textureSeamless,
+  'tileset-seamless': tilesetSeamless
 }
 
 export function recipeArt(id: string): string | undefined {
@@ -67,7 +71,9 @@ const RECIPE_PITCH: Record<string, string> = {
   'sprite-8dir-pixel': 'Mesh GLB có sẵn → sprite sheet 8 hướng pixel art, một bảng màu chung',
   'sprite-8dir-3d-pixel': 'Prompt → sprite sheet 8 hướng pixel art, dựng qua mesh 3D',
   'spine-character': 'Prompt → nhân vật Spine 4.2 có xương + 6 anim (thử nghiệm)',
-  'spine-character-mv': 'Prompt → 2 bộ Spine mặt trước + mặt sau, cùng 6 anim (thử nghiệm)'
+  'spine-character-mv': 'Prompt → 2 bộ Spine mặt trước + mặt sau, cùng 6 anim (thử nghiệm)',
+  'texture-seamless': 'Prompt vật liệu → texture lặp liền mạch + điểm mối nối, normal map, bản nhỏ',
+  'tileset-seamless': 'Prompt vật liệu → nhiều biến thể chung mép, lát trộn lẫn không lộ nối'
 }
 
 export function recipePitch(id: string): string | undefined {

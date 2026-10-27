@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useElementSize, useEventListener } from '@vueuse/core'
+import { useElementSize, useEventListener, useIntervalFn } from '@vueuse/core'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { Check, Columns2, LoaderCircle, Search, X } from '@lucide/vue'
+import { Check, Columns2, Gauge, LoaderCircle, Search, X } from '@lucide/vue'
 import { ART } from '@/assets/art'
-import type { BlobRef, VersionRow, VersionStatus } from '@/api/types'
+import type { BlobRef, QaResult, VersionRow, VersionStatus } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import BlobThumb from '@/components/BlobThumb.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -14,6 +14,9 @@ import CompareView, { type CompareItem } from '@/components/CompareView.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import RelTime from '@/components/RelTime.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
+import QaBadge from '@/components/QaBadge.vue'
+import { QA_LOW, QA_VERSION, groupQa, qaScore } from '@/composables/qa'
+import { api } from '@/stores/connection'
 import { featuredAcross, isAtlas, isImage, isJson, type AssetView } from '@/components/viewers/detect'
 import { useAssetFile } from '@/composables/assetFile'
 import { relativeTime } from '@/composables/format'
@@ -29,9 +32,10 @@ const recipes = useRecipes()
 const toasts = useToasts()
 const file = useAssetFile()
 
-type AssetType = '2d' | '3d' | 'sprite' | 'spine'
+type AssetType = '2d' | '3d' | 'sprite' | 'spine' | 'texture'
 type StatusFilter = 'all' | VersionStatus
 type TypeFilter = 'all' | AssetType
+type SortOrder = 'new' | 'score-desc' | 'score-asc'
 
 interface AssetGroup {
   key: string
@@ -49,6 +53,8 @@ interface AssetGroup {
   technical: boolean
   created_at: number
   haystack: string
+  qa: QaResult | null
+  score: number | null
 }
 
 const STATUS_FILTERS: Array<{ id: StatusFilter; label: string }> = [
@@ -62,14 +68,21 @@ const TYPE_FILTERS: Array<{ id: TypeFilter; label: string }> = [
   { id: '2d', label: '2D' },
   { id: '3d', label: '3D' },
   { id: 'sprite', label: 'Sprite' },
-  { id: 'spine', label: 'Spine' }
+  { id: 'spine', label: 'Spine' },
+  { id: 'texture', label: 'Texture' }
+]
+const SORTS: Array<{ id: SortOrder; label: string }> = [
+  { id: 'new', label: 'Mới nhất' },
+  { id: 'score-desc', label: 'Điểm cao → thấp' },
+  { id: 'score-asc', label: 'Điểm thấp → cao' }
 ]
 const STATUS_TEXT: Record<VersionStatus, string> = { draft: 'Nháp', approved: 'Đã duyệt', rejected: 'Từ chối' }
-const TYPE_TEXT: Record<AssetType, string> = { '2d': '2D', '3d': '3D', sprite: 'Sprite', spine: 'Spine' }
+const TYPE_TEXT: Record<AssetType, string> = { '2d': '2D', '3d': '3D', sprite: 'Sprite', spine: 'Spine', texture: 'Texture' }
 
 const isTechnical = (b: BlobRef): boolean => isJson(b) || isAtlas(b)
 
 function classify(f: AssetView | null, recipeId: string): AssetType {
+  if (f?.kind === 'tile' || /texture|tileset/.test(recipeId)) return 'texture'
   if (f?.kind === 'spine' || /spine/.test(recipeId)) return 'spine'
   if (f?.kind === 'sprite' || /sprite/.test(recipeId)) return 'sprite'
   if (f?.kind === 'glb' || /3d/.test(recipeId)) return '3d'
@@ -112,6 +125,8 @@ const groups = computed<AssetGroup[]>(() => {
     const byBlob = (h: string | undefined): VersionRow | undefined => list.find((v) => v.blob.hash === h)
     const images = list.filter((v) => isImage(v.blob))
     const cover = images.find((v) => /preview|render|front/i.test(v.blob.name ?? '')) ?? (featured?.kind === 'glb' ? undefined : byBlob(featured?.kind === 'spine' ? featured.spine?.texture.hash : featured?.blob.hash)) ?? images[0] ?? list.find((v) => !isTechnical(v.blob)) ?? first
+    const lead = byBlob(featured?.blob.hash) ?? cover
+    const qa = groupQa(lead, images)
     out.push({
       key,
       name: first.asset_name || run?.title || 'Không tên',
@@ -120,12 +135,14 @@ const groups = computed<AssetGroup[]>(() => {
       recipe,
       versions: list,
       cover,
-      lead: byBlob(featured?.blob.hash) ?? cover,
+      lead,
       type: classify(featured, recipeId),
       status: groupStatus(list),
       technical: list.every((v) => isTechnical(v.blob)),
       created_at: Math.max(...list.map((v) => v.created_at)),
-      haystack: [first.asset_name, run?.title, recipe, ...list.map((v) => v.blob.name)].filter(Boolean).join(' ').toLowerCase()
+      haystack: [first.asset_name, run?.title, recipe, ...list.map((v) => v.blob.name)].filter(Boolean).join(' ').toLowerCase(),
+      qa,
+      score: qaScore(qa)
     })
   }
   return out.sort((a, b) => b.created_at - a.created_at)
@@ -134,11 +151,14 @@ const groups = computed<AssetGroup[]>(() => {
 const statusFilter = ref<StatusFilter>('all')
 const typeFilter = ref<TypeFilter>('all')
 const query = ref('')
+const sortOrder = ref<SortOrder>('new')
+const lowOnly = ref(false)
 const showTechnical = ref(false)
 const route = useRoute()
 const projectFilter = ref(typeof route.query.project === 'string' ? route.query.project : 'all')
 
-const base = computed(() => {
+const isLow = (g: AssetGroup): boolean => g.score !== null && g.score < QA_LOW
+const unfiltered = computed(() => {
   const q = query.value.trim().toLowerCase()
   return groups.value.filter(
     (g) =>
@@ -148,6 +168,7 @@ const base = computed(() => {
       (!q || g.haystack.includes(q))
   )
 })
+const base = computed(() => (lowOnly.value ? unfiltered.value.filter(isLow) : unfiltered.value))
 const technicalCount = computed(() => groups.value.filter((g) => g.technical).length)
 const counts = computed(() => {
   const c: Record<StatusFilter, number> = { all: 0, draft: 0, approved: 0, rejected: 0 }
@@ -157,14 +178,50 @@ const counts = computed(() => {
   }
   return c
 })
-const items = computed(() => (statusFilter.value === 'all' ? base.value : base.value.filter((g) => g.status === statusFilter.value)))
-const filtered = computed(() => !!query.value.trim() || typeFilter.value !== 'all' || statusFilter.value !== 'all' || projectFilter.value !== 'all')
+// Unscored assets sink to the end in both score orders; ties keep newest first.
+function byScore(dir: 1 | -1): (a: AssetGroup, b: AssetGroup) => number {
+  return (a, b) => {
+    if (a.score === null || b.score === null) return a.score === b.score ? 0 : a.score === null ? 1 : -1
+    return dir * (a.score - b.score) || b.created_at - a.created_at
+  }
+}
+const items = computed(() => {
+  const list = statusFilter.value === 'all' ? base.value : base.value.filter((g) => g.status === statusFilter.value)
+  if (sortOrder.value === 'new') return list
+  return [...list].sort(byScore(sortOrder.value === 'score-desc' ? -1 : 1))
+})
+const lowCount = computed(() => unfiltered.value.filter(isLow).length)
+// Core scores new versions in the background right after a run; give that a minute before calling them "old".
+const now = ref(Date.now())
+useIntervalFn(() => (now.value = Date.now()), 15_000)
+const unscored = computed(() => {
+  const fresh = now.value / 1000 - 60
+  return versions.list.filter(
+    (v) => v.blob.mime.startsWith('image/') && v.qa?.version !== QA_VERSION && v.created_at < fresh && (projectFilter.value === 'all' || v.project_id === projectFilter.value)
+  ).length
+})
+const scoring = ref(false)
+async function scoreOld(): Promise<void> {
+  if (scoring.value) return
+  scoring.value = true
+  try {
+    const r = await api().recomputeQa({ missing_only: true, project_id: projectFilter.value === 'all' ? undefined : projectFilter.value, limit: 5000 })
+    toasts.push(r.updated ? `Đã chấm điểm ${r.updated} ảnh` : 'Không còn ảnh nào cần chấm', 'success', 2400)
+  } catch (e) {
+    toasts.error(e, 'Không chấm điểm được')
+  } finally {
+    scoring.value = false
+  }
+}
+const versionFor = (hash: string): VersionRow | undefined => current.value?.versions.find((v) => v.blob.hash === hash) ?? versions.byHash.get(hash)
+const filtered = computed(() => !!query.value.trim() || typeFilter.value !== 'all' || statusFilter.value !== 'all' || projectFilter.value !== 'all' || lowOnly.value)
 
 function clearFilters(): void {
   query.value = ''
   typeFilter.value = 'all'
   statusFilter.value = 'all'
   projectFilter.value = 'all'
+  lowOnly.value = false
 }
 
 const scroller = ref<HTMLElement | null>(null)
@@ -375,6 +432,28 @@ function move(d: -1 | 1): void {
         </button>
       </div>
       <ProjectSelect v-model="projectFilter" all-label="Mọi dự án" label="Lọc theo dự án" />
+      <label class="sort caption">
+        <span class="sr-only">Sắp xếp</span>
+        <select v-model="sortOrder" aria-label="Sắp xếp asset">
+          <option v-for="o in SORTS" :key="o.id" :value="o.id">{{ o.label }}</option>
+        </select>
+      </label>
+      <button
+        type="button"
+        class="chip-toggle"
+        :class="{ on: lowOnly }"
+        :aria-pressed="lowOnly"
+        :title="`Chỉ hiện asset có điểm chất lượng dưới ${QA_LOW}`"
+        @click="lowOnly = !lowOnly"
+      >
+        Điểm thấp
+        <span class="num c">{{ lowCount }}</span>
+      </button>
+      <button v-if="unscored" type="button" class="btn btn-plain score-old" :disabled="scoring" title="Chấm điểm chất lượng cho các ảnh tạo trước khi có tính năng này" @click="scoreOld">
+        <LoaderCircle v-if="scoring" class="spin" :size="14" />
+        <Gauge v-else :size="14" />
+        Chấm điểm {{ unscored }} ảnh cũ
+      </button>
       <label v-if="technicalCount" class="toggle caption" title="Bản chỉ gồm JSON / Atlas (dữ liệu phụ của sprite, Spine)">
         <input v-model="showTechnical" type="checkbox" />
         Hiện tệp dữ liệu ({{ technicalCount }})
@@ -442,6 +521,7 @@ function move(d: -1 | 1): void {
             <div class="meta">
               <div class="m1">
                 <span class="name" :title="g.name">{{ g.name }}</span>
+                <QaBadge :qa="g.qa" />
                 <Transition name="fade" mode="out-in">
                   <span :key="g.status" class="pill">{{ STATUS_TEXT[g.status] }}</span>
                 </Transition>
@@ -499,6 +579,7 @@ function move(d: -1 | 1): void {
       @next="move(1)"
       @review="reviewOpen"
       :origin="openOrigin"
+      :version-for="versionFor"
       @close="openKey = null"
     />
   </div>
@@ -566,6 +647,47 @@ function move(d: -1 | 1): void {
 .segmented button.on {
   background: var(--bg-elevated);
   box-shadow: var(--shadow-1), var(--hairline);
+}
+.sort select {
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--bg-sunken);
+  box-shadow: var(--hairline);
+}
+.chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 8px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--bg-sunken);
+  box-shadow: var(--hairline);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast),
+    color var(--t-fast);
+}
+.chip-toggle.on {
+  color: var(--st-fail);
+  background: var(--st-fail-soft);
+}
+.score-old {
+  height: 30px;
+  gap: 6px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 .c {
   font-size: 11px;

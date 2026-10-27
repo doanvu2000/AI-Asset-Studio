@@ -1,6 +1,6 @@
 import type { BlobRef } from '@/api/types'
 
-export type ViewKind = 'glb' | 'sprite' | 'spine' | 'image' | 'text' | 'file'
+export type ViewKind = 'glb' | 'sprite' | 'spine' | 'tile' | 'image' | 'text' | 'file'
 
 export interface SpineSet {
   skeleton: BlobRef
@@ -16,12 +16,21 @@ export interface AssetView {
   /** Normal-map sheet with the same layout as `sheet` (meta contract: output `normal_sheet`). */
   normal?: BlobRef
   spine?: SpineSet
+  /** Tileable textures (op.seamless names `*_seamless*`): variants of one material, shown repeated. */
+  tiles?: BlobRef[]
+  /** op.tile_check report (`tile_check.json`) with the seam score. */
+  report?: BlobRef
+  pixel?: BlobRef
+  /** Per-variant maps, index-aligned with `tiles` (missing entries fall back to the colour texture). */
+  normals?: (BlobRef | undefined)[]
+  pixels?: (BlobRef | undefined)[]
 }
 
 export const VIEW_LABEL: Record<ViewKind, string> = {
   glb: '3D',
   sprite: 'Hoạt ảnh',
   spine: 'Spine',
+  tile: 'Lát',
   image: 'Ảnh',
   text: 'Nội dung',
   file: 'Tệp'
@@ -66,6 +75,33 @@ const isSheetImage = (b: BlobRef): boolean => isImage(b) && /(^|_)sheet$/.test(s
 const isNormalSheet = (b: BlobRef): boolean => isImage(b) && isNormalBlob(b) && (normalHashes.has(b.hash) || /sheet/.test(stem(b)))
 const isNormalMeta = (b: BlobRef): boolean => isJson(b) && isNormalBlob(b) && /sheet/.test(stem(b))
 
+export const isTileImage = (b: BlobRef): boolean => isImage(b) && /(^|_)seamless(_|$)/.test(stem(b))
+const isTileReport = (b: BlobRef): boolean => isJson(b) && stem(b) === 'tile_check'
+// Main textures only: op.tile_resize names the extra sizes `<stem>_<px>`.
+const isTileMain = (b: BlobRef): boolean => isTileImage(b) && /(^|_)seamless$/.test(stem(b)) && !isNormalBlob(b)
+
+// op.tile_normal / op.tile_pixel name their maps `<stem>_normal` / `<stem>_pixel`, so each variant finds its own.
+const mapOf = (t: BlobRef, all: BlobRef[], suffix: string): BlobRef | undefined =>
+  all.find((b) => isImage(b) && stem(b) === `${stem(t)}_${suffix}`)
+
+function tileView(blob: BlobRef, all: BlobRef[]): AssetView {
+  const main = all.filter(isTileMain)
+  const tiles = isTileMain(blob) ? [blob, ...main.filter((b) => b.hash !== blob.hash)] : [blob]
+  const normals = isTileMain(blob) ? tiles.map((t) => mapOf(t, all, 'normal')) : []
+  const pixels = isTileMain(blob) ? tiles.map((t) => mapOf(t, all, 'pixel')) : []
+  const normal = normals[0]
+  const pixel = pixels[0]
+  const report = all.find(isTileReport)
+  return {
+    kind: 'tile',
+    blob,
+    tiles,
+    ...(report ? { report } : {}),
+    ...(normal ? { normal, normals } : {}),
+    ...(pixel ? { pixel, pixels } : {})
+  }
+}
+
 function uniq(list: BlobRef[]): BlobRef[] {
   const seen = new Set<string>()
   return list.filter((b) => !seen.has(b.hash) && !!seen.add(b.hash))
@@ -108,6 +144,7 @@ export function viewsFor(blob: BlobRef, siblings: BlobRef[] = []): AssetView[] {
 
   if (spine && (inSpine || blob.mime === 'text/html')) out.push({ kind: 'spine', blob, spine })
   if (pair && inSprite) out.push({ kind: 'sprite', blob, ...pair })
+  if (isTileImage(blob)) out.push(tileView(blob, all))
   if (isImage(blob)) out.push({ kind: 'image', blob })
   if (isTextual(blob)) out.push({ kind: 'text', blob })
   if (!out.length) out.push({ kind: 'file', blob })
@@ -130,10 +167,12 @@ export function featuredAsset(blobs: BlobRef[]): AssetView | null {
   const normal = all.find(isNormalSheet)
   const nmeta = all.find(isNormalMeta)
   if (normal && nmeta) return { kind: 'sprite', blob: normal, sheet: normal, meta: nmeta }
+  const tile = all.find(isTileMain)
+  if (tile && all.some(isTileReport)) return tileView(tile, all)
   return null
 }
 
-const FEATURE_RANK: Partial<Record<ViewKind, number>> = { glb: 0, spine: 1, sprite: 2 }
+const FEATURE_RANK: Partial<Record<ViewKind, number>> = { glb: 0, spine: 1, sprite: 2, tile: 4 }
 const rank = (f: AssetView): number => (f.kind === 'sprite' && f.sheet && isNormalBlob(f.sheet) ? 3 : FEATURE_RANK[f.kind]!)
 
 /** `featuredAsset` over several steps' outputs: a sheet only pairs with the meta of its own step, while the

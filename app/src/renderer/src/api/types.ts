@@ -89,6 +89,38 @@ export interface VersionRow {
   blob: BlobRef
   status: VersionStatus
   created_at: number
+  /** Heuristic quality score computed by core when the version is recorded; null for non-images / not scored. */
+  qa?: QaResult | null
+}
+
+export type QaPartKey = 'alpha' | 'framing' | 'empty' | 'consistency' | 'palette'
+
+export interface QaPart {
+  key: QaPartKey
+  label: string
+  score: number
+  weight: number
+  detail: string
+  [extra: string]: unknown
+}
+
+export interface QaResult {
+  version: number
+  /** 0–100; null when the image is opaque (nothing to judge). */
+  score: number | null
+  parts?: QaPart[]
+  issues?: string[]
+  cells?: number
+  normal?: boolean | null
+  pixel?: boolean | null
+  skipped?: string
+  note?: string
+}
+
+export interface QaRecomputeResult {
+  updated: number
+  skipped: number
+  total: number
 }
 
 export type EventType =
@@ -399,4 +431,74 @@ export interface ToolPath {
 export interface ToolPaths {
   tools: ToolPath[]
   settings_file: string
+}
+
+export interface DurationStats {
+  avg: number | null
+  p50: number | null
+  p90: number | null
+}
+
+export interface RunStatsCore {
+  runs: number
+  succeeded: number
+  failed: number
+  cancelled: number
+  interrupted: number
+  active: number
+  /** (failed + interrupted) / (succeeded + failed + interrupted); cancelled runs are excluded. */
+  failure_rate: number | null
+  cost_usd: number
+  avg_cost_usd: number
+  runs_with_cost: number
+  /** Succeeded runs only, wall time minus time waiting at human gates. */
+  duration_s: DurationStats
+  wall_avg_s: number | null
+  work_s: number
+  gpu_s: number
+  cache_hit_ratio: number | null
+  last_run_at: number | null
+}
+
+export interface RecipeStats extends RunStatsCore {
+  recipe_id: string
+}
+
+export interface StepKindStats {
+  kind: string
+  steps: number
+  failed: number
+  cached: number
+  cost_usd: number
+  total_s: number
+  avg_s: number | null
+}
+
+export interface DailyStats {
+  day: string
+  runs: number
+  succeeded: number
+  failed: number
+  cost_usd: number
+  work_s: number
+  duration_avg_s: number | null
+}
+
+export interface StatsQuery {
+  since?: number
+  until?: number
+  project_id?: string
+  days?: number
+  tz_offset_s?: number
+}
+
+export interface StatsOverview {
+  since: number | null
+  until: number | null
+  project_id: string | null
+  totals: RunStatsCore
+  recipes: RecipeStats[]
+  steps: StepKindStats[]
+  /** `since`/`until`: local-midnight bounds of the bars; the totals cover the same span when a period is set. */
+  daily: { days: DailyStats[]; tz_offset_s: number; since: number; until: number }
 }

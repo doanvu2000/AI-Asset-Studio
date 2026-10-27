@@ -29,4 +29,20 @@ export const QUICK_STYLES: ReadonlyArray<QuickPrompt> = [
   ['Sci-fi', 'sci-fi style, sleek metal with neon accents']
 ]
 
+// Texture recipes tile a surface seen from above, so their subjects are materials rather than objects.
+export const QUICK_MATERIALS: ReadonlyArray<QuickPrompt> = [
+  ['Cỏ', 'lush green grass ground'],
+  ['Đất', 'dry dirt ground with small pebbles'],
+  ['Cát', 'fine desert sand with soft ripples'],
+  ['Đá cuội', 'cobblestone pavement'],
+  ['Gạch', 'red brick wall'],
+  ['Gỗ sàn', 'wooden floor planks'],
+  ['Nước', 'shallow clear water surface'],
+  ['Tuyết', 'fresh snow ground'],
+  ['Dung nham', 'cracked lava rock with glowing magma'],
+  ['Rêu', 'mossy forest floor with leaves'],
+  ['Đá lát', 'ancient stone floor tiles'],
+  ['Kim loại', 'riveted metal plate floor']
+]
+
 export const quickStyleLabel = (text: string | null): string | null => QUICK_STYLES.find(([, t]) => t === text)?.[0] ?? null

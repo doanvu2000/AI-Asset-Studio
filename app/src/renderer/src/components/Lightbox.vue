@@ -2,13 +2,17 @@
 import { computed, ref, watch } from 'vue'
 import { Check, ChevronLeft, ChevronRight, X } from '@lucide/vue'
 import { useEventListener } from '@vueuse/core'
-import type { BlobRef, VersionStatus } from '@/api/types'
+import type { BlobRef, VersionRow, VersionStatus } from '@/api/types'
 import { bytes } from '@/composables/format'
 import { useReducedMotion } from '@/composables/motion'
 import { useFocusTrap } from '@/composables/focusTrap'
 import BlobImage from './BlobImage.vue'
 import AssetActions from './AssetActions.vue'
 import AssetViewer from './viewers/AssetViewer.vue'
+import QaBreakdown from './QaBreakdown.vue'
+import { api } from '@/stores/connection'
+import { useVersions } from '@/stores/versions'
+import { useToasts } from '@/stores/toasts'
 import { VIEW_LABEL, viewsFor } from './viewers/detect'
 
 const props = withDefaults(
@@ -29,6 +33,8 @@ const props = withDefaults(
     count?: number
     /** Screen rect of the thumbnail that opened it; the sheet grows out of it. */
     origin?: DOMRect | null
+    /** Library version behind a shown blob; enables the quality-score panel. */
+    versionFor?: (hash: string) => VersionRow | undefined
   }>(),
   { siblings: () => [] }
 )
@@ -78,6 +84,24 @@ const fileLine = computed(() => {
   const parts = [props.title && b.name ? b.name : '', b.width ? `${b.width}×${b.height}` : '', bytes(b.size)]
   return parts.filter(Boolean).join(' · ')
 })
+
+const shownVersion = computed(() => (shown.value && props.versionFor ? props.versionFor(shown.value.hash) : undefined))
+const showQa = computed(() => view.value?.kind !== 'tile' && shownVersion.value?.qa?.skipped !== 'opaque' && !!shownVersion.value && shownVersion.value.blob.mime.startsWith('image/'))
+const qaBusy = ref(false)
+async function recomputeQa(): Promise<void> {
+  const v = shownVersion.value
+  if (!v || qaBusy.value) return
+  qaBusy.value = true
+  const versions = useVersions()
+  try {
+    versions.upsert(await api().recomputeVersionQa(v.id))
+    versions.commit()
+  } catch (e) {
+    useToasts().error(e, 'Không chấm lại được')
+  } finally {
+    qaBusy.value = false
+  }
+}
 
 // Capture phase on document runs before views' own window-level shortcuts (Gates uses ←/→ to move between candidates).
 useEventListener(
@@ -184,6 +208,7 @@ function growFromOrigin(el: Element): void {
               </div>
               <button ref="closeBtn" class="btn btn-plain btn-icon" aria-label="Đóng (Esc)" title="Đóng (Esc)" @click="emit('close')"><X /></button>
             </div>
+            <QaBreakdown v-if="showQa" class="row-qa" :qa="shownVersion?.qa" :busy="qaBusy" can-recompute @recompute="recomputeQa" />
             <AssetActions class="row2" :hash="shown.hash" :filename="filename" :run-id="runId" :version-id="versionId" />
           </figcaption>
         </figure>

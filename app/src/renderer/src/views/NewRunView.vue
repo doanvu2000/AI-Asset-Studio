@@ -23,7 +23,7 @@ import type { ApiError } from '@/api/client'
 import { useToasts } from '@/stores/toasts'
 import { stepName } from '@/composables/format'
 import { RECIPE_GROUP_LABEL, RECOMMENDED_RECIPES, recipeGroup, recipePitch, type RecipeGroup } from '@/assets/art'
-import { quickStyleLabel } from '@/assets/quickPrompts'
+import { QUICK_MATERIALS, quickStyleLabel } from '@/assets/quickPrompts'
 
 const recipes = useRecipes()
 const projects = useProjects()
@@ -348,6 +348,7 @@ function onKey(e: KeyboardEvent): void {
 }
 
 const QUICK_INPUTS = new Set(['prompt', 'idea'])
+const quickSubjects = computed(() => (/^(texture|tileset)-/.test(selected.value?.id ?? '') ? QUICK_MATERIALS : undefined))
 
 // Local image models lose Vietnamese genre words ("rương", "tu tiên"); Claude and Codex steps read Vietnamese fine,
 // so recipes that route the text through them keep it as typed.
@@ -532,6 +533,8 @@ ${r.description}`" @click="pick(r.id)">
                 v-if="varyBy === 'prompts' && QUICK_INPUTS.has(varying)"
                 v-model="batchLines"
                 v-model:batch-style="batchStyle"
+                :subjects="quickSubjects"
+                :hide-styles="!!quickSubjects"
                 batch
               />
               <textarea
@@ -577,6 +580,8 @@ ${r.description}`" @click="pick(r.id)">
               <QuickPrompts
                 v-if="spec.type === 'text' && QUICK_INPUTS.has(name)"
                 :model-value="String(values[name] ?? '')"
+                :subjects="quickSubjects"
+                :hide-styles="!!quickSubjects"
                 @update:model-value="(v) => ((values[name] = v), validate(name, spec))"
               />
               <textarea
@@ -586,7 +591,7 @@ ${r.description}`" @click="pick(r.id)">
                 class="field"
                 rows="3"
                 :aria-invalid="!!errors[name]"
-                :placeholder="`Ví dụ: ${EXAMPLES[0]}`"
+                :placeholder="`Ví dụ: ${quickSubjects ? 'nền đá cuội phủ rêu' : EXAMPLES[0]}`"
                 @input="values[name] = ($event.target as HTMLTextAreaElement).value"
                 @blur="validate(name, spec)"
               />

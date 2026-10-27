@@ -6,6 +6,7 @@ import { bytes } from '@/composables/format'
 import type { AssetView } from './detect'
 import SpriteSheetViewer from './SpriteSheetViewer.vue'
 import TextViewer from './TextViewer.vue'
+import TileViewer from './TileViewer.vue'
 import ViewerLoading from './ViewerLoading.vue'
 import './viewer.css'
 
@@ -20,6 +21,18 @@ withDefaults(defineProps<{ view: AssetView; compact?: boolean }>(), { compact: f
   <GlbViewer v-if="view.kind === 'glb'" :key="view.blob.hash" :blob="view.blob" :compact="compact" />
   <SpriteSheetViewer v-else-if="view.kind === 'sprite' && view.sheet && view.meta" :sheet="view.sheet" :meta="view.meta" :normal="view.normal" :compact="compact" />
   <SpineViewer v-else-if="view.kind === 'spine' && view.spine" :spine="view.spine" :compact="compact" />
+  <TileViewer
+    v-else-if="view.kind === 'tile'"
+    :key="view.blob.hash"
+    :blob="view.blob"
+    :tiles="view.tiles"
+    :report="view.report"
+    :normal="view.normal"
+    :pixel="view.pixel"
+    :normals="view.normals"
+    :pixels="view.pixels"
+    :compact="compact"
+  />
   <TextViewer v-else-if="view.kind === 'text'" :blob="view.blob" />
   <div v-else-if="view.kind === 'image'" class="vw checker img">
     <img

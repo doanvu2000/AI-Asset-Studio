@@ -32,7 +32,35 @@ export const MOCK_KINDS: KindInfo[] = [
   k('op.mirror_dirs', 'cpu', 'Lật thành 8 hướng', { images: 'image[]' }, { images: 'image[]' }, { count: int(8, 'Số hướng', { options: [4, 8, 16] }) }),
   k('op.downscale', 'cpu', 'Thu nhỏ', { images: 'image[]' }, { images: 'image[]' }, { factor: float(2, 'Hệ số', { min: 1, max: 16 }), resample: choice(RESAMPLE, 'box', 'Lấy mẫu') }),
   k('op.pixelate', 'cpu', 'Pixel art', { images: 'image[]' }, { images: 'image[]' }, { size: int(64, 'Cỡ (px)'), palette_colors: int(undefined, 'Số màu', { min: 2, max: 256 }), outline: text('Màu viền (#rrggbb)') }),
-  k('op.sheet', 'cpu', 'Ghép sprite sheet', { images: 'image[]', pivot: 'json' }, { sheet: 'image', meta: 'json' }, {
+  k('op.sprite_fx', 'cpu', 'Bóng đổ & viền sprite', { images: 'image[]', pivot: 'json' }, { images: 'image[]' }, {
+    shadow: choice(['none', 'drop', 'blob'], 'none', 'Bóng đổ'),
+    outline: text('Viền ngoài (none / #rrggbb)'),
+    width: int(1, 'Độ dày viền (px)', { min: 1, max: 4 }),
+    pixel: { type: 'bool', default: false, label: 'Pixel art (cạnh cứng, không mờ)' },
+    normal: { type: 'bool', default: false, label: 'Ảnh normal map (bỏ bóng, viền normal phẳng)' }
+  }),
+  k('op.seamless', 'cpu', 'Làm liền mạch (tileable)', { images: 'image[]' }, { images: 'image[]' }, {
+    name: text('Tên texture', { default: 'texture' }),
+    flatten: float(0.5, 'San phẳng ánh sáng', { min: 0, max: 1 }),
+    match_edges: bool(false, 'Biến thể chung mép với ảnh đầu (tileset)')
+  }),
+  k('op.tile_resize', 'cpu', 'Đổi cỡ texture (giữ liền mạch)', { images: 'image[]' }, { images: 'image[]', sizes: 'image[]' }, {
+    size: int(1024, 'Cỡ (px, 0 = giữ nguyên)', { min: 16, max: 4096 }),
+    levels: int(2, 'Số bản nhỏ thêm (½, ¼…)', { min: 0, max: 6 })
+  }),
+  k('op.tile_normal', 'cpu', 'Normal map từ độ sáng (liền mạch)', { images: 'image[]' }, { images: 'image[]' }, {
+    enabled: bool(true, 'Bật'),
+    strength: float(4, 'Độ nổi', { min: 0.1, max: 32 })
+  }),
+  k('op.tile_pixel', 'cpu', 'Pixel art texture (liền mạch)', { images: 'image[]' }, { images: 'image[]', palette: 'json' }, {
+    size: int(0, 'Cỡ pixel (px, 0 = tắt)', { min: 0, max: 512 }),
+    colors: int(16, 'Số màu', { min: 2, max: 256 })
+  }),
+  k('op.tile_check', 'cpu', 'Chấm điểm mối nối + xem lát', { images: 'image[]', nmap: 'image[]', pixel: 'image[]', sizes: 'image[]' }, { images: 'image[]', preview: 'image', report: 'json', atlas: 'image', nmap: 'image[]', pixel: 'image[]', sizes: 'image[]' }, {
+    min_score: float(70, 'Điểm đạt tối thiểu', { min: 0, max: 100 }),
+    grid: int(3, 'Lát xem trước (n×n)', { min: 2, max: 8 })
+  }),
+  k('op.sheet', 'cpu', 'Ghép sprite sheet',{ images: 'image[]', pivot: 'json' }, { sheet: 'image', meta: 'json' }, {
     preset: { type: 'preset', label: 'Preset xuất' },
     cols: int(undefined, 'Số cột', { min: 1, max: 64 }),
     cell: int(undefined, 'Cỡ ô (px)', { min: 8, max: 4096 }),

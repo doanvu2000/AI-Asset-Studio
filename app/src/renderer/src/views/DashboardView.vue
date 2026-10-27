@@ -11,6 +11,7 @@ import RelTime from '@/components/RelTime.vue'
 import GettingStarted from '@/components/GettingStarted.vue'
 import AgentConnectCard from '@/components/AgentConnectCard.vue'
 import DeviceCard from '@/components/DeviceCard.vue'
+import CostStats from '@/components/CostStats.vue'
 import { useResources } from '@/stores/resources'
 import { useRuns } from '@/stores/runs'
 import { useGates, type GateItem } from '@/stores/gates'
@@ -200,6 +201,8 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
               <RouterLink to="/new" class="link inline">Tạo asset mới</RouterLink>
             </p>
           </section>
+
+          <CostStats />
         </template>
 
         <AgentConnectCard />

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { QUICK_STYLES, QUICK_SUBJECTS } from '@/assets/quickPrompts'
+import { QUICK_STYLES, QUICK_SUBJECTS, type QuickPrompt } from '@/assets/quickPrompts'
 
 // In batch mode the text is one prompt per line: a subject chip appends a line and the style is one shared suffix
 // the caller appends to every line at run time, so it never has to be found and rewritten inside each line.
-const props = defineProps<{ modelValue: string; batch?: boolean; batchStyle?: string | null }>()
+const props = defineProps<{ modelValue: string; batch?: boolean; batchStyle?: string | null; subjects?: ReadonlyArray<QuickPrompt>; hideStyles?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string]; 'update:batchStyle': [value: string | null] }>()
 
 const subject = ref<string | null>(null)
@@ -48,7 +48,7 @@ function pickStyle(text: string): void {
       <span class="caption lbl">{{ batch ? 'Thêm dòng' : 'Chủ đề' }}</span>
       <div class="chips">
       <button
-        v-for="[vi, en] in QUICK_SUBJECTS"
+        v-for="[vi, en] in subjects ?? QUICK_SUBJECTS"
         :key="vi"
         type="button"
         class="chip"
@@ -61,7 +61,7 @@ function pickStyle(text: string): void {
       </button>
       </div>
     </div>
-    <div class="row" role="group" :aria-label="batch ? 'Phong cách cho cả lô' : 'Phong cách mẫu'">
+    <div v-if="!hideStyles" class="row" role="group" :aria-label="batch ? 'Phong cách cho cả lô' : 'Phong cách mẫu'">
       <span class="caption lbl">{{ batch ? 'Cả lô' : 'Phong cách' }}</span>
       <div class="chips">
       <button

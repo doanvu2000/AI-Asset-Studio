@@ -35,6 +35,9 @@ import {
 } from '../types'
 import { renderArt, renderPreviewB64 } from './art'
 import { renderWalkSheet } from './walkSheet'
+import { mockStatsOverview } from './stats'
+import type { StatsOverview, StatsQuery } from '../types'
+import type { QaPart, QaRecomputeResult, QaResult } from '../types'
 import { MOCK_KINDS, MOCK_PRESETS, MOCK_TOOLS, mockValidate, stepDeps } from './catalog'
 import { normalizeStyle, styleFills } from '@/composables/projectStyle'
 import sampleGlbUrl from './assets/sample-prop.glb?url'
@@ -92,7 +95,8 @@ function normalChain(prefix: string, frames: string, pivot: string, mirror: bool
       ? [{ id: `${prefix}ndirs`, kind: 'op.mirror_dirs', lane: 'cpu' as Lane, deps: [frames.split('.')[0]!], in: { images: frames }, params: () => ({ count: 8, normal: true, optional: true }), raw: { count: 8, normal: true, optional: true } }]
       : []),
     { id: `${prefix}ndown`, kind: 'op.downscale', lane: 'cpu', deps: [src], in: { images: mirror ? `${src}.images` : frames }, params: () => ({ factor: 2, resample: 'box', normal: true, optional: true }), raw: { factor: 2, resample: 'box', normal: true, optional: true } },
-    { id: `${prefix}nsheet`, kind: 'op.sheet', lane: 'cpu', deps: [`${prefix}ndown`], in: { images: `${prefix}ndown.images`, pivot }, params: () => ({ cols: 8, normal: true, optional: true }), raw: { cols: 8, normal: true, optional: true } }
+    { id: `${prefix}nfx`, kind: 'op.sprite_fx', lane: 'cpu', deps: [`${prefix}ndown`], in: { images: `${prefix}ndown.images` }, params: () => ({ outline: 'none', width: 1, normal: true, optional: true }), raw: { outline: 'none', width: 1, normal: true, optional: true } },
+    { id: `${prefix}nsheet`, kind: 'op.sheet', lane: 'cpu', deps: [`${prefix}nfx`], in: { images: `${prefix}nfx.images`, pivot }, params: () => ({ cols: 8, normal: true, optional: true }), raw: { cols: 8, normal: true, optional: true } }
   ]
 }
 
@@ -195,7 +199,8 @@ const RECIPES: MockRecipe[] = [
       { id: 'render', kind: 'blender.render_dirs', lane: 'blender', deps: ['cleanup'], in: { mesh: 'cleanup.meshes' }, params: () => ({ count: 8, elevation: 30, res: 256 }) },
       { id: 'dirs', kind: 'op.mirror_dirs', lane: 'cpu', deps: ['render'], in: { images: 'render.images' }, params: () => ({ count: 8 }) },
       { id: 'down', kind: 'op.downscale', lane: 'cpu', deps: ['dirs'], params: () => ({ factor: 2, resample: 'box' }) },
-      { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['down'], in: { images: 'down.images', pivot: 'render.meta' }, params: (i) => ({ cols: 8, preset: i.preset }), raw: { cols: 8, preset: '${inputs.preset}' } },
+      { id: 'fx', kind: 'op.sprite_fx', lane: 'cpu', deps: ['down', 'render'], in: { images: 'down.images', pivot: 'render.meta' }, params: () => ({ shadow: 'none', outline: 'none', width: 1 }), raw: { shadow: 'none', outline: 'none', width: 1 } },
+      { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['fx'], in: { images: 'fx.images', pivot: 'render.meta' }, params: (i) => ({ cols: 8, preset: i.preset }), raw: { cols: 8, preset: '${inputs.preset}' } },
       ...normalChain('', 'render.normal_frames', 'render.meta', true)
     ]
   },
@@ -215,10 +220,12 @@ const RECIPES: MockRecipe[] = [
       { id: 'cleanup', kind: 'blender.cleanup', lane: 'blender', deps: ['mesh'], in: { mesh: 'mesh.meshes' } },
       { id: 'render', kind: 'blender.render_dirs', lane: 'blender', deps: ['cleanup'], in: { mesh: 'cleanup.meshes' }, params: () => ({ count: 8, elevation: 30, res: 256 }) },
       { id: 'down', kind: 'op.downscale', lane: 'cpu', deps: ['render'], params: () => ({ factor: 2, resample: 'box' }) },
-      { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['down'], in: { images: 'down.images', pivot: 'render.meta' }, params: (i) => ({ cols: 8, preset: i.preset }), raw: { cols: 8, preset: '${inputs.preset}' } },
+      { id: 'fx', kind: 'op.sprite_fx', lane: 'cpu', deps: ['down', 'render'], in: { images: 'down.images', pivot: 'render.meta' }, params: () => ({ shadow: 'none', outline: 'none', width: 1 }), raw: { shadow: 'none', outline: 'none', width: 1 } },
+      { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['fx'], in: { images: 'fx.images', pivot: 'render.meta' }, params: (i) => ({ cols: 8, preset: i.preset }), raw: { cols: 8, preset: '${inputs.preset}' } },
       { id: 'anim', kind: 'blender.animate_dirs', lane: 'blender', deps: ['cleanup'], in: { mesh: 'cleanup.meshes' }, params: () => ({ frames: 8, count: 8 }) },
       { id: 'anim_down', kind: 'op.downscale', lane: 'cpu', deps: ['anim'], in: { images: 'anim.images' }, params: () => ({ factor: 2, resample: 'box' }) },
-      { id: 'anim_sheet', kind: 'op.sheet', lane: 'cpu', deps: ['anim_down'], in: { images: 'anim_down.images', pivot: 'anim.meta' }, params: () => ({}) },
+      { id: 'anim_fx', kind: 'op.sprite_fx', lane: 'cpu', deps: ['anim_down', 'anim'], in: { images: 'anim_down.images', pivot: 'anim.meta' }, params: () => ({ shadow: 'none', outline: 'none', width: 1 }), raw: { shadow: 'none', outline: 'none', width: 1 } },
+      { id: 'anim_sheet', kind: 'op.sheet', lane: 'cpu', deps: ['anim_fx'], in: { images: 'anim_fx.images', pivot: 'anim.meta' }, params: () => ({}) },
       ...normalChain('anim_', 'anim.normal_frames', 'anim.meta', false)
     ]
   },
@@ -245,7 +252,60 @@ const RECIPES: MockRecipe[] = [
       { id: 'mesh', kind: 'comfy.img2mesh_trellis2_textured', lane: 'gpu', deps: ['pick'], in: { image: 'pick.images' } },
       { id: 'render', kind: 'blender.render_dirs', lane: 'blender', deps: ['mesh'], in: { mesh: 'mesh.meshes' }, params: () => ({ count: 8, elevation: 30, res: 256 }) },
       { id: 'pixel', kind: 'op.pixel_art', lane: 'cpu', deps: ['render'], params: (i) => ({ size: i.pixel, colors: i.colors, palette: i.palette, outline: i.outline, dither: i.dither }) },
-      { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['pixel'], in: { images: 'pixel.images', pivot: 'render.meta' }, params: (i) => ({ cols: 8, preset: i.preset }), raw: { cols: 8, preset: '${inputs.preset}' } }
+      { id: 'fx', kind: 'op.sprite_fx', lane: 'cpu', deps: ['pixel', 'render'], in: { images: 'pixel.images', pivot: 'render.meta' }, params: () => ({ shadow: 'none', outline: 'none', width: 1, pixel: true }), raw: { shadow: 'none', outline: 'none', width: 1, pixel: true } },
+      { id: 'sheet', kind: 'op.sheet', lane: 'cpu', deps: ['fx'], in: { images: 'fx.images', pivot: 'render.meta' }, params: (i) => ({ cols: 8, preset: i.preset }), raw: { cols: 8, preset: '${inputs.preset}' } }
+    ]
+  },
+  {
+    info: {
+      id: 'texture-seamless',
+      name: 'Texture liền mạch (Z-Image)',
+      description: 'Prompt vật liệu → N ảnh Z-Image → chọn → làm liền mạch → chấm điểm mối nối + xem lát 3×3 → bản nhỏ, normal map, pixel art (tuỳ chọn) → duyệt',
+      hash: 'b3c0t1le01',
+      inputs: {
+        prompt: { type: 'text', label: 'Vật liệu', required: true },
+        count: { type: 'int', default: 4, min: 1, max: 8, label: 'Số biến thể' },
+        size: { type: 'int', default: 1024, options: [256, 512, 1024], label: 'Cỡ texture (px)' },
+        levels: { type: 'int', default: 2, min: 0, max: 4, label: 'Số bản nhỏ thêm (½, ¼…)' },
+        normal: { type: 'bool', default: true, label: 'Tạo normal map' },
+        pixel: { type: 'int', default: 0, options: [0, 32, 64, 128], label: 'Pixel art (px, 0 = tắt)' },
+        review: { type: 'bool', default: true, label: 'Duyệt trước khi xong' }
+      },
+      steps: []
+    },
+    defs: [
+      { id: 'gen', kind: 'comfy.t2i_zimage_turbo', lane: 'gpu', deps: [] },
+      { id: 'pick', kind: 'gate.pick', lane: 'none', deps: ['gen'], params: () => ({ k: 1 }) },
+      { id: 'seam', kind: 'op.seamless', lane: 'cpu', deps: ['pick'], in: { images: 'pick.images' } },
+      { id: 'fit', kind: 'op.tile_resize', lane: 'cpu', deps: ['seam'], in: { images: 'seam.images' }, params: (i) => ({ size: i.size, levels: i.levels }) },
+      { id: 'nmap', kind: 'op.tile_normal', lane: 'cpu', deps: ['fit'], in: { images: 'fit.images' }, params: (i) => ({ enabled: i.normal }) },
+      { id: 'pix', kind: 'op.tile_pixel', lane: 'cpu', deps: ['fit'], in: { images: 'fit.images' }, params: (i) => ({ size: i.pixel }) },
+      { id: 'check', kind: 'op.tile_check', lane: 'cpu', deps: ['fit', 'nmap', 'pix'], in: { images: 'fit.images', nmap: 'nmap.images', pixel: 'pix.images', sizes: 'fit.sizes' } },
+      { id: 'approve', kind: 'gate.approve', lane: 'none', deps: ['check'], in: { images: 'check.images', preview: 'check.preview', report: 'check.report' } }
+    ]
+  },
+  {
+    info: {
+      id: 'tileset-seamless',
+      name: 'Tileset biến thể liền mạch (Z-Image)',
+      description: 'Prompt vật liệu → N ảnh Z-Image → ảnh đầu làm liền mạch, các ảnh sau nối mép theo nó → chấm điểm + xem lát trộn 4×4 → normal map → duyệt',
+      hash: 'b3c0t1le02',
+      inputs: {
+        prompt: { type: 'text', label: 'Vật liệu', required: true },
+        count: { type: 'int', default: 4, min: 2, max: 8, label: 'Số biến thể' },
+        size: { type: 'int', default: 512, options: [128, 256, 512, 1024], label: 'Cỡ ô (px)' },
+        normal: { type: 'bool', default: true, label: 'Tạo normal map' },
+        review: { type: 'bool', default: true, label: 'Duyệt trước khi xong' }
+      },
+      steps: []
+    },
+    defs: [
+      { id: 'gen', kind: 'comfy.t2i_zimage_turbo', lane: 'gpu', deps: [] },
+      { id: 'seam', kind: 'op.seamless', lane: 'cpu', deps: ['gen'], in: { images: 'gen.images' }, params: () => ({ match_edges: true, name: 'tile' }) },
+      { id: 'fit', kind: 'op.tile_resize', lane: 'cpu', deps: ['seam'], in: { images: 'seam.images' }, params: (i) => ({ size: i.size, levels: 0 }) },
+      { id: 'nmap', kind: 'op.tile_normal', lane: 'cpu', deps: ['fit'], in: { images: 'fit.images' }, params: (i) => ({ enabled: i.normal }) },
+      { id: 'check', kind: 'op.tile_check', lane: 'cpu', deps: ['fit', 'nmap'], in: { images: 'fit.images', nmap: 'nmap.images' }, params: () => ({ grid: 4 }) },
+      { id: 'approve', kind: 'gate.approve', lane: 'none', deps: ['check'], in: { images: 'check.images', preview: 'check.preview', report: 'check.report', atlas: 'check.atlas' } }
     ]
   },
   {
@@ -588,7 +648,7 @@ export class MockCore implements StudioApi, EventStream {
     const dirName = (suffix: string) => (i: number) => `dir_${String(i * 45).padStart(3, '0')}${suffix}.png`
     const colorDirs = this.renamed(pool.slice(0, 8), dirName(''))
     const normalDirs = this.renamed(pool.slice(0, 8), dirName('_n'))
-    const smallNormals = this.renamed(normalDirs, dirName('_n_down_n'))
+    const smallNormals = this.renamed(normalDirs, dirName('_down_n'))
     this.seedShowcase(
       'sprite-8dir-3d',
       'Hiệp sĩ đi bộ (3 clip + normal)',
@@ -604,6 +664,8 @@ export class MockCore implements StudioApi, EventStream {
         sheet: walk.color,
         ndirs: { images: normalDirs },
         ndown: { images: smallNormals },
+        fx: { images: colorDirs },
+        nfx: { images: smallNormals },
         nsheet: walk.normal
       },
       [...Object.values(walk.color).flat(), ...Object.values(walk.normal).flat()]
@@ -626,7 +688,10 @@ export class MockCore implements StudioApi, EventStream {
         anim: { images: animFrames(''), normal_frames: animNormals },
         anim_down: { images: animFrames('') },
         anim_sheet: walk.color,
-        anim_ndown: { images: this.renamed(animNormals, (i) => `walk_dir_${String(i * 45).padStart(3, '0')}_f00_n_down_n.png`) },
+        fx: { images: colorDirs },
+        anim_fx: { images: animFrames('') },
+        anim_ndown: { images: this.renamed(animNormals, (i) => `walk_dir_${String(i * 45).padStart(3, '0')}_f00_down_n.png`) },
+        anim_nfx: { images: this.renamed(animNormals, (i) => `walk_dir_${String(i * 45).padStart(3, '0')}_f00_down_n.png`) },
         anim_nsheet: walk.normal
       },
       [x.sheet, x.sheetMeta, ...Object.values(walk.color).flat(), ...Object.values(walk.normal).flat()]
@@ -1326,5 +1391,55 @@ export class MockCore implements StudioApi, EventStream {
 
   async archiveProject(id: string): Promise<ProjectRow> {
     return this.patchProject(id, { archived: true })
+  }
+
+  async statsOverview(q: StatsQuery = {}): Promise<StatsOverview> {
+    await this.ready
+    await sleep(120)
+    return clone(mockStatsOverview([...this.runs.values()], [...this.steps.values()], q))
+  }
+
+  private mockQa(v: VersionRow): QaResult | null {
+    if (!v.blob.mime.startsWith('image/')) return null
+    // Core skips images without transparency; mock blobs are not decoded, so the name stands in for the alpha check.
+    if (!/sheet|dir_|walk_|hero|_fit|_norm|_fx|layers|parts/i.test(v.blob.name ?? '')) {
+      return { version: 1, score: null, skipped: 'opaque', note: 'Ảnh không có nền trong suốt — không chấm' }
+    }
+    const seed = parseInt(v.blob.hash.slice(0, 6), 16) || 0
+    const part = (key: QaPart['key'], label: string, weight: number, k: number, detail: string): QaPart => ({ key, label, weight, score: 100 - ((seed >> k) % 45), detail })
+    const parts = [
+      part('empty', 'Khung rỗng', 20, 1, 'Không có khung rỗng'),
+      part('alpha', 'Độ sạch alpha', 25, 3, 'Pixel lẻ 0.4% · viền mờ 1.2%'),
+      part('framing', 'Khung hình', 25, 5, 'Không chạm mép, lề ổn'),
+      part('consistency', 'Nhất quán các hướng', 20, 7, '8 hướng · lệch cao 3% · lệch chân 0.5% · lệch tâm 1.0%')
+    ]
+    const score = Math.round(parts.reduce((a, p) => a + p.score * p.weight, 0) / 90)
+    return { version: 1, score, parts, issues: score < 70 ? ['Có pixel lẻ / mảnh rời quanh sprite'] : [], cells: 8 }
+  }
+
+  async recomputeQa(body: { run_id?: string; project_id?: string; missing_only?: boolean; limit?: number } = {}): Promise<QaRecomputeResult> {
+    await this.ready
+    let updated = 0
+    let skipped = 0
+    const rows = [...this.versionMap.values()].filter((v) => (!body.run_id || v.run_id === body.run_id) && (!body.project_id || v.project_id === body.project_id))
+    for (const v of rows) {
+      if ((body.missing_only ?? true) && v.qa) {
+        skipped += 1
+        continue
+      }
+      v.qa = this.mockQa(v)
+      if (v.qa) updated += 1
+      else skipped += 1
+      this.emit('version.updated', v, v.run_id)
+    }
+    return { updated, skipped, total: rows.length }
+  }
+
+  async recomputeVersionQa(id: string): Promise<VersionRow> {
+    const v = this.versionMap.get(id)
+    if (!v) throw new ApiError('not_found', `unknown version: ${id}`, 404)
+    v.qa = this.mockQa(v)
+    this.emit('version.updated', v, v.run_id)
+    return clone(v)
   }
 }
