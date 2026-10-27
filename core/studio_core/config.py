@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from studio_core.paths import default_data_dir, recipes_dir
+from studio_core.paths import default_data_dir, package_dir, recipes_dir
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL_KEYS = ("comfy_dir", "comfy_python", "comfy_models_dir", "comfy_workflows_dir", "blender_exe", "codex_exe",
@@ -35,7 +35,7 @@ class Settings(BaseModel):
     comfy_dir: Path = Path(r"L:\AI\setup\comfyUI")
     comfy_python: Path = Path(r"L:\AI\setup\comfyUI\.venv\Scripts\python.exe")
     comfy_models_dir: Path = Path(r"F:\work\AI\comfyUI_models")
-    comfy_workflows_dir: Path = Path(r"L:\AI\setup\workflows")
+    comfy_workflows_dir: Path = package_dir() / "workflows"
     comfy_port: int = 8188
     comfy_autostart: bool = False
     comfy_boot_timeout_s: float = 120

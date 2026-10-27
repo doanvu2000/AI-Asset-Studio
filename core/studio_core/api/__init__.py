@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from studio_core.api import diagnostics, projects, routes, tools, ws
 from studio_core.api import stats
 from studio_core.api import qa
+from studio_core.api import setup
 from studio_core.api.auth import OriginCheckMiddleware
 from studio_core.api.errors import ApiError, OrjsonResponse, install_error_handlers
 
@@ -18,6 +19,7 @@ def mount_api(app: FastAPI, allowed_origins: list[str]) -> None:
     app.include_router(diagnostics.router)
     app.include_router(stats.router)
     app.include_router(qa.router)
+    app.include_router(setup.router)
     app.include_router(ws.router)
     app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["*"],
                        allow_headers=["*"], max_age=600)

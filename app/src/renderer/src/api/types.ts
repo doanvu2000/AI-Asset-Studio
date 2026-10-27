@@ -416,7 +416,7 @@ export interface ProjectPatchBody {
   archived?: boolean
 }
 
-export type ToolKey = 'comfy_dir' | 'comfy_python' | 'comfy_models_dir' | 'comfy_workflows_dir' | 'blender_exe' | 'codex_exe'
+export type ToolKey = 'comfy_dir' | 'comfy_python' | 'comfy_models_dir' | 'comfy_workflows_dir' | 'blender_exe' | 'codex_exe' | 'claude_exe'
 
 export interface ToolPath {
   key: ToolKey
@@ -502,4 +502,63 @@ export interface StatsOverview {
   steps: StepKindStats[]
   /** `since`/`until`: local-midnight bounds of the bars; the totals cover the same span when a period is set. */
   daily: { days: DailyStats[]; tz_offset_s: number; since: number; until: number }
+}
+
+export interface SetupPack {
+  id: string
+  label: string
+  detail: string
+  required: boolean
+  files: number
+  size: number
+  missing_size: number
+  installed: boolean
+}
+
+export interface SetupComponent {
+  installed: boolean
+  path: string
+  version?: string
+  size?: number
+}
+
+export interface SetupPlan {
+  tools_dir: string
+  models_dir: string
+  free: { tools: number | null; models: number | null }
+  gpu: { name: string | null; driver: number | null; vram_gb: number | null; problem: string | null }
+  packs: SetupPack[]
+  components: { comfyui: SetupComponent; blender: SetupComponent; claude: SetupComponent }
+}
+
+export type SetupItemState = 'pending' | 'running' | 'done' | 'skipped' | 'error' | 'cancelled'
+
+export interface SetupItem {
+  id: string
+  label: string
+  state: SetupItemState
+  detail: string
+  done: number
+  total: number
+}
+
+export interface SetupJob {
+  state: 'running' | 'done' | 'error' | 'cancelled'
+  error: string | null
+  started: number
+  finished: number | null
+  items: SetupItem[]
+  bytes_done: number
+  bytes_total: number
+  speed: number
+  tools_dir: string
+  models_dir: string
+}
+
+export interface SetupStartBody {
+  tools_dir: string
+  models_dir: string
+  packs: string[]
+  blender: boolean
+  claude: boolean
 }

@@ -38,6 +38,7 @@ import { renderWalkSheet } from './walkSheet'
 import { mockStatsOverview } from './stats'
 import type { StatsOverview, StatsQuery } from '../types'
 import type { QaPart, QaRecomputeResult, QaResult } from '../types'
+import type { SetupJob, SetupPlan, SetupStartBody } from '../types'
 import { MOCK_KINDS, MOCK_PRESETS, MOCK_TOOLS, mockValidate, stepDeps } from './catalog'
 import { normalizeStyle, styleFills } from '@/composables/projectStyle'
 import sampleGlbUrl from './assets/sample-prop.glb?url'
@@ -1180,6 +1181,78 @@ export class MockCore implements StudioApi, EventStream {
       })),
       logs: [{ name: 'comfyui.log', path: `${data}\\logs\\comfyui.log`, bytes: 2048, modified: now(), lines: ['[mock] ComfyUI started', '[mock] Prompt executed in 3.2 seconds'] }]
     }
+  }
+
+  private setup: { job: SetupJob; t0: number } | null = null
+
+  async setupPlan(dirs: { tools_dir?: string; models_dir?: string } = {}): Promise<{ plan: SetupPlan; job: SetupJob | null }> {
+    await sleep(220)
+    const GB = 1024 ** 3
+    const tools = dirs.tools_dir || 'D:\AI Asset Studio\tools'
+    const plan: SetupPlan = {
+      tools_dir: tools,
+      models_dir: dirs.models_dir || `${tools}\models`,
+      free: { tools: 412 * GB, models: 412 * GB },
+      gpu: { name: 'NVIDIA GeForce RTX 5070', driver: 610.88, vram_gb: 11.9, problem: null },
+      packs: [
+        { id: 'base', label: 'Cơ bản 2D', detail: 'Concept 2D, texture, tileset, tách nền. Mọi quy trình đều cần.', required: true, files: 5, size: 24.2 * GB, missing_size: 24.2 * GB, installed: false },
+        { id: 'edit', label: 'Biến thể + Spine', detail: 'Biến thể 2D, nhân vật Spine (tách part, vá khớp).', required: false, files: 3, size: 6.1 * GB, missing_size: 6.1 * GB, installed: false },
+        { id: 'angles', label: 'Nhiều góc nhìn', detail: 'Sprite 8 hướng 2D, sprite 3D multi-view, hoạt ảnh, Spine trước + sau.', required: false, files: 5, size: 31.3 * GB, missing_size: 31.3 * GB, installed: false },
+        { id: 'mesh', label: '3D', detail: 'Prop 3D, sprite 8 hướng qua mesh, hoạt ảnh.', required: false, files: 7, size: 20.3 * GB, missing_size: 0, installed: true }
+      ],
+      components: {
+        comfyui: { installed: false, path: 'L:\AI\setup\comfyUI', version: '0.41.0', size: 12 * GB },
+        blender: { installed: true, path: 'C:\Program Files\Blender Foundation\Blender 5.2\blender.exe', version: '5.2.2', size: 0.4 * GB },
+        claude: { installed: false, path: 'C:\Users\mock\.local\bin\claude.exe' }
+      }
+    }
+    return { plan, job: await this.setupJob() }
+  }
+
+  async setupJob(): Promise<SetupJob | null> {
+    if (!this.setup) return null
+    const { job, t0 } = this.setup
+    if (job.state !== 'running') return clone(job)
+    const elapsed = (Date.now() - t0) / 1000
+    let left = elapsed
+    for (const it of job.items) {
+      const need = it.total ? it.total / (900 * 1024 ** 2) : 3
+      if (left <= 0) it.state = 'pending'
+      else if (left >= need) Object.assign(it, { state: 'done', done: it.total, detail: '' })
+      else Object.assign(it, { state: 'running', done: Math.round((it.total * left) / need), detail: it.total ? 'Đang tải' : 'Đang cài' })
+      left -= need
+    }
+    job.bytes_done = job.items.reduce((a, i) => a + i.done, 0)
+    job.speed = 900 * 1024 ** 2
+    if (job.items.every((i) => i.state === 'done')) Object.assign(job, { state: 'done', finished: now(), speed: 0 })
+    return clone(job)
+  }
+
+  async startSetup(body: SetupStartBody): Promise<SetupJob> {
+    await sleep(160)
+    const GB = 1024 ** 3
+    const items = [
+      { id: 'comfyui', label: 'ComfyUI + Python + PyTorch', state: 'pending' as const, detail: '', done: 0, total: 0 },
+      { id: 'pack:base', label: 'Gói Cơ bản 2D (5 file)', state: 'pending' as const, detail: '', done: 0, total: 24.2 * GB },
+      { id: 'pack:edit', label: 'Gói Biến thể + Spine (3 file)', state: 'pending' as const, detail: '', done: 0, total: 6.1 * GB },
+      ...(body.claude ? [{ id: 'claude', label: 'Claude Code', state: 'pending' as const, detail: '', done: 0, total: 0 }] : []),
+      { id: 'finish', label: 'Lưu đường dẫn', state: 'pending' as const, detail: '', done: 0, total: 0 }
+    ]
+    const job: SetupJob = { state: 'running', error: null, started: now(), finished: null, items, bytes_done: 0, bytes_total: 30.3 * GB, speed: 0, tools_dir: body.tools_dir, models_dir: body.models_dir }
+    this.setup = { job, t0: Date.now() }
+    return clone(job)
+  }
+
+  async cancelSetup(): Promise<SetupJob | null> {
+    if (this.setup?.job.state === 'running') {
+      this.setup.job.state = 'cancelled'
+      for (const i of this.setup.job.items) if (i.state === 'pending' || i.state === 'running') i.state = 'cancelled'
+    }
+    return this.setup ? clone(this.setup.job) : null
+  }
+
+  async claudeLogin(): Promise<void> {
+    await sleep(80)
   }
 
   async saveToolPaths(paths: Partial<Record<ToolKey, string>>): Promise<ToolPaths> {

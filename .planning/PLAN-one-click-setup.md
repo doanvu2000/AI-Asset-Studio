@@ -1,4 +1,4 @@
-# PLAN — Cài đặt một chạm cho người mới (2026-10-27, đề xuất, chưa làm)
+# PLAN — Cài đặt một chạm cho người mới (2026-10-27; đã làm 2026-10-28, xem PROGRESS)
 
 Mục tiêu: máy trắng (Windows + GPU NVIDIA) → mở app → bấm **Cài tất cả** → chờ tải → dùng được. Không terminal, không
 sửa đường dẫn tay.

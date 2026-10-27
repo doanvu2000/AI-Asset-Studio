@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { CircleAlert, CircleCheck, CircleX, FileCog, FolderOpen, LoaderCircle, RefreshCw, RotateCw, Save } from '@lucide/vue'
+import { CircleAlert, CircleCheck, CircleX, Download, FileCog, FolderOpen, LoaderCircle, RefreshCw, RotateCw, Save } from '@lucide/vue'
 import type { ToolKey, ToolPath } from '@/api/types'
 import { api, useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
@@ -96,6 +96,7 @@ watch(
         <p class="secondary">ComfyUI, model, Blender, Codex nằm ngoài app — chỉ đúng chỗ cài trên máy này.</p>
       </div>
       <div v-if="conn.transport" class="actions">
+        <RouterLink class="btn" :to="{ path: '/settings', query: { pane: 'setup' } }"><Download /> Cài tự động</RouterLink>
         <button class="btn" :disabled="loading" @click="load">
           <RefreshCw :class="{ spin: loading }" />
           Kiểm tra lại

@@ -53,10 +53,10 @@ const steps = computed(() => [
       : tools.value
         ? toolsOk.value
           ? 'ComfyUI, Blender và Codex đều đã tìm thấy.'
-          : `Đã tìm thấy ${toolsFound.value}/${tools.value.length} công cụ. Đặt đường dẫn còn thiếu trong Cài đặt.`
+          : `Đã tìm thấy ${toolsFound.value}/${tools.value.length} công cụ. Bấm Cài tự động để tải phần còn thiếu, hoặc tự đặt đường dẫn trong Cài đặt.`
         : 'Đang kiểm tra…',
-    to: { path: '/settings', query: { pane: 'tools' } },
-    action: toolsOk.value ? 'Xem' : 'Mở Cài đặt'
+    to: { path: '/settings', query: { pane: toolsOk.value ? 'tools' : 'setup' } },
+    action: toolsOk.value ? 'Xem' : 'Cài tự động'
   },
   {
     id: 'recipe',

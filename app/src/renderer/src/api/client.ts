@@ -28,7 +28,10 @@ import type {
   StepRow,
   VersionRow,
   VersionStatus,
-  QaRecomputeResult
+  QaRecomputeResult,
+  SetupJob,
+  SetupPlan,
+  SetupStartBody
 } from './types'
 import type { CoreDiagnostics } from '../../../preload/types'
 import { devlog } from '@/composables/devlog'
@@ -105,6 +108,12 @@ export interface StudioApi {
   /** Scores Library versions that have no QA yet (or all of them with `missing_only: false`). */
   recomputeQa(body?: { run_id?: string; project_id?: string; missing_only?: boolean; limit?: number }): Promise<QaRecomputeResult>
   recomputeVersionQa(id: string): Promise<VersionRow>
+  /** What one-click setup would install; dirs default to the core's suggestion. */
+  setupPlan(dirs?: { tools_dir?: string; models_dir?: string }): Promise<{ plan: SetupPlan; job: SetupJob | null }>
+  setupJob(): Promise<SetupJob | null>
+  startSetup(body: SetupStartBody): Promise<SetupJob>
+  cancelSetup(): Promise<SetupJob | null>
+  claudeLogin(): Promise<void>
 }
 
 export type RecipeBody = { yaml: string } | { doc: RecipeDoc }
@@ -207,6 +216,13 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     toolPaths: (versions = true) => call('GET', `/api/settings/tools${query({ versions: versions ? undefined : 'false' })}`, undefined, SLOW_TIMEOUT_MS),
     saveToolPaths: (paths) => call('PUT', '/api/settings/tools', { paths }),
     diagnostics: () => call('GET', '/api/diagnostics', undefined, SLOW_TIMEOUT_MS),
+    setupPlan: (dirs = {}) => call('GET', `/api/setup${query(dirs)}`, undefined, SLOW_TIMEOUT_MS),
+    setupJob: () => call('GET', '/api/setup/job'),
+    startSetup: (body) => call('POST', '/api/setup/start', body),
+    cancelSetup: () => call('POST', '/api/setup/cancel'),
+    claudeLogin: async () => {
+      await call('POST', '/api/setup/claude-login')
+    },
     projects: (q = {}) => call('GET', `/api/projects${query({ archived: q.archived ? 'true' : 'false', summary: 'true' })}`),
     getProject: (id) => call('GET', `/api/projects/${enc(id)}`),
     createProject: (body) => call('POST', '/api/projects', body),

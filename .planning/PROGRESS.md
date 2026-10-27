@@ -593,3 +593,21 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
 - 23:43 commit `7e29602` (weighted mesh vai, lead_hand, prompt concept, prop -mv) + push origin/master. Build Portable 23:43, đã mở.
 
 - 23:5x README viết lại cho người dùng (mô tả + cài đặt + dùng lần đầu + lỗi hay gặp), ảnh UI mới chụp qua CDP (`docs/screenshots/`: dashboard, new-run, library, run-sprite, settings-tools, spine-frames). Thêm `setup/comfyui-models.ps1` (-Root) + `setup/workflows/` (chép từ L:\AI\setup). Plan cài một chạm: `.planning/PLAN-one-click-setup.md` (chưa làm).
+
+## Phiên 2026-10-28 00:xx — Cài tự động (one-click setup)
+
+- [x] `core/studio_core/bootstrap/`: `manifest.json` (uv 0.11.21, ComfyUI 0.41.0 zip, torch 2.14.1/cu130, Blender 5.2.2
+  zip + sha, Claude installer, 4 gói model + 20 file HF có size/sha256 lấy từ header `x-linked-*`), `plan.py` (gói →
+  model suy từ workflow, GPU/driver ≥ 580, ổ trống, `recipe_packs`), `job.py` (thread nền; tải Range resume + sha256,
+  2 luồng/gói; uv venv `only-managed` + torch + requirements; Blender zip; Claude `irm|iex`; lưu settings).
+- [x] Workflow chuyển vào `core/studio_core/workflows/` (đóng gói theo PyInstaller); `comfy_workflows_dir` mặc định trỏ vào đó.
+  `setup/comfyui-models.ps1` thêm `pixal3d_multiview` (thiếu trước đây).
+- [x] API `/api/setup` (plan), `/job`, `/start`, `/cancel`, `/claude-login`. App: Cài đặt → **Cài tự động**
+  (`SetupPanel.vue`), GettingStarted bước 1 → "Cài tự động", nút ở Đường dẫn công cụ. Mỗi gói một dòng tiến trình
+  (dung lượng, %, file đang tải). Mock có setup giả.
+- [x] Test `tests/test_setup.py` (manifest đủ model, resume, sha sai xoá, job end-to-end với HTTP server giả, API).
+  pytest 436 pass / 4 skip, typecheck sạch. Portable build 00:13.
+- [~] Kiểm thật: tải ComfyUI zip + uv + venv + torch chạy được (lượt 1). Lượt chạy lại đầy đủ (venv managed, Blender,
+  model thật, ComfyUI boot) bị auto-mode chặn vì chạy code tải ngoài → chờ chủ nhân cho phép / tự bấm trong app.
+  Rác thử nghiệm: `L:\AI\setup-test` (xoá được).
+- [x] 00:3x v1.0.0: bump version (app/core), build bộ cài + zip portable (smoke test zip OK: core kết nối, data trong thư mục portable), README thêm mục Tải về.

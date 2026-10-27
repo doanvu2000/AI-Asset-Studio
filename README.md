@@ -5,6 +5,18 @@ hoặc nhân vật Spine có xương, xuất thẳng cho Unity / Godot / Spine.
 
 ![Tổng quan](docs/screenshots/dashboard.png)
 
+## Tải về
+
+Bản mới nhất: **[v1.0.0](https://github.com/doanvu2000/AI-Asset-Studio/releases/latest)** (Windows x64)
+
+| File | Dùng khi |
+|------|----------|
+| `AI-Asset-Studio-Portable-1.0.0-x64.zip` | Giải nén ra đâu cũng chạy, không cần cài (khuyên dùng) |
+| `AI-Asset-Studio-Setup-1.0.0-x64.exe` | Muốn cài vào máy, có shortcut Start menu / Desktop |
+
+Tải xong → mở app → bấm **Cài tự động** (xem [Cài đặt](#cài-đặt)).
+
+- [Tải về](#tải-về)
 - [Làm được gì](#làm-được-gì)
 - [Cài đặt](#cài-đặt)
 - [Dùng lần đầu](#dùng-lần-đầu)
@@ -62,53 +74,66 @@ Màn khác: **Hàng loạt** (nhiều prompt một lần), **Quy trình** (xem +
 
 ### 1. Máy cần có
 
-| Thứ | Ghi chú |
-|-----|---------|
-| Windows 10/11 x64, GPU NVIDIA ≥ 12 GB VRAM | Máy chuẩn: RTX 5070 12 GB, 64 GB RAM. Quy trình hoạt ảnh dùng đỉnh ~28 GB RAM |
-| ComfyUI 0.41 + model (~80 GB, nên để ổ SSD) | Chạy model ảnh / 3D. Cách cài ở bước 2 |
-| Blender 5.2 | Chỉ cần cho quy trình 3D và sprite 8 hướng 3D |
-| Claude Code (`claude`) | Cho các bước "Claude viết brief / soát khớp xương". Đăng nhập một lần bằng `claude` |
-| Codex CLI | Tuỳ chọn, chỉ cho `Concept 2D (Codex)` |
+- Windows 10/11 x64, GPU NVIDIA ≥ 12 GB VRAM, driver NVIDIA ≥ 580. Máy chuẩn: RTX 5070 12 GB, 64 GB RAM.
+- Ổ trống khoảng 100 GB (model AI ~77 GB nếu lấy đủ các gói, công cụ ~13 GB; nên để ổ SSD).
+- Mạng internet cho lần cài đầu. Tài khoản Claude nếu muốn dùng các bước Claude viết brief / soát khớp xương.
 
-ComfyUI, model, Blender không đi kèm app (quá nặng); cài một lần rồi trỏ đường dẫn ở bước 4.
+### 2. Mở app
 
-### 2. Cài ComfyUI + model
+- **Bản portable** (khuyên dùng): giải nén `AI-Asset-Studio-Portable-1.0.0-x64.zip` ra đâu cũng được (vd. `D:\`), chạy
+  `AI Asset Studio Portable\AI Asset Studio.exe`.
+  Dữ liệu nằm ngay trong thư mục đó (`data\`), mang sang máy khác vẫn còn.
+- **Bản cài**: chạy `AI-Asset-Studio-Setup-1.0.0-x64.exe`. Dữ liệu ở `%APPDATA%\AI Asset Studio\data`.
 
-Cần [git](https://git-scm.com/download/win) và [uv](https://docs.astral.sh/uv/getting-started/installation/). Mở
-PowerShell:
+SmartScreen báo "Windows protected your PC" → **More info → Run anyway** (app chưa ký số).
+
+### 3. Bấm "Cài tự động"
+
+Lần đầu mở app, thẻ **Bắt đầu** ở Tổng quan có nút **Cài tự động** (hoặc vào **Cài đặt → Cài tự động**):
+
+1. Chọn thư mục công cụ và thư mục model (máy đã có model ở đâu thì chọn đúng chỗ đó, file trùng không tải lại).
+2. Chọn gói model cần dùng. Gói **Cơ bản 2D** bắt buộc; các gói khác bật theo loại asset muốn làm.
+3. Bấm **Cài tất cả**, chờ tải xong. App tự cài ComfyUI + Python + PyTorch, tải model, Blender, Claude Code rồi tự
+   điền đường dẫn.
+4. Bấm **Đăng nhập Claude**, làm theo hướng dẫn trong cửa sổ hiện ra (chỉ cần một lần).
+
+![Cài tự động](docs/screenshots/setup.png)
+
+| Gói model | Dung lượng | Dùng cho |
+|-----------|-----------:|----------|
+| Cơ bản 2D (bắt buộc) | 22.6 GB | Concept 2D, texture, tileset, tách nền |
+| Biến thể + Spine | 5.7 GB | Biến thể 2D, nhân vật Spine |
+| Nhiều góc nhìn | 29.1 GB | Sprite 8 hướng 2D, sprite 3D multi-view, hoạt ảnh, Spine trước + sau |
+| 3D | 19 GB | Prop 3D, sprite 8 hướng qua mesh, hoạt ảnh |
+
+Mạng 100 Mbps tải đủ các gói mất khoảng 2 giờ. Đứt mạng / tắt máy giữa chừng thì mở lại và bấm **Cài tiếp**, phần đã
+tải được giữ nguyên. Mỗi file tải xong đều được kiểm mã sha256.
+
+Codex CLI không cài tự động (chỉ dùng cho `Concept 2D (Codex)`, tuỳ chọn).
+
+<details>
+<summary>Đã có ComfyUI sẵn / muốn tự cài tay</summary>
+
+Vào **Cài đặt → Đường dẫn công cụ**, bấm **Chọn…** từng dòng, **Kiểm tra lại** đến khi tất cả có dấu ✓ xanh, **Lưu**.
+
+![Đường dẫn công cụ](docs/screenshots/settings-tools.png)
+
+Cài ComfyUI tay (cần [git](https://git-scm.com/download/win) và [uv](https://docs.astral.sh/uv/getting-started/installation/)):
 
 ```powershell
 git clone --branch v0.41.0 https://github.com/comfy-org/ComfyUI D:\AI\comfyUI
 cd D:\AI\comfyUI
 uv venv --python 3.13 .venv
-uv pip install --python .venv torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
+uv pip install --python .venv torch==2.14.1 torchvision==0.29.1 torchaudio==2.11.0 --index-url https://download.pytorch.org/whl/cu130
 uv pip install --python .venv -r requirements.txt
 ```
 
-Tải model (22 file ~80 GB, tải dở chạy lại lệnh là tải tiếp):
+Tải model tay: `powershell -ExecutionPolicy Bypass -File setup\comfyui-models.ps1 -Root E:\AI\comfyUI_models`.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File setup\comfyui-models.ps1 -Root E:\AI\comfyUI_models
-```
+</details>
 
-Workflow ComfyUI có sẵn trong thư mục `setup\workflows` của dự án.
-
-### 3. Mở app
-
-- **Bản portable** (khuyên dùng): chép thư mục `AI Asset Studio Portable` ra đâu cũng được, chạy `AI Asset Studio.exe`.
-  Dữ liệu nằm ngay trong thư mục đó (`data\`), mang sang máy khác vẫn còn.
-- **Bản cài**: chạy `AI-Asset-Studio-Setup-<version>-x64.exe`. Dữ liệu ở `%APPDATA%\AI Asset Studio\data`.
-
-SmartScreen báo "Windows protected your PC" → **More info → Run anyway** (app chưa ký số).
-
-### 4. Trỏ đường dẫn công cụ
-
-**Cài đặt → Đường dẫn công cụ** → bấm **Chọn…** từng dòng → **Kiểm tra lại** đến khi tất cả có dấu ✓ xanh → **Lưu**.
-
-![Đường dẫn công cụ](docs/screenshots/settings-tools.png)
-
-Không cần tự bật ComfyUI / Blender: app tự khởi động khi lượt chạy cần, và tắt khi đóng app. Thanh trên cùng của
-**Tổng quan** cho biết trạng thái từng công cụ.
+App tự bật ComfyUI / Blender khi lượt chạy cần và tắt khi đóng app. Thanh trên cùng của **Tổng quan** cho biết trạng
+thái từng công cụ.
 
 ## Dùng lần đầu
 
@@ -124,8 +149,9 @@ Không cần tự bật ComfyUI / Blender: app tự khởi động khi lượt c
 
 | Triệu chứng | Cách xử lý |
 |-------------|------------|
-| Dòng ComfyUI / Blender có dấu đỏ | **Cài đặt → Đường dẫn công cụ**, sửa đường dẫn, **Kiểm tra lại**, rồi khởi động lại công cụ ở **Tổng quan** |
-| Bước Claude lỗi | Chạy `claude` trong terminal một lần để đăng nhập, rồi **Thử lại** bước đó |
+| Dòng ComfyUI / Blender có dấu đỏ | **Cài đặt → Cài tự động** → **Cài tất cả** (chỉ cài phần thiếu), hoặc sửa tay ở **Đường dẫn công cụ** |
+| Cài tự động báo lỗi driver | Cập nhật driver NVIDIA (≥ 580) rồi bấm **Cài tiếp** |
+| Bước Claude lỗi | **Cài đặt → Cài tự động → Đăng nhập Claude**, rồi **Thử lại** bước đó |
 | Lần mở đầu báo core chưa sẵn sàng sau 60 giây | Defender đang quét; mở lại app hoặc thêm thư mục app vào exclusion |
 | GPU hết bộ nhớ / ComfyUI tắt giữa chừng | Đóng app nặng khác (game, trình duyệt nhiều tab), chạy từng lượt một |
 | Cần gửi log báo lỗi | **Cài đặt → Nhật ký chẩn đoán → Copy** |

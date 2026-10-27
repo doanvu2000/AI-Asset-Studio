@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
-import { ArrowDown, ArrowUp, Copy, FolderCog, Lock, LoaderCircle, Plus, Save, ScrollText, SunMoon, Trash2 } from '@lucide/vue'
+import { ArrowDown, ArrowUp, Copy, Download, FolderCog, Lock, LoaderCircle, Plus, Save, ScrollText, SunMoon, Trash2 } from '@lucide/vue'
 import type { Compass, ExportPreset } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import DiagnosticsPanel from '@/components/DiagnosticsPanel.vue'
 import ToolPathsPanel from '@/components/ToolPathsPanel.vue'
+import SetupPanel from '@/components/SetupPanel.vue'
 import ResizeHandle from '@/components/ResizeHandle.vue'
 import { usePaneWidth } from '@/composables/paneSize'
 import { useUnsavedChanges } from '@/composables/unsaved'
@@ -38,13 +39,13 @@ const presetSummary = (p: ExportPreset): string =>
 
 const route = useRoute()
 const selectedId = ref<string>('studio')
-const pane = ref<'look' | 'tools' | 'diag' | null>(null)
+const pane = ref<'look' | 'setup' | 'tools' | 'diag' | null>(null)
 const theme = useTheme()
 // Deep links such as the offline screen's "Mở Cài đặt → Đường dẫn" (/settings?pane=tools).
 watch(
   () => route.query.pane,
   (q) => {
-    if (q === 'look' || q === 'tools' || q === 'diag') pane.value = q
+    if (q === 'look' || q === 'setup' || q === 'tools' || q === 'diag') pane.value = q
   },
   { immediate: true }
 )
@@ -192,6 +193,11 @@ async function remove(): Promise<void> {
           <SunMoon :size="13" class="lock" aria-hidden="true" />
           <span class="i-sub caption">{{ THEME_OPTIONS.find((o) => o[0] === theme.mode.value)?.[1] }}</span>
         </button>
+        <button class="item" :class="{ on: pane === 'setup' }" @click="pane = 'setup'">
+          <span class="i-name">Cài tự động</span>
+          <Download :size="13" class="lock" aria-hidden="true" />
+          <span class="i-sub caption">ComfyUI · model · Blender · Claude</span>
+        </button>
         <button class="item" :class="{ on: pane === 'tools' }" @click="pane = 'tools'">
           <span class="i-name">Đường dẫn công cụ</span>
           <FolderCog :size="13" class="lock" aria-hidden="true" />
@@ -247,6 +253,9 @@ async function remove(): Promise<void> {
             </div>
           </div>
         </div>
+      </section>
+      <section v-else-if="pane === 'setup'" class="scroll pane">
+        <SetupPanel />
       </section>
       <section v-else-if="pane === 'tools'" class="scroll pane">
         <ToolPathsPanel />
