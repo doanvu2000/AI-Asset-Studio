@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -74,9 +74,15 @@ def to_hex(rgb: Sequence[int]) -> str:
     return "#{:02x}{:02x}{:02x}".format(*(int(v) for v in rgb[:3]))
 
 
-def _median_cut(lab: np.ndarray, w: np.ndarray, k: int) -> np.ndarray:
+def _check(stop: Callable[[], bool] | None) -> None:
+    if stop is not None and stop():
+        raise asyncio.CancelledError
+
+
+def _median_cut(lab: np.ndarray, w: np.ndarray, k: int, stop: Callable[[], bool] | None = None) -> np.ndarray:
     boxes = [np.arange(len(lab))]
     while len(boxes) < k:
+        _check(stop)
         # Split the box with the most weighted spread; boxes of one color cannot split.
         scores = [float(np.ptp(lab[b], axis=0).max() * w[b].sum()) if len(b) > 1 else -1.0 for b in boxes]
         i = int(np.argmax(scores))
@@ -100,7 +106,7 @@ def _decode(codes: np.ndarray) -> np.ndarray:
     return np.stack([(codes >> 16) & 255, (codes >> 8) & 255, codes & 255], 1).astype(np.uint8)
 
 
-def kmeans_palette(rgb: np.ndarray, k: int, iters: int = 16) -> np.ndarray:
+def kmeans_palette(rgb: np.ndarray, k: int, iters: int = 16, stop: Callable[[], bool] | None = None) -> np.ndarray:
     """k colors (uint8 RGB) for the given pixels; median-cut seeded Lloyd in OKLab, so no RNG is involved."""
     px = np.asarray(rgb, np.uint8).reshape(-1, 3)
     if len(px) == 0:
@@ -112,8 +118,9 @@ def kmeans_palette(rgb: np.ndarray, k: int, iters: int = 16) -> np.ndarray:
     lab = to_oklab(uniq)
     # sqrt weights keep small accents (eyes, trims) from being swallowed by large flat areas.
     w = np.sqrt(counts.astype(np.float64))
-    cent = _median_cut(lab, w, k)
+    cent = _median_cut(lab, w, k, stop)
     for _ in range(iters):
+        _check(stop)
         lbl = _nearest(lab, cent)
         sw = np.bincount(lbl, weights=w, minlength=len(cent))
         sums = np.stack([np.bincount(lbl, weights=w * lab[:, c], minlength=len(cent)) for c in range(3)], 1)
@@ -310,31 +317,39 @@ def shrink(img: Image.Image, scale: float, alpha_threshold: int = 128,
 
 def plan_palette(smalls: Sequence[tuple[np.ndarray, np.ndarray]], scale: float, colors: int = 16,
                  palette: str = "auto", palette_image: Image.Image | None = None, outline: str = "dark",
-                 dither: str = "none", dither_strength: float = 0.6, cleanup: bool = True) -> PixelPlan:
+                 dither: str = "none", dither_strength: float = 0.6, cleanup: bool = True,
+                 stop: Callable[[], bool] | None = None) -> PixelPlan:
     colors = int(colors)
+    line_rgb = parse_hex(outline) if outline not in ("none", "dark", "", None) else None
+    # A fixed outline color takes one slot of the budget unless the palette already holds it.
+    fill_k = colors - 1 if line_rgb else colors
     samples = np.concatenate([a[..., :3][m] for a, m in smalls]) if any(m.any() for _, m in smalls) \
         else np.zeros((0, 3), np.uint8)
     if palette_image is not None:
         ref = np.array(palette_image.convert("RGBA"))
-        pal, source = kmeans_palette(ref[..., :3][ref[..., 3] >= 128], colors), "image"
+        pal, source = kmeans_palette(ref[..., :3][ref[..., 3] >= 128], colors, stop=stop), "image"
     elif palette != "auto":
         pal, source = _preset_palette(palette, colors, samples), palette
     else:
-        pal, source = kmeans_palette(samples, colors), "auto"
+        pal, source = kmeans_palette(samples, colors, stop=stop), "auto"
         if outline == "dark":
             # Synthesized outline darks share the colour budget, so `colors` stays a hard cap; fills only give
             # up slots when the palette lacks darks of its own.
             n_extra = len(_dark_map(pal)[1])
             if len(pal) + n_extra > colors:
-                pal = kmeans_palette(samples, colors - min(n_extra, colors - 2))
+                pal = kmeans_palette(samples, colors - min(n_extra, colors - 2), stop=stop)
+    if line_rgb and len(pal) > fill_k and not (pal == np.array(line_rgb, np.uint8)).all(1).any():
+        if source == "auto":
+            pal = kmeans_palette(samples, fill_k, stop=stop)
+        elif source == "image":
+            pal = kmeans_palette(ref[..., :3][ref[..., 3] >= 128], fill_k, stop=stop)
+        else:
+            pal = _preset_palette(palette, fill_k, samples)
 
     out_lines: np.ndarray = np.zeros((0, 3), np.uint8)
     dark = None
-    line_rgb = None
     if outline == "dark":
         dark, out_lines = _dark_map(pal, synthesize=source == "auto", budget=colors - len(pal))
-    elif outline not in ("none", "", None):
-        line_rgb = parse_hex(outline)
     full = np.concatenate([pal, out_lines]) if len(out_lines) else pal
     pal_lab = to_oklab(pal)
     spread = 0.0
@@ -439,7 +454,7 @@ class PixelArt(OpExecutor):
             tick(len(refs) * 2, "palette")
             plan = await asyncio.to_thread(
                 plan_palette, smalls, scale, colors, palette, pal_img, str(params.get("outline") or "none"), dither,
-                float(params.get("dither_strength", 0.6)), cleanup)
+                float(params.get("dither_strength", 0.6)), cleanup, ctx.cancelled.is_set)
         except ValueError as e:
             raise StepError("op_bad_params", str(e)) from e
         frames = []

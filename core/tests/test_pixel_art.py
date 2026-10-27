@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 from pathlib import Path
@@ -68,7 +69,7 @@ def test_sizes_equal_alpha_binary_and_scale_shared():
 
 
 def test_outline_is_outer_ring_only():
-    plain = pixel_art(frames(1), size=48, colors=8, outline="none").frames[0]
+    plain = pixel_art(frames(1), size=48, colors=7, outline="none").frames[0]
     lined = pixel_art(frames(1), size=48, colors=8, outline="#ff00ff").frames[0]
     p, q = np.array(plain), np.array(lined)
     solid = p[..., 3] > 0
@@ -79,6 +80,20 @@ def test_outline_is_outer_ring_only():
     for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
         grown |= np.roll(solid, (dy, dx), (0, 1))
     assert not (ring & ~grown).any(), "outline is 1px (4-neighbour) wide"
+
+
+def test_hex_outline_counts_toward_colors():
+    for palette in ("auto", "pico8"):
+        res = pixel_art(frames(2), size=48, colors=8, palette=palette, outline="#ff00ff")
+        used = set().union(*(colors_of(f) for f in res.frames))
+        assert (255, 0, 255) in used and len(used) <= 8, palette
+
+
+def test_palette_planning_can_stop():
+    from studio_core.ops.pixel import plan_palette, shrink
+    smalls = [shrink(f, 0.25) for f in frames(2)]
+    with pytest.raises(asyncio.CancelledError):
+        plan_palette(smalls, 0.25, colors=8, stop=lambda: True)
 
 
 def test_dark_outline_stays_in_preset_palette():

@@ -22,6 +22,7 @@ from mathutils import Matrix, Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cleanup_math as cm  # noqa: E402
+import skin_math  # noqa: E402
 
 LIGHT_PRESETS = {
     # (rotation_euler degrees, energy) per sun; tuned in P0 because sun 3 + ambient 1 rendered too dark.
@@ -646,14 +647,13 @@ def _weighted(o):
     return sum(1 for v in o.data.vertices if len(v.groups)) > 0.95 * n
 
 
-def _distance_weights(meshes, arm):
+def _distance_weights(meshes, arm, height):
     """Inverse-distance skinning to the two nearest bone segments. Generated meshes are rarely watertight, which
     makes Blender's bone heat fail outright, and envelopes leave far vertices (capes, shields) unweighted."""
     bones = [b for b in arm.data.bones if b.use_deform]
     heads = np.array([b.head_local for b in bones], dtype=np.float32)
     tails = np.array([b.tail_local for b in bones], dtype=np.float32)
-    seg = tails - heads
-    seg_len2 = np.maximum((seg ** 2).sum(1), 1e-12)
+    names = [b.name for b in bones]
     inv = np.array(arm.matrix_world.inverted(), dtype=np.float32)
     for o in meshes:
         n = len(o.data.vertices)
@@ -662,12 +662,7 @@ def _distance_weights(meshes, arm):
         m = np.array(o.matrix_world, dtype=np.float32)
         pts = co.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3]
         pts = pts @ inv[:3, :3].T + inv[:3, 3]
-        t = np.clip(((pts[:, None, :] - heads[None]) * seg[None]).sum(2) / seg_len2[None], 0.0, 1.0)
-        d = np.linalg.norm(pts[:, None, :] - (heads[None] + t[..., None] * seg[None]), axis=2)
-        near = np.argsort(d, axis=1)[:, :2]
-        dn = np.take_along_axis(d, near, axis=1)
-        w = 1.0 / np.maximum(dn, 1e-5) ** 4
-        w /= w.sum(1, keepdims=True)
+        near, w = skin_math.distance_weights(pts, heads, tails, names, height)
         o.vertex_groups.clear()
         groups = [o.vertex_groups.new(name=b.name) for b in bones]
         for i in range(n):
@@ -699,7 +694,7 @@ def bind_mesh(meshes, arm, height):
     if all(_weighted(o) for o in meshes):
         return "auto"
     _unbind(meshes)
-    _distance_weights(meshes, arm)
+    _distance_weights(meshes, arm, height)
     _parent(meshes, arm, "ARMATURE")
     return "distance"
 
