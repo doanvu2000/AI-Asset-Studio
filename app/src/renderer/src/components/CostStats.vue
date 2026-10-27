@@ -225,7 +225,7 @@ const tipLeft = computed(() => {
         <LoaderCircle v-if="loading && data" :size="13" class="spin busy" aria-label="Đang cập nhật" />
       </h2>
       <div class="controls">
-        <div class="segmented" role="radiogroup" aria-label="Khoảng thời gian">
+        <div class="seg" role="radiogroup" aria-label="Khoảng thời gian">
           <button v-for="p in PERIODS" :key="p.id" type="button" role="radio" :aria-checked="period === p.id" :class="{ on: period === p.id }" @click="period = p.id">
             {{ p.label }}
           </button>
@@ -278,7 +278,7 @@ const tipLeft = computed(() => {
         <div class="card chart-card" :class="{ dim: loading }">
           <div class="chart-head">
             <span class="headline">Theo ngày</span>
-            <div class="segmented small" role="radiogroup" aria-label="Chỉ số biểu đồ">
+            <div class="seg" role="radiogroup" aria-label="Chỉ số biểu đồ">
               <button v-for="m in METRICS" :key="m.id" type="button" role="radio" :aria-checked="metric === m.id" :class="{ on: metric === m.id }" @click="metric = m.id">
                 {{ m.label }}
               </button>
@@ -381,37 +381,6 @@ const tipLeft = computed(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-}
-.segmented {
-  display: inline-flex;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
-}
-.segmented button {
-  height: 24px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: var(--fs-callout);
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast),
-    box-shadow var(--t-fast);
-}
-.segmented.small button {
-  height: 22px;
-  padding: 0 8px;
-}
-.segmented button.on {
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-1), var(--hairline);
-  font-weight: 600;
 }
 .dim {
   opacity: 0.6;
@@ -601,7 +570,7 @@ const tipLeft = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  height: 30px;
+  height: 26px;
   padding: 0;
   border: 0;
   background: transparent;

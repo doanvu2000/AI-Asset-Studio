@@ -23,9 +23,11 @@
   --sp-12: 48px;
 
   --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
-  --r-xl: 18px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 12px;
+  --ctl-h: 24px;
+  --ctl-h-lg: 28px;
 
   --sidebar-w: 232px;
   --toolbar-h: 52px;
@@ -39,27 +41,31 @@
   --t-base: 240ms;
   --t-slow: 320ms;
 
-  --bg-window: #ececf0;
-  --bg-sidebar: rgba(232, 232, 237, 0.92);
-  --bg-content: #fbfbfd;
+  --bg-window: #ececec;
+  --bg-sidebar: rgba(234, 234, 236, 0.94);
+  --bg-content: #ffffff;
   --bg-elevated: #ffffff;
-  --bg-sunken: #f2f2f6;
-  --bg-hover: rgba(0, 0, 0, 0.045);
-  --bg-active: rgba(0, 0, 0, 0.08);
-  --bg-selected: rgba(110, 86, 207, 0.12);
+  --bg-group: #f5f5f7;
+  --bg-sunken: #f2f2f4;
+  --bg-control: #ffffff;
+  --bg-hover: rgba(0, 0, 0, 0.05);
+  --bg-active: rgba(0, 0, 0, 0.085);
+  --bg-selected: rgba(0, 122, 255, 0.12);
+  --seg-thumb: #ffffff;
 
   --text: #1d1d1f;
-  --text-2: #5e5e66;
-  --text-3: #6e6e77;
+  --text-2: #5c5c62;
+  --text-3: #6e6e74;
   --text-on-accent: #ffffff;
 
-  --separator: rgba(0, 0, 0, 0.09);
-  --separator-strong: rgba(0, 0, 0, 0.16);
+  --separator: rgba(0, 0, 0, 0.1);
+  --separator-strong: rgba(0, 0, 0, 0.17);
 
-  --accent: #6e56cf;
-  --accent-hover: #5f47c2;
-  --accent-soft: rgba(110, 86, 207, 0.12);
-  --focus-ring: rgba(110, 86, 207, 0.55);
+  --accent: #007aff;
+  --accent-hover: #0a6fe6;
+  --accent-soft: rgba(0, 122, 255, 0.12);
+  --focus-ring: rgba(0, 122, 255, 0.45);
+  --control-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.1);
 
   --st-pending: #8e8e93;
   /* --st-pending is only 3.15:1 on light content; text needs this one. */
@@ -81,7 +87,7 @@
   --scrim: rgba(0, 0, 0, 0.4);
   --bg-stage: #f2f2f6;
 
-  --shadow-1: 0 0.5px 1px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-1: 0 0.5px 1px rgba(0, 0, 0, 0.06);
   --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.06), 0 6px 20px rgba(0, 0, 0, 0.08);
   --shadow-3: 0 2px 6px rgba(0, 0, 0, 0.08), 0 18px 48px rgba(0, 0, 0, 0.16);
   --hairline: inset 0 0 0 0.5px rgba(0, 0, 0, 0.1);
@@ -99,27 +105,31 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg-window: #1c1c1e;
-    --bg-sidebar: rgba(36, 36, 40, 0.9);
-    --bg-content: #1e1e21;
-    --bg-elevated: #2a2a2e;
-    --bg-sunken: #18181a;
+    --bg-window: #1e1e1e;
+    --bg-sidebar: rgba(40, 40, 42, 0.92);
+    --bg-content: #1e1e1e;
+    --bg-elevated: #2c2c2e;
+    --bg-group: #262628;
+    --bg-sunken: #171717;
+    --bg-control: rgba(255, 255, 255, 0.1);
     --bg-hover: rgba(255, 255, 255, 0.06);
     --bg-active: rgba(255, 255, 255, 0.1);
-    --bg-selected: rgba(158, 140, 252, 0.2);
+    --bg-selected: rgba(10, 132, 255, 0.22);
+    --seg-thumb: #5a5a5e;
 
     --text: #f5f5f7;
-    --text-2: #a8a8b0;
-    --text-3: #93939c;
+    --text-2: #a9a9ae;
+    --text-3: #8e8e93;
 
-    --separator: rgba(255, 255, 255, 0.08);
+    --separator: rgba(255, 255, 255, 0.09);
     --separator-strong: rgba(255, 255, 255, 0.16);
 
-    --accent: #9e8cfc;
-    --accent-hover: #b0a1ff;
-    --accent-soft: rgba(158, 140, 252, 0.16);
-    --focus-ring: rgba(158, 140, 252, 0.6);
-    --text-on-accent: #16112e;
+    --accent: #0a84ff;
+    --accent-hover: #2a94ff;
+    --accent-soft: rgba(10, 132, 255, 0.18);
+    --focus-ring: rgba(10, 132, 255, 0.55);
+    --text-on-accent: #ffffff;
+    --control-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.12), 0 0.5px 1px rgba(0, 0, 0, 0.4);
 
     --st-pending: #8e8e93;
     --st-pending-text: #a1a1a8;
@@ -136,7 +146,7 @@
     --scrim: rgba(0, 0, 0, 0.55);
     --bg-stage: #18181a;
 
-    --shadow-1: 0 0.5px 1px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-1: 0 0.5px 1px rgba(0, 0, 0, 0.3);
     --shadow-2: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
     --shadow-3: 0 2px 8px rgba(0, 0, 0, 0.5), 0 20px 56px rgba(0, 0, 0, 0.55);
     --hairline: inset 0 0 0 0.5px rgba(255, 255, 255, 0.1);

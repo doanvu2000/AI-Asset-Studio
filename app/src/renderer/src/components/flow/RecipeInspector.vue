@@ -199,7 +199,7 @@ function setMeta(field: 'id' | 'name' | 'description', v: string): void {
 }
 .field {
   font-size: var(--fs-body);
-  min-height: 30px;
+  min-height: var(--ctl-h);
   padding: 5px 9px;
   min-width: 0;
 }

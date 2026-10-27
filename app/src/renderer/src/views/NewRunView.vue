@@ -505,7 +505,7 @@ ${r.description}`" @click="pick(r.id)">
         </header>
 
         <div class="modebar">
-          <div class="segmented" role="radiogroup" aria-label="Số lượt chạy">
+          <div class="seg" role="radiogroup" aria-label="Số lượt chạy">
             <button type="button" role="radio" :aria-checked="mode === 'single'" :class="{ on: mode === 'single' }" @click="setMode('single')">
               Một {{ unit }}
             </button>
@@ -514,7 +514,7 @@ ${r.description}`" @click="pick(r.id)">
             </button>
           </div>
           <ProjectSelect class="mb-project" :model-value="projectId" label="Dự án cho lượt chạy" @update:model-value="setProject" />
-          <div v-if="mode === 'batch' && textInputs.length && fileInputs.length" class="segmented small" role="radiogroup" aria-label="Thay đổi theo">
+          <div v-if="mode === 'batch' && textInputs.length && fileInputs.length" class="seg" role="radiogroup" aria-label="Thay đổi theo">
             <button type="button" role="radio" :aria-checked="varyBy === 'prompts'" :class="{ on: varyBy === 'prompts' }" @click="varyBy = 'prompts'">
               Mỗi dòng 1 lượt
             </button>
@@ -624,7 +624,7 @@ ${r.description}`" @click="pick(r.id)">
                 </button>
               </div>
               <PresetSelect v-else-if="spec.type === 'preset'" :id="`in-${name}`" v-model="values[name]" />
-              <div v-else-if="isNum(spec.type) && spec.options?.length" class="segmented" role="radiogroup" :aria-label="label(name, spec)">
+              <div v-else-if="isNum(spec.type) && spec.options?.length" class="seg" role="radiogroup" :aria-label="label(name, spec)">
                 <button
                   v-for="o in spec.options"
                   :id="spec.options[0] === o ? `in-${name}` : undefined"
@@ -655,7 +655,7 @@ ${r.description}`" @click="pick(r.id)">
                 <input :id="`in-${name}`" v-model="values[name]" type="checkbox" role="switch" />
                 <span class="track"><span class="knob" /></span>
               </label>
-              <div v-else-if="spec.options?.length" class="segmented" role="radiogroup" :aria-label="label(name, spec)">
+              <div v-else-if="spec.options?.length" class="seg" role="radiogroup" :aria-label="label(name, spec)">
                 <button
                   v-for="o in spec.options"
                   :key="String(o)"
@@ -956,40 +956,6 @@ ${r.description}`" @click="pick(r.id)">
 .field[aria-invalid='true'] {
   box-shadow: 0 0 0 1.5px var(--st-fail);
 }
-.segmented {
-  display: inline-flex;
-  flex-wrap: wrap;
-  max-width: 100%;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
-}
-.segmented button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 52px;
-  height: 28px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast),
-    box-shadow var(--t-fast);
-}
-.segmented.small button {
-  height: 24px;
-  font-size: var(--fs-callout);
-}
-.segmented button.on {
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-1), var(--hairline);
-  font-weight: 600;
-}
 .switch {
   display: inline-flex;
   cursor: pointer;
@@ -1022,7 +988,7 @@ ${r.description}`" @click="pick(r.id)">
   transition: transform var(--t-base) var(--ease-spring);
 }
 .switch input:checked + .track {
-  background: var(--st-ok);
+  background: var(--accent);
 }
 .switch input:checked + .track .knob {
   transform: translateX(16px);

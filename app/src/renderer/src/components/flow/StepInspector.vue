@@ -230,7 +230,7 @@ function remove(): void {
 }
 .field {
   font-size: var(--fs-body);
-  min-height: 30px;
+  min-height: var(--ctl-h);
   padding: 5px 9px;
 }
 .field.mono {

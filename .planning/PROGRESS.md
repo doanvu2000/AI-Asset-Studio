@@ -448,3 +448,28 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   Ảnh: scratchpad session `b257437f…/scratchpad/weak/tile_v6_stone0{1,2}.png`.
 - [x] Test `test_pitched_flagstones_are_found_per_strip_and_rectified`; `uv run pytest -q` → 410 pass / 4 skip.
 - [ ] Chưa commit (chờ chủ nhân). Còn mở: planks01 seam 73.8, ngưỡng QA cần dữ liệu duyệt thật.
+- [x] Commit `d5ab4fd` (đá lát nghiêng + handoff 1423) theo lệnh "commit + làm tiếp".
+- [x] Thử chấm mối nối planks01 bằng top-k dòng ron (k = 2·n/chu kỳ) thay p95: ảnh thô `live_planks01` y 1.46 (~88 điểm),
+  `old_planks01` 0.44 → ảnh thô lọt ngưỡng → BỎ, giữ p95 (planks01 73.8 vẫn ≥ 70). Không đổi code.
+- [ ] Backlog NIGHT §3 / PLAN-ideas đã xong hết. Còn duy nhất ngưỡng QA — cần chủ nhân duyệt/từ chối thêm lượt thật.
+- [x] Build test theo lệnh chủ nhân ("build mới rồi mở lại"): `npm run dist:core` + `dist:portable` OK, tắt app/core Portable,
+  `update-portable.ps1` (robocopy 3 = OK), mở lại app. 14 lượt QA vẫn `awaiting_human` (recover giữ gate).
+- [x] 14 lượt QA (run title "QA tex 01..10", "QA sprite 01..04"): chủ nhân duyệt 10/10 texture. Phát hiện: Thư viện
+  bỏ qua chấm mọi texture (`skipped: opaque`) → `engine/qa.py` `score_tile` (tile_report: seam/gradient/repetition/
+  duplicate) cho version mà ref nằm trong output `op.seamless|op.tile_resize|op.tile_pixel` của lineage, trừ lineage có
+  `op.tile_wang`; normal map vẫn bỏ qua. `QA_VERSION` 2 (recompute missing_only chấm lại bản cũ). 10 texture duyệt → 100
+  điểm cả 10 (không oan); chưa có mẫu từ chối nên giữ ngưỡng 70. Test `test_seamless_texture_versions_are_scored_as_tiles`;
+  pytest 411 pass / 4 skip. Chưa commit, Portable chưa có thay đổi QA này.
+- [~] Sprite: cung thủ xong (QA 85–100), orc/rương/pháp sư đang mesh (GPU tuần tự). Chờ chủ nhân đánh dấu duyệt/từ chối
+  trong Thư viện để so ngưỡng sprite.
+- [x] 4 sprite QA xong (QA: cung thủ 85–100, orc 81–100, rương 98–100, pháp sư pixel 99–100). Chờ chủ nhân đánh dấu
+  duyệt/từ chối trong Thư viện.
+- [x] Cần duyệt chế độ "Tổng quan" (chủ nhân yêu cầu): `components/gate/GateOverview.vue` lưới mọi gate, tick chọn, ô
+  ảnh bấm để chọn (đủ k thì tự tick), "Lấy ảnh đầu", "Chọn tất cả", Duyệt (N) gửi tuần tự pick/approve, Từ chối (M) chỉ
+  gate duyệt; `GatesView.vue` nút chuyển Từng mục / Tổng quan (localStorage `gates-mode`). typecheck OK; kiểm bằng
+  dev:mock + CDP (`scratchpad b257437f…/cdp.mjs`): 4 gate → chọn 3 → Duyệt → còn 1. Chưa commit, chưa build.
+- [x] Giao diện kiểu macOS (plan `.planning/PLAN-ui-macos.md`): accent xanh hệ thống, control 24/28px chữ 400 nhấn tối
+  (không co), `.card` = hộp nhóm phẳng, `.seg` dùng chung (gỡ bản chép ở 11 file), sidebar dòng 28px chia nhóm Làm việc /
+  Kho / Công cụ, tiêu đề toolbar 15px, công tắc màu accent, thanh lọc Thư viện 26px. typecheck OK; ảnh trước/sau sáng+tối:
+  scratchpad b257437f…/ui_before, ui_after. Chưa commit, chưa build.
+- [x] 15:25 Handoff mới: `.planning/HANDOFF-2026-10-27-1525.md`

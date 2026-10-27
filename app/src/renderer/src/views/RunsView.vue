@@ -74,7 +74,7 @@ const total = computed(() => virtualizer.value.getTotalSize())
       <RouterLink to="/new" class="btn btn-primary"><Plus /> Tạo mới</RouterLink>
     </PageHeader>
     <div class="bar">
-      <div class="segmented" role="tablist" aria-label="Lọc theo trạng thái">
+      <div class="seg" role="tablist" aria-label="Lọc theo trạng thái">
         <button
           v-for="f in FILTERS"
           :key="f.id"
@@ -132,30 +132,6 @@ const total = computed(() => virtualizer.value.getTotalSize())
   gap: 10px 12px;
   padding: 12px 24px;
   border-bottom: 0.5px solid var(--separator);
-}
-.segmented {
-  display: inline-flex;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
-}
-.segmented button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 26px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color var(--t-fast);
-}
-.segmented button.on {
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-1), var(--hairline);
 }
 .c {
   font-size: 11px;

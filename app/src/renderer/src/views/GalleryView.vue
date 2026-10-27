@@ -420,12 +420,12 @@ function move(d: -1 | 1): void {
         <Search :size="14" aria-hidden="true" />
         <input v-model="query" type="search" placeholder="Tìm theo tên, quy trình…" aria-label="Tìm asset" spellcheck="false" />
       </label>
-      <div class="segmented" role="radiogroup" aria-label="Loại asset">
+      <div class="seg" role="radiogroup" aria-label="Loại asset">
         <button v-for="f in TYPE_FILTERS" :key="f.id" type="button" role="radio" :aria-checked="typeFilter === f.id" :class="{ on: typeFilter === f.id }" @click="typeFilter = f.id">
           {{ f.label }}
         </button>
       </div>
-      <div class="segmented" role="radiogroup" aria-label="Trạng thái duyệt">
+      <div class="seg" role="radiogroup" aria-label="Trạng thái duyệt">
         <button v-for="f in STATUS_FILTERS" :key="f.id" type="button" role="radio" :aria-checked="statusFilter === f.id" :class="{ on: statusFilter === f.id }" @click="statusFilter = f.id">
           {{ f.label }}
           <span class="num c">{{ counts[f.id] }}</span>
@@ -601,12 +601,12 @@ function move(d: -1 | 1): void {
   gap: 6px;
   flex: 0 1 240px;
   min-width: 160px;
-  height: 30px;
-  padding: 0 10px;
-  border-radius: 8px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 6px;
   color: var(--text-3);
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
+  background: var(--bg-control);
+  box-shadow: inset 0 0 0 0.5px var(--separator-strong);
   transition: box-shadow var(--t-fast);
 }
 .search:focus-within {
@@ -624,51 +624,27 @@ function move(d: -1 | 1): void {
 .search input::placeholder {
   color: var(--text-3);
 }
-.segmented {
-  display: inline-flex;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
-}
-.segmented button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.sort select {
   height: 26px;
-  padding: 0 11px;
+  padding: 0 6px;
   border: 0;
   border-radius: 6px;
-  background: transparent;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color var(--t-fast);
-}
-.segmented button.on {
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-1), var(--hairline);
-}
-.sort select {
-  height: 30px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 8px;
   color: var(--text);
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
+  background: var(--bg-control);
+  box-shadow: var(--control-shadow);
 }
 .chip-toggle {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
-  padding: 0 11px;
+  height: 26px;
+  padding: 0 10px;
   border: 0;
-  border-radius: 8px;
-  font-weight: 500;
+  border-radius: 6px;
+  font-weight: 400;
   color: var(--text);
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
+  background: var(--bg-control);
+  box-shadow: var(--control-shadow);
   cursor: pointer;
   transition:
     background-color var(--t-fast),
@@ -679,7 +655,7 @@ function move(d: -1 | 1): void {
   background: var(--st-fail-soft);
 }
 .score-old {
-  height: 30px;
+  height: 26px;
   gap: 6px;
 }
 .sr-only {
@@ -833,7 +809,7 @@ function move(d: -1 | 1): void {
   background: var(--separator-strong);
 }
 .sb {
-  height: 30px;
+  height: 26px;
   padding: 0 12px;
   font-size: var(--fs-callout);
 }

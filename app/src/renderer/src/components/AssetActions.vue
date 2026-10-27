@@ -116,7 +116,7 @@ const offTitle = 'Chỉ dùng được trong app desktop'
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 30px;
+  height: 26px;
   padding: 0 10px 0 6px;
   border-radius: var(--r-sm);
   font-size: var(--fs-callout);

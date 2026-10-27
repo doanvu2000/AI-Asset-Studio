@@ -239,7 +239,7 @@ watch(
 }
 .pick {
   flex: none;
-  height: 32px;
+  height: var(--ctl-h);
 }
 .mono {
   font-family: var(--mono);

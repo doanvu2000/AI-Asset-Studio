@@ -311,7 +311,7 @@ function newAsset(): void {
           </div>
         </dl>
 
-        <div class="segmented tabs" role="tablist" aria-label="Phần của dự án">
+        <div class="seg tabs" role="tablist" aria-label="Phần của dự án">
           <button role="tab" :aria-selected="tab === 'style'" :class="{ on: tab === 'style' }" @click="tab = 'style'">
             Phong cách <span v-if="dirty" class="dirty-dot" aria-label="chưa lưu" />
           </button>
@@ -379,27 +379,27 @@ function newAsset(): void {
                 <Transition name="fold">
                   <div v-if="draft.pixelOn" class="pixel-grid">
                     <span class="caption">Cỡ (px)</span>
-                    <div class="segmented small" role="radiogroup" aria-label="Cỡ pixel art">
+                    <div class="seg" role="radiogroup" aria-label="Cỡ pixel art">
                       <button type="button" role="radio" :aria-checked="draft.pixel.size === null" :class="{ on: draft.pixel.size === null }" title="Dùng mặc định của quy trình" @click="draft.pixel.size = null">Không khoá</button>
                       <button v-for="o in PIXEL_SIZES" :key="o" type="button" role="radio" class="num" :aria-checked="draft.pixel.size === o" :class="{ on: draft.pixel.size === o }" @click="draft.pixel.size = o">{{ o }}</button>
                     </div>
                     <span class="caption">Số màu</span>
-                    <div class="segmented small" role="radiogroup" aria-label="Số màu">
+                    <div class="seg" role="radiogroup" aria-label="Số màu">
                       <button type="button" role="radio" :aria-checked="draft.pixel.colors === null" :class="{ on: draft.pixel.colors === null }" title="Dùng mặc định của quy trình" @click="draft.pixel.colors = null">Không khoá</button>
                       <button v-for="o in PIXEL_COLORS" :key="o" type="button" role="radio" class="num" :aria-checked="draft.pixel.colors === o" :class="{ on: draft.pixel.colors === o }" @click="draft.pixel.colors = o">{{ o }}</button>
                     </div>
                     <span class="caption">Bảng màu</span>
-                    <div class="segmented small" role="radiogroup" aria-label="Bảng màu">
+                    <div class="seg" role="radiogroup" aria-label="Bảng màu">
                       <button type="button" role="radio" :aria-checked="draft.pixel.palette === null" :class="{ on: draft.pixel.palette === null }" title="Dùng mặc định của quy trình" @click="draft.pixel.palette = null">Không khoá</button>
                       <button v-for="o in PALETTES" :key="o" type="button" role="radio" :aria-checked="draft.pixel.palette === o" :class="{ on: draft.pixel.palette === o }" @click="draft.pixel.palette = o">{{ o === 'auto' ? 'Tự động' : o }}</button>
                     </div>
                     <span class="caption">Viền</span>
-                    <div class="segmented small" role="radiogroup" aria-label="Viền ngoài">
+                    <div class="seg" role="radiogroup" aria-label="Viền ngoài">
                       <button type="button" role="radio" :aria-checked="draft.pixel.outline === null" :class="{ on: draft.pixel.outline === null }" title="Dùng mặc định của quy trình" @click="draft.pixel.outline = null">Không khoá</button>
                       <button v-for="[o, l] in OUTLINES" :key="o" type="button" role="radio" :aria-checked="draft.pixel.outline === o" :class="{ on: draft.pixel.outline === o }" @click="draft.pixel.outline = o">{{ l }}</button>
                     </div>
                     <span class="caption">Dither</span>
-                    <div class="segmented small" role="radiogroup" aria-label="Dither">
+                    <div class="seg" role="radiogroup" aria-label="Dither">
                       <button type="button" role="radio" :aria-checked="draft.pixel.dither === null" :class="{ on: draft.pixel.dither === null }" title="Dùng mặc định của quy trình" @click="draft.pixel.dither = null">Không khoá</button>
                       <button v-for="[o, l] in DITHERS" :key="o" type="button" role="radio" :aria-checked="draft.pixel.dither === o" :class="{ on: draft.pixel.dither === o }" @click="draft.pixel.dither = o">{{ l }}</button>
                     </div>
@@ -534,40 +534,6 @@ function newAsset(): void {
 }
 .stats dd.run {
   color: var(--st-running);
-}
-.segmented {
-  display: inline-flex;
-  flex-wrap: wrap;
-  max-width: 100%;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
-}
-.segmented button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast),
-    box-shadow var(--t-fast);
-}
-.segmented.small button {
-  height: 24px;
-  padding: 0 9px;
-  font-size: var(--fs-callout);
-}
-.segmented button.on {
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-1), var(--hairline);
-  font-weight: 600;
 }
 .tabs {
   justify-self: start;

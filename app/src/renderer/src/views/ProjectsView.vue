@@ -98,7 +98,7 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
   <div class="view">
     <PageHeader title="Dự án">
       <template #subtitle><TweenNumber :value="rows.length" /> dự án{{ tab === 'archived' ? ' đã lưu trữ' : '' }}</template>
-      <div class="segmented" role="radiogroup" aria-label="Hiện dự án">
+      <div class="seg" role="radiogroup" aria-label="Hiện dự án">
         <button type="button" role="radio" :aria-checked="tab === 'active'" :class="{ on: tab === 'active' }" @click="tab = 'active'">Đang dùng</button>
         <button type="button" role="radio" :aria-checked="tab === 'archived'" :class="{ on: tab === 'archived' }" @click="tab = 'archived'">Lưu trữ</button>
       </div>
@@ -193,30 +193,6 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
   display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-.segmented {
-  display: inline-flex;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
-}
-.segmented button {
-  height: 26px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast),
-    box-shadow var(--t-fast);
-}
-.segmented button.on {
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-1), var(--hairline);
-  font-weight: 600;
 }
 .create {
   display: grid;

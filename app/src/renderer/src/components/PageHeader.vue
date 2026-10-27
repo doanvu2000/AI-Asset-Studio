@@ -41,6 +41,8 @@ defineProps<{ title: string; subtitle?: string }>()
   min-width: 0;
 }
 .t h1 {
+  font-size: 15px;
+  letter-spacing: -0.012em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

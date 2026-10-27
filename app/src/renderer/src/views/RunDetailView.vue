@@ -733,7 +733,7 @@ function segTitle(s: StepRow): string {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 30px;
+  height: 26px;
   padding: 0 10px;
   border: 0;
   border-radius: var(--r-sm);

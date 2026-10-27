@@ -149,7 +149,7 @@ onBeforeUnmount(() => (open.value = false))
   align-items: center;
   gap: 6px;
   min-width: 0;
-  min-height: 30px;
+  min-height: 26px;
   padding: 5px 9px;
   font-size: var(--fs-body);
   text-align: left;

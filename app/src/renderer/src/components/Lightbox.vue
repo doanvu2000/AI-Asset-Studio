@@ -312,32 +312,6 @@ function growFromOrigin(el: Element): void {
   background: var(--st-fail-soft);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--st-fail) 40%, transparent);
 }
-.seg {
-  display: inline-flex;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
-}
-.seg button {
-  height: 24px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-2);
-  font-size: var(--fs-callout);
-  font-weight: 550;
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast),
-    color var(--t-fast);
-}
-.seg button.on {
-  color: var(--text);
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-1), var(--hairline);
-}
 .nav {
   display: grid;
   place-items: center;

@@ -120,32 +120,6 @@ header {
   flex: 1;
   min-width: 0;
 }
-.seg {
-  display: inline-flex;
-  padding: 2px;
-  border-radius: var(--r-sm);
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
-}
-.seg button {
-  height: 26px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: var(--text-2);
-  font-size: var(--fs-callout);
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast) var(--ease-out),
-    color var(--t-fast);
-}
-.seg button.on {
-  background: var(--bg-elevated);
-  color: var(--text);
-  box-shadow: var(--shadow-1);
-}
 .code-wrap {
   display: flex;
   align-items: flex-start;

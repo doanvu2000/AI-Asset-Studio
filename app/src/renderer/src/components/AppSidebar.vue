@@ -18,15 +18,30 @@ const conn = useConnection()
 
 // Only "Cần duyệt" carries a number: it is the one place that needs the user. Lượt chạy gets a quiet
 // activity dot while something is really executing (not parked at a gate).
-const items = computed(() => [
-  { to: '/', name: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard, badge: 0, busy: false, key: '1' },
-  { to: '/new', name: 'new', label: 'Tạo mới', icon: Plus, badge: 0, busy: false, key: '2' },
-  { to: '/runs', name: 'runs', label: 'Lượt chạy', icon: ListChecks, badge: 0, busy: runs.runningRuns.length > 0, key: '3' },
-  { to: '/gates', name: 'gates', label: 'Cần duyệt', icon: Inbox, badge: gates.count, busy: false, key: '4' },
-  { to: '/gallery', name: 'gallery', label: 'Thư viện', icon: Images, badge: 0, busy: false, key: '5' },
-  { to: '/recipes', name: 'recipes', label: 'Quy trình', icon: Workflow, badge: 0, busy: false, key: '6' },
-  { to: '/batch', name: 'batch', label: 'Hàng loạt', icon: Layers, badge: 0, busy: false, key: '7' },
-  { to: '/projects', name: 'projects', label: 'Dự án', icon: FolderKanban, badge: 0, busy: false, key: '8' }
+const groups = computed(() => [
+  {
+    title: 'Làm việc',
+    items: [
+      { to: '/', name: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard, badge: 0, busy: false, key: '1' },
+      { to: '/new', name: 'new', label: 'Tạo mới', icon: Plus, badge: 0, busy: false, key: '2' },
+      { to: '/runs', name: 'runs', label: 'Lượt chạy', icon: ListChecks, badge: 0, busy: runs.runningRuns.length > 0, key: '3' },
+      { to: '/gates', name: 'gates', label: 'Cần duyệt', icon: Inbox, badge: gates.count, busy: false, key: '4' }
+    ]
+  },
+  {
+    title: 'Kho',
+    items: [
+      { to: '/gallery', name: 'gallery', label: 'Thư viện', icon: Images, badge: 0, busy: false, key: '5' },
+      { to: '/projects', name: 'projects', label: 'Dự án', icon: FolderKanban, badge: 0, busy: false, key: '8' }
+    ]
+  },
+  {
+    title: 'Công cụ',
+    items: [
+      { to: '/recipes', name: 'recipes', label: 'Quy trình', icon: Workflow, badge: 0, busy: false, key: '6' },
+      { to: '/batch', name: 'batch', label: 'Hàng loạt', icon: Layers, badge: 0, busy: false, key: '7' }
+    ]
+  }
 ])
 
 function tip(it: { label: string; badge: number; busy: boolean; key: string }): string {
@@ -59,8 +74,10 @@ const status = computed(() => {
     </div>
 
     <nav aria-label="Điều hướng chính">
+      <template v-for="g in groups" :key="g.title">
+      <h2 class="group">{{ g.title }}</h2>
       <RouterLink
-        v-for="it in items"
+        v-for="it in g.items"
         :key="it.to"
         :to="it.to"
         class="item"
@@ -74,7 +91,7 @@ const status = computed(() => {
           class="pill"
           :transition="{ type: 'spring', stiffness: 520, damping: 40 }"
         />
-        <component :is="it.icon" class="ic" :size="16" :stroke-width="2" />
+        <component :is="it.icon" class="ic" :size="16" :stroke-width="1.75" />
         <span class="label">{{ it.label }}</span>
         <Transition name="badge">
           <span v-if="it.badge > 0" class="count human" :aria-label="`${it.badge} đang chờ`">
@@ -83,6 +100,7 @@ const status = computed(() => {
           <span v-else-if="it.busy" class="busy" role="img" aria-label="Đang chạy" />
         </Transition>
       </RouterLink>
+      </template>
     </nav>
 
     <nav class="nav-foot" aria-label="Cài đặt">
@@ -94,7 +112,7 @@ const status = computed(() => {
         title="Cài đặt"
       >
         <motion.span v-if="isActive('settings')" layout-id="nav-pill" class="pill" :transition="{ type: 'spring', stiffness: 520, damping: 40 }" />
-        <Settings class="ic" :size="16" :stroke-width="2" />
+        <Settings class="ic" :size="16" :stroke-width="1.75" />
         <span class="label">Cài đặt</span>
       </RouterLink>
     </nav>
@@ -141,20 +159,30 @@ const status = computed(() => {
 nav {
   -webkit-app-region: no-drag;
   display: grid;
-  gap: 2px;
-  margin-top: 6px;
+  gap: 1px;
+}
+.group {
+  margin: 14px 0 3px;
+  padding: 0 10px;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.group:first-child {
+  margin-top: 2px;
 }
 .item {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 7px;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
   color: var(--text);
   text-decoration: none;
-  font-weight: 500;
+  font-weight: 400;
   transition: background-color var(--t-fast);
 }
 .item:hover:not(.active) {
@@ -163,7 +191,7 @@ nav {
 .pill {
   position: absolute;
   inset: 0;
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--bg-active);
   z-index: 0;
 }
@@ -185,14 +213,14 @@ nav {
   text-overflow: ellipsis;
 }
 .count {
-  min-width: 20px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: 9px;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
   display: grid;
   place-items: center;
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--text-2);
   background: var(--bg-active);
 }
@@ -239,6 +267,17 @@ nav {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.compact .group {
+  height: 1px;
+  margin: 8px 6px;
+  padding: 0;
+  overflow: hidden;
+  color: transparent;
+  background: var(--separator);
+}
+.compact .group:first-child {
+  display: none;
 }
 .compact .brand-name,
 .compact .label,

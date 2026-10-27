@@ -8,6 +8,8 @@ import BlobThumb from '@/components/BlobThumb.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import GatePicker from '@/components/gate/GatePicker.vue'
 import GateApprove from '@/components/gate/GateApprove.vue'
+import GateOverview from '@/components/gate/GateOverview.vue'
+import { useLocalStorage } from '@vueuse/core'
 import { isImage } from '@/components/viewers/detect'
 import type { BlobRef } from '@/api/types'
 import { useGates, type GateItem } from '@/stores/gates'
@@ -24,6 +26,7 @@ const route = useRoute()
 const router = useRouter()
 const queueW = usePaneWidth('gates-queue', 280)
 const conn = useConnection()
+const mode = useLocalStorage<'one' | 'all'>('gates-mode', 'one')
 
 function retryLoad(): void {
   void gates.load().catch(() => undefined)
@@ -78,7 +81,12 @@ function instruction(g: GateItem): string {
 
 <template>
   <div class="view">
-    <PageHeader title="Cần duyệt" :subtitle="gates.count ? `${gates.count} bước đang chờ` : 'Không có gì đang chờ'" />
+    <PageHeader title="Cần duyệt" :subtitle="gates.count ? `${gates.count} bước đang chờ` : 'Không có gì đang chờ'">
+      <div v-if="current" class="seg" role="radiogroup" aria-label="Kiểu duyệt">
+        <button role="radio" :aria-checked="mode === 'one'" :class="{ on: mode === 'one' }" @click="mode = 'one'">Từng mục</button>
+        <button role="radio" :aria-checked="mode === 'all'" :class="{ on: mode === 'all' }" @click="mode = 'all'">Tổng quan</button>
+      </div>
+    </PageHeader>
     <div v-if="!current && !gates.loaded && !gates.error && conn.online" class="gates-empty gates-loading" role="status">
       <LoaderCircle class="spin" :size="22" />
       <p class="secondary">Đang tải hộp duyệt…</p>
@@ -96,6 +104,7 @@ function instruction(g: GateItem): string {
       <RouterLink to="/runs" class="btn">Xem lượt chạy</RouterLink>
       <RouterLink to="/new" class="btn btn-primary"><Plus /> Tạo asset mới</RouterLink>
     </EmptyState>
+    <GateOverview v-else-if="mode === 'all'" :gates="queue" />
     <div v-else class="split">
       <aside class="queue" aria-label="Danh sách chờ duyệt" :style="{ '--pane-w': `${queueW}px` }">
         <TransitionGroup name="q" tag="div" class="q-list">

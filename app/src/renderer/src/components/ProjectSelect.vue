@@ -58,11 +58,11 @@ function onChange(e: Event): void {
   position: relative;
   display: inline-flex;
   align-items: center;
-  height: 28px;
+  height: 26px;
   max-width: 260px;
-  border-radius: 7px;
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
+  border-radius: 6px;
+  background: var(--bg-control);
+  box-shadow: var(--control-shadow);
   transition: background-color var(--t-fast), box-shadow var(--t-fast);
 }
 .proj-select.on {
@@ -94,7 +94,7 @@ function onChange(e: Event): void {
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-weight: 500;
+  font-weight: 400;
   text-overflow: ellipsis;
   appearance: auto;
   cursor: pointer;

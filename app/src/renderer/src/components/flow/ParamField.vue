@@ -125,6 +125,10 @@ function bindTo(input: string): void {
 </template>
 
 <style scoped>
+.seg {
+  flex-wrap: wrap;
+  justify-self: start;
+}
 .pf {
   display: grid;
   gap: 5px;
@@ -202,7 +206,7 @@ function bindTo(input: string): void {
 }
 .field {
   font-size: var(--fs-body);
-  min-height: 30px;
+  min-height: var(--ctl-h);
   padding: 5px 9px;
 }
 select.field {
@@ -211,34 +215,6 @@ select.field {
 .mono {
   font-family: var(--mono);
   font-size: 11.5px;
-}
-.seg {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
-  justify-self: start;
-}
-.seg button {
-  min-width: 40px;
-  height: 26px;
-  padding: 0 9px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast),
-    box-shadow var(--t-fast);
-}
-.seg button.on {
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-1), var(--hairline);
-  font-weight: 600;
 }
 .sw {
   display: inline-flex;
@@ -273,7 +249,7 @@ select.field {
   transition: transform var(--t-base) var(--ease-spring);
 }
 .sw input:checked + .track {
-  background: var(--st-ok);
+  background: var(--accent);
 }
 .sw input:checked + .track .knob {
   transform: translateX(14px);
