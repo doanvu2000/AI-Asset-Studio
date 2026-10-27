@@ -436,3 +436,15 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   cao gấp rưỡi), đá lát 01 căn x. Chu kỳ < 3 lần/ảnh không căn (cỏ trước bị "lưới" 502px); `stamp_repeat` dùng `periodic`.
   tile_report giữ p95 (p99 làm ảnh thô qua ngưỡng 70). Commit `6c02fdc` + commit này. pytest 409 pass / 4 skip.
 - [ ] Còn: đá lát nghiêng (keystone mạnh) chưa nhận; ngưỡng QA cần thêm run thật có duyệt/từ chối.
+- [x] 14:23 Handoff mới: `.planning/HANDOFF-2026-10-27-1423.md`
+
+## Phiên 2026-10-27 15:xx (sau HANDOFF-1423) — chủ nhân: "check progress rồi tiếp tục"
+- [x] `npm run typecheck` (app) exit 0 — sau sửa `NewRunView.vue`.
+- [x] Đá lát chụp nghiêng (`live_stone02`): `detect_grid` thêm `_strip_period` (3 dải 1/3 theo trục kia, projection độ sáng,
+  mỗi dải ≥ `STRIP_LINE_MIN` 0.6, chu kỳ trôi đơn điệu, max/min ≤ `STRIP_MAX_DRIFT` 1.6); `_scale_profile` với entry
+  `source: lines` đo chu kỳ từng band bằng `_line_near` (projection, `LINE_NEAR_MIN` 0.3) thay ACF 2D (hạt đá ~0.1).
+  Kết quả thật: stone02 dải 298→332→370 → căn x + keystone pitch x 0.339, ron dọc thẳng khi lát (seam 89.3, y không
+  đều nên chưa căn); stone01 thêm pitch x 0.285, lát sạch. 15 ảnh còn lại không đổi aligned/seam.
+  Ảnh: scratchpad session `b257437f…/scratchpad/weak/tile_v6_stone0{1,2}.png`.
+- [x] Test `test_pitched_flagstones_are_found_per_strip_and_rectified`; `uv run pytest -q` → 410 pass / 4 skip.
+- [ ] Chưa commit (chờ chủ nhân). Còn mở: planks01 seam 73.8, ngưỡng QA cần dữ liệu duyệt thật.

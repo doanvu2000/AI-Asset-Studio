@@ -103,6 +103,21 @@ def test_flagstone_joints_are_found_from_the_projected_brightness():
     assert g["x"]["strong"] and _multiple(g["x"]["period"], cell), g
 
 
+def test_pitched_flagstones_are_found_per_strip_and_rectified():
+    # Camera tilted towards the floor: the column joints fan out, so a whole-image projection smears them.
+    rng = np.random.default_rng(11)
+    n, cell = 960, 250.0
+    y, x = np.mgrid[0:n, 0:n].astype(np.float64)
+    xx = (x - n / 2) / (0.88 + 0.24 * y / n) + n / 2
+    joint = ((xx / cell) % 1 < 0.05) | ((y / 211.0) % 1 < 0.05)
+    lum = np.where(joint, 0.15, 0.5 + 0.2 * rng.standard_normal((n, n)))
+    src = Image.fromarray((np.clip(np.stack([lum] * 3, -1), 0, 1) * 255).astype(np.uint8)).convert("RGBA")
+    g = detect_grid(detrend(_rgb(src)))
+    assert g["x"]["strong"] and g["x"].get("source") == "lines", g
+    _, info = seamless_info(src, grid="auto")
+    assert "x" in info["aligned"] and info.get("keystone", {}).get("pitch", {}).get("x", 0) > 0.2, info
+
+
 def test_a_single_repeat_across_the_frame_is_not_a_grid():
     half = np.asarray(plain_noise(256, r=12, seed=5).convert("RGB"))
     src = Image.fromarray(np.concatenate([half, half, half[:, :40]], 1)).convert("RGBA")

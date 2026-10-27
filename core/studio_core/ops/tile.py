@@ -148,6 +148,9 @@ LINE_MIN_STRENGTH = 0.5
 LINE_MIN_HARMONIC = 0.35
 # Brightness profiles of grass and noise reach ~0.45 / 0.45 on their own, so this one needs a wider margin.
 BRIGHT_LINE_MIN = (0.6, 0.55)
+STRIP_LINE_MIN = 0.6
+STRIP_MAX_DRIFT = 1.6
+LINE_NEAR_MIN = 0.3
 
 
 def _reduce(lum: np.ndarray, side: int) -> tuple[np.ndarray, int]:
@@ -240,7 +243,7 @@ def detect_grid(a: np.ndarray) -> dict[str, Any]:
                 if lstr >= need[0] and lh2 >= need[1]:
                     break
             else:
-                llag = 0.0
+                llag, lstr = _strip_period(lum, ax)
             if llag:
                 entry = {"period": round(llag, 2), "strength": round(lstr, 3), "strong": True, "periodic": True,
                          "source": "lines"}
@@ -265,6 +268,21 @@ def _line_period(lum: np.ndarray, ax: int, edges: bool = True) -> tuple[float, f
     acf = acf / max(float(acf[0]), 1e-12)
     lag, strength = _fundamental(acf[:n // GRID_MIN_REPEATS], max(3, n // 64))
     return lag, strength, ((_harmonic(acf[:n // 2], 2 * lag) or 0.0) if lag else 0.0)
+
+
+def _strip_period(lum: np.ndarray, ax: int) -> tuple[float, float]:
+    """(lag, strength) of a keystoned grid: the joints fan out, so the whole-image projection smears them while each
+    third across the axis still shows sharp lines, their period drifting one way. The middle third's lag is the mean
+    scale rectify_pitch then evens out. No harmonic test: a pitched flagstone repeats under four times per image."""
+    n = lum.shape[1 - ax]
+    res = [_line_period(np.take(lum, np.arange(k * n // 3, (k + 1) * n // 3), axis=1 - ax), ax, False)
+           for k in range(3)]
+    lags = [r[0] for r in res]
+    strength = min(r[1] for r in res)
+    rising = lags[0] < lags[1] < lags[2] or lags[0] > lags[1] > lags[2]
+    if strength >= STRIP_LINE_MIN and min(lags) > 0 and rising and max(lags) / min(lags) <= STRIP_MAX_DRIFT:
+        return lags[1], strength
+    return 0.0, 0.0
 
 
 def _period_near(x: np.ndarray, est: float, tol: float = 0.3) -> float | None:
@@ -313,9 +331,12 @@ def _scale_profile(lum: np.ndarray, periods: dict[str, Any]) -> dict[str, tuple[
         if est * 3 > (bh if ax == 0 else w):
             continue
         ys, ps = [], []
+        lines = g.get("source") == "lines"
         for c in np.linspace(bh / 2, h - bh / 2, 5):
             band = hp[int(c - bh / 2):int(c + bh / 2)]
-            pk = _period_near(band if ax == 1 else band.T, est)
+            # Joints found only by projection are swamped by stone speckle in a per-row autocorrelation.
+            pk = (_line_near(lum[int(c - bh / 2):int(c + bh / 2)], ax, est) if lines
+                  else _period_near(band if ax == 1 else band.T, est))
             if pk:
                 ys.append(c)
                 ps.append(pk)
@@ -327,6 +348,12 @@ def _scale_profile(lum: np.ndarray, periods: dict[str, Any]) -> dict[str, tuple[
         if resid < 0.03 * mean and 0.04 <= abs(p1) * h / mean <= 0.6:
             out[name] = (float(p0), float(p1))
     return out
+
+
+def _line_near(lum: np.ndarray, ax: int, est: float, tol: float = 0.3) -> float | None:
+    found = [(lag, st) for lag, st, _ in (_line_period(lum, ax, e) for e in (True, False))
+             if lag and abs(lag / est - 1) <= tol and st >= LINE_NEAR_MIN]
+    return max(found, key=lambda f: f[1])[0] if found else None
 
 
 def _lerp_rows(a: np.ndarray, pos: np.ndarray) -> np.ndarray:
