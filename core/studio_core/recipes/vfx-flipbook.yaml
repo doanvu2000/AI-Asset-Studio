@@ -23,9 +23,11 @@ steps:
   - id: sheet
     kind: op.sheet
     in: {images: frames.images}
-    params: {cols: 8}
+    params: {cols: 8, flipbook: "${inputs.mode}", fps: 24}
   - id: approve
     kind: gate.approve
     in: {sheet: sheet.sheet, frames: frames.images}
 outputs:
-  final: approve.sheet
+  final: sheet.sheet
+  meta: sheet.meta
+  frames: frames.images

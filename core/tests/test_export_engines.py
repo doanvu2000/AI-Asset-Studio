@@ -318,3 +318,23 @@ def test_unity_lod_group_script_for_combined_lods(tmp_path: Path) -> None:
     assert b"LODGroup" in files["Editor/AssetStudioLodGroup.cs"]
     plain = dict(unity.export(Source(asset="Chest", uid="u1", glb=[("chest_lod0.glb", glb)])))
     assert "Editor/AssetStudioLodGroup.cs" not in plain
+
+
+def test_flipbook_meta_is_one_clip_in_reading_order() -> None:
+    meta = {"frame_w": 64, "frame_h": 64, "cols": 4, "rows": 3, "count": 10, "padding": 0,
+            "flipbook": {"fps": 24, "loop": False}}
+    lay = layout(meta, "burst")
+    assert len(lay.tracks) == 1 and len(lay.tracks[0].cells) == 10
+    t = lay.tracks[0]
+    assert (t.fps, t.loop) == (24, False) and (t.cells[5].x, t.cells[5].y) == (64, 64)
+
+
+def test_audio_exports_one_file_per_clip(tmp_path: Path) -> None:
+    b = _Blobs(tmp_path)
+    outs = [b.put(b"o", "theme_1_loop.ogg", "audio/ogg"), b.put(b"w", "theme_1_loop.wav", "audio/wav"),
+            b.put(b"h", "hit_1.wav", "audio/wav"), b.put(b"p", "theme_1_loop_wave.png", "image/png")]
+    src = engine_source(_row("post", "op.audio_post", {"audio": outs[:3], "images": outs[3:]}), [], b, "Sfx")
+    assert sorted(n for n, _ in src.audio) == ["hit_1.wav", "theme_1_loop.ogg"]
+    for exporter in (unity.export, godot.export):
+        files = _files(exporter(src))
+        assert {"Audio/theme_1_loop.ogg", "Audio/hit_1.wav"} <= files.keys() and "_loop" in files["README.txt"].decode()

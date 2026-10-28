@@ -875,3 +875,22 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   7 audio rỗng → StepError (test); 8 VFX loop ≤8 frame → StepError; 9 atlas region index trùng tên → `Atlas.every`
   (test); 11 audio loop thêm hậu tố `_loop` (op v3) để player bật lặp; 12 nhãn attack/hit/death trong ReviewDialog.
   Chưa commit.
+- [x] Commit dbbb9d8 (nhạc/VFX/docs) + 5d2621a (12 lỗi review).
+- [x] Skin variant e2e lần 3 (kiểm lâm, 62s): mũ/áo/quần khớp; balo bị xanh lá, giày tím. Nguyên nhân: (a) 49% pixel
+  balo là dải lộ giữa tay và thân, Klein vẽ áo lấp chỗ đó → `_main_part` chỉ học từ mảng liền lớn nhất; (b) region
+  balo chứa cả túi ngủ nâu + thân navy → cụm màu k-means (≤4, ≥3%, gộp <0.06) mỗi cụm 1 map, texel pha mềm theo
+  khoảng cách màu; (c) gain chroma trần 3 làm cụm navy phẳng thành xanh bão hoà → trần 1.5. Soát mắt 2 edit thật:
+  balo/túi ngủ/giày đúng cả bản đỏ lẫn kiểm lâm. Op v6, test 2 màu. (Số đo median cả region không còn hợp lệ vì
+  tính cả vùng bị che.)
+- [x] Subagent khảo sát chỗ liệt kê cứng + subagent sửa: pitch/art/nhóm "Âm thanh" cho recipe mới, gallery lọc audio,
+  badge+glyph audio, nhãn kind/bước (Sinh âm thanh, Sinh video VFX, Render tư thế setup), tên port; kinds.py: output
+  SaveAudio = audio file[] (trước bị coi là mesh → lint cảnh báo), nhãn 3 workflow, param bpm. pytest 486/4, typecheck sạch.
+- [ ] Còn (khảo sát): xuất Unity/Godot chưa nhận audio, flipbook (final thiếu meta), skin variant (thiếu skeleton) —
+  chỉ xuất thô được. Chưa commit đợt này.
+- [x] Xuất engine cho đồ mới:
+  audio: `Source.audio` (1 file/clip, ưu tiên OGG), Unity/Godot chép `Audio/` + README cách bật Loop cho *_loop;
+  `engine_ready` tính cả audio. Live: audio-music 20s → xuất Godot OK (Audio/…_loop.ogg + README).
+  flipbook: `op.sheet` param `flipbook` (oneshot|loop) + `fps` → meta.flipbook, pivot giữa ô; `layout` thành 1 track
+  đọc theo hàng; vfx-flipbook outputs final/meta = sheet. Live: VFX loop → xuất Unity: clip 16 frame 24fps LoopTime 1.
+  skin variant: op trả thêm `skeleton` + `texture` (trang v1), approve chuyển tiếp → engine thấy Spine (unit test).
+  `e2e_text.py` tham số thứ 5 = engine để xuất luôn. pytest 488/4, typecheck sạch. Chưa commit.

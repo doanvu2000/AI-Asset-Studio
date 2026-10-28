@@ -251,6 +251,10 @@ def export(src: Source) -> Files:
         elif atlas:
             files.append((f"{a}_tileset.tres", tileset(atlas[0], _image_size(atlas[1])).encode()))
             notes.append(f"- {a}_tileset.tres: TileSet từ {atlas[0]} (mỗi biến thể một ô) cho TileMapLayer.")
+    files += [(f"Audio/{n}", p) for n, p in src.audio]
+    if src.audio:
+        notes.append("- Audio/: Godot tự import. File *_loop nối liền đầu-cuối: chọn file > tab Import > bật Loop > "
+                     "Reimport (WAV: Loop Mode = Forward).")
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

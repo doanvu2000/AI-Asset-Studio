@@ -600,6 +600,10 @@ def export(src: Source) -> Files:
                                                          repeat=role != "atlas").encode())]
     if src.textures:
         notes.append(README_TEXTURES)
+    files += [(f"Audio/{n}", p) for n, p in src.audio]
+    if src.audio:
+        notes.append("- Audio/: Unity tự import thành AudioClip. File *_loop nối liền đầu-cuối: bật Loop ở AudioSource "
+                     "(nhạc dài nên đặt Load Type = Streaming).")
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

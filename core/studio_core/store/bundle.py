@@ -187,12 +187,33 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
             if _is_glb(r) and r.hash not in hashes:
                 hashes.add(r.hash)
                 src.glb.append((_unique(safe_filename(None, r), names), blobs.path(r.hash)))
+    src.audio = _audio(step, blobs)
     return src
+
+
+AUDIO_EXT = (".ogg", ".wav", ".mp3", ".flac")
+
+
+def _audio(step: StepRow, blobs: BlobStore) -> list[tuple[str, Path]]:
+    # op.audio_post writes each clip as OGG and WAV; an engine needs one, and OGG streams smaller.
+    best: dict[str, BlobRef] = {}
+    for refs in step.outputs.values():
+        for r in refs:
+            name = safe_filename(None, r)
+            ext = Path(name).suffix.lower()
+            if not (r.mime.startswith("audio/") or ext in AUDIO_EXT):
+                continue
+            stem = Path(name).stem
+            cur = best.get(stem)
+            if cur is None or (ext == ".ogg" and Path(safe_filename(None, cur)).suffix.lower() != ".ogg"):
+                best[stem] = r
+    return [(safe_filename(None, r), blobs.path(r.hash)) for r in best.values()]
 
 
 def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
     src = engine_source(step, [], blobs, "x")
-    return src.sheet is not None or src.spine_json is not None or bool(src.glb) or bool(src.textures)
+    return (src.sheet is not None or src.spine_json is not None or bool(src.glb) or bool(src.textures)
+            or bool(src.audio))
 
 
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,
@@ -205,8 +226,8 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
     src = engine_source(step, siblings, blobs, ident(folder, "asset"), ppu, pixel)
     files = exporter(src)
     if not files:
-        raise BundleError("nothing to export for a game engine (needs a sprite sheet, Spine export, GLB or tileable "
-                          "texture)")
+        raise BundleError("nothing to export for a game engine (needs a sprite sheet, Spine export, GLB, tileable "
+                          "texture or sound)")
     dst = root / "bundles" / f"{step.id[:12]}-{engine}" / folder
     dst.parent.mkdir(parents=True, exist_ok=True)
     written = _write(dst, files)

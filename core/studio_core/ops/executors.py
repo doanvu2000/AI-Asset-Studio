@@ -298,6 +298,10 @@ class Sheet(OpExecutor):
             # Recipes cannot read another step's meta; this reproduces op.normalize(anchor=bottom)'s pivot.
             w, h = imgs[0].size
             pivot = (w // 2, h - round(h * float(params.get("pivot_pad", 0.06))))
+        if pivot is None and params.get("flipbook"):
+            # Effects play around their centre; the default pivot is a character's feet.
+            w, h = imgs[0].size
+            pivot = (w // 2, h // 2)
         padding = preset.padding if preset is not None else int(params.get("padding", 0))
         clip_meta = None
         if preset is None and inputs.get("pivot"):
@@ -328,6 +332,9 @@ class Sheet(OpExecutor):
                 meta["row_angles"] = list(meta["order"])
         if params.get("normal"):
             meta["normal"] = True
+        flip = params.get("flipbook")
+        if flip:
+            meta["flipbook"] = {"fps": float(params.get("fps") or 24), "loop": str(flip).lower() in ("loop", "true")}
         sheet_name = "sheet.png"
         if preset is not None and named is not None:
             annotate_sheet_meta(meta, named, preset)

@@ -848,6 +848,7 @@ def test_skin_variant_recolors_atlas(tmp_path: Path) -> None:
     ed = _ref(ctx, ed_path, "e.png")
     out = asyncio.run(sv.SpineSkinVariant().run(ctx, params, {"skeleton": [sk], "atlas": [at, pg], "edits": [ed]}))
     assert [r.name for r in out.outputs["atlas"]] == ["rig_v1.atlas"]
+    assert out.outputs["skeleton"] == [sk] and out.outputs["texture"] == out.outputs["pages"][:1]
     text = ctx.blobs.path(out.outputs["atlas"][0].hash).read_text()
     new_page = out.outputs["pages"][0]
     assert new_page.name in text and page.name not in text.split()
@@ -891,3 +892,24 @@ def test_foot_drivers_stop_below_a_shared_group() -> None:
         if b["name"] in ("foot_ik", "foot_ik2"):
             b["parent"] = "ik_group"
     assert [f["driver"] for f in sc.foot_drivers(doc)] == ["foot_ik", "foot_ik2"]
+
+
+def test_skin_variant_maps_each_paint_colour() -> None:
+    from studio_core.ops import spine_variant as sv
+
+    owner = np.full((60, 40), -1, np.int32)
+    owner[4:56, 4:36] = 0
+    top = np.zeros((60, 40), bool)
+    top[:30] = True
+
+    def paint(a_rgb: tuple, b_rgb: tuple) -> Image.Image:
+        a = np.zeros((60, 40, 4), np.uint8)
+        a[(owner == 0) & top] = (*a_rgb, 255)
+        a[(owner == 0) & ~top] = (*b_rgb, 255)
+        return Image.fromarray(a, "RGBA")
+
+    red, blue, green, yellow = (200, 40, 40), (40, 40, 160), (40, 160, 60), (220, 200, 40)
+    maps, _, _ = sv.colour_maps(paint(red, blue), sv.on_background(paint(green, yellow)), owner, ["a"])
+    assert len(maps["a"]) == 2
+    got = sv._apply(np.array([red, blue]) / 255, maps["a"]) * 255
+    assert np.abs(got - np.array([green, yellow])).max() < 12

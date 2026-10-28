@@ -26,6 +26,8 @@ class Source:
     # Tileable textures (texture-seamless): (file name, path, role) with role color | normal | pixel | atlas; they import
     # with wrap = Repeat instead of as sprites.
     textures: list[tuple[str, Path, str]] = field(default_factory=list)
+    # Sound clips (audio-sfx / audio-music): (file name, path); a "_loop" stem marks a seamless loop.
+    audio: list[tuple[str, Path]] = field(default_factory=list)
 
     def is_pixel(self) -> bool:
         if self.pixel is not None:

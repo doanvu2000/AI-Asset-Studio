@@ -132,6 +132,9 @@ async def test_sheet_executor(ctx: FakeCtx, reg: ExecutorRegistry):
     meta = json.loads(ctx.blobs.path(meta_ref.hash).read_bytes())
     assert meta["cols"] == 8 and meta["rows"] == 1 and meta["frame_w"] == 32 and meta["pivot"] == [16, 30]
     assert meta["frames"] == [r.hash for r in refs]
+    flip = await reg.resolve("op.sheet").run(ctx, {"cols": 4, "flipbook": "loop", "fps": 12}, {"images": refs})
+    fmeta = json.loads(ctx.blobs.path(flip.outputs["meta"][0].hash).read_bytes())
+    assert fmeta["flipbook"] == {"fps": 12.0, "loop": True} and fmeta["pivot"] == [16, 16]
 
 
 async def test_downscale_and_pixelate_executors(ctx: FakeCtx, reg: ExecutorRegistry):

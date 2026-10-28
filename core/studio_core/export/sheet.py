@@ -108,7 +108,12 @@ def layout(meta: dict[str, Any], clip_hint: str = "anim", fps: float = 8.0, dire
     order = meta.get("order")
     named = meta.get("frames_named")
 
-    if isinstance(clips, list) and clips:
+    flip = meta.get("flipbook")
+    if isinstance(flip, dict):
+        # VFX: one clip over every cell in reading order, wrapping rows, with no facing.
+        add_track(clip_hint, 0.0, [cell(f"{clip_hint}_{i}", *divmod(i, cols)) for i in range(count)],
+                  float(flip.get("fps") or fps), bool(flip.get("loop")))
+    elif isinstance(clips, list) and clips:
         for i, c in enumerate(clips):
             name = ident(str(c.get("name") or f"clip{i}"), f"clip{i}")
             row0, n_rows = int(c.get("row0", 0)), int(c.get("rows", 1))

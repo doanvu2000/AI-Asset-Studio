@@ -1,7 +1,7 @@
 """Live E2E for a recipe through its gates (picks keep every candidate); saves one step's outputs.
 
-Usage: python scripts/e2e_text.py <data_dir> <recipe> '<inputs json>' [step to save, default post]
-An input value "@<path>" is uploaded and replaced by its blob hash.
+Usage: python scripts/e2e_text.py <data_dir> <recipe> '<inputs json>' [step to save, default post] [unity|godot]
+An input value "@<path>" is uploaded and replaced by its blob hash; an engine also exports that step to it.
 """
 import asyncio
 import json
@@ -16,7 +16,7 @@ import websockets
 from e2e_r1 import spawn
 
 
-async def main(data_dir: Path, recipe: str, inputs: dict, save: str = "post") -> None:
+async def main(data_dir: Path, recipe: str, inputs: dict, save: str = "post", engine: str = "") -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
     token = secrets.token_hex(16)
     proc, port = spawn(data_dir, token)
@@ -66,6 +66,9 @@ async def main(data_dir: Path, recipe: str, inputs: dict, save: str = "post") ->
                 for ref in (r for refs in step["outputs"].values() for r in refs):
                     (data_dir / ref["name"]).write_bytes((await c.get(f"/api/blobs/{ref['hash']}")).content)
                 print(f"{save} meta:", json.dumps({k: v for k, v in step["meta"].items() if k != "spec"})[:900])
+                if engine:
+                    ex = await c.post(f"/api/steps/{step['id']}/export", json={"engine": engine})
+                    print(f"export {engine}:", ex.status_code, json.dumps(ex.json())[:1200])
                 print("saved to", data_dir)
             await c.post("/api/shutdown")
     finally:
@@ -76,4 +79,4 @@ async def main(data_dir: Path, recipe: str, inputs: dict, save: str = "post") ->
 
 
 if __name__ == "__main__":
-    asyncio.run(main(Path(sys.argv[1]), sys.argv[2], json.loads(sys.argv[3]), *sys.argv[4:5]))
+    asyncio.run(main(Path(sys.argv[1]), sys.argv[2], json.loads(sys.argv[3]), *sys.argv[4:6]))
