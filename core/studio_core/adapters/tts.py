@@ -186,9 +186,13 @@ class NpcVoiceExecutor:
     def cache_material(self, params: dict[str, Any]) -> str:
         from blake3 import blake3
 
-        h = blake3(f"{VI_MODEL}|{EN_MODEL}".encode())
+        from studio_core import __version__
+
+        h = blake3(f"{VI_MODEL}|{EN_MODEL}|{__version__}".encode())
+        # Frozen builds have only .pyc inside the archive, so the source files may not exist on disk.
         for f in (Path(__file__), Path(tt.__file__)):
-            h.update(f.read_bytes())
+            if f.is_file():
+                h.update(f.read_bytes())
         return h.hexdigest()
 
     def _engine(self, langs: list[str]) -> Any:

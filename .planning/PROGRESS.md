@@ -1045,3 +1045,9 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   retry giữ ảnh đã chọn (`runner.retry_step(keep)`, API `{keep}`, GatePicker "Tạo lại ảnh chưa chọn"/"Chọn tất cả"). Sửa import vòng.
   7 test; live 4 shot ~190s, $0.077, video 18.6s. Nhạc/SFX chưa chạy thật.
 - [x] 2026-10-29 Kiểm 745 pass / 4 skip, typecheck sạch → commit mốc #29 + báo cáo spike #11.
+- [x] 2026-10-29 #26 Paper-doll xong (agent): Blender gắn đồ 3D vào xương, render lớp riêng (thân holdout), `sockets.json` (hand_r/l, head,
+  chest + order). `adapters/blender/paperdoll_math.py`, `paperdoll.py` (`blender.paperdoll`), worker `anim_scene`/`paperdoll_dirs`,
+  `ops/paperdoll.py`, `export/paperdoll.py` (Unity prefab + AssetStudioPaperdoll.cs chưa mở Unity; Godot tscn OK), recipe `sprite-8dir-paperdoll`.
+  10 test; live 768 render 109s.
+- [x] 2026-10-29 06:12 Handoff mới: .planning/HANDOFF-2026-10-29-0612.md. Đang build dist:core → dist:portable.
+- [x] 2026-10-29 06:3x Build dist:core OK; smoke core frozen: CLIP/onnxruntime OK, TTS lỗi FileNotFound tts.py (hash nguồn) → sửa `adapters/tts.py` cache_material bỏ qua file không có; build lại, run npc-voice-csv tới gate OK.
