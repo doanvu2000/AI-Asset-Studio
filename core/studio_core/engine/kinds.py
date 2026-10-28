@@ -37,6 +37,8 @@ def _enum(options: list[Any], default: Any, **kw: Any) -> P:
 
 RESAMPLE = ["lanczos", "bicubic", "bilinear", "box", "nearest"]
 TIMEOUT = {"_timeout_s": _int(label="Giới hạn thời gian (giây)", advanced=True)}
+SKIRT_LABEL = "Chuỗi xương váy (auto | none | a>b>c;d>e>f)"
+HANG_LABEL = "Phụ kiện cầm tay treo theo trọng lực (auto | none | bone,bone)"
 JOINT_COVER_LABEL = "Khớp được trang phục che (auto | none | bone,bone)"
 CLAUDE_TIMEOUT = {"_timeout_s": _int(300, min=10, label="Giới hạn thời gian (giây)", advanced=True)}
 COMFY_OPTIONS: dict[str, P] = {
@@ -230,16 +232,26 @@ CATALOG: dict[str, P] = {
                                    "tile": _text("8x2", label="Lưới contact sheet (cột x hàng)"),
                                    "crop": _enum(["auto", "none"], "auto", label="Cắt sát nhân vật"),
                                    "cell": _int(360, min=120, max=1024, label="Chiều cao ô", advanced=True)}},
-    "op.spine_rig_summary": {"label": "Tóm tắt rig Spine", "in": {"skeleton": "json"}, "out": {"summary": "text"},
+    "op.spine_weld_joints": {"label": "Hàn khớp Spine (mesh weight 2 bone)", "in": {"skeleton": "json", "spec": "json"},
+                             "out": {"skeleton": "json", "original": "json", "joints": "json"},
+                             "params": {"joints": _text("auto", label="Khớp cần hàn (auto | none | bone,bone)")}},
+    "op.spine_skirt_mesh": {"label": "Váy mesh theo chuỗi xương váy", "in": {"skeleton": "json"},
+                            "out": {"skeleton": "json", "report": "json"},
+                            "params": {"chains": _text("auto", label=SKIRT_LABEL)}},
+    "op.spine_rig_summary": {"label": "Tóm tắt rig Spine", "in": {"skeleton": "json", "welded": "json"},
+                             "out": {"summary": "text"},
                              "params": {"skin": _text("", label="Skin ghép (phẩy)"),
                                         "joint_cover": _text("auto", label=JOINT_COVER_LABEL),
                                         "limit": _int(3000, min=500, max=20000, label="Số ký tự tối đa",
                                                       advanced=True)}},
-    "op.spine_add_anim": {"label": "Thêm anim Spine từ spec", "in": {"skeleton": "json", "spec": "json"},
+    "op.spine_add_anim": {"label": "Thêm anim Spine từ spec",
+                          "in": {"skeleton": "json", "spec": "json", "welded": "json"},
                           "out": {"skeleton": "json", "anim": "json"},
                           "params": {"name": _text("sway", label="Tên anim"),
                                      "skin": _text("", label="Skin ghép (phẩy)"),
-                                     "joint_cover": _text("auto", label=JOINT_COVER_LABEL)}},
+                                     "joint_cover": _text("auto", label=JOINT_COVER_LABEL),
+                                     "hang": _text("auto", label=HANG_LABEL),
+                                     "skirt": _text("auto", label=SKIRT_LABEL)}},
     "op.spine_render_strip": {"label": "Render strip Spine", "in": {"skeleton": "json", "atlas": "file[]"},
                               "out": {"strip": "image"},
                               "params": {"anim": _text("", label="Anim (trống = setup pose)"),
@@ -249,7 +261,8 @@ CATALOG: dict[str, P] = {
                                          "height": _int(560, min=200, max=1600, label="Chiều cao ô")}},
     "claude.spine_review_loop": {
         "label": "Claude soát anim Spine", "in": {"skeleton": "json", "atlas": "file[]", "ref": "image[]",
-                                                 "spec": "json", "rig": "text", "ref_meta": "json"},
+                                                 "spec": "json", "rig": "text", "ref_meta": "json",
+                                                 "welded": "json"},
         "out": {"skeleton": "json", "anim": "json", "strip": "image", "strips": "image[]", "spec": "json",
                 "review": "json"},
         "params": {"name": _text("sway", label="Tên anim"), "brief": _text(label="Mô tả", multiline=True),
@@ -257,6 +270,10 @@ CATALOG: dict[str, P] = {
                    "accept_score": _float(8, min=0, max=10, label="Điểm chấp nhận"),
                    "skin": _text("", label="Skin ghép (phẩy)"),
                    "joint_cover": _text("auto", label=JOINT_COVER_LABEL),
+                   "hang": _text("auto", label=HANG_LABEL),
+                   "skirt": _text("auto", label=SKIRT_LABEL),
+                   "skirt_views": _text("auto", label="Skin váy/đầm để soi (auto | none | skin,skin)"),
+                   "bare_skin": _text("", label="Skin da để soi khớp (trống = skin ghép đầu tiên)", advanced=True),
                    "model": _enum(MODEL_CHOICES, DEFAULT_MODEL, label="Model"), **CLAUDE_TIMEOUT}},
     "codex.image": {"label": "Sinh ảnh (Codex)", "in": {"refs": "image[]"}, "out": {"images": "image[]"},
                     "params": {"prompt": _text(label="Prompt", multiline=True),

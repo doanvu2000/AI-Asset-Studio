@@ -667,3 +667,59 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - Lần chạy đầu fail vì Claude ghi bounce kèm mốc [0,0]/[3.2,0] → generator bỏ mốc depth 0; Claude từng hiểu "2 lần"
   là mỗi chu kỳ (5 lần) → prompt ghi rõ tổng cả clip.
 - Chưa commit, chưa build Portable.
+
+## R8 — hàn khớp bằng mesh weight 2 bone (luật: skin/trang phục không được lộ khớp)
+- [x] `ops/spine_weld.py` (port tools/weld_joints.mjs bản mới): khớp auto = tip joint hard seam + con của chuỗi IK 2
+  bone (gối); luật theo từng mảnh: mảnh chỉ bám 1 bên khớp mà skin có mảnh bám bên kia → region thành mesh lưới
+  2×(N+1) (hull = mọi đỉnh) / mesh 1 bone thành weighted / mesh weighted chia lại phần cha-con; mảnh đã bám cả 2 bone
+  giữ weight artist; weight con = smoothstep(−r, r) dọc bisector, r = 25% bone ngắn hơn (≥8); mảnh có deform bỏ qua
+  + cảnh báo. Chỉ viết lại member `skins`, mọi byte khác giữ nguyên.
+- [x] Op `op.spine_weld_joints` (skeleton, spec tuỳ chọn → skeleton, original, joints); recipe chạy weld trước rig;
+  rig/add_anim/review nhận `welded`; khớp đã hàn giới hạn tự nhiên 40° (spec chỉ siết, bỏ bone chuỗi IK).
+- [x] Review: zoom khớp 2 lần (skin_parts + chỉ da `bare_skin`, mặc định skin đầu), schema `seam_visible`, vòng lộ mối
+  nối không được chọn/accept; cảnh báo gate "rig đã đổi attachment quanh khớp … thành mesh weighted"; modal hiện zoom
+  chỉ da. MCP pending gate có `seam_visible`.
+- [x] So bản JS: 6 khớp, 183 attachment cùng tập; ở tư thế gập, 103 mảnh so được trùng 0.00px. Khác ở region bị
+  trim: JS lấy góc vùng trim trong khi uv mesh Spine phủ kích thước gốc → bản JS kéo giãn ảnh (tới 44px); bản Python
+  đúng (render setup lệch ≤2/255).
+- [x] idle/walk: ngoài vùng trộn lệch 0px; trong vùng trộn khác (đó là chỗ được uốn liền, cố ý).
+- [x] Test +5 (24 trong file). pytest 460 pass / 4 skip; typecheck sạch.
+- [x] Nghiệm thu (scratchpad `608ff0e6…/r8`): không outerwear (6cd09184) 6 → 7 → 7.5 → 8; có outerwear_7 (fe501e6d)
+  7 → 8. Khuỷu tổng 38.4/38.8° và 36.4/36.8°; cổ tay tới 40° liền mảnh ở cả zoom có áo và chỉ da; seam_visible false
+  mọi vòng; hạ hông 2 lần; gối 42%/55%; spine-core load OK, đầu/cuối = setup.
+- [x] R8 bổ sung 2+3 (port weld_joints.mjs bản mới): khớp bản lề trộn toàn bề ngang chi trong |s|<2r; khớp ổ (vai,
+  háng: bone cha không chiều dài) chỉ chỉnh mảnh bám bone con; "phía cha" = cha + tổ tiên tới bone có chiều dài + con
+  cháu gần khớp không phải chuỗi ≥3 đoạn + bone thân dẫn tới khớp khác; mảnh bám 2 phía nhưng weight bật/tắt vẫn
+  hàn; mesh quad không weight chia lưới lại; háng có háng anh em sát bên → "wrap": đỉnh mảnh thân nằm trong đa giác
+  mảnh chi cùng skin trộn theo chi, region thân chia lưới 2 chiều ~30px. Auto = 10 khớp (vai, khuỷu, cổ tay, háng,
+  gối ×2), 230 mảnh; so bản JS cùng tập, cùng cấu trúc, lệch ≤0.007px (làm tròn). Khớp ổ/IK không đặt giới hạn.
+- [x] R9: `held_bones` (bone không chiều dài dưới bàn tay, slot chỉ có skin không vẽ bàn tay — túi `hand1_L3`,
+  `bag_R`), `hang_plan` (spec `hang` > param `hang` auto|none|list), key rotate = −tổng rotate tổ tiên, trễ 0.05s,
+  đầu/cuối 0; luôn sinh. Rig thật: túi xoay world 96° → ~20°. Review render thêm lượt đeo túi ở khung túi cao nhất,
+  rubric túi rủ xuống; review.json `hang`, `held`, `held_view`; modal hiện ảnh.
+- [x] Op version spine_rig_summary/spine_add_anim/spine_weld_joints → "2" (tránh cache kết quả thuật toán cũ).
+- [x] Test 25 trong file; pytest 461 pass / 4 skip; typecheck sạch.
+- [x] Nghiệm thu cuối (wrap): plain c4678fe3 6.5 → 7.5 → 8; coat 029a4d56 7 → 7 → 8. Khuỷu 38–40°, cổ tay ≤40°,
+  seam_visible false mọi vòng, hạ hông 2 lần, gối 53%/56%, túi treo; spine-core load OK, đầu/cuối = setup.
+- Chưa commit, chưa build Portable.
+
+## R10 + R11 — graph mượt/offset, ngón tay, váy mesh theo chuỗi xương váy + lò xo
+- [x] R10: `_slopes` Fritsch–Butland cho mọi timeline rotate/translatex/y (mặc định `graph: smooth`, `ease` giữ kiểu
+  cũ); `offset.arms`/`offset.hip_tilt`; `_drift_holds` (2 key bằng nhau → key sau trôi 35% về key kế, ≤3°); bù túi
+  R9 lấy mẫu bezier thật. Prompt: lag thân 0.1, tóc ×1.35, không key bone được sinh.
+- [x] R10 bổ sung: `_hands` (đầu cẳng tay mà bắp tay treo dưới bone không chiều dài gắn thân; bỏ chuỗi ≥3),
+  `follow_plan`/`_follow_keys` (ngón trễ theo chuỗi tay + sóng co duỗi, tanh ±10/±8°, vào/ra 0.3/0.4s, 2 tay lệch
+  pha) — tự dò ra đúng tham số h6; weld ép ngón (`name!`, `finger_joints`) → cùng 230 mảnh/hình học như JS.
+- [x] R11: `ops/spine_skirt.py` + op `op.spine_skirt_mesh` (recipe chạy sau weld): chuỗi váy auto (≥4 bone, hướng
+  xuống, gốc gần hông ≤10% chân), mảnh cứng trên hông/bone cha gốc chuỗi phủ ≥2 đoạn và xuống quá dải 70px → lưới
+  ~28px, weight 4 đoạn gần nhất 1/(d²+40²), dải 70px trộn bone gốc. Rig này 9 mảnh = JS, lệch ≤0.004px. Anim
+  `skirt_keys` (lò xo theo gia tốc ngang hông, counter = tổ tiên gốc chuỗi dưới hông, lệch pha chuỗi, fade) = H6
+  ≤0.002°; bỏ chuỗi váy khỏi secondary và khỏi "Chains (secondary candidates)"; rig summary dòng "Generated, do not
+  key".
+- [x] Review: zoom bàn tay lúc tay vung nhanh nhất, 2 lượt mặc váy dài/ngắn (auto theo độ dài), rubric ngón/váy;
+  review.json `hand`, `hand_zoom`, `skirt`, `skirt_views`; modal hiện ảnh. Op spine_skirt_mesh version 1.
+- [x] Test +3 (28 trong file). pytest 464 pass / 4 skip; typecheck sạch.
+- [x] Nghiệm thu (scratchpad `608ff0e6…/r10`): skirt_2 a94ac0be 7.5 → 8.0; dress_23 e17788f2 7.5 → 8.2; seam false;
+  2 lần hạ hông; spine-core load OK, đầu/cuối = setup.
+- idle/walk so gốc: lệch 0.03–0.07% pixel (dress_23, walk); skirt_2 idle 0.53% vì idle gốc có key xoay chuỗi váy ≤1.7°
+  mà váy cứng gốc không theo, váy mesh giờ theo → không đạt ≤0.5px ở gấu váy (đúng ý đồ, đã báo).

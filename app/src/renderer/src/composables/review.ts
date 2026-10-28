@@ -19,10 +19,17 @@ export interface ReviewRound {
   diff: SpecChange[]
   strip: string | null
   zoom?: string | null
+  zoomBare?: string | null
+  seamVisible?: boolean
   bend?: { bone: string; time: number; total: number; limit: number } | null
   knee?: KneeGap | null
   kneeZoom?: string | null
   bounce?: Array<[number, number]> | null
+  heldView?: string | null
+  handZoom?: string | null
+  hand?: { bone: string; time: number } | null
+  skirtViews?: Array<{ skin: string; image: string }>
+  held?: { bone: string; time: number; skin: string } | null
   error?: string
 }
 
@@ -92,9 +99,16 @@ export async function loadRounds(review: StepReview, oldSpec: unknown): Promise<
       diff: (r.diff as SpecChange[] | undefined) ?? [],
       strip: typeof r.strip === 'string' ? r.strip : null,
       zoom: typeof r.zoom === 'string' ? r.zoom : null,
+      zoomBare: typeof r.zoom_bare === 'string' ? r.zoom_bare : null,
+      seamVisible: r.seam_visible === true,
       bend: (r.deepest_bend as ReviewRound['bend']) ?? null,
       knee: (r.knee as KneeGap | undefined) ?? null,
       kneeZoom: typeof r.knee_zoom === 'string' ? r.knee_zoom : null,
+      heldView: typeof r.held_view === 'string' ? r.held_view : null,
+      handZoom: typeof r.hand_zoom === 'string' ? r.hand_zoom : null,
+      hand: (r.hand as ReviewRound['hand']) ?? null,
+      skirtViews: Array.isArray(r.skirt_views) ? (r.skirt_views as ReviewRound['skirtViews']) : [],
+      held: (r.held as ReviewRound['held']) ?? null,
       bounce: Array.isArray(r.bounce) ? (r.bounce as Array<[number, number]>) : null,
       error: typeof r.error === 'string' ? r.error : undefined
     }))

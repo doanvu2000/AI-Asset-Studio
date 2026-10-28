@@ -112,11 +112,33 @@ onKeyStroke('Escape', (e) => {
                 </figcaption>
                 <BlobImage :hash="round.zoom" full class="img zoom" />
               </figure>
+              <figure v-if="round?.zoomBare">
+                <figcaption class="caption" :class="{ bad: round.seamVisible }">
+                  Cùng khớp, chỉ da{{ round.seamVisible ? ' · lộ mối nối' : '' }}
+                </figcaption>
+                <BlobImage :hash="round.zoomBare" full class="img zoom" />
+              </figure>
               <figure v-if="round?.kneeZoom">
                 <figcaption class="caption" :class="{ bad: round.knee?.overlap }">
                   Hai gối gần nhất<template v-if="round.knee"> · t={{ round.knee.time }}s · cách {{ round.knee.min_gap }}px = {{ pct(round.knee.ratio) }} so với setup{{ round.knee.overlap ? ' · đè nhau' : '' }}</template>
                 </figcaption>
                 <BlobImage :hash="round.kneeZoom" full class="img zoom" />
+              </figure>
+              <figure v-if="round?.handZoom">
+                <figcaption class="caption">
+                  Bàn tay lúc vung nhanh nhất<template v-if="round.hand"> · {{ round.hand.bone }} t={{ round.hand.time }}s</template>
+                </figcaption>
+                <BlobImage :hash="round.handZoom" full class="img zoom" />
+              </figure>
+              <figure v-for="v in round?.skirtViews ?? []" :key="v.image">
+                <figcaption class="caption">Mặc {{ v.skin }}</figcaption>
+                <BlobImage :hash="v.image" full class="img" />
+              </figure>
+              <figure v-if="round?.heldView">
+                <figcaption class="caption">
+                  Đeo phụ kiện cầm tay<template v-if="round.held"> · {{ round.held.skin }} · t={{ round.held.time }}s (tay giơ cao nhất)</template>
+                </figcaption>
+                <BlobImage :hash="round.heldView" full class="img zoom" />
               </figure>
               <figure v-for="b in images.refs" :key="b.hash">
                 <figcaption class="caption">Tham chiếu{{ b.name ? ` · ${b.name}` : '' }}</figcaption>

@@ -16,6 +16,8 @@ from ..config import _default_ffmpeg_exe
 from ..contracts import BlobRef, Outputs, StepContext, StepError, StepResult
 from . import spine_anim as sa
 from . import spine_runtime as rt
+from . import spine_skirt as sk
+from . import spine_weld as sw
 from .executors import OpExecutor, _put_png
 from .rig import _put_json, _read_json
 
@@ -142,6 +144,74 @@ def render_joint_zoom(doc: dict[str, Any], images: rt.RegionImages, anim: str | 
     return render_zoom(doc, images, anim, t, (x, y), r, parts, f"zoom {bone} t={t:g}s", size)
 
 
+def render_held(doc: dict[str, Any], images: rt.RegionImages, anim: str, held: list[str], parts: list[str],
+                height: int = 520, step: float = 0.05) -> tuple[Image.Image, dict[str, Any]] | None:
+    """The draft wearing a hand-carried accessory, at the time a held bone is highest (arm raised the most)."""
+    if not held:
+        return None
+    end = animation_duration(doc, anim)
+    poses = [(round(i * step, 4), rt.Pose(doc, anim, i * step)) for i in range(int(end / step) + 1)]
+    _, t, bone = max((float(p.world[b][1][1]), t, b) for t, p in poses for b in held)
+    slots = [s for s in doc.get("slots") or [] if s["bone"] == bone and s.get("attachment")]
+    skin = next((sk["name"] for sk in doc.get("skins") or [] for s in slots
+                 if s["attachment"] in ((sk.get("attachments") or {}).get(s["name"]) or {})), None)
+    if skin is None:
+        return None
+    img, _ = render_strip(doc, images, anim, [t], [*parts, skin], height)
+    return img, {"bone": bone, "time": t, "skin": skin}
+
+
+def render_hand_zoom(doc: dict[str, Any], images: rt.RegionImages, anim: str, follow: list[dict[str, Any]],
+                     parts: list[str], step: float = 0.05) -> tuple[Image.Image, dict[str, Any]] | None:
+    """Close-up of a hand when its arm swings fastest, to judge whether the fingers trail or stay rigid."""
+    tl = ((doc.get("animations") or {}).get(anim) or {}).get("bones") or {}
+    if not follow:
+        return None
+    src = follow[0]["src"]
+    end = animation_duration(doc, anim)
+
+    def angle(t: float) -> float:
+        return sum(sa._sample_rotate(tl[b]["rotate"], t) for b in src if "rotate" in tl.get(b, {}))
+
+    _, t = max((abs(angle(i * step + step) - angle(i * step)), round(i * step + step / 2, 3))
+               for i in range(int(end / step)))
+    hand = src[-1]
+    return render_joint_zoom(doc, images, anim, t, hand, parts), {"bone": hand, "time": t}
+
+
+def skirt_views(doc: dict[str, Any], chains: list[list[str]], mode: str = "auto") -> list[str]:
+    """Skins to preview the skirt with: the given list, or the longest and the shortest skin bound to the chains."""
+    mode = (mode or "auto").strip()
+    if mode.lower() == "none" or not chains:
+        return []
+    if mode.lower() != "auto":
+        found, _ = rt.resolve_skins(doc, [p for p in re.split(r"[,\s]+", mode) if p])
+        return found
+    bones = {b for c in chains for b in c}
+    names = [b["name"] for b in doc["bones"]]
+    slot_bone = {s["name"]: s["bone"] for s in doc.get("slots") or []}
+    pose = rt.Pose(doc)
+    reach: dict[str, float] = {}
+    for skin in doc.get("skins") or []:
+        for slot, atts in (skin.get("attachments") or {}).items():
+            for att in atts.values():
+                if att.get("type") == "mesh" and slot in slot_bone and \
+                        sa._att_bones(att, slot_bone[slot], names) & bones:
+                    low = float(rt.mesh_world(att, pose, slot_bone[slot])[:, 1].min())
+                    reach[skin["name"]] = min(reach.get(skin["name"], low), low)
+    if not reach:
+        return []
+    ordered = sorted(reach, key=reach.get)
+    return list(dict.fromkeys([ordered[0], ordered[-1]]))
+
+
+def render_views(doc: dict[str, Any], images: rt.RegionImages, anim: str, skins: list[str], parts: list[str],
+                 height: int = 420) -> list[tuple[Image.Image, str]]:
+    end = animation_duration(doc, anim)
+    times = [round(end * f, 2) for f in (0.2, 0.4, 0.6, 0.8)]
+    return [(render_strip(doc, images, anim, times, [*parts, s], height)[0], s) for s in skins]
+
+
 def render_knee_zoom(doc: dict[str, Any], images: rt.RegionImages, anim: str, t: float, knees: list[str],
                      parts: list[str], size: int = 420) -> Image.Image:
     """Both knees at time t, framed to show the thighs and shins around them."""
@@ -155,24 +225,61 @@ def render_knee_zoom(doc: dict[str, Any], images: rt.RegionImages, anim: str, t:
 
 class SpineRigSummary(OpExecutor):
     kind = "op.spine_rig_summary"
-    version = "1"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         _, doc = await read_skeleton(ctx, inputs)
         covers = sa.joint_covers(doc, skin_parts(params), str(params.get("joint_cover") or "auto"))
-        text = await asyncio.to_thread(sa.rig_summary, doc, int(params.get("limit", 3000)), covers)
+        welded = await welded_joints(ctx, inputs)
+        text = await asyncio.to_thread(sa.rig_summary, doc, int(params.get("limit", 3000)), covers, welded)
         ref = await ctx.blobs.put_bytes(text.encode("utf-8"), name="rig_summary.txt", mime="text/plain")
         return StepResult(outputs={"summary": [ref]}, meta={"chars": len(text), "bones": len(doc["bones"]),
-                                                            "cover": covers, "hip": sa.hip_bone(doc)})
+                                                            "cover": covers, "welded": welded,
+                                                            "hip": sa.hip_bone(doc)})
 
 
 def skin_parts(params: dict[str, Any]) -> list[str]:
     return [p for p in re.split(r"[,\s]+", str(params.get("skin") or "")) if p]
 
 
+async def welded_joints(ctx: StepContext, inputs: Outputs) -> list[str]:
+    """Joint bones from an `op.spine_weld_joints` report ({joints: [...]}) wired as input 'welded'."""
+    raw = await _read_json(ctx, inputs, "welded", required=False)
+    joints = raw.get("joints") if isinstance(raw, dict) else raw
+    return [str(b) for b in joints] if isinstance(joints, list) else []
+
+
+class SpineWeldJoints(OpExecutor):
+    kind = "op.spine_weld_joints"
+    version = "2"
+
+    async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        text, doc = await read_skeleton(ctx, inputs)
+        spec = await _read_json(ctx, inputs, "spec", required=False)
+        if isinstance(spec, dict) and isinstance(spec.get("spec"), dict):
+            spec = spec["spec"]
+        joints = sw.resolve_joints(doc, str(params.get("joints") or "auto"), spec if isinstance(spec, dict) else None)
+        src = _one(inputs, "skeleton")
+        if not joints:
+            report = {"joints": [], "changed": 0, "skipped": []}
+            return StepResult(outputs={"skeleton": [src], "original": [src],
+                                       "joints": [await _put_json(ctx, report, "welded_joints.json")]}, meta=report)
+        new_text, report = await asyncio.to_thread(sw.weld_text, text, joints)
+        if report["skipped"]:
+            ctx.log(f"left as is (deform timelines): {', '.join(report['skipped'][:8])}", "warning")
+        stem = Path(src.name or "skeleton.json").stem
+        out: Outputs = {
+            "skeleton": [await ctx.blobs.put_bytes(new_text.encode("utf-8"), name=f"{stem}.json",
+                                                   mime="application/json")],
+            "original": [src],
+            "joints": [await _put_json(ctx, report, "welded_joints.json")],
+        }
+        return StepResult(outputs=out, meta=report)
+
+
 class SpineAddAnim(OpExecutor):
     kind = "op.spine_add_anim"
-    version = "1"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         text, _ = await read_skeleton(ctx, inputs)
@@ -181,7 +288,8 @@ class SpineAddAnim(OpExecutor):
             spec = spec["spec"]  # a review result {score, critique, spec}
         name = str(params.get("name") or "anim").strip()
         covers = sa.joint_covers(json.loads(text), skin_parts(params), str(params.get("joint_cover") or "auto"))
-        res = await asyncio.to_thread(add_anim, text, spec, name, covers)
+        res = await asyncio.to_thread(add_anim, text, spec, name, covers, await welded_joints(ctx, inputs),
+                                      str(params.get("hang") or "auto"))
         stem = Path(_one(inputs, "skeleton").name or "skeleton.json").stem
         out: Outputs = {
             "skeleton": [await ctx.blobs.put_bytes(res["text"].encode("utf-8"), name=f"{stem}.json",
@@ -191,21 +299,26 @@ class SpineAddAnim(OpExecutor):
         return StepResult(outputs=out, meta={"name": name, "bones": len(res["anim"]["bones"])})
 
 
-def add_anim(text: str, spec: Any, name: str, covers: dict[str, str] | None = None) -> dict[str, Any]:
+def add_anim(text: str, spec: Any, name: str, covers: dict[str, str] | None = None,
+             welded: list[str] | None = None, hang: str = "auto", skirt: str = "auto") -> dict[str, Any]:
     if not isinstance(spec, dict) or "duration" not in spec:
         raise StepError("spec_invalid", "motion spec must be an object with at least 'duration'")
     doc = json.loads(text)
     hip = sa.hip_bone(doc)
     bone_map = {"hip": hip} if hip and not (spec.get("bones") or {}).get("hip") else None
     try:
-        anim = sa.build_animation(spec, bone_map, sa.joint_limits(doc, spec, covers))
+        plan = sa.hang_plan(doc, spec, hang)
+        swing = sk.skirt_plan(doc, spec, skirt)
+        fingers = sa.follow_plan(doc, spec)
+        anim = sa.build_animation(spec, bone_map, sa.joint_limits(doc, spec, covers, welded), plan, swing, fingers)
     except (sa.SpecError, KeyError, TypeError, ValueError) as e:
         raise StepError("spec_invalid", f"motion spec: {e}") from e
     new_text = sa.add_animation(text, name, anim)
     problems = sa.check_animation(json.loads(new_text), name)
     if problems:
         raise StepError("spec_invalid", "; ".join(problems[:6]), detail={"problems": problems})
-    return {"text": new_text, "anim": anim}
+    return {"text": new_text, "anim": anim, "hang": [h["bone"] for h in plan],
+            "skirt": swing["chains"] if swing else [], "follow": fingers}
 
 
 class SpineRenderStrip(OpExecutor):
@@ -323,4 +436,25 @@ class VideoFrames(OpExecutor):
         return StepResult(outputs=out, meta=meta)
 
 
-SPINE_REF_OPS: tuple[type[OpExecutor], ...] = (SpineRigSummary, SpineAddAnim, SpineRenderStrip)
+class SpineSkirtMesh(OpExecutor):
+    kind = "op.spine_skirt_mesh"
+    version = "1"
+
+    async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        text, doc = await read_skeleton(ctx, inputs)
+        chains = sk.skirt_chains(doc, str(params.get("chains") or "auto"))
+        new_text, report = await asyncio.to_thread(sk.skirt_text, text, chains)
+        if report["skipped"]:
+            ctx.log(f"skirt pieces left rigid (deform timeline or under 16px): {', '.join(report['skipped'][:8])}",
+                    "warning")
+        src = _one(inputs, "skeleton")
+        out = [src] if new_text == text else [
+            await ctx.blobs.put_bytes(new_text.encode("utf-8"), name=src.name or "skeleton.json",
+                                      mime="application/json")]
+        meta = {"chains": chains, "changed": len(report["changed"]), "skipped": report["skipped"]}
+        return StepResult(outputs={"skeleton": out, "report": [await _put_json(ctx, report, "skirt_mesh.json")]},
+                          meta=meta)
+
+
+SPINE_REF_OPS: tuple[type[OpExecutor], ...] = (SpineRigSummary, SpineAddAnim, SpineRenderStrip, SpineWeldJoints,
+                                               SpineSkirtMesh)
