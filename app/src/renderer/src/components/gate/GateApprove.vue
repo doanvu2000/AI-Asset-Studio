@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { onKeyStroke } from '@vueuse/core'
-import { LoaderCircle, ThumbsDown, ThumbsUp } from '@lucide/vue'
+import { ClipboardCheck, LoaderCircle, ThumbsDown, ThumbsUp } from '@lucide/vue'
 import type { BlobRef } from '@/api/types'
 import Lightbox from '@/components/Lightbox.vue'
 import AssetViewer from '@/components/viewers/AssetViewer.vue'
@@ -9,7 +9,10 @@ import { featuredAsset, viewsFor } from '@/components/viewers/detect'
 import { useGates, type GateItem } from '@/stores/gates'
 import { useRuns } from '@/stores/runs'
 import { useToasts } from '@/stores/toasts'
+import ScoreBadge from '@/components/ScoreBadge.vue'
+import { latestReview } from '@/composables/review'
 import GateTile from './GateTile.vue'
+import ReviewDialog from './ReviewDialog.vue'
 import { isTypingTarget, sourcePrompt } from './gateUtil'
 
 const props = withDefaults(defineProps<{ gate: GateItem; keyboard?: boolean; inline?: boolean }>(), { keyboard: true, inline: false })
@@ -33,6 +36,20 @@ const featured = computed(() => {
   return featuredAsset(c) ?? (c[0] ? (viewsFor(c[0], c)[0] ?? null) : null)
 })
 const prompt = computed(() => sourcePrompt(runs.runs.get(props.gate.runId)))
+const review = computed(() => latestReview(runs.stepsOf(props.gate.runId), props.gate.step?.order))
+const reviewOpen = ref(false)
+// A JSON text input (e.g. the current spec handed to a scoring step) is the "before" side of the spec diff.
+const oldSpec = computed(() => {
+  for (const v of Object.values(runs.runs.get(props.gate.runId)?.inputs ?? {})) {
+    if (typeof v !== 'string' || !v.trim().startsWith('{')) continue
+    try {
+      return JSON.parse(v) as unknown
+    } catch {
+      continue
+    }
+  }
+  return undefined
+})
 
 async function resolve(approved: boolean): Promise<void> {
   if (sending.value) return
@@ -56,7 +73,7 @@ function open(i: number): void {
 }
 
 onKeyStroke(true, (e) => {
-  if (!props.keyboard || lightbox.value || isTypingTarget(e) || e.ctrlKey || e.metaKey || e.altKey) return
+  if (!props.keyboard || lightbox.value || reviewOpen.value || isTypingTarget(e) || e.ctrlKey || e.metaKey || e.altKey) return
   if (/^[1-9]$/.test(e.key) && Number(e.key) <= candidates.value.length) {
     e.preventDefault()
     open(Number(e.key) - 1)
@@ -76,6 +93,15 @@ onKeyStroke(true, (e) => {
       <span class="prompt-lbl">Prompt</span>
       <span class="prompt-txt selectable">{{ prompt }}</span>
     </p>
+
+    <div v-if="review" class="score-row" :class="{ pad: !inline }">
+      <ScoreBadge :score="review.score" :history="review.history" size="md" />
+      <span v-if="review.history.length > 1" class="caption num">{{ review.history.join(' → ') }}</span>
+      <button class="btn btn-plain small" @click="reviewOpen = true">
+        <ClipboardCheck :size="14" />
+        Xem kết quả chấm
+      </button>
+    </div>
 
     <div v-if="featured" class="feature card">
       <AssetViewer :key="featured.blob.hash" :view="featured" :compact="inline" />
@@ -113,6 +139,7 @@ onKeyStroke(true, (e) => {
     </footer>
 
     <Lightbox :blob="lightbox" :siblings="candidates" @close="lightbox = null" />
+    <ReviewDialog :review="review" :open="reviewOpen" :old-spec="oldSpec" @close="reviewOpen = false" />
   </div>
 </template>
 
@@ -146,6 +173,18 @@ onKeyStroke(true, (e) => {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+.score-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.score-row.pad {
+  padding: 0 24px;
+}
+.small {
+  font-size: var(--fs-caption);
 }
 .feature {
   flex: 1 1 auto;

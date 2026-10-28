@@ -191,7 +191,7 @@ export interface ResourceHealth {
   }
 }
 
-export type RecipeInputType = 'preset' | 'text' | 'int' | 'float' | 'bool' | 'image' | 'images' | 'mesh' | 'enum' | 'select' | string
+export type RecipeInputType = 'preset' | 'text' | 'int' | 'float' | 'bool' | 'image' | 'images' | 'mesh' | 'file' | 'video' | 'enum' | 'select' | string
 
 export interface RecipeInputSpec {
   type: RecipeInputType
@@ -204,6 +204,10 @@ export interface RecipeInputSpec {
   help?: string
   required?: boolean
   multiline?: boolean
+  /** `file` inputs: allowed extensions without the dot. */
+  ext?: string[]
+  /** `file` inputs: 'atlas_pages' = a Spine atlas plus the page images it names, uploaded as one list. */
+  siblings?: string
 }
 
 export interface RecipeStepInfo {
@@ -416,7 +420,7 @@ export interface ProjectPatchBody {
   archived?: boolean
 }
 
-export type ToolKey = 'comfy_dir' | 'comfy_python' | 'comfy_models_dir' | 'comfy_workflows_dir' | 'blender_exe' | 'codex_exe' | 'claude_exe'
+export type ToolKey = 'comfy_dir' | 'comfy_python' | 'comfy_models_dir' | 'comfy_workflows_dir' | 'blender_exe' | 'codex_exe' | 'claude_exe' | 'ffmpeg_exe'
 
 export interface ToolPath {
   key: ToolKey

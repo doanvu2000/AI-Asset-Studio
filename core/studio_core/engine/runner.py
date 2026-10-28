@@ -264,9 +264,13 @@ class StudioEngine:
         for name, spec in recipe.inputs.items():
             if spec["type"] in BLOB_TYPES and values.get(name) is not None:
                 hashes = values[name] if isinstance(values[name], list) else [values[name]]
-                for h in hashes:
-                    if await self.blobs.get(h) is None:
+                for i, h in enumerate(hashes):
+                    ref = await self.blobs.get(h)
+                    if ref is None:
                         raise RecipeError(f"input '{name}': unknown blob {h}")
+                    exts = spec.get("ext") if i == 0 else None
+                    if exts and ref.name and Path(ref.name).suffix.lower().lstrip(".") not in exts:
+                        raise RecipeError(f"input '{name}': expected .{'/.'.join(exts)}, got {ref.name}")
         return values
 
     async def start_run(self, recipe_id: str, inputs: dict[str, Any], params: dict[str, Any] | None = None,

@@ -8,6 +8,7 @@ from .fx import FX_OPS
 from .pixel import PIXEL_OPS
 from .presets import PresetStore
 from .rig import RIG_OPS
+from .spine_ref import SPINE_REF_OPS, VideoFrames
 from .tile import TILE_OPS
 
 
@@ -19,6 +20,9 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(rig_cls())
     for fx_cls in FX_OPS:
         registry.register(fx_cls())
+    for spine_cls in SPINE_REF_OPS:
+        registry.register(spine_cls())
+    registry.register(VideoFrames(settings))
     for tile_cls in TILE_OPS:
         registry.register(tile_cls())
     return []

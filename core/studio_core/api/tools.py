@@ -29,6 +29,7 @@ class ToolSpec:
     kind: str
     marker: str | None = None
     probe_version: bool = False
+    version_flag: str = "--version"
 
 
 TOOLS: dict[str, ToolSpec] = {
@@ -39,6 +40,7 @@ TOOLS: dict[str, ToolSpec] = {
     "blender_exe": ToolSpec("Blender", "file", probe_version=True),
     "codex_exe": ToolSpec("Codex CLI", "file", probe_version=True),
     "claude_exe": ToolSpec("Claude Code (claude.exe)", "file", probe_version=True),
+    "ffmpeg_exe": ToolSpec("FFmpeg (đọc video tham chiếu)", "file", probe_version=True, version_flag="-version"),
 }
 assert tuple(TOOLS) == TOOL_KEYS
 
@@ -47,10 +49,10 @@ class ToolsUpdate(BaseModel):
     paths: dict[str, str]
 
 
-def exe_version(path: Path) -> str | None:
+def exe_version(path: Path, flag: str = "--version") -> str | None:
     flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     try:
-        r = subprocess.run([str(path), "--version"], capture_output=True, timeout=VERSION_TIMEOUT_S, check=False,
+        r = subprocess.run([str(path), flag], capture_output=True, timeout=VERSION_TIMEOUT_S, check=False,
                            stdin=subprocess.DEVNULL, creationflags=flags)
     except (OSError, subprocess.SubprocessError):
         return None
@@ -81,7 +83,7 @@ def inspect_tool(key: str, path: Path, versions: bool = True) -> dict[str, Any]:
     elif key == "comfy_models_dir":
         out["detail"] = f"{sum(1 for p in path.iterdir() if p.is_dir())} thư mục con"
     if spec.probe_version and versions:
-        out["version"] = exe_version(path)
+        out["version"] = exe_version(path, spec.version_flag)
         if out["version"] is None:
             out["ok"] = False
             out["detail"] = "Không chạy được --version"

@@ -15,6 +15,8 @@ const TYPES: SelectOption[] = [
   { value: 'enum', label: 'Lựa chọn' },
   { value: 'image', label: 'Ảnh' },
   { value: 'mesh', label: 'Mesh' },
+  { value: 'file', label: 'Tệp' },
+  { value: 'video', label: 'Video' },
   { value: 'preset', label: 'Preset xuất' }
 ]
 const BOOL_DEFAULTS: SelectOption[] = [
@@ -140,7 +142,7 @@ function setMeta(field: 'id' | 'name' | 'description', v: string): void {
               @update:model-value="patch(name, { default: parseDefault(spec, $event) })"
             />
             <input
-              v-else-if="spec.type !== 'image' && spec.type !== 'mesh'"
+              v-else-if="!['image', 'mesh', 'file', 'video'].includes(String(spec.type))"
               class="field"
               placeholder="Mặc định"
               :value="spec.default === undefined ? '' : String(spec.default)"
@@ -159,7 +161,7 @@ function setMeta(field: 'id' | 'name' | 'description', v: string): void {
         <input v-model="newName" class="field mono" placeholder="tên đầu vào mới" />
         <button type="submit" class="btn"><Plus /> Thêm đầu vào</button>
       </form>
-      <p class="caption">Ảnh / mesh nối bằng dây từ khối “Đầu vào quy trình”. Chữ / số dùng trong tham số qua nút liên kết (<span class="mono">${inputs.ten}</span>).</p>
+      <p class="caption">Ảnh / mesh / tệp / video nối bằng dây từ khối “Đầu vào quy trình”. Chữ / số dùng trong tham số qua nút liên kết (<span class="mono">${inputs.ten}</span>).</p>
     </section>
 
     <section class="grp">

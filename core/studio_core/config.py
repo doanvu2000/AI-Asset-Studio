@@ -9,13 +9,22 @@ from studio_core.paths import default_data_dir, package_dir, recipes_dir
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL_KEYS = ("comfy_dir", "comfy_python", "comfy_models_dir", "comfy_workflows_dir", "blender_exe", "codex_exe",
-             "claude_exe")
+             "claude_exe", "ffmpeg_exe")
 
 
 def _default_codex_exe() -> str:
     appdata = os.environ.get("APPDATA", "")
     return str(Path(appdata) / "npm/node_modules/@openai/codex/node_modules/@openai/codex-win32-x64/vendor"
                / "x86_64-pc-windows-msvc/bin/codex.exe")
+
+
+def _default_ffmpeg_exe() -> str:
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    winget = Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft/WinGet/Packages"
+    hits = sorted(winget.glob("Gyan.FFmpeg*/ffmpeg-*/bin/ffmpeg.exe")) if winget.is_dir() else []
+    return str(hits[-1]) if hits else "ffmpeg.exe"
 
 
 def _default_claude_exe() -> str:
@@ -44,6 +53,7 @@ class Settings(BaseModel):
     codex_exe: Path = Field(default_factory=lambda: Path(_default_codex_exe()))
     codex_home: Path = Path.home() / ".codex"
     claude_exe: Path = Field(default_factory=lambda: Path(_default_claude_exe()))
+    ffmpeg_exe: Path = Field(default_factory=lambda: Path(_default_ffmpeg_exe()))
 
     lane_limits: dict[str, int] = {"gpu": 1, "blender": 1, "cloud": 3, "cpu": 4}
     allowed_origins: list[str] = ["app://studio", "http://localhost:5173", "http://127.0.0.1:5173"]

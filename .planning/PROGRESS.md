@@ -611,3 +611,24 @@ Live run (data dir trong scratchpad session `5661b5e9…`):
   model thật, ComfyUI boot) bị auto-mode chặn vì chạy code tải ngoài → chờ chủ nhân cho phép / tự bấm trong app.
   Rác thử nghiệm: `L:\AI\setup-test` (xoá được).
 - [x] 00:3x v1.0.0: bump version (app/core), build bộ cài + zip portable (smoke test zip OK: core kết nối, data trong thư mục portable), README thêm mục Tải về.
+
+## Phiên 2026-10-28 10:xx — Thêm anim cho skeleton Spine có sẵn (yêu cầu session spine-test, R1–R5)
+
+Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\spine-test\asset-studio\REQUEST-spine-anim-import.md`.
+- [x] R1 input `file` (`ext`, `siblings: atlas_pages` → atlas + trang png thành 1 list blob) và `video`; mime mp4/webm;
+  MCP tự gom trang png theo atlas (`spine_atlas.py`), kiểm đuôi file; runner kiểm `ext` theo tên blob.
+- [x] Runtime Python `ops/spine_runtime.py` (bone timeline bezier, IK 2 bone, skin ghép, region/mesh, atlas xoay/offsets,
+  PMA). Đối chiếu spine-core 4.2.43: lệch đỉnh ≤ 0.02 (setup/idle); chưa hỗ trợ deform/attachment timeline.
+- [x] Op `op.video_frames` (ffmpeg, setting `ffmpeg_exe`), `op.spine_rig_summary`, `op.spine_add_anim` (port gen_sway,
+  chèn anim vào text JSON giữ nguyên byte phần còn lại, kiểm bone + frame đầu/cuối = setup), `op.spine_render_strip`.
+- [x] `claude.spine_review_loop` (render → Opus chấm/sửa spec, đưa critique vòng trước vào prompt, giữ vòng điểm cao nhất,
+  dừng ở `accept_score`); Codex second opinion chưa làm (log cảnh báo).
+- [x] Recipe `spine-anim-ref`; `claude.task` nhận `schema: motion_spec|motion_review`, meta có `score/critique`.
+- [x] R5: MCP `pending_gates[].review` (score, critique, score_history), `steps[].score`; app `ScoreBadge`,
+  `ReviewDialog` (critique Markdown, strip vòng ↔ sheet tham chiếu, diff spec, tải JSON, chọn vòng), badge ở gate + run row.
+  App: `BlobDropZone` nhận file/video/atlas+trang (chọn cùng lúc), video xem trước.
+- [x] Test `tests/test_spine_anim_ref.py` (14). pytest 450 pass / 4 skip; typecheck sạch.
+- [x] R4 thật qua lớp MCP (StudioTools + core dev, scratchpad `608ff0e6…/scratchpad/r4/`): điểm 4 → 6.5 → 7.2 (3 vòng,
+  chưa tới 8); spine-core load OK, t=0 và t=3.6 lệch setup 0; bỏ entry `sway` thì file == gốc từng byte.
+- Giới hạn: auto-crop video không cắt được khi nền là UI game rối; badge chưa có ở danh sách version; chưa build Portable.
+- Chưa commit.

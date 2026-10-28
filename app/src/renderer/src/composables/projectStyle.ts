@@ -50,7 +50,7 @@ function accepts(spec: RecipeInputSpec, v: unknown): boolean {
     return (spec.min === undefined || n >= spec.min) && (spec.max === undefined || n <= spec.max)
   }
   if (spec.type === 'bool') return typeof v === 'boolean'
-  if (spec.type === 'image' || spec.type === 'mesh') return typeof v === 'string'
+  if (spec.type === 'image' || spec.type === 'mesh' || spec.type === 'file' || spec.type === 'video') return typeof v === 'string'
   return true
 }
 

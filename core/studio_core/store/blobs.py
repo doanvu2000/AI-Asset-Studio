@@ -18,7 +18,8 @@ _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 _CHUNK = 1 << 20
 GLB_MIME = "model/gltf-binary"
 
-_EXT_MIME = {".glb": GLB_MIME, ".gltf": "model/gltf+json", ".webp": "image/webp", ".json": "application/json"}
+_EXT_MIME = {".glb": GLB_MIME, ".gltf": "model/gltf+json", ".webp": "image/webp", ".json": "application/json",
+             ".atlas": "text/plain", ".mp4": "video/mp4", ".webm": "video/webm"}
 
 
 def sniff_mime(head: bytes, name: str | None = None) -> str:
@@ -32,6 +33,10 @@ def sniff_mime(head: bytes, name: str | None = None) -> str:
         return "image/gif"
     if head.startswith(b"glTF"):
         return GLB_MIME
+    if head[4:8] == b"ftyp":
+        return "video/quicktime" if head[8:10] == b"qt" else "video/mp4"
+    if head.startswith(bytes.fromhex("1a45dfa3")):
+        return "video/webm"
     if name:
         ext = Path(name).suffix.lower()
         if ext in _EXT_MIME:

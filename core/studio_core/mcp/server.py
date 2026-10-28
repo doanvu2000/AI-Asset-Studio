@@ -19,22 +19,25 @@ from mcp_types import CallToolResult, ImageContent, TextContent, ToolAnnotations
 
 from studio_core.config import load_settings
 from studio_core.mcp.link import CoreError, CoreLink
+from studio_core.spine_atlas import atlas_page_files
 
 log = logging.getLogger(__name__)
 
 GatePolicy = Literal["human", "agent", "auto_first"]
 META_KEY = "$meta"
 TERMINAL = {"succeeded", "failed", "cancelled", "interrupted"}
-BLOB_TYPES = {"image", "mesh"}
+BLOB_TYPES = {"image", "mesh", "file", "video"}
 _HASH = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_ID = re.compile(r"^[\w-]{1,80}$")
 _EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif",
-        "model/gltf-binary": ".glb", "model/gltf+json": ".gltf", "application/json": ".json"}
+        "model/gltf-binary": ".glb", "model/gltf+json": ".gltf", "application/json": ".json",
+        "video/mp4": ".mp4", "video/webm": ".webm"}
 INLINE_IMAGE_MAX = 6
 INLINE_JSON_MAX = 64 * 1024
 
 INSTRUCTIONS = """AI Asset Studio: game-asset pipelines (recipes) running on this machine.
-Typical flow: list_recipes -> describe_recipe -> start_run (image/mesh inputs = absolute local file paths)
+Typical flow: list_recipes -> describe_recipe -> start_run (image/mesh/file/video inputs = absolute local file
+paths; an atlas file input uploads its page images too)
 -> wait_run -> if status is awaiting_human, look at the gate candidates and call resolve_gate (only when
 gate_policy is 'agent' or the user asked you to choose) -> wait_run again -> get_outputs (returns absolute
 paths of exported copies). Runs started here also appear in the desktop app. GPU recipes can take minutes;
@@ -44,6 +47,23 @@ wait_run returns on timeout so call it again."""
 def _ext(blob: dict[str, Any]) -> str:
     name = blob.get("name") or ""
     return _EXT.get(blob.get("mime", "")) or Path(name).suffix or mimetypes.guess_extension(blob.get("mime", "")) or ".bin"
+
+
+def _with_siblings(name: str, spec: dict[str, Any], value: Any) -> Any:
+    """Check a `file` input's extension; an atlas input also brings its page images (atlas first, pages in order)."""
+    if spec.get("type") != "file" or not isinstance(value, str) or not Path(value).is_absolute():
+        return value
+    p = Path(value)
+    exts = spec.get("ext") or []
+    if exts and p.suffix.lower().lstrip(".") not in exts:
+        raise ToolError(f"input '{name}': expected a .{'/.'.join(exts)} file, got {p.name}")
+    if spec.get("siblings") != "atlas_pages":
+        return value
+    try:
+        pages = atlas_page_files(p)
+    except (OSError, FileNotFoundError) as e:
+        raise ToolError(f"input '{name}': {e}") from e
+    return [str(p), *(str(f) for f in pages)]
 
 
 def _safe_id(value: str, what: str) -> str:
@@ -83,7 +103,23 @@ def _step_view(s: dict[str, Any]) -> dict[str, Any]:
         v["error"] = {k: s["error"].get(k) for k in ("code", "message") if s["error"].get(k)}
     if s.get("started_at") and s.get("ended_at"):
         v["seconds"] = round(s["ended_at"] - s["started_at"], 1)
+    if isinstance((s.get("meta") or {}).get("score"), (int, float)):
+        v["score"] = s["meta"]["score"]
     return v
+
+
+def _review(steps: list[dict[str, Any]], gate: dict[str, Any]) -> dict[str, Any] | None:
+    """Score + critique of the latest scored step before a gate (claude.task / review loop with a `score`)."""
+    found = None
+    for s in steps:
+        if s["id"] == gate["id"]:
+            break
+        m = s.get("meta") or {}
+        if isinstance(m.get("score"), (int, float)) and not isinstance(m.get("score"), bool):
+            found = {"step": s["key"], "score": m["score"], "critique": m.get("critique", "")}
+            if m.get("score_history"):
+                found["score_history"] = m["score_history"]
+    return found
 
 
 def _progress(steps: list[dict[str, Any]]) -> tuple[float, str]:
@@ -181,7 +217,7 @@ class StudioTools:
         values = dict(inputs)
         for name, spec in specs.items():
             if spec.get("type") in BLOB_TYPES and values.get(name) not in (None, ""):
-                values[name] = await self._blob_input(name, values[name])
+                values[name] = await self._blob_input(name, _with_siblings(name, spec, values[name]))
         body = {"recipe_id": recipe, "inputs": values, "title": title or "",
                 "params": {META_KEY: {"source": "mcp", "gate_policy": gate_policy}}}
         if project_id:
@@ -233,6 +269,8 @@ class StudioTools:
                 continue
             g = {"step_id": s["id"], "key": s["key"], "kind": "approve" if s["kind"] == "gate.approve" else "pick",
                  "k": _gate_k(s)}
+            if review := _review(steps, s):
+                g["review"] = review
             if with_gate_files:
                 g["candidates"] = await self._gate_files(run_id, s)
             gates.append(g)
@@ -464,7 +502,7 @@ def build_server(link: CoreLink) -> MCPServer:
     @mcp.tool(annotations=read_only)
     async def describe_recipe(recipe_id: str) -> dict[str, Any]:
         """Full input spec of one recipe: type, default, min/max, options, required. Inputs of type
-        image/mesh must be given to start_run as absolute local file paths. Also lists steps and gates."""
+        image/mesh/file/video must be given to start_run as absolute local file paths. Also lists steps and gates."""
         return await tools.describe_recipe(recipe_id)
 
     @mcp.tool(annotations=acts)
@@ -472,7 +510,8 @@ def build_server(link: CoreLink) -> MCPServer:
                         gate_policy: GatePolicy = "human", project_id: str | None = None) -> dict[str, Any]:
         """Start a recipe run and return its run_id immediately (use wait_run to follow it).
 
-        inputs: {input_name: value}; image/mesh inputs take absolute file paths (uploaded for you).
+        inputs: {input_name: value}; image/mesh/file/video inputs take absolute file paths (uploaded for
+        you; an atlas input brings its page images).
         gate_policy: 'human' (default) = the user picks/approves in the desktop app;
         'agent' = you look at candidates (get_run/wait_run) and call resolve_gate;
         'auto_first' = wait_run auto-picks the first candidate(s) and approves every approve gate.

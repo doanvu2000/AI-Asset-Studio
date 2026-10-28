@@ -132,7 +132,7 @@ async def test_tools_api_get(client: tuple[Settings, httpx.AsyncClient]) -> None
     body = r.json()
     tools = {t["key"]: t for t in body["tools"]}
     assert list(tools) == ["comfy_dir", "comfy_python", "comfy_models_dir", "comfy_workflows_dir", "blender_exe",
-                           "codex_exe", "claude_exe"]
+                           "codex_exe", "claude_exe", "ffmpeg_exe"]
     assert tools["comfy_dir"]["ok"] and tools["comfy_dir"]["version"] == "ComfyUI 0.41.0"
     assert tools["comfy_python"]["ok"] and tools["comfy_python"]["version"].startswith("Python 3.")
     assert not tools["comfy_models_dir"]["exists"]

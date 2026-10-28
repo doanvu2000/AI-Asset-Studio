@@ -13,6 +13,7 @@ from studio_core.contracts import BlobRef
 _MIME_EXT = {
     "image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/gif": ".gif",
     "model/gltf-binary": ".glb", "model/gltf+json": ".gltf", "application/json": ".json",
+    "video/mp4": ".mp4", "video/webm": ".webm",
 }
 _BAD_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 _WIN_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}

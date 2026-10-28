@@ -71,8 +71,32 @@ def build_options(params: dict[str, Any], cwd: str, *, mcp_servers: dict[str, An
     if params.get("system"):
         opts["system_prompt"] = str(params["system"])
     if params.get("schema"):
-        opts["output_format"] = {"type": "json_schema", "schema": params["schema"]}
+        opts["output_format"] = {"type": "json_schema", "schema": named_schema(params["schema"])}
     return ClaudeAgentOptions(**opts)
+
+
+def named_schema(schema: Any) -> Any:
+    """Recipes may name a built-in schema (`schema: motion_spec`) instead of spelling it out."""
+    if not isinstance(schema, str):
+        return schema
+    from ..ops import spine_anim
+
+    named = {"motion_spec": spine_anim.MOTION_SPEC_SCHEMA, "motion_review": spine_anim.REVIEW_SCHEMA}
+    if schema not in named:
+        raise StepError("claude_bad_params", f"unknown schema name {schema!r}; known: {sorted(named)}")
+    return named[schema]
+
+
+def score_meta(payload: Any) -> dict[str, Any]:
+    """A structured reply with a numeric `score` (and `critique`) is surfaced in step meta for gates and run lists."""
+    if not isinstance(payload, dict) or isinstance(payload.get("score"), bool):
+        return {}
+    if not isinstance(payload.get("score"), (int, float)):
+        return {}
+    out: dict[str, Any] = {"score": float(payload["score"])}
+    if isinstance(payload.get("critique"), str):
+        out["critique"] = payload["critique"]
+    return out
 
 
 @dataclass
@@ -223,7 +247,7 @@ class ClaudeTaskExecutor:
             outputs["text"] = [await ctx.blobs.put_bytes(reply.text.encode("utf-8"), name="result.txt",
                                                          mime="text/plain")]
         ctx.progress(1, 1, "claude")
-        return StepResult(outputs=outputs, meta=reply.meta)
+        return StepResult(outputs=outputs, meta={**reply.meta, **score_meta(reply.structured)})
 
 
 BRIEF_SCHEMA: dict[str, Any] = {

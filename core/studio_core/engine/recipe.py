@@ -16,7 +16,9 @@ from ..contracts import ExecutorRegistry, RecipeInfo
 
 log = logging.getLogger(__name__)
 
-BLOB_TYPES = {"image", "mesh"}
+# `file` carries an `ext` filter and optionally `siblings: atlas_pages` (atlas + its page images as one blob list).
+BLOB_TYPES = {"image", "mesh", "file", "video"}
+VIDEO_EXT = ("mp4", "webm", "gif", "mov", "mkv")
 # `preset` is text naming an export preset; the app offers the saved presets as choices.
 INPUT_TYPES = {"text", "int", "float", "bool", "enum", "preset"} | BLOB_TYPES
 _PLACEHOLDER = re.compile(r"\$\{inputs\.([A-Za-z_][\w-]*)\s*(?:\|\s*([A-Za-z_]\w*)\s*)?\}")
@@ -172,7 +174,7 @@ def coerce_value(name: str, spec: dict[str, Any], v: Any) -> Any:
                     v = bool(v)
                 else:
                     raise TypeError
-            case "image" | "mesh":
+            case "image" | "mesh" | "file" | "video":
                 if isinstance(v, dict) and "hash" in v:
                     v = v["hash"]
                 if isinstance(v, list):
@@ -389,6 +391,11 @@ def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
             raise RecipeError(f"{where}: input '{name}' has unknown type {spec['type']!r}")
         if spec["type"] == "enum" and not spec.get("options"):
             raise RecipeError(f"{where}: enum input '{name}' needs options")
+        if "ext" in spec:
+            ext = spec["ext"] if isinstance(spec["ext"], list) else [spec["ext"]]
+            if spec["type"] != "file" or not all(isinstance(e, str) and e for e in ext):
+                raise RecipeError(f"{where}: input '{name}': ext needs a file input and a list of extensions")
+            spec["ext"] = [e.lower().lstrip(".") for e in ext]
         if "default" in spec and spec["default"] is not None:
             spec["default"] = coerce_value(name, spec, spec["default"])
         inputs[str(name)] = spec
@@ -461,7 +468,7 @@ def _check_step_links(where: str, s: StepSpec, inputs: dict[str, dict[str, Any]]
     for name, b in ((n, p) for n, bb in s.bindings.items() for p in bb.parts):
         if b.source == "inputs":
             if b.name not in inputs or inputs[b.name]["type"] not in BLOB_TYPES:
-                raise RecipeError(f"{where}: step {s.id} in.{name} must bind an image/mesh input, got {b}")
+                raise RecipeError(f"{where}: step {s.id} in.{name} must bind a blob input (image/mesh/file/video), got {b}")
         elif b.source not in seen:
             raise RecipeError(f"{where}: step {s.id} in.{name} references unknown step {b.source!r}")
     for r in s.refs:

@@ -12,6 +12,8 @@ import RunStatusBadge from './RunStatusBadge.vue'
 import ElapsedTimer from './ElapsedTimer.vue'
 import RelTime from './RelTime.vue'
 import BlobImage from './BlobImage.vue'
+import ScoreBadge from './ScoreBadge.vue'
+import { latestReview } from '@/composables/review'
 
 const props = defineProps<{ run: RunRow; steps?: StepRow[] }>()
 const recipes = useRecipes()
@@ -26,6 +28,7 @@ const live = computed(() => (props.run.status === 'running' ? runs.livePreview(p
 const hash = computed(() => runs.previewHash(props.run.id))
 const art = computed(() => recipeArt(props.run.recipe_id))
 const thumb = useTemplateRef<HTMLElement>('thumb')
+const review = computed(() => (props.steps ? latestReview(props.steps) : null))
 </script>
 
 <template>
@@ -39,6 +42,7 @@ const thumb = useTemplateRef<HTMLElement>('thumb')
       <div class="l1">
         <span class="title-text">{{ run.title || recipeName }}</span>
         <RunStatusBadge :status="run.status" />
+        <ScoreBadge v-if="review" :score="review.score" :history="review.history" />
       </div>
       <div class="l2 caption">
         <span class="recipe">{{ recipeName }}</span>

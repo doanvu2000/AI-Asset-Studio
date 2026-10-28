@@ -131,7 +131,8 @@ const title = ref('')
 const submitting = ref(false)
 const formEl = ref<HTMLFormElement | null>(null)
 
-const isBlob = (t: string): t is 'image' | 'images' | 'mesh' => t === 'image' || t === 'images' || t === 'mesh'
+const isBlob = (t: string): t is 'image' | 'images' | 'mesh' | 'file' | 'video' =>
+  t === 'image' || t === 'images' || t === 'mesh' || t === 'file' || t === 'video'
 const isNum = (t: string): boolean => t === 'int' || t === 'float'
 
 const textInputs = computed(() => Object.entries(selected.value?.inputs ?? {}).filter(([, s]) => s.type === 'text').map(([n]) => n))
@@ -295,7 +296,7 @@ function collectInputs(): Record<string, unknown> {
     if (project.value && fillByKey.value.has(name) && (!touched.has(name) || emptyFallsBack(name))) continue
     if (isBlob(spec.type)) {
       const refs = blobs[name] ?? []
-      if (refs.length) inputs[name] = spec.type === 'images' ? refs.map((b) => b.hash) : refs[0]!.hash
+      if (refs.length) inputs[name] = spec.type === 'images' || spec.siblings ? refs.map((b) => b.hash) : refs[0]!.hash
     } else if (isNum(spec.type)) inputs[name] = Number(values[name])
     else inputs[name] = values[name]
   }
@@ -672,7 +673,9 @@ ${r.description}`" @click="pick(r.id)">
                 v-else-if="isBlob(spec.type)"
                 :id="`in-${name}`"
                 v-model="blobs[name]"
-                :kind="spec.type as 'image' | 'images' | 'mesh'"
+                :kind="spec.type as 'image' | 'images' | 'mesh' | 'file' | 'video'"
+                :ext="spec.ext"
+                :siblings="spec.siblings"
                 :label="label(name, spec)"
                 :invalid="!!errors[name]"
                 @update:model-value="(errors[name] = null), touched.add(name)"

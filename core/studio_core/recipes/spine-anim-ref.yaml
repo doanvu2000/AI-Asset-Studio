@@ -1,0 +1,74 @@
+id: spine-anim-ref
+name: Thêm anim Spine từ video tham chiếu
+description: >-
+  Skeleton Spine 4.2 có sẵn + atlas + video tham chiếu + mô tả → trích frame → Claude viết motion spec →
+  thêm anim vào skeleton (giữ nguyên mọi thứ khác) → render strip → Claude chấm so với video và sửa spec, lặp tới
+  khi đạt điểm → duyệt. Không dùng GPU.
+inputs:
+  skeleton: {type: file, ext: [json], label: Skeleton JSON gốc}
+  atlas: {type: file, ext: [atlas, txt], siblings: atlas_pages, label: "Atlas (các trang png cùng thư mục tự đi kèm)"}
+  video: {type: video, label: Video tham chiếu}
+  anim_id: {type: text, default: sway, label: Tên anim}
+  brief: {type: text, multiline: true, label: Mô tả + trigger, placeholder: "Nhấc một tay, lắc hông nhẹ, chớp mắt..."}
+  ref_window: {type: text, default: auto, label: "Đoạn video (vd 1.6-5.6 hoặc auto)"}
+  skin_parts: {type: text, default: "skincolor_0,eyes_0,lip_0,hair_0,top_0,bottom_0,shoes_0", label: Skin ghép để render}
+  rounds: {type: int, default: 3, min: 1, max: 6, label: Số vòng chấm tối đa}
+  accept_score: {type: float, default: 8, min: 0, max: 10, label: Điểm chấp nhận}
+steps:
+  - id: frames
+    kind: op.video_frames
+    in: {video: inputs.video}
+    params: {fps: 4, window: "${inputs.ref_window}", tile: "8x2", crop: auto}
+  - id: rig
+    kind: op.spine_rig_summary
+    in: {skeleton: inputs.skeleton}
+  - id: spec
+    kind: claude.task
+    in: {images: frames.sheets}
+    params:
+      model: opus
+      max_turns: 2
+      _auto_retry: 1
+      schema: motion_spec
+      system: >-
+        You are a senior Spine 2D animator. You write a procedural motion spec that a generator turns into Spine
+        keyframes. Spine is y-up, positive rotation = CCW; rotate/translate keys are offsets from setup pose, scale
+        keys are absolute.
+      prompt: |
+        The images are frames of a reference video (contact sheets, row-major tiles labelled "#index time").
+        Tiles were sampled at ${steps.frames.meta.fps} fps starting at video time ${steps.frames.meta.t0}s.
+        Brief: ${inputs.brief}
+        Animation name: ${inputs.anim_id}
+        Rig:
+        ${steps.rig.summary}
+        Spec semantics: sway_signal = normalized driver keys [time, -1..1]; hip translate x = hip.shift_x*s,
+        y = -hip.dip_y*|s|; hip rotate = hip.tilt*s; spine/chest/neck/head follow s with upper_body gains and lag;
+        arm_keys = {bone: [[time, rotate offset], ...]} for any bone (use the arm/forearm/hand bones from the rig);
+        secondary = chains from the rig's "Chains" line: rotate = gain*(1+falloff*i)*s delayed lag*(i+1);
+        blinks = times of eye close (eye scaleX -> blink_closed_scale, see the rig's blink line).
+        Every key list starts at time 0 with value 0 and ends at or before duration-0.3 with value 0, so the clip
+        starts and ends at setup pose. Time 0 of the clip is where the motion starts in the video.
+        Mind screen direction: the character faces the viewer, so its left side (_L bones) is on the image right
+        unless the rig angles say otherwise. Write the full spec.
+  - id: review
+    kind: claude.spine_review_loop
+    in: {skeleton: inputs.skeleton, atlas: inputs.atlas, ref: frames.sheets, spec: spec.json, rig: rig.summary,
+         ref_meta: frames.meta}
+    params:
+      name: "${inputs.anim_id}"
+      brief: "${inputs.brief}"
+      rounds: "${inputs.rounds}"
+      accept_score: "${inputs.accept_score}"
+      skin: "${inputs.skin_parts}"
+      model: opus
+      _timeout_s: 600
+  - id: approve
+    kind: gate.approve
+    in: {skeleton: review.skeleton, strip: review.strip, ref: frames.sheets, review: review.review,
+         spec: review.spec}
+outputs:
+  skeleton: approve.skeleton
+  strip: approve.strip
+  spec: approve.spec
+  review: approve.review
+  anim: review.anim

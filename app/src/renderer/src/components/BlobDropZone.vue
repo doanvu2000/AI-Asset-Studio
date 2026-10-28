@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { FileBox, ImagePlus, LoaderCircle, X } from '@lucide/vue'
+import { FileBox, FileText, Film, ImagePlus, LoaderCircle, X } from '@lucide/vue'
 import type { BlobRef } from '@/api/types'
-import { api } from '@/stores/connection'
+import { api, blobUrl } from '@/stores/connection'
 import { bytes } from '@/composables/format'
 import BlobImage from './BlobImage.vue'
 
-const props = defineProps<{ kind: 'image' | 'images' | 'mesh'; label: string; invalid?: boolean }>()
+type Kind = 'image' | 'images' | 'mesh' | 'file' | 'video'
+const props = defineProps<{ kind: Kind; label: string; invalid?: boolean; ext?: string[]; siblings?: string }>()
 const model = defineModel<BlobRef[]>({ default: () => [] })
 
 const over = ref(false)
@@ -14,26 +15,78 @@ const uploading = ref(0)
 const error = ref<string | null>(null)
 const input = ref<HTMLInputElement | null>(null)
 
-const multiple = computed(() => props.kind === 'images')
-const accept = computed(() => (props.kind === 'mesh' ? '.glb,model/gltf-binary' : 'image/png,image/jpeg,image/webp'))
+const VIDEO_EXT = ['mp4', 'webm', 'gif', 'mov', 'mkv']
+const atlasPages = computed(() => props.kind === 'file' && props.siblings === 'atlas_pages')
+const multiple = computed(() => props.kind === 'images' || atlasPages.value)
+const extOf = (name: string): string => name.toLowerCase().split('.').pop() ?? ''
+const fileExts = computed(() => (props.kind === 'video' ? VIDEO_EXT : (props.ext ?? [])))
+const accept = computed(() => {
+  if (props.kind === 'mesh') return '.glb,model/gltf-binary'
+  if (props.kind === 'file' || props.kind === 'video') {
+    const list = fileExts.value.map((e) => `.${e}`)
+    return (atlasPages.value ? [...list, '.png'] : list).join(',')
+  }
+  return 'image/png,image/jpeg,image/webp'
+})
+const kindLabel = computed(() => {
+  if (props.kind === 'mesh') return 'file .glb'
+  if (props.kind === 'video') return 'video'
+  if (props.kind === 'file') return fileExts.value.length ? `file .${fileExts.value.join(' / .')}` : 'file'
+  return 'ảnh'
+})
 
 function accepts(f: File): boolean {
   if (props.kind === 'mesh') return f.name.toLowerCase().endsWith('.glb')
+  if (props.kind === 'video') return f.type.startsWith('video/') || VIDEO_EXT.includes(extOf(f.name))
+  if (props.kind === 'file') return !fileExts.value.length || fileExts.value.includes(extOf(f.name)) || (atlasPages.value && extOf(f.name) === 'png')
   return f.type.startsWith('image/')
+}
+
+/** Page names of a Spine/libgdx atlas: the first line of the file and of every block after a blank line. */
+function pageNames(text: string): string[] {
+  const pages: string[] = []
+  let fresh = true
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim()
+    if (!line) fresh = true
+    else if (fresh) {
+      pages.push(line)
+      fresh = false
+    }
+  }
+  return pages
+}
+
+/** Atlas first, then its page images in atlas order; null + error when the atlas or a page is missing. */
+async function atlasBundle(list: File[]): Promise<File[] | null> {
+  const atlas = list.find((f) => extOf(f.name) !== 'png')
+  if (!atlas) {
+    error.value = `Cần file atlas (.${fileExts.value.join(' / .')}) kèm các trang png`
+    return null
+  }
+  const byName = new Map(list.map((f) => [f.name.toLowerCase(), f]))
+  const pages = pageNames(await atlas.text())
+  const missing = pages.filter((p) => !byName.has(p.toLowerCase()))
+  if (missing.length) {
+    error.value = `Thiếu ${missing.length} trang ảnh của atlas: ${missing.slice(0, 3).join(', ')}${missing.length > 3 ? '…' : ''}. Chọn cùng lúc atlas và mọi trang png.`
+    return null
+  }
+  return [atlas, ...pages.map((p) => byName.get(p.toLowerCase())!)]
 }
 
 async function take(files: FileList | File[] | null): Promise<void> {
   error.value = null
   const list = [...(files ?? [])].filter(accepts)
   if (!list.length) {
-    error.value = props.kind === 'mesh' ? 'Chỉ nhận file .glb' : 'Chỉ nhận ảnh PNG, JPEG hoặc WebP'
+    error.value = props.kind === 'image' || props.kind === 'images' ? 'Chỉ nhận ảnh PNG, JPEG hoặc WebP' : `Chỉ nhận ${kindLabel.value}`
     return
   }
-  const chosen = multiple.value ? list : list.slice(0, 1)
+  const chosen = atlasPages.value ? await atlasBundle(list) : multiple.value ? list : list.slice(0, 1)
+  if (!chosen) return
   uploading.value += chosen.length
   try {
     const refs = await Promise.all(chosen.map((f) => api().uploadBlob(f).finally(() => (uploading.value -= 1))))
-    model.value = multiple.value ? [...model.value, ...refs] : refs
+    model.value = props.kind === 'images' ? [...model.value, ...refs] : refs
   } catch (e) {
     error.value = `Tải lên thất bại: ${(e as Error).message}`
   }
@@ -47,13 +100,15 @@ function onDrop(e: DragEvent): void {
 function remove(hash: string): void {
   model.value = model.value.filter((b) => b.hash !== hash)
 }
+
+const totalSize = computed(() => model.value.reduce((n, b) => n + (b.size ?? 0), 0))
 </script>
 
 <template>
   <div class="dz-wrap">
     <div
       class="dz"
-      :class="{ over, invalid, filled: model.length > 0 && !multiple }"
+      :class="{ over, invalid, filled: model.length > 0 && kind !== 'images' }"
       role="button"
       tabindex="0"
       :aria-label="`${label}: kéo thả hoặc bấm để chọn file`"
@@ -69,8 +124,16 @@ function remove(hash: string): void {
         <LoaderCircle class="spin" :size="20" />
         <span class="secondary">Đang tải lên…</span>
       </template>
-      <template v-else-if="model.length && !multiple">
-        <div v-if="kind === 'mesh'" class="mesh">
+      <template v-else-if="model.length && kind !== 'images'">
+        <video v-if="kind === 'video'" :src="blobUrl(model[0]!.hash)" class="video" controls muted playsinline @click.stop />
+        <div v-if="kind === 'video' || kind === 'file'" class="mesh">
+          <component :is="kind === 'video' ? Film : FileText" :size="22" />
+          <span>
+            <strong>{{ model[0]!.name ?? kindLabel }}</strong>
+            <span class="caption">{{ atlasPages ? `+ ${model.length - 1} trang ảnh · ` : '' }}{{ bytes(totalSize) }}</span>
+          </span>
+        </div>
+        <div v-else-if="kind === 'mesh'" class="mesh">
           <FileBox :size="22" />
           <span>
             <strong>{{ model[0]!.name ?? 'mesh.glb' }}</strong>
@@ -81,9 +144,9 @@ function remove(hash: string): void {
         <span class="caption">Bấm hoặc thả file khác để thay</span>
       </template>
       <template v-else>
-        <component :is="kind === 'mesh' ? FileBox : ImagePlus" :size="22" class="dz-ic" />
-        <span><strong>Thả {{ kind === 'mesh' ? 'file .glb' : 'ảnh' }} vào đây</strong></span>
-        <span class="caption">hoặc bấm để chọn{{ multiple ? ' (nhiều file)' : '' }}</span>
+        <component :is="kind === 'mesh' ? FileBox : kind === 'video' ? Film : kind === 'file' ? FileText : ImagePlus" :size="22" class="dz-ic" />
+        <span><strong>Thả {{ kindLabel }} vào đây</strong></span>
+        <span class="caption">{{ atlasPages ? 'chọn cùng lúc atlas và mọi trang png của nó' : `hoặc bấm để chọn${multiple ? ' (nhiều file)' : ''}` }}</span>
       </template>
       <input
         ref="input"
@@ -95,7 +158,7 @@ function remove(hash: string): void {
         @change="take(($event.target as HTMLInputElement).files)"
       />
     </div>
-    <div v-if="multiple && model.length" v-auto-animate class="thumbs">
+    <div v-if="kind === 'images' && model.length" v-auto-animate class="thumbs">
       <div v-for="b in model" :key="b.hash" class="thumb">
         <BlobImage :hash="b.hash" :size="128" />
         <button class="rm" :aria-label="`Bỏ ${b.name ?? 'ảnh'}`" @click="remove(b.hash)"><X :size="12" /></button>
@@ -141,6 +204,12 @@ function remove(hash: string): void {
   width: 120px;
   border-radius: var(--r-sm);
   box-shadow: var(--hairline);
+}
+.video {
+  width: min(100%, 320px);
+  max-height: 220px;
+  border-radius: var(--r-sm);
+  background: #000;
 }
 .mesh {
   display: flex;

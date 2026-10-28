@@ -136,7 +136,7 @@ export function buildEditorGraph(
   const inputPorts = Object.entries(doc.inputs ?? {}).map(([name, spec]) => ({
     name,
     type: String(spec.type ?? 'text'),
-    bindable: spec.type === 'image' || spec.type === 'mesh'
+    bindable: spec.type === 'image' || spec.type === 'mesh' || spec.type === 'file' || spec.type === 'video'
   }))
   const nodes: Node[] = [
     {
