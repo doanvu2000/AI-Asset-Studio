@@ -19,6 +19,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "mcp>=2.3.0",
     "ruamel-yaml>=0.18",
+    "sherpa-onnx>=2.0.1",
 ]
 
 [dependency-groups]

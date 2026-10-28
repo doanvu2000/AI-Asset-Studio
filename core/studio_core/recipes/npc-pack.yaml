@@ -1,0 +1,58 @@
+id: npc-pack
+name: Gói NPC (chân dung biểu cảm + thoại + giọng đọc)
+description: >-
+  Ảnh chân dung NPC + tên + tính cách → Klein sửa ra từng biểu cảm (vui, buồn, giận, ngạc nhiên, suy nghĩ, sợ, đắc ý)
+  giữ nguyên mặt và khung, căn về đúng khung gốc + điểm độ giống → Claude viết thoại đúng giọng nhân vật (chào, câu
+  vu vơ, giao / nhận / từ chối nhiệm vụ, tạm biệt) cho từng ngôn ngữ, mỗi câu gắn biểu cảm (có CSV thoại thì dùng CSV)
+  → TTS chạy CPU (không tranh VRAM) → cắt lặng, chuẩn hoá, OGG → npc.json + phụ đề có mốc thời gian → duyệt. Xuất
+  Unity (ScriptableObject NpcData) / Godot (Resource NpcData .tres).
+inputs:
+  image: {type: image, label: Ảnh chân dung NPC (mặt thường)}
+  name: {type: text, label: Tên NPC, placeholder: "Bà Lão Bán Trà"}
+  persona: {type: text, multiline: true, default: "", label: Tính cách / vai trò,
+            placeholder: "bà lão bán trà ở cổng làng, hiền nhưng hay càm ràm, biết nhiều chuyện cũ"}
+  languages: {type: text, default: "vi, en", label: "Ngôn ngữ (mã, phẩy: vi, en)"}
+  line_count: {type: int, default: 12, min: 6, max: 40, label: Số câu thoại mỗi ngôn ngữ}
+  expressions: {type: text, multiline: true, label: "Biểu cảm (mỗi dòng 1; chữ trước dấu phẩy = tên)",
+                default: "happy, a warm genuine smile, eyes slightly squinted\nsad, downturned mouth, sorrowful eyes, brows raised in the middle\nangry, furrowed brows, glaring eyes, clenched jaw\nsurprised, wide open eyes, raised eyebrows, mouth open in an O\nthinking, eyes looking up to the side, slight frown, pursed lips\nscared, wide fearful eyes, brows pulled up, mouth slightly open, tense\nsmug, a sly one-sided smirk, half-lidded confident eyes"}
+  lines_csv: {type: file, ext: [csv], required: false, label: "CSV thoại có sẵn (id,lang,text,expression) — bỏ qua Claude"}
+  voice_en: {type: text, default: auto, label: "Giọng tiếng Anh (auto | am_michael, bm_george, af_heart…)"}
+  speed: {type: float, default: 0, min: 0, max: 1.4, label: Tốc độ đọc (0 = theo nhân vật)}
+steps:
+  - id: prep
+    kind: op.lut_prep
+    in: {images: inputs.image}
+  - id: expr
+    kind: comfy.edit_flux2_klein4b
+    in: {image: prep.images}
+    params:
+      "75:74.text": "Change only the facial expression of this exact character to: ${inputs.expressions | lines}. Keep the same person, identity, face shape, hairstyle, clothing, colours, art style, pose, head position and size, crop, framing and background; do not move, zoom or redraw anything else."
+    map_param: "75:74.text"
+  - id: portraits
+    kind: op.npc_portraits
+    in: {images: inputs.image, edits: expr.images}
+    params: {expressions: "${inputs.expressions}"}
+  - id: dialogue
+    kind: claude.npc_dialogue
+    in: {images: inputs.image, csv: inputs.lines_csv}
+    params: {name: "${inputs.name}", persona: "${inputs.persona}", languages: "${inputs.languages}",
+             line_count: "${inputs.line_count}", expressions: "${inputs.expressions}", model: opus, _auto_retry: 1}
+  - id: tts
+    kind: tts.npc_voice
+    in: {dialogue: dialogue.json}
+    params: {voice_en: "${inputs.voice_en}", speed: "${inputs.speed}"}
+  - id: voice_post
+    kind: op.audio_post
+    in: {audio: tts.audio}
+    params: {loop: false, trim: true, fade_out: 0.03, peak_db: -3, formats: "ogg,wav", labels: "${steps.tts.json.labels}"}
+  - id: pack
+    kind: op.npc_pack
+    in: {dialogue: dialogue.json, audio: voice_post.audio, portraits: portraits.portraits}
+  - id: approve
+    kind: gate.approve
+    in: {preview: portraits.preview, images: portraits.images, card: pack.preview, audio: voice_post.audio,
+         npc: pack.npc, subtitles: pack.subtitles, lines: pack.csv}
+outputs:
+  final: approve.images
+  npc: approve.npc
+  audio: approve.audio

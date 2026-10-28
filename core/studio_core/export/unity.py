@@ -674,6 +674,18 @@ def export(src: Source) -> Files:
         l_files, l_notes = lut_files(src)
         files += l_files
         notes += l_notes
+    if src.parallax:
+        from studio_core.export.parallax import unity_files as parallax_files
+
+        px_files, px_notes = parallax_files(src)
+        files += px_files
+        notes += px_notes
+    if src.localized:
+        from studio_core.export.localize import unity_files as localized_files
+
+        lo_files, lo_notes = localized_files(src)
+        files += lo_files
+        notes += lo_notes
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

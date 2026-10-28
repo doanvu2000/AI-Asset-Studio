@@ -1,0 +1,61 @@
+id: parallax-layers
+name: Nền parallax 4–5 lớp (Z-Image)
+description: >-
+  Prompt cảnh (+ ảnh tham chiếu màu, tuỳ chọn) → Z-Image vẽ riêng bầu trời và từng lớp xa → gần trên nền trắng phẳng,
+  cùng câu style → BiRefNet tách nền (hỏng thì tách theo màu nền) → lớp xa nhạt dần về màu trời → mỗi lớp liền mạch
+  theo trục X (chồng mép phải lên mép trái, cắt theo đường ít lệch nhất) → cùng 1 cỡ, tốc độ cuộn từng lớp → xem
+  chồng lớp + bản cuộn nửa khung (mối nối nằm giữa) → duyệt. Xuất Unity (sprite Tiled + script parallax + prefab),
+  Godot 4 (Parallax2D có repeat_size, scroll_scale).
+inputs:
+  prompt: {type: text, label: Cảnh, placeholder: "misty pine forest at dawn"}
+  style: {type: text, default: "hand-painted 2D side-scroller game background art, soft painterly shading, clean shapes",
+          label: Phong cách}
+  sky: {type: text, default: "soft gradient sky with a few light clouds", label: Bầu trời}
+  layers: {type: text, multiline: true, label: "Lớp xa → gần (mỗi dòng 1; chữ trước dấu phẩy = tên lớp)",
+           default: "far, tall distant mountain range silhouettes reaching the middle of the image\nmid, rolling hills covered with small trees filling the lower half\nnear, a row of large trees and bushes standing on a grassy slope filling the lower half\nfg, only short grass tufts and fern leaves in dark close-up silhouette hugging the bottom edge, filling just the lowest fifth of the image"}
+  ref: {type: image, required: false, label: Ảnh tham chiếu màu (tuỳ chọn)}
+  width: {type: int, default: 1536, options: [1024, 1536, 2048], label: Chiều rộng lớp (px)}
+  haze: {type: float, default: 0.5, min: 0, max: 1, label: Sương xa (lớp xa nhạt về màu trời)}
+  scroll: {type: text, default: auto, label: "Tốc độ cuộn (auto | số từng lớp, trời trước: 0.05 0.2 0.5 0.8 1.25)"}
+  cutout: {type: enum, default: auto, options: [auto, birefnet, key], label: "Tách nền (auto = BiRefNet, hỏng thì theo màu nền)"}
+  fg_height: {type: float, default: 0.35, min: 0, max: 1, label: "Tiền cảnh cao tối đa (tỉ lệ khung, 0 = không giới hạn)"}
+  ground_fill: {type: bool, default: true, label: Kéo đáy lớp xuống mép dưới (không hở phía dưới)}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+rules:
+  - max_lines: {layers: 4}
+  - min_items: {lines: layers, min: 3}
+    message: "Cần 3–4 lớp ngoài bầu trời (mỗi dòng 1)"
+steps:
+  - id: sky
+    kind: comfy.t2i_zimage_turbo
+    params:
+      "57:27.text": "Looking up at the open sky above ${inputs.prompt}: ${inputs.sky}. ${inputs.style}. A wide panoramic game background of sky and clouds only: the sky gradient fills the whole frame from the top edge down to the bottom edge, empty open air everywhere."
+      "57:13.width": 1536
+      "57:13.height": 640
+      "57:13.batch_size": 1
+  - id: gen
+    kind: comfy.t2i_zimage_turbo
+    params:
+      "57:27.text": "One single isolated layer of a side-scrolling 2D game parallax background for ${inputs.prompt}. The layer shows: ${inputs.layers | lines}. ${inputs.style}. Flat side view. The scenery rises from the bottom edge of the image and continues past the left, right and bottom edges of the frame. Above it the image is plain solid pure white, a flat empty white backdrop."
+      "57:13.width": 1536
+      "57:13.height": 640
+      "57:13.batch_size": 1
+    map_param: "57:27.text"
+  - id: cut
+    kind: comfy.remove_bg_birefnet
+    in: {image: gen.images}
+    map: image
+  - id: layers
+    kind: op.parallax_layers
+    in: {sky: sky.images, images: cut.images, raw: gen.images, ref: inputs.ref}
+    params: {names: "${inputs.layers}", width: "${inputs.width}", haze: "${inputs.haze}", scroll: "${inputs.scroll}",
+             cutout: "${inputs.cutout}", ground_fill: "${inputs.ground_fill}",
+             fg_height: "${inputs.fg_height}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: layers.preview, images: layers.images, parallax: layers.parallax}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  parallax: approve.parallax

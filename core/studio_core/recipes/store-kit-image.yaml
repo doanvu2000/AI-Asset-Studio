@@ -1,0 +1,58 @@
+id: store-kit-image
+name: Bộ store + icon app từ ảnh nhân vật (Flux.2 Klein + Claude)
+description: >-
+  Ảnh nhân vật / vật phẩm có sẵn + tên game → Klein vẽ lại thành icon app 1024² (2 kiểu khung để chọn) và key art
+  ngang giữ đúng nhân vật → tách nền icon → Real-ESRGAN phóng key art x4 → Claude chọn focus, font, màu, vị trí tên
+  game → CPU xuất đủ cỡ iOS / Android adaptive (vùng an toàn 66dp) / Play / Steam capsule + logo / favicon / .ico
+  → zip + bảng xem trước → duyệt.
+inputs:
+  image: {type: image, label: Ảnh nhân vật / vật phẩm (PNG nền trong suốt tốt nhất)}
+  title: {type: text, label: Tên game (chữ trên capsule), placeholder: "Ember Knight"}
+  scene: {type: text, multiline: true, label: Bối cảnh key art,
+          placeholder: "a ruined castle courtyard at dusk, embers in the air"}
+  style: {type: text, label: Phong cách, default: "vibrant stylized game art, bold shapes, strong rim light, rich colours"}
+  targets: {type: text, default: "ios,android,steam,web,windows", label: "Nền tảng (ios, android, steam, web, windows)"}
+steps:
+  - id: prep
+    kind: op.store_prep
+    in: {images: inputs.image}
+  - id: icon
+    kind: comfy.edit_flux2_klein4b
+    in: {image: prep.square}
+    params:
+      "75:74.text":
+        - "Turn this into a polished mobile game app icon: the same character with the same face, colours, outfit and art style, shown as a large head-and-shoulders close-up, centered, filling about 60% of the square, on a simple colourful background, full-bleed so the background touches all four edges (not a rounded icon tile on a backdrop), matching ${inputs.scene}. ${inputs.style}. No text, no letters, no border, no frame, no rounded corners."
+        - "Turn this into a polished mobile game app icon: the same character or object with the same colours, outfit and art style, whole and centered, filling about 60% of the square, on a simple colourful background, full-bleed so the background touches all four edges (not a rounded icon tile on a backdrop), matching ${inputs.scene}. ${inputs.style}. No text, no letters, no border, no frame, no rounded corners."
+    map_param: "75:74.text"
+  - id: pick_icon
+    kind: gate.pick
+    in: {images: icon.images}
+    params: {k: 1}
+  - id: subject
+    kind: comfy.remove_bg_birefnet
+    in: {image: pick_icon.images}
+    map: image
+  - id: art
+    kind: comfy.edit_flux2_klein4b
+    in: {image: prep.wide}
+    params:
+      "75:74.text": "Turn this into wide cinematic key art for a video game: keep exactly this character with the same face, colours, outfit and art style as the hero in the middle of the frame, and paint a full detailed environment around it: ${inputs.scene}. ${inputs.style}. Dramatic lighting, calm open sky or empty space above for a title logo. No text, no letters, no logo, no watermark, no user interface."
+  - id: upscale
+    kind: comfy.upscale_esrgan
+    in: {image: art.images}
+    map: image
+  - id: layout
+    kind: claude.store_layout
+    in: {images: art.images}
+    params: {title: "${inputs.title}", model: opus, _auto_retry: 1}
+  - id: kit
+    kind: op.store_kit
+    in: {icon: pick_icon.images, subject: subject.images, art: upscale.images, layout: layout.json}
+    params: {title: "${inputs.title}", targets: "${inputs.targets}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: kit.preview, images: kit.images, zip: kit.zip, report: kit.report}
+outputs:
+  final: approve.images
+  zip: approve.zip
+  preview: approve.preview

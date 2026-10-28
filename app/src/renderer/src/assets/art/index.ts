@@ -118,7 +118,11 @@ const RECIPE_PITCH: Record<string, string> = {
   'pbr-material': 'Texture có sẵn → bộ map PBR (normal, height, roughness, metallic, AO) + material Unity/Godot, không cần GPU',
   'item-rarity': 'Ảnh vật phẩm → 5 bậc common → legendary: đổi màu giữ nét, Klein thêm viền vàng / đá quý, glow + shimmer',
   'damage-states': 'Ảnh thùng / cửa / tường → nứt, vỡ, nát cùng khung + 4–8 mảnh vỡ, chớp trắng, prefab Unity / scene Godot',
-  'time-season-pack': 'Tileset / background / prop → bản hoàng hôn, đêm, đông, thu giữ nguyên bố cục + LUT .cube / strip cho Unity, Godot'
+  'time-season-pack': 'Tileset / background / prop → bản hoàng hôn, đêm, đông, thu giữ nguyên bố cục + LUT .cube / strip cho Unity, Godot',
+  'store-kit': 'Tên game + mô tả → icon app đủ cỡ iOS / Android adaptive / Play / favicon / .ico + capsule, hero, logo Steam có tên game, zip sẵn nộp store',
+  'store-kit-image': 'Ảnh nhân vật + tên game → icon app + key art giữ đúng nhân vật → đủ cỡ iOS / Android / Steam / web, zip sẵn nộp store',
+  'image-localize': 'Nút / logo / banner có chữ → bản Việt, Nhật, Trung, Hàn, Đức…: xoá chữ gốc, vẽ chữ dịch đúng font, màu, viền, vừa khung',
+  'parallax-layers': 'Prompt cảnh → nền cuộn ngang 4–5 lớp (trời, xa, giữa, gần, tiền cảnh) lặp liền mạch, prefab Unity / Parallax2D Godot'
 }
 
 export function recipePitch(id: string): string | undefined {

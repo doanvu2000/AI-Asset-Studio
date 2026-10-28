@@ -978,3 +978,10 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   (project mới `L:\AI\unity-urp-shadercheck`). Built-in RP (`unity-test-batch`) sẽ hồng. 6 test.
 - [x] 2026-10-29 Kiểm 619 pass / 4 skip, typecheck sạch → commit mốc #17 + #18.
 - [~] 2026-10-29 Giao #8+#12 gói NPC (chân dung + thoại + TTS).
+- [x] 2026-10-29 Đề xuất lượt 3 #23–#29 vào plan, chờ chủ nhân chốt.
+- [x] 2026-10-29 Chủ nhân chốt làm cả #23–#29 (lượt 3); xếp hàng sau đợt đang chạy.
+- [~] 2026-10-29 Giao #24 normal map 2D (CPU, chạy song song đợt #19/#20/#21/#8+#12).
+- [x] 2026-10-29 #20 Store + icon app xong (agent): recipe `store-kit` (Z-Image) + `store-kit-image` (Klein); `ops/store_icons.py`,
+  `ops/store_capsules.py`, `ops/store_kit.py`, `adapters/store_layout.py` (`claude.store_layout`). Zip iOS appiconset/Android
+  adaptive+mipmap/Steam capsule/web favicon/Windows ico. 18 test; live 65.5s, $0.043. Sửa "icon trong icon" (`tile_box`) chỉ kiểm offline.
+- [x] 2026-10-29 Kiểm 656 pass / 4 skip, typecheck sạch → commit mốc #20 (kèm code dở #19/#21/#8+#12/#24).

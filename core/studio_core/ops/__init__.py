@@ -10,12 +10,16 @@ from .fx import FX_OPS
 from .pbr import PBR_OPS
 from .pixel import PIXEL_OPS
 from .presets import PresetStore
+from .localize import LOCALIZE_OPS
 from .lut import LUT_OPS
+from .npc import NPC_OPS
+from .parallax import PARALLAX_OPS
 from .rarity import RARITY_OPS
 from .rig import RIG_OPS
 from .soundscape import SOUNDSCAPE_OPS
 from .spine_ref import SPINE_REF_OPS, VideoFrames
 from .spine_variant import VARIANT_OPS
+from .store_kit import STORE_OPS
 from .tile import TILE_OPS
 from .ui import UI_OPS
 from .upscale import UPSCALE_OPS
@@ -39,6 +43,12 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(dmg_cls())
     for sc_cls in SOUNDSCAPE_OPS:
         registry.register(sc_cls())
-    for tile_cls in (*TILE_OPS, *UI_OPS, *UPSCALE_OPS, *PBR_OPS, *RARITY_OPS, *LUT_OPS):
+    for npc_cls in NPC_OPS:
+        registry.register(npc_cls())
+    for loc_cls in LOCALIZE_OPS:
+        registry.register(loc_cls())
+    for tile_cls in (*TILE_OPS, *UI_OPS, *UPSCALE_OPS, *PBR_OPS, *RARITY_OPS, *LUT_OPS, *PARALLAX_OPS):
         registry.register(tile_cls())
+    for store_cls in STORE_OPS:
+        registry.register(store_cls())
     return []

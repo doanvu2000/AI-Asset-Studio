@@ -53,3 +53,15 @@ Gợi ý thứ tự: 1 → 7 → 2 → 4 → 3 → 5 → 9 → 8 → 6 → 10 �
 | 20 | Bộ store + icon app (iOS/Android/Steam sizes, Figma frame) | Klein, Z-Image, Claude, Figma MCP | không | M |
 | 21 | Bản địa hoá chữ trong ảnh | Claude vision, Klein inpaint, Pillow font | không | M |
 | 22 | Key art động / teaser 5s | Wan2.2 TI2V-5B, ffmpeg | Wan2.2-5B | M–L |
+
+## Lượt đề xuất 3 (2026-10-29, chờ chủ nhân chốt)
+| # | Chức năng | Công cụ | Model mới | Effort |
+|---|-----------|---------|-----------|--------|
+| 23 | Autotile terrain: 1 ô → bộ 47-blob/Wang, Godot TileSet terrain + Unity RuleTile | Klein, CPU ghép mép | không | M |
+| 24 | Normal map 2D cho sprite (ánh sáng 2D): Unity Secondary Texture `_NormalMap`, Godot CanvasTexture | CPU (dùng lại heuristic PBR) | không | S |
+| 25 | Bitmap font theo style game: chữ → atlas glyph + BMFont .fnt / Godot FontFile / TMP | Z-Image/Klein, Pillow | không | M |
+| 26 | Paper-doll trang bị: vũ khí/mũ/giáp khớp socket tay/đầu của sprite 8 hướng, xuất lớp riêng | Klein, Blender rig sẵn | không | M–L |
+| 27 | Style bible dự án: rút palette + ảnh style từ asset đã duyệt, tự chèn vào mọi run mới | Claude vision, CPU | không | S–M |
+| 28 | Tìm asset giống + chống trùng trong thư viện ("tạo thêm giống cái này") | CLIP/SigLIP nhỏ (CPU/GPU) | SigLIP base | S–M |
+| 29 | Storyboard → animatic: kịch bản → khung hình nhân vật đồng nhất + TTS + nhạc → MP4 | Claude, Klein, TTS #8, ffmpeg | không | M–L |
+- **Chủ nhân chốt lượt 3 (2026-10-29): làm cả #23–#29.** Thứ tự: #24 → #27 → #23 → #25 → #28 → #26 → #29 (sau #22/#6/#11).

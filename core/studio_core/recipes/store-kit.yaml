@@ -1,0 +1,59 @@
+id: store-kit
+name: Bộ store + icon app (Z-Image + Claude)
+description: >-
+  Tên game + mô tả → Z-Image vẽ icon 1024² và key art ngang → chọn → tách nền nhân vật icon → Real-ESRGAN phóng key
+  art x4 → Claude nhìn key art chọn vùng focus, font (có sẵn trên máy), màu chữ, vị trí tên game → CPU xuất đủ cỡ:
+  iOS AppIcon.appiconset (không alpha), Android adaptive (foreground trong vùng an toàn 66dp, background, monochrome,
+  mipmap cũ, Play 512), Steam (header, small, main, vertical, library, hero, logo, community icon), favicon, .ico
+  Windows → kiểm vùng an toàn, crop giữ focus → zip + bảng xem trước → duyệt.
+inputs:
+  title: {type: text, label: Tên game (chữ trên capsule), placeholder: "Ember Knight"}
+  prompt: {type: text, multiline: true, label: Mô tả game / nhân vật chính,
+           placeholder: "a young knight with a flaming sword in a ruined castle at dusk"}
+  style: {type: text, label: Phong cách, default: "vibrant stylized game art, bold shapes, strong rim light, rich colours"}
+  count: {type: int, default: 3, min: 1, max: 4, label: Số bản để chọn (icon + key art)}
+  targets: {type: text, default: "ios,android,steam,web,windows", label: "Nền tảng (ios, android, steam, web, windows)"}
+steps:
+  - id: icon
+    kind: comfy.t2i_zimage_turbo
+    params:
+      "57:27.text": "A polished mobile game app icon: ${inputs.prompt}. ${inputs.style}. One bold emblematic subject, centered, large, filling about 60% of the square, on a simple colourful background. Full-bleed square artwork: the background touches all four edges, it is not a rounded icon tile on a backdrop. No text, no letters, no numbers, no border, no frame, no rounded corners, no device."
+      "57:13.batch_size": "${inputs.count}"
+  - id: pick_icon
+    kind: gate.pick
+    in: {images: icon.images}
+    params: {k: 1}
+  - id: subject
+    kind: comfy.remove_bg_birefnet
+    in: {image: pick_icon.images}
+    map: image
+  - id: art
+    kind: comfy.t2i_zimage_turbo
+    params:
+      "57:27.text": "Wide cinematic key art illustration for a video game: ${inputs.prompt}. ${inputs.style}. Dramatic composition with the main character clearly visible near the middle, calm open sky or empty space above for a title logo, highly detailed environment. No text, no letters, no logo, no watermark, no user interface."
+      "57:13.width": 1344
+      "57:13.height": 768
+      "57:13.batch_size": "${inputs.count}"
+  - id: pick_art
+    kind: gate.pick
+    in: {images: art.images}
+    params: {k: 1}
+  - id: upscale
+    kind: comfy.upscale_esrgan
+    in: {image: pick_art.images}
+    map: image
+  - id: layout
+    kind: claude.store_layout
+    in: {images: pick_art.images}
+    params: {title: "${inputs.title}", model: opus, _auto_retry: 1}
+  - id: kit
+    kind: op.store_kit
+    in: {icon: pick_icon.images, subject: subject.images, art: upscale.images, layout: layout.json}
+    params: {title: "${inputs.title}", targets: "${inputs.targets}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: kit.preview, images: kit.images, zip: kit.zip, report: kit.report}
+outputs:
+  final: approve.images
+  zip: approve.zip
+  preview: approve.preview

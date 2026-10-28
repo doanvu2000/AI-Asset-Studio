@@ -10,7 +10,11 @@ from .blender import (BlenderAgentExecutor, BlenderAnimateDirsExecutor, BlenderC
                       BlenderRigExportExecutor, BlenderScriptExecutor, Procedural3DExecutor)
 from .claude import ClaudeBriefExecutor, ClaudeResource, ClaudeTaskExecutor
 from .codex import CodexImageExecutor, CodexResource
+from .localize import ClaudeLocalizeExecutor
 from .soundscape import ClaudeSoundscapeExecutor
+from .npc import ClaudeNpcDialogueExecutor
+from .tts import NpcVoiceExecutor
+from .store_layout import ClaudeStoreLayoutExecutor
 from .spine_review import SpineReviewLoopExecutor
 from .comfy import CheckedMeshExecutor, CheckedViewsExecutor, ComfyExecutor, ComfyResource
 
@@ -32,6 +36,10 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     registry.register(BlenderRigExportExecutor(settings, blender, comfy))
     registry.register(ClaudeBriefExecutor(settings))
     registry.register(ClaudeSoundscapeExecutor(settings))
+    registry.register(ClaudeNpcDialogueExecutor(settings))
+    registry.register(NpcVoiceExecutor(settings))
+    registry.register(ClaudeLocalizeExecutor(settings))
+    registry.register(ClaudeStoreLayoutExecutor(settings))
     registry.register(SpineReviewLoopExecutor(settings))
     registry.register(BlenderScriptExecutor(settings, blender))
     registry.register(Procedural3DExecutor(settings, blender))

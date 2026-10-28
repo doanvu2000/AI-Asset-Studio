@@ -1,0 +1,37 @@
+id: npc-voice-csv
+name: Thoại NPC từ CSV (giọng đọc + phụ đề)
+description: >-
+  CSV thoại (id,lang,text,expression) → TTS chạy CPU cho từng câu, từng ngôn ngữ (vi, en) → cắt lặng, chuẩn hoá, OGG →
+  npc.json + phụ đề có mốc thời gian → duyệt. Không cần GPU, không cần Claude. Xuất Unity (NpcData) / Godot (.tres).
+inputs:
+  lines_csv: {type: file, ext: [csv], label: "CSV thoại (id,lang,text,expression)"}
+  name: {type: text, default: npc, label: Tên NPC}
+  gender: {type: enum, default: male, options: [male, female], label: Giới tính giọng (tiếng Anh)}
+  age: {type: enum, default: adult, options: [young, adult, old], label: Tuổi giọng (tiếng Anh)}
+  voice_en: {type: text, default: auto, label: "Giọng tiếng Anh (auto | am_michael, bm_george, af_heart…)"}
+  speed: {type: float, default: 1.0, min: 0.7, max: 1.4, label: Tốc độ đọc}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: lines
+    kind: op.npc_lines
+    in: {csv: inputs.lines_csv}
+    params: {name: "${inputs.name}", gender: "${inputs.gender}", age: "${inputs.age}"}
+  - id: tts
+    kind: tts.npc_voice
+    in: {dialogue: lines.json}
+    params: {voice_en: "${inputs.voice_en}", speed: "${inputs.speed}"}
+  - id: voice_post
+    kind: op.audio_post
+    in: {audio: tts.audio}
+    params: {loop: false, trim: true, fade_out: 0.03, peak_db: -3, formats: "ogg,wav", labels: "${steps.tts.json.labels}"}
+  - id: pack
+    kind: op.npc_pack
+    in: {dialogue: lines.json, audio: voice_post.audio}
+  - id: approve
+    kind: gate.approve
+    in: {preview: pack.preview, audio: voice_post.audio, npc: pack.npc, subtitles: pack.subtitles, lines: pack.csv}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.audio
+  npc: approve.npc
+  subtitles: approve.subtitles

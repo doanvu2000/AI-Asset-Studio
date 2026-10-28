@@ -1,0 +1,43 @@
+id: image-localize
+name: Bản địa hoá chữ trong ảnh (Claude + Flux.2 Klein)
+description: >-
+  Ảnh có chữ (nút UI, logo, biển hiệu, banner cửa hàng) + danh sách ngôn ngữ → Claude nhìn ảnh tìm từng khối chữ
+  (vị trí, khung chứa, font, màu, viền, bóng) và dịch kèm bản ngắn khi chật → xoá chữ chỉ trong mask (nền phẳng /
+  gradient xoá bằng CPU, nền có vân vá bằng Klein), phần còn lại giữ nguyên từng pixel → vẽ chữ dịch bằng font máy
+  có đủ chữ (Việt, Nhật, Trung, Hàn...), tự co cỡ vừa khung → bảng so sánh → duyệt. Xuất <tên>_<ngôn ngữ>.png +
+  localize.json, Unity/Godot nhận bộ sprite theo ngôn ngữ.
+inputs:
+  image: {type: image, label: Ảnh có chữ}
+  languages: {type: text, default: "vi, ja, zh-Hans, ko, de", label: "Ngôn ngữ đích (mã BCP-47, phẩy)"}
+  context: {type: text, default: "", multiline: true, label: Ngữ cảnh / thuật ngữ giữ nguyên (tuỳ chọn),
+            placeholder: "mobile RPG shop banner; keep the game name 'Dragon Quest' as is"}
+  removal: {type: enum, default: auto, options: [auto, cpu, klein],
+            label: "Cách xoá chữ (auto = nền phẳng CPU, nền có vân Klein)"}
+  min_scale: {type: float, default: 0.6, min: 0.3, max: 1, label: Cỡ chữ tối thiểu so với gốc (dưới thì dùng bản ngắn)}
+steps:
+  - id: detect
+    kind: claude.localize
+    in: {images: inputs.image}
+    params: {languages: "${inputs.languages}", context: "${inputs.context}", model: opus, _auto_retry: 1}
+  - id: prep
+    kind: op.localize_prep
+    in: {images: inputs.image, plan: detect.json}
+    params: {removal: "${inputs.removal}"}
+  - id: fill
+    kind: comfy.inpaint_flux2_klein4b
+    in: {image: prep.holes}
+    map: image
+    params:
+      "29.denoise": 1.0
+      "14.text": "Remove the text: repaint the masked area with the surrounding background only, continuing its texture, pattern, gradient, colours and lighting seamlessly in the same art style. No letters, no words, no symbols, no logo, nothing new."
+  - id: render
+    kind: op.localize_render
+    in: {images: prep.clean, fills: fill.images, mask: prep.mask, layout: prep.layout, source: inputs.image}
+    params: {min_scale: "${inputs.min_scale}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: render.preview, images: render.images, clean: render.clean, localize: render.localize}
+outputs:
+  final: approve.images
+  clean: approve.clean
+  localize: approve.localize
