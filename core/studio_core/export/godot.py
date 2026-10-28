@@ -240,6 +240,40 @@ README_WANG = """- {asset}_wang_tileset.tres: TileSet Wang góc từ {atlas} (4�
   Tên ô wang_<số>_<góc NW NE SW SE> (vd wang_06_abba), chi tiết nhãn góc/cạnh trong Textures/{asset}_wang.json."""
 
 
+def stylebox(tex: str, border: tuple[int, int, int, int]) -> str:
+    l, t, r, b = border
+    return "\n".join(['[gd_resource type="StyleBoxTexture" load_steps=2 format=3]', '',
+                      f'[ext_resource type="Texture2D" path="{tex}" id="1_tex"]', '', '[resource]',
+                      'texture = ExtResource("1_tex")', f"texture_margin_left = {_num(l)}",
+                      f"texture_margin_top = {_num(t)}", f"texture_margin_right = {_num(r)}",
+                      f"texture_margin_bottom = {_num(b)}"]) + "\n"
+
+
+def ui_scene(name: str, items: list[tuple[str, tuple[int, int, int, int], tuple[int, int]]]) -> str:
+    """Every sliced element as a NinePatchRect drawn at its stretch target, stacked down the screen."""
+    ext = [f'[ext_resource type="Texture2D" path="UI/{n}.png" id="{i + 1}_{n}"]' for i, (n, _, _) in enumerate(items)]
+    lines = ['[gd_scene format=3]', '', *ext, '', f'[node name="{name}" type="Control"]', 'layout_mode = 3',
+             "anchors_preset = 15", "anchor_right = 1.0", "anchor_bottom = 1.0"]
+    y = 16
+    for i, (n, (l, t, r, b), (w, h)) in enumerate(items):
+        lines += ['', f'[node name="{n}" type="NinePatchRect" parent="."]', "layout_mode = 0", "offset_left = 16.0",
+                  f"offset_top = {_num(y)}", f"offset_right = {_num(16 + w)}", f"offset_bottom = {_num(y + h)}",
+                  f'texture = ExtResource("{i + 1}_{n}")', f"patch_margin_left = {l}", f"patch_margin_top = {t}",
+                  f"patch_margin_right = {r}", f"patch_margin_bottom = {b}"]
+        y += h + 16
+    return "\n".join(lines) + "\n"
+
+
+README_UI = """- UI/: mỗi phần tử một ảnh PNG{sliced}.{states}"""
+README_ICONS = """ (icon/sprite rời: TextureRect, Button.icon hoặc Sprite2D)"""
+README_UI_SLICED = """ + <tên>.tres (StyleBoxTexture, texture_margin = viền 9-slice): gán vào Theme
+  Overrides > Styles của Button/Panel/PanelContainer là kéo giãn giữ góc. NinePatchRect thì đặt patch_margin
+  theo số trong .tres. {asset}_ui.tscn: xem trước mọi phần tử kéo giãn bằng NinePatchRect"""
+README_UI_STATES = """
+  Nút có thêm <tên>_hover/_pressed/_disabled.tres cùng viền: Button > Theme Overrides > Styles gán normal/hover/
+  pressed/disabled tương ứng."""
+
+
 README_HEAD = "{asset} — xuất từ AI Asset Studio cho Godot 4. Chép cả thư mục này vào project (res://...).\n\n"
 README_SHEET = """- {asset}.tres: SpriteFrames, animation <clip>_<hướng> (S, SW, W, NW, N, NE, E, SE; S = quay mặt xuống
   màn hình), mỗi khung là AtlasTexture cắt từ {asset}.png, tốc độ = fps, loop theo clip.
@@ -275,6 +309,9 @@ def export(src: Source) -> Files:
         files.append((f"Models/{n}", p))
     if src.glb:
         notes.append("- Models/*.glb: Godot import GLB sẵn, kéo vào scene là dùng được.")
+        from studio_core.export.rig3d import godot_note
+
+        notes += godot_note(src)
     lods = [n for n, _ in src.glb if n.endswith("_lods.glb")]
     for n in lods:
         files.append((f"{Path(n).stem}.tscn", lod_scene(Path(n).stem, f"Models/{n}").encode()))
@@ -302,10 +339,29 @@ def export(src: Source) -> Files:
         elif atlas:
             files.append((f"{a}_tileset.tres", tileset(atlas[0], _image_size(atlas[1])).encode()))
             notes.append(f"- {a}_tileset.tres: TileSet từ {atlas[0]} (mỗi biến thể một ô) cho TileMapLayer.")
+    for n, p, b, _ in src.ui:
+        files.append((f"UI/{n}.png", p))
+        if any(b):
+            files.append((f"UI/{n}.tres", stylebox(f"{n}.png", b).encode()))
+    sliced = [(n, p, b) for n, p, b, state in src.ui if any(b) and not state]
+    if sliced:
+        from studio_core.ops.ui import stretch_target
+
+        files.append((f"{a}_ui.tscn", ui_scene(f"{a}_ui", [(n, b, stretch_target(n, *_image_size(p)))
+                                                            for n, p, b in sliced]).encode()))
+    if src.ui:
+        notes.append(README_UI.format(sliced=README_UI_SLICED.format(asset=a) if sliced else README_ICONS,
+                                      states=README_UI_STATES if any(s for *_, s in src.ui) else ""))
     files += [(f"Audio/{n}", p) for n, p in src.audio]
     if src.audio:
         notes.append("- Audio/: Godot tự import. File *_loop nối liền đầu-cuối: chọn file > tab Import > bật Loop > "
                      "Reimport (WAV: Loop Mode = Forward).")
+    if src.pbr:
+        from studio_core.export.pbr import godot_files
+
+        pbr_files, pbr_notes = godot_files(src)
+        files += pbr_files
+        notes += pbr_notes
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from studio_core.contracts import BlobRef, BlobStore, StepRow
-from studio_core.export import godot, unity
+from studio_core.export import godot, rig3d, unity
 from studio_core.export.sheet import ident
 from studio_core.export.source import Source
 from studio_core.ops import image as im
@@ -187,8 +187,59 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
             if _is_glb(r) and r.hash not in hashes:
                 hashes.add(r.hash)
                 src.glb.append((_unique(safe_filename(None, r), names), blobs.path(r.hash)))
+    src.fbx, src.rig = rig3d.collect(step.outputs, blobs.path, lambda n: _unique(n, names),
+                                     lambda r: safe_filename(None, r))
     src.audio = _audio(step, blobs)
+    src.ui = ui_elements(step, blobs)
+    src.pbr = pbr_materials(step, blobs)
     return src
+
+
+def pbr_materials(step: StepRow, blobs: BlobStore) -> list[tuple[str, dict[str, Path]]]:
+    """op.pbr's pbr_material.json, also when a gate passed it through under another port name."""
+    from studio_core.ops.pbr import MATERIAL_NAME, MATERIAL_TYPE, ROLES
+
+    for refs in step.outputs.values():
+        for ref in refs:
+            if (ref.name or "") != MATERIAL_NAME:
+                continue
+            try:
+                doc = json.loads(blobs.path(ref.hash).read_bytes())
+                out, seen = [], set()
+                for m in doc["materials"] if doc.get("type") == MATERIAL_TYPE else []:
+                    name = ident(str(m["name"]), "material")
+                    maps = {r: blobs.path(str(m["maps"][r]["hash"])) for r in ROLES if r in m["maps"]}
+                    if name in seen or "albedo" not in maps or not all(p.is_file() for p in maps.values()):
+                        continue
+                    seen.add(name)
+                    out.append((name, maps))
+                return out
+            except (OSError, ValueError, KeyError, TypeError):
+                return []
+    return []
+
+
+def ui_elements(step: StepRow, blobs: BlobStore) -> list[tuple[str, Path, tuple[int, int, int, int], str]]:
+    """op.nine_slice's ui_slices.json, also when a gate passed it through: each element with its 9-slice border."""
+    from studio_core.ops.ui import SLICES_FILE, SLICES_TYPE
+
+    for ref in step.outputs.get("slices") or []:
+        if (ref.name or "") != SLICES_FILE:
+            continue
+        try:
+            doc = json.loads(blobs.path(ref.hash).read_bytes())
+            out, seen = [], set()
+            for e in doc["elements"] if doc.get("type") == SLICES_TYPE else []:
+                name = ident(str(e["name"]), "element")
+                if name in seen or not blobs.path(str(e["hash"])).is_file():
+                    continue
+                seen.add(name)
+                b = [int(v) for v in e["border"]]
+                out.append((name, blobs.path(str(e["hash"])), (b[0], b[1], b[2], b[3]), str(e.get("state") or "")))
+            return out
+        except (OSError, ValueError, KeyError, TypeError, IndexError):
+            return []
+    return []
 
 
 AUDIO_EXT = (".ogg", ".wav", ".mp3", ".flac")
@@ -213,7 +264,7 @@ def _audio(step: StepRow, blobs: BlobStore) -> list[tuple[str, Path]]:
 def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
     src = engine_source(step, [], blobs, "x")
     return (src.sheet is not None or src.spine_json is not None or bool(src.glb) or bool(src.textures)
-            or bool(src.audio))
+            or bool(src.audio) or bool(src.ui) or bool(src.pbr) or bool(src.fbx))
 
 
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,
@@ -227,7 +278,7 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
     files = exporter(src)
     if not files:
         raise BundleError("nothing to export for a game engine (needs a sprite sheet, Spine export, GLB, tileable "
-                          "texture or sound)")
+                          "texture, PBR material, sound or UI kit)")
     dst = root / "bundles" / f"{step.id[:12]}-{engine}" / folder
     dst.parent.mkdir(parents=True, exist_ok=True)
     written = _write(dst, files)

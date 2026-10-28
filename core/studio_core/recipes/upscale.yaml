@@ -1,0 +1,32 @@
+id: upscale
+name: Phóng to HD (Real-ESRGAN)
+description: >-
+  Ảnh hoặc atlas Spine → Real-ESRGAN x4 phóng phần màu, kênh alpha phóng riêng (Lanczos) rồi ghép lại để nền trong
+  suốt vẫn sạch → x2 thì thu lại từ bản x4 → pixel art tự nhận ra và phóng nearest-neighbor (giữ cạnh pixel) →
+  ảnh so sánh trước/sau → duyệt. Atlas giữ tên trang, toạ độ nhân theo hệ số, thay thẳng cho atlas gốc.
+inputs:
+  image: {type: image, required: false, label: Ảnh (PNG trong suốt được)}
+  atlas: {type: file, ext: [atlas, txt], siblings: atlas_pages, required: false,
+          label: "Hoặc atlas (các trang png cùng thư mục tự đi kèm)"}
+  scale: {type: int, default: 4, options: [2, 4], label: Hệ số phóng}
+  mode: {type: enum, default: auto, options: [auto, ai, nearest],
+         label: "Cách phóng (auto = pixel art dùng nearest, ai = luôn qua AI)"}
+steps:
+  - id: prep
+    kind: op.upscale_prep
+    in: {images: inputs.image, atlas: inputs.atlas}
+    params: {mode: "${inputs.mode}"}
+  - id: gen
+    kind: comfy.upscale_esrgan
+    in: {image: prep.rgb}
+    map: image
+  - id: post
+    kind: op.upscale_post
+    in: {images: inputs.image, atlas: inputs.atlas, upscaled: gen.images}
+    params: {scale: "${inputs.scale}", mode: "${inputs.mode}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: post.previews, images: post.images, atlas: post.atlas}
+outputs:
+  final: approve.images
+  atlas: approve.atlas

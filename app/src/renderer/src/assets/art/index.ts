@@ -30,6 +30,11 @@ import spineAnimRef from './recipe-spine-anim-ref.webp'
 import audioSfx from './recipe-audio-sfx.webp'
 import audioMusic from './recipe-audio-music.webp'
 import vfxFlipbook from './recipe-vfx-flipbook.webp'
+import upscale from './recipe-upscale.webp'
+import uiKit from './recipe-ui-kit.webp'
+import uiKitStyle from './recipe-ui-kit-style.webp'
+import iconPack from './recipe-icon-pack.webp'
+import spineCharacterImage from './recipe-spine-character-image.webp'
 
 export const ART = { appIcon, emptyRuns, emptyGates, emptyGallery, coreDisconnected, gettingStarted } as const
 
@@ -48,11 +53,14 @@ const RECIPE_ART: Record<string, string> = {
   'sprite-8dir-glb': spriteGlb,
   'sprite-8dir-walk': spriteWalk,
   'sprite-8dir-anim': spriteAnim,
+  'character-3d-rigged': spriteGlb,
+  'character-3d-rigged-image': spriteAnim,
   'sprite-8dir-pixel': spritePixel,
   'sprite-8dir-3d-pixel': sprite3dPixel,
   'prop-3d': prop3d,
   'procedural-3d': procedural3d,
   'spine-character': spineCharacter,
+  'spine-character-image': spineCharacterImage,
   'spine-character-mv': spineCharacterMv,
   'spine-skin-variant': spineSkinVariant,
   'spine-anim-ref': spineAnimRef,
@@ -60,6 +68,10 @@ const RECIPE_ART: Record<string, string> = {
   'tileset-seamless': tilesetSeamless,
   'audio-sfx': audioSfx,
   'audio-music': audioMusic,
+  upscale,
+  'ui-kit': uiKit,
+  'ui-kit-style': uiKitStyle,
+  'icon-pack': iconPack,
   'vfx-flipbook': vfxFlipbook
 }
 
@@ -83,10 +95,13 @@ const RECIPE_PITCH: Record<string, string> = {
   'procedural-3d': 'Ý tưởng → Claude dựng 3D low-poly bằng code → GLB',
   'sprite-8dir-walk': 'Prompt → sprite 8 hướng + sheet đi bộ 8 hướng, dựng qua mesh 3D',
   'sprite-8dir-anim': 'Prompt → sprite 8 hướng + bộ anim đứng / đi / chạy / chém, kèm normal map',
+  'character-3d-rigged': 'Mesh nhân vật có sẵn → rig Humanoid + anim đứng / đi / chạy / chém, xuất GLB + FBX',
+  'character-3d-rigged-image': 'Ảnh nhân vật mặt trước → mesh 3D có rig Humanoid + anim, xuất GLB + FBX',
   'sprite-8dir-pixel': 'Mesh GLB có sẵn → sprite sheet 8 hướng pixel art, một bảng màu chung',
   'sprite-8dir-3d-pixel': 'Prompt → sprite sheet 8 hướng pixel art, dựng qua mesh 3D',
   'spine-character': 'Prompt → nhân vật Spine 4.2 có xương + 6 anim',
   'spine-character-mv': 'Prompt → 2 bộ Spine mặt trước + mặt sau, cùng 6 anim',
+  'spine-character-image': 'Ảnh nhân vật mặt trước → Spine 4.2 có xương + 6 anim',
   'texture-seamless': 'Prompt vật liệu → texture lặp liền mạch + điểm mối nối, normal map, bản nhỏ',
   'tileset-seamless': 'Prompt vật liệu → nhiều biến thể chung mép, lát trộn lẫn không lộ nối',
   'audio-sfx': 'Mỗi dòng 1 hiệu ứng → vài bản âm thanh OGG + WAV, đã cắt lặng và chuẩn hoá',
@@ -94,7 +109,12 @@ const RECIPE_PITCH: Record<string, string> = {
   'vfx-flipbook': 'Prompt → hiệu ứng VFX nền trong suốt → chuỗi frame / flipbook',
   'concept-2d-style': 'Ảnh phong cách tham chiếu + prompt → concept 2D cùng phong cách',
   'spine-skin-variant': 'Nhân vật Spine + ảnh sửa → skin mới, tô lại atlas giữ nguyên xương',
-  'spine-anim-ref': 'Nhân vật Spine + video tham chiếu → anim mới cho bộ xương sẵn có'
+  'spine-anim-ref': 'Nhân vật Spine + video tham chiếu → anim mới cho bộ xương sẵn có',
+  'ui-kit': 'Chủ đề → bộ nút, khung, thanh, ô có viền 9-slice + trạng thái nút, xuất Unity/Godot',
+  'ui-kit-style': 'Ảnh style tham chiếu + chủ đề → bộ UI 9-slice cùng phong cách',
+  'icon-pack': 'Mỗi dòng 1 icon → cả bộ icon cùng khung, nét viền, đổ bóng',
+  upscale: 'Ảnh / atlas có sẵn → bản x2, x4 nét hơn, nền trong suốt vẫn sạch',
+  'pbr-material': 'Texture có sẵn → bộ map PBR (normal, height, roughness, metallic, AO) + material Unity/Godot, không cần GPU'
 }
 
 export function recipePitch(id: string): string | undefined {

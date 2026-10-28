@@ -526,6 +526,7 @@ function segTitle(s: StepRow): string {
           <div class="hero-actions">
             <AssetActions
               :hash="hero.view.blob.hash"
+              :blob="hero.view.blob"
               :filename="heroVersion ? exportName(heroVersion) : (hero.view.blob.name ?? undefined)"
               :run-id="id"
               :version-id="heroVersion?.id"

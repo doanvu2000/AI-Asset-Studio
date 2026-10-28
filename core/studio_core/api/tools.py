@@ -41,6 +41,10 @@ TOOLS: dict[str, ToolSpec] = {
     "codex_exe": ToolSpec("Codex CLI", "file", probe_version=True),
     "claude_exe": ToolSpec("Claude Code (claude.exe)", "file", probe_version=True),
     "ffmpeg_exe": ToolSpec("FFmpeg (đọc video tham chiếu)", "file", probe_version=True, version_flag="-version"),
+    "godot_exe": ToolSpec("Godot 4 (xem trong engine)", "file", probe_version=True),
+    # Unity.exe has no cheap --version: running it opens the editor.
+    "unity_exe": ToolSpec("Unity Editor (xem trong engine)", "file"),
+    "unity_project": ToolSpec("Project Unity để xem thử", "dir"),
 }
 assert tuple(TOOLS) == TOOL_KEYS
 

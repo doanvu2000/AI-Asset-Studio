@@ -31,3 +31,25 @@ Gợi ý thứ tự: 1 → 7 → 2 → 4 → 3 → 5 → 9 → 8 → 6 → 10 �
   action, đổi tên xương chuẩn Humanoid, GLB/FBX. Không cần model mới.
 - Lưu ý #4: phiên này không thấy tool Unity MCP (chỉ Blender, Figma, GitHub, GitLab) → cần chủ nhân cấu hình Unity MCP
   trước khi làm "Đặt vào Unity"; tạm thời Godot headless làm được ngay.
+
+## Chủ nhân chốt (2026-10-29)
+- Làm: #1 (có Bộ nhân vật), #7 (ESRGAN trước, SeedVR2 sau), #2 (không cần issue GitHub), #3 (chưa cần Figma),
+  #5, #9, #8+#12 (cả gói NPC + TTS), #10, #4 (Godot + Unity; Unity qua batchmode `F:\Unity\6000.3.6f1\Editor\Unity.exe`,
+  bật Unity MCP nếu cần), #6 chỉ đóng gói local (không đẩy remote), #11 spike trước rồi báo.
+- Đợt 1 (song song): #1 app · #7 upscale · #2 manifest GDD · #3 UI kit.
+- Đợt 2: #9 PBR · #5 QA dự án · #10 rig 3D · #4 engine preview.
+- Đợt 3: #8+#12 NPC/TTS · #6 pack local · #11 spike.
+
+## Lượt nghiên cứu 2 (2026-10-29, chờ chủ nhân chốt)
+| # | Chức năng | Công cụ | Model mới | Effort |
+|---|-----------|---------|-----------|--------|
+| 13 | Auto Collider + pivot chân (Unity physicsShape, Godot CollisionPolygon2D/Occluder) | CPU | không | S |
+| 14 | Bậc độ hiếm vật phẩm (5 bậc, hue/LUT + Klein + glow, ramp palette) | Klein, fx | không | S |
+| 15 | Ngày/đêm/mùa + LUT .cube cho tileset/nền | Klein, CPU | không | S |
+| 16 | Âm thanh khớp cảnh (ảnh → nhạc + ambience + SFX) | Claude vision, ACE-Step, Stable Audio | không | S |
+| 17 | Hư hại 4 trạng thái + mảnh vỡ | Klein chuỗi, SAM3 | không | S–M |
+| 18 | Shader preset sprite (hit flash, dissolve, wind…) từ template | Codex, Godot/Unity batchmode | không | S–M |
+| 19 | Nền parallax 4–5 lớp + Parallax2D | Z-Image, BiRefNet, seamless 1 trục | (Depth Anything V2 Small) | M |
+| 20 | Bộ store + icon app (iOS/Android/Steam sizes, Figma frame) | Klein, Z-Image, Claude, Figma MCP | không | M |
+| 21 | Bản địa hoá chữ trong ảnh | Claude vision, Klein inpaint, Pillow font | không | M |
+| 22 | Key art động / teaser 5s | Wan2.2 TI2V-5B, ffmpeg | Wan2.2-5B | M–L |

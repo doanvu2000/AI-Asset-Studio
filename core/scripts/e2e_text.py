@@ -1,4 +1,4 @@
-"""Live E2E for a recipe through its gates (picks keep every candidate); saves one step's outputs.
+"""Live E2E for a recipe through its gates (picks keep every candidate, or the first k); saves one step's outputs.
 
 Usage: python scripts/e2e_text.py <data_dir> <recipe> '<inputs json>' [step to save, default post] [unity|godot]
 An input value "@<path>" is uploaded and replaced by its blob hash; an engine also exports that step to it.
@@ -48,8 +48,8 @@ async def main(data_dir: Path, recipe: str, inputs: dict, save: str = "post", en
                               + (f" err={s['error']}" if s.get("error") else ""), flush=True)
                 elif ev["type"] == "gate.awaiting":
                     d = ev["data"]
-                    body = ({"picked": [x["hash"] for x in d["candidates"]]} if d.get("kind") == "pick"
-                            else {"approved": True})
+                    picks = [x["hash"] for x in d["candidates"]][:d.get("k") or None]
+                    body = {"picked": picks} if d.get("kind") == "pick" else {"approved": True}
                     g = await c.post(f"/api/gates/{ev['step_id']}", json=body)
                     assert g.is_success, g.text
                 elif ev["type"] == "run.updated" and ev["data"].get("status") in ("succeeded", "failed",

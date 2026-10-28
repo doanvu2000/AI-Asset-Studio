@@ -34,6 +34,7 @@ from ..contracts import (
     VersionRow,
 )
 from .cache import executor_cache_key
+from .chain import CHAIN_ERROR, CHAIN_KEY, CHAIN_PARENT, CHAIN_RUNS, map_inputs, parse_chain, published_outputs
 from .gates import GATES, gate_enabled
 from .library import RecipeLibrary
 from .projects import apply_style
@@ -287,6 +288,9 @@ class StudioEngine:
             meta = {**(overrides.get(META_KEY) or {}), "project_id": project_id, "project_applied": applied}
             overrides = {**overrides, META_KEY: meta}
         values = await self.check_inputs(recipe, inputs)
+        chain = parse_chain((overrides.get(META_KEY) or {}).get(CHAIN_KEY), self.get_recipe)
+        if chain:
+            overrides = {**overrides, META_KEY: {**overrides[META_KEY], CHAIN_KEY: chain}}
         run = RunRow(id=_new_id(), project_id=project_id, recipe_id=recipe.id, recipe_hash=recipe.hash,
                      title=title, inputs=values, params=overrides, status=RunStatus.RUNNING, created_at=_now())
         publish: dict[str, dict[str, str]] = {}
@@ -396,10 +400,35 @@ class StudioEngine:
                     self.bus.publish("version.updated", v.model_dump(mode="json"), run_id=st.run.id, step_id=s.id)
                     made.append((v, s))
         await self._set_run(st.run, status=RunStatus.SUCCEEDED, error=None, ended_at=_now())
+        meta = st.run.params.get(META_KEY) or {}
+        if meta.get(CHAIN_KEY) and CHAIN_RUNS not in meta:
+            await self._start_chain(st.run, list(st.steps.values()))
         if made:
             # Scoring takes seconds on big sheets; it runs after SUCCEEDED and outside the run lock.
             steps = {s.id: s.model_copy(deep=True) for s in st.steps.values()}
             self._spawn_bg(self._score_versions([(v, steps[s.id]) for v, s in made], list(steps.values())))
+
+    async def _start_chain(self, run: RunRow, steps: list[StepRow]) -> None:
+        meta = dict(run.params.get(META_KEY) or {})
+        outputs = published_outputs(steps)
+        started: list[str] = []
+        errors: list[str] = []
+        for entry in meta.get(CHAIN_KEY) or []:
+            try:
+                inputs = {**(entry.get("inputs") or {}), **map_inputs(entry["map"], outputs, run.inputs)}
+                child_meta = {k: meta[k] for k in ("source",) if k in meta}
+                child_meta[CHAIN_PARENT] = run.id
+                if entry.get(CHAIN_KEY):
+                    child_meta[CHAIN_KEY] = entry[CHAIN_KEY]
+                started.append(await self.start_run(entry["recipe_id"], inputs, {META_KEY: child_meta},
+                                                    project_id=run.project_id, title=entry.get("title") or run.title))
+            except Exception as e:
+                log.warning("follow-up %s of run %s not started: %s", entry.get("recipe_id"), run.id, e)
+                errors.append(f"{entry.get('recipe_id')}: {e}")
+        meta[CHAIN_RUNS] = started
+        if errors:
+            meta[CHAIN_ERROR] = "; ".join(errors)
+        await self._set_run(run, params={**run.params, META_KEY: meta})
 
     async def _score_versions(self, made: list[tuple[VersionRow, StepRow]], steps: list[StepRow]) -> None:
         async with self._qa_sem:

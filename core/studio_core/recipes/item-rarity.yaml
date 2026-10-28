@@ -1,0 +1,46 @@
+id: item-rarity
+name: Bậc độ hiếm vật phẩm (recolor + Flux.2 Klein)
+description: >-
+  Ảnh vật phẩm (PNG nền trong) → common giữ nguyên, uncommon/rare đổi màu giữ độ sáng (CPU) → Klein nâng cấp rare
+  thành epic (viền vàng) rồi legendary (đá quý phát sáng, chạm trổ) → tách nền, đặt lại đúng khung gốc → kiểm
+  silhouette (IoU) → legendary thêm viền glow + shimmer 4 frame → bảng màu + rarity.json → duyệt. Xuất Unity/Godot.
+inputs:
+  image: {type: image, label: Ảnh vật phẩm (nền trong suốt)}
+  tiers: {type: text, default: "common, uncommon, rare, epic, legendary", label: "Tên 5 bậc (phẩy, thấp → cao)"}
+  colors: {type: text, default: auto, label: "Màu từng bậc (auto | #hex, #hex…)"}
+  epic: {type: text, default: "add gold trim", label: Lệnh nâng cấp epic}
+  legendary: {type: text, default: "glowing gems, ornate engravings", label: Lệnh nâng cấp legendary}
+  strength: {type: float, default: 0.85, min: 0, max: 1, label: Độ đổi màu uncommon/rare}
+  min_iou: {type: float, default: 0.8, min: 0, max: 1, label: Độ khớp silhouette tối thiểu}
+  shimmer: {type: bool, default: true, label: Shimmer legendary (4 frame)}
+steps:
+  - id: recolor
+    kind: op.recolor_tiers
+    in: {images: inputs.image}
+    params: {tiers: "${inputs.tiers}", colors: "${inputs.colors}", strength: "${inputs.strength}"}
+  - id: epic
+    kind: comfy.edit_flux2_klein4b
+    in: {image: recolor.ref}
+    params:
+      "75:74.text": "Upgrade this game item to a more precious version: ${inputs.epic}. Keep exactly the same object, silhouette, outline, size, position, angle, colours and flat game art style; only add the new details on the object itself, nothing outside it. Plain pure white background."
+  - id: legendary
+    kind: comfy.edit_flux2_klein4b
+    in: {image: epic.images}
+    params:
+      "75:74.text": "Upgrade this game item to its most precious legendary version: ${inputs.legendary}. Keep exactly the same object, silhouette, outline, size, position, angle, colours and flat game art style; only add the new details on the object itself, nothing outside it. Plain pure white background."
+  - id: rmbg
+    kind: comfy.remove_bg_birefnet
+    in: {image: [epic.images, legendary.images]}
+    map: image
+  - id: tiers
+    kind: op.rarity_set
+    in: {images: recolor.images, edits: rmbg.images, layout: recolor.layout}
+    params: {min_iou: "${inputs.min_iou}", shimmer: "${inputs.shimmer}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: tiers.preview, images: tiers.images, palette: tiers.palette, rarity: tiers.rarity,
+         shimmer: tiers.shimmer}
+outputs:
+  final: approve.images
+  rarity: approve.rarity
+  palette: approve.palette

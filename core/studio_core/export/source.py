@@ -28,6 +28,15 @@ class Source:
     textures: list[tuple[str, Path, str]] = field(default_factory=list)
     # Sound clips (audio-sfx / audio-music): (file name, path); a "_loop" stem marks a seamless loop.
     audio: list[tuple[str, Path]] = field(default_factory=list)
+    # UI kit / icon pack (op.nine_slice): (element name, path, (left, top, right, bottom) border, state or "").
+    ui: list[tuple[str, Path, tuple[int, int, int, int], str]] = field(default_factory=list)
+    # Rigged character (blender.rig_export): FBX files plus its rig3d.json report (humanoid flag, clip frame ranges).
+    fbx: list[tuple[str, Path]] = field(default_factory=list)
+    rig: dict[str, Any] | None = None
+    # PBR materials (op.pbr): (material name, {role: path}) with roles albedo, normal, height, roughness, metallic, ao.
+    pbr: list[tuple[str, dict[str, Path]]] = field(default_factory=list)
+    # Set when the export asked for traced 2D colliders + foot pivot on the sprite sheet (export/collider.py).
+    collider: Any = None
 
     def is_pixel(self) -> bool:
         if self.pixel is not None:

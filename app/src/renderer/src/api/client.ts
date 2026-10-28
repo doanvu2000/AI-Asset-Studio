@@ -3,6 +3,12 @@ import type {
   BatchCreateBody,
   BlobRef,
   ExportPreset,
+  GddProposal,
+  ManifestFormat,
+  ManifestRow,
+  ManifestView,
+  ProjectQaFixResult,
+  ProjectQaReport,
   ProjectCreateBody,
   ProjectPatchBody,
   ProjectRow,
@@ -34,6 +40,7 @@ import type {
   SetupStartBody
 } from './types'
 import type { CoreDiagnostics } from '../../../preload/types'
+import type { EnginePreviewBody, EnginePreviewJob, PreviewEngines } from './enginePreview'
 import { devlog } from '@/composables/devlog'
 
 export class ApiError extends Error {
@@ -78,6 +85,7 @@ export interface StudioApi {
   gates(): Promise<StepRow[]>
   resolveGate(stepId: string, res: GateResolution): Promise<void>
   uploadBlob(file: File): Promise<BlobRef>
+  blobInfo(hash: string): Promise<BlobRef>
   versions(q?: VersionsQuery): Promise<VersionRow[]>
   setVersionStatus(id: string, action: 'approve' | 'reject'): Promise<VersionRow>
   blobUrl(hash: string): string
@@ -103,6 +111,19 @@ export interface StudioApi {
   patchProject(id: string, body: ProjectPatchBody): Promise<ProjectRow>
   archiveProject(id: string): Promise<ProjectRow>
   projectSummary(id: string): Promise<ProjectSummary>
+  getManifest(projectId: string): Promise<ManifestView>
+  putManifest(projectId: string, rows: ManifestRow[]): Promise<ManifestView>
+  /** Claude reads the GDD and proposes rows (≤ 30); nothing is saved. */
+  manifestFromGdd(projectId: string, text: string, limit?: number): Promise<GddProposal>
+  /** row_ids omitted = every row not run yet or failed; one batch, each row with its own recipe. */
+  runManifest(projectId: string, rowIds?: string[]): Promise<ManifestView>
+  exportManifest(projectId: string, format: ManifestFormat): Promise<string>
+  importManifest(projectId: string, format: ManifestFormat, text: string, append: boolean): Promise<ManifestView>
+  /** Last saved project consistency report (empty `assets` when never run). */
+  getProjectQa(projectId: string): Promise<ProjectQaReport>
+  runProjectQa(projectId: string, body?: { only_approved?: boolean; vision?: boolean; model?: string }): Promise<ProjectQaReport>
+  /** Starts the fix recipe (Klein edit) on one asset; instructions default to the report's suggestion. */
+  fixProjectQa(projectId: string, versionId: string, instructions?: string): Promise<ProjectQaFixResult>
   /** Cost/time per recipe + per-day totals + most expensive step kinds for one period. */
   statsOverview(q?: StatsQuery): Promise<StatsOverview>
   /** Scores Library versions that have no QA yet (or all of them with `missing_only: false`). */
@@ -114,6 +135,11 @@ export interface StudioApi {
   startSetup(body: SetupStartBody): Promise<SetupJob>
   cancelSetup(): Promise<SetupJob | null>
   claudeLogin(): Promise<void>
+  enginePreviewEngines(): Promise<PreviewEngines>
+  /** Exports the step for the engine, then opens it in Godot/Unity in the background; poll enginePreviewJob. */
+  startEnginePreview(stepId: string, body: EnginePreviewBody): Promise<EnginePreviewJob>
+  enginePreviewJob(jobId: string): Promise<EnginePreviewJob>
+  cancelEnginePreview(jobId: string): Promise<EnginePreviewJob>
 }
 
 export type RecipeBody = { yaml: string } | { doc: RecipeDoc }
@@ -128,6 +154,8 @@ function query(params: Record<string, string | number | undefined>): string {
 const TIMEOUT_MS = 20_000
 // Uploads, Claude translation and batch fan-out legitimately take longer than a plain read.
 const SLOW_TIMEOUT_MS = 180_000
+// The core gives Claude 240 s for a GDD.
+const GDD_TIMEOUT_MS = 260_000
 
 export function createHttpApi(baseUrl: string, token: string): StudioApi {
   const auth = { Authorization: `Bearer ${token}` }
@@ -199,6 +227,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
       fd.append('file', file, file.name)
       return call('POST', '/api/blobs', fd, SLOW_TIMEOUT_MS)
     },
+    blobInfo: (hash) => call('GET', `/api/blobs/${enc(hash)}/info`),
     versions: (q = {}) => call('GET', `/api/versions${query({ run_id: q.run_id, status: q.status, project_id: q.project_id })}`),
     setVersionStatus: (id, action) => call('POST', `/api/versions/${enc(id)}/${action}`),
     blobUrl: (hash) => `${baseUrl}/api/blobs/${enc(hash)}?t=${enc(token)}`,
@@ -229,9 +258,26 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     patchProject: (id, body) => call('PATCH', `/api/projects/${enc(id)}`, body),
     archiveProject: (id) => call('DELETE', `/api/projects/${enc(id)}`),
     projectSummary: (id) => call('GET', `/api/projects/${enc(id)}/summary`),
+    getManifest: (id) => call('GET', `/api/projects/${enc(id)}/manifest`),
+    putManifest: (id, rows) => call('PUT', `/api/projects/${enc(id)}/manifest`, { rows }),
+    manifestFromGdd: (id, text, limit) => call('POST', `/api/projects/${enc(id)}/manifest/from-gdd`, { text, limit }, GDD_TIMEOUT_MS),
+    runManifest: (id, rowIds) => call('POST', `/api/projects/${enc(id)}/manifest/run`, rowIds ? { row_ids: rowIds } : {}, SLOW_TIMEOUT_MS),
+    async exportManifest(id, format) {
+      const res = await fetch(`${baseUrl}/api/projects/${enc(id)}/manifest/export?format=${format}`, { headers: auth, signal: AbortSignal.timeout(TIMEOUT_MS) })
+      if (!res.ok) throw new ApiError(`http_${res.status}`, res.statusText || 'Không xuất được danh sách', res.status)
+      return res.text()
+    },
+    importManifest: (id, format, text, append) => call('POST', `/api/projects/${enc(id)}/manifest/import`, { format, text, append }),
+    getProjectQa: (id) => call('GET', `/api/projects/${enc(id)}/qa`),
+    runProjectQa: (id, body = {}) => call('POST', `/api/projects/${enc(id)}/qa`, body, GDD_TIMEOUT_MS),
+    fixProjectQa: (id, versionId, instructions) => call('POST', `/api/projects/${enc(id)}/qa/fix`, { version_id: versionId, instructions }),
     statsOverview: (q = {}) =>
       call('GET', `/api/stats/overview${query({ since: q.since, until: q.until, project_id: q.project_id, days: q.days, tz_offset_s: q.tz_offset_s })}`),
     recomputeQa: (body = {}) => call('POST', '/api/qa/recompute', body, SLOW_TIMEOUT_MS),
-    recomputeVersionQa: (id) => call('POST', `/api/qa/versions/${enc(id)}`, undefined, SLOW_TIMEOUT_MS)
+    recomputeVersionQa: (id) => call('POST', `/api/qa/versions/${enc(id)}`, undefined, SLOW_TIMEOUT_MS),
+    enginePreviewEngines: () => call('GET', '/api/engine-preview'),
+    startEnginePreview: (stepId, body) => call('POST', `/api/steps/${enc(stepId)}/engine-preview`, body, SLOW_TIMEOUT_MS),
+    enginePreviewJob: (jobId) => call('GET', `/api/engine-preview/jobs/${enc(jobId)}`),
+    cancelEnginePreview: (jobId) => call('POST', `/api/engine-preview/jobs/${enc(jobId)}/cancel`)
   }
 }

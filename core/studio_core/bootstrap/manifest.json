@@ -88,9 +88,25 @@
    "workflows": [
     "vfx_wan_alpha"
    ]
+  },
+  {
+   "id": "upscale",
+   "label": "Phóng to HD",
+   "detail": "Phóng ảnh / atlas x2, x4 bằng Real-ESRGAN (BSD-3), giữ nền trong suốt; pixel art phóng nearest.",
+   "required": false,
+   "workflows": [
+    "upscale_esrgan"
+   ]
   }
  ],
  "models": [
+  {
+   "name": "RealESRGAN_x4plus.safetensors",
+   "dir": "upscale_models",
+   "url": "https://huggingface.co/Comfy-Org/Real-ESRGAN/resolve/main/RealESRGAN_x4plus.safetensors",
+   "size": 66857836,
+   "sha256": "37f9a931c215f040aa6d50f711f2cb115f713c46df1d0d6469a8bd7bfe9a60bb"
+  },
   {
    "name": "birefnet.safetensors",
    "dir": "background_removal",

@@ -585,6 +585,52 @@ def build_server(link: CoreLink) -> MCPServer:
         return await tools.set_version_status(version_id, status)
 
     @mcp.tool(annotations=read_only)
+    async def get_asset_list(project_id: str) -> dict[str, Any]:
+        """A project's asset list (manifest): rows {id, name, recipe_id, inputs, notes, run_id, status} where status
+        is todo | running | review | approved | failed, derived from the row's last run."""
+        return await tools._call("GET", f"/api/projects/{_safe_id(project_id, 'project_id')}/manifest")
+
+    @mcp.tool(annotations=acts)
+    async def asset_list_from_gdd(project_id: str, gdd_text: str, limit: int = 30, append: bool = True
+                                  ) -> dict[str, Any]:
+        """Let Claude read a game design document and propose asset-list rows (at most 30 per call), each bound
+        to an available recipe with its inputs filled. append=True saves them to the project's list; False only
+        returns the proposal. `dropped` lists proposals bound to unknown recipes."""
+        return await tools._call("POST", f"/api/projects/{_safe_id(project_id, 'project_id')}/manifest/from-gdd",
+                                 json={"text": gdd_text, "limit": limit, "append": append}, timeout=300)
+
+    @mcp.tool(annotations=acts)
+    async def run_asset_list(project_id: str, row_ids: list[str] | None = None) -> dict[str, Any]:
+        """Start asset-list rows as one batch (each row with its own recipe, project style applied). row_ids None =
+        every row not run yet or failed. Returns batch_id and run_ids (follow them with wait_run)."""
+        body: dict[str, Any] = {} if row_ids is None else {"row_ids": row_ids}
+        return await tools._call("POST", f"/api/projects/{_safe_id(project_id, 'project_id')}/manifest/run", json=body)
+
+    @mcp.tool(annotations=acts)
+    async def project_qa(project_id: str, only_approved: bool = False, vision: bool = False,
+                         flagged_only: bool = True) -> dict[str, Any]:
+        """Consistency check of a project's image assets (approved, else latest, per run): palette drift vs the
+        project palette/reference, subject scale vs the median, outline weight, light direction. Each asset gets a
+        0-100 score, issues and a `fix` (recipe + inputs) usable with project_qa_fix. vision=True adds a Claude
+        summary (costs API credits). flagged_only drops assets without issues from the reply."""
+        report = await tools._call("POST", f"/api/projects/{_safe_id(project_id, 'project_id')}/qa",
+                                   json={"only_approved": only_approved, "vision": vision}, timeout=300)
+        assets = [{k: a.get(k) for k in ("version_id", "asset_name", "score", "grade", "issues", "vision_note",
+                                         "fix", "note") if a.get(k) not in (None, "", [])}
+                  for a in report.get("assets", []) if not flagged_only or a.get("issues") or a.get("vision_note")]
+        return {"summary": report.get("summary"), "reference": report.get("reference"),
+                "vision": report.get("vision"), "assets": assets}
+
+    @mcp.tool(annotations=acts)
+    async def project_qa_fix(project_id: str, version_id: str, instructions: str | None = None) -> dict[str, Any]:
+        """One-click fix of one asset from project_qa: starts a Klein edit run (variants-2d) on its image with the
+        report's suggested instructions (or yours, English). Returns run_id; follow with wait_run."""
+        body: dict[str, Any] = {"version_id": _safe_id(version_id, "version_id")}
+        if instructions:
+            body["instructions"] = instructions
+        return await tools._call("POST", f"/api/projects/{_safe_id(project_id, 'project_id')}/qa/fix", json=body)
+
+    @mcp.tool(annotations=read_only)
     async def recipe_stats(days: int | None = 30, project_id: str | None = None) -> dict[str, Any]:
         """Cost and time per recipe over the last `days` calendar days including today (from local midnight, the
         same window as the app's dashboard; None = all time): run counts by status, failure rate, active duration
@@ -599,6 +645,16 @@ def build_server(link: CoreLink) -> MCPServer:
         body = await tools._call("GET", "/api/stats/recipes", params=params)
         body["steps"] = (await tools._call("GET", "/api/stats/steps", params=params))["steps"]
         return body
+
+    @mcp.tool(annotations=acts)
+    async def engine_preview(step_id: str, engine: Literal["godot", "unity"] = "godot", timeout_s: float = 900,
+                             include_image: bool = True, ppu: float = 100.0) -> CallToolResult:
+        """Export a finished step for Godot/Unity, open it in the real engine (Godot headless import + GL render;
+        Unity batchmode, ~1-3 min) and return import errors/warnings plus a screenshot. Needs godot_exe or
+        unity_exe + unity_project set in the app's tool settings."""
+        from studio_core.mcp.engine_preview import engine_preview as run_preview
+
+        return await run_preview(link, _safe_id(step_id, "step_id"), engine, timeout_s, include_image, ppu)
 
     return mcp
 

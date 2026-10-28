@@ -13,3 +13,4 @@ spikes/*.log
 .DS_Store
 Thumbs.db
 core/build/
+.gpu-lock/

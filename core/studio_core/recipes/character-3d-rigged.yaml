@@ -1,0 +1,152 @@
+id: character-3d-rigged
+name: Nhân vật 3D có rig (GLB/FBX)
+description: >-
+  Mesh nhân vật tĩnh (đứng thẳng, mặt hướng về trước) → Blender dọn mesh → render mặt trước → Claude chấm 19 khớp →
+  dựng xương tên chuẩn Humanoid (Hips, Spine, Chest, Neck, Head, LeftUpperArm…) + gán weight → bake anim
+  idle / walk / run / attack, mỗi anim một NLA track → xuất GLB + FBX (FBX hợp Unity: -Z forward, Y up, scale 1)
+  → ảnh xem trước (xoay 4 góc + tư thế chính mỗi anim) → duyệt.
+inputs:
+  mesh: {type: mesh, label: Mesh nhân vật (GLB, đứng thẳng)}
+  name: {type: text, default: character, label: Tên file}
+  anims: {type: text, default: "idle, walk, run, attack", label: "Anim (idle, walk, run, attack — cách nhau dấu phẩy)"}
+  height: {type: float, default: 1.8, min: 0.1, max: 100, label: Chiều cao (m)}
+  faces: {type: int, default: 30000, min: 2000, max: 200000, label: Số mặt}
+  upright: {type: enum, default: none, options: [none, x90, x-90, y90, y-90, x180], label: Dựng đứng}
+  fps: {type: int, default: 30, options: [24, 30, 60], label: FPS anim}
+steps:
+  - id: cleanup
+    kind: blender.cleanup
+    in: {mesh: inputs.mesh}
+    params: {target_faces: "${inputs.faces}", height: "${inputs.height}", origin: feet, upright: "${inputs.upright}"}
+  # Joints are marked on a straight-on render so pixels map back onto the mesh's front plane.
+  - id: front
+    kind: blender.render_dirs
+    in: {mesh: cleanup.meshes}
+    params: {count: 1, elevation: 0, res: 512, supersample: 1}
+  - id: joints
+    kind: claude.task
+    in: {images: front.images}
+    params:
+      model: opus
+      max_turns: 2
+      _auto_retry: 1
+      system: You place joints for a 3D skeleton on a front orthographic render of a game character. Coordinates are image pixels, origin top-left, x right, y down. The character faces the viewer, so its left side (suffix _l) is on the IMAGE RIGHT.
+      prompt: |
+        Image size: 512 x 512. Return every joint on its real anatomical pivot: top of the head, base of the neck, pelvis center between the hips, shoulder ball, elbow bend, wrist, fingertips, hip socket, knee, ankle, toe tip. Joints must stay inside their limb's silhouette; for a limb hidden behind clothing, place it where the limb would be.
+      schema:
+        type: object
+        properties:
+          joints:
+            type: object
+            properties:
+              head_top:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              neck:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              pelvis:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              shoulder_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              elbow_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              wrist_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              hand_tip_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              shoulder_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              elbow_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              wrist_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              hand_tip_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              hip_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              knee_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              ankle_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              foot_tip_l:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              hip_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              knee_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              ankle_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+              foot_tip_r:
+                type: array
+                items: {type: number}
+                minItems: 2
+                maxItems: 2
+            required: [head_top, neck, pelvis, shoulder_l, elbow_l, wrist_l, hand_tip_l, shoulder_r, elbow_r, wrist_r, hand_tip_r,
+              hip_l, knee_l, ankle_l, foot_tip_l, hip_r, knee_r, ankle_r, foot_tip_r]
+          notes: {type: string}
+        required: [joints, notes]
+  - id: rig
+    kind: blender.rig_export
+    in: {mesh: cleanup.meshes, joints: joints.json, front: front.meta}
+    params: {anims: "${inputs.anims}", fps: "${inputs.fps}", name: "${inputs.name}"}
+  - id: approve
+    kind: gate.approve
+    in: {meshes: rig.meshes, fbx: rig.fbx, preview: rig.preview, images: rig.images, report: rig.report}
+outputs:
+  final: approve.meshes
+  fbx: approve.fbx
+  preview: approve.preview
+  report: approve.report

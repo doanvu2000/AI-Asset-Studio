@@ -260,6 +260,30 @@ class SqliteRepo:
         sql = "SELECT * FROM projects" + ("" if archived else " WHERE archived = 0") + " ORDER BY updated_at DESC"
         return [_PROJECTS.decode(r) for r in await self.db.fetchall(sql)]
 
+    async def get_manifest(self, project_id: str) -> tuple[list[dict[str, Any]], float | None]:
+        row = await self.db.fetchone("SELECT rows, updated_at FROM manifests WHERE project_id = ?", (project_id,))
+        return (orjson.loads(row["rows"]), row["updated_at"]) if row else ([], None)
+
+    async def save_manifest(self, project_id: str, rows: list[dict[str, Any]]) -> float:
+        now = time.time()
+        await self.db.write("INSERT INTO manifests (project_id, rows, updated_at) VALUES (?, ?, ?) "
+                            "ON CONFLICT(project_id) DO UPDATE SET rows = excluded.rows, updated_at = excluded.updated_at",
+                            (project_id, orjson.dumps(rows, default=to_jsonable_python).decode(), now))
+        return now
+
+    async def run_states(self, run_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """run id -> {status, approved (count of approved versions)}; unknown ids are left out."""
+        out: dict[str, dict[str, Any]] = {}
+        ids = list(dict.fromkeys(run_ids))
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            rows = await self.db.fetchall(
+                "SELECT r.id, r.status, (SELECT COUNT(*) FROM versions v WHERE v.run_id = r.id AND v.status = ?) "
+                f"AS approved FROM runs r WHERE r.id IN ({','.join('?' * len(chunk))})",
+                (VersionStatus.APPROVED.value, *chunk))
+            out.update({r["id"]: {"status": r["status"], "approved": r["approved"]} for r in rows})
+        return out
+
     async def project_summary(self, project_id: str) -> dict[str, Any]:
         rows = await self.db.fetchall(
             "SELECT status, COUNT(*) AS n, MAX(MAX(created_at, COALESCE(ended_at, 0))) AS last FROM runs "

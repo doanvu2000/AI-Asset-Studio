@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
+from studio_core.export.collider import for_sheet, unity_physics_shape
 from studio_core.export.sheet import Layout, Track, direction_vector, layout, stable_hex
 from studio_core.export.source import Files, Source
 
@@ -46,7 +47,9 @@ def _platform(target: str, max_size: int) -> str:
 """
 
 
-def _sprite_entry(asset: str, name: str, x: int, y: int, w: int, h: int, pivot: tuple[float, float]) -> str:
+def _sprite_entry(asset: str, name: str, x: int, y: int, w: int, h: int, pivot: tuple[float, float],
+                  physics: str = "      physicsShape: []
+") -> str:
     return f"""    - serializedVersion: 2
       name: {name}
       rect:
@@ -60,8 +63,7 @@ def _sprite_entry(asset: str, name: str, x: int, y: int, w: int, h: int, pivot: 
       border: {{x: 0, y: 0, z: 0, w: 0}}
       customData:
       outline: []
-      physicsShape: []
-      tessellationDetail: 0
+{physics}      tessellationDetail: 0
       bones: []
       spriteID: {stable_hex("sprite", asset, name)}
       internalID: {file_id("sprite", asset, name)}
@@ -72,8 +74,15 @@ def _sprite_entry(asset: str, name: str, x: int, y: int, w: int, h: int, pivot: 
 """
 
 
+def _border(b: tuple[int, int, int, int] | None) -> str:
+    """Unity orders a sprite border (left, bottom, right, top); slices store (left, top, right, bottom)."""
+    left, top, right, bottom = b or (0, 0, 0, 0)
+    return f"{{x: {left}, y: {bottom}, z: {right}, w: {top}}}"
+
+
 def texture_meta(asset: str, tex_guid: str, lay: Layout | None, size: tuple[int, int], ppu: float, pixel: bool,
-                 normal_guid: str | None = None, is_normal: bool = False, repeat: bool = False) -> str:
+                 normal_guid: str | None = None, is_normal: bool = False, repeat: bool = False,
+                 border: tuple[int, int, int, int] | None = None, shapes: dict[str, list] | None = None) -> str:
     max_size = 32
     while max_size < max(size) and max_size < 16384:
         max_size *= 2
@@ -82,7 +91,8 @@ def texture_meta(asset: str, tex_guid: str, lay: Layout | None, size: tuple[int,
     if sprites and lay is not None:
         # Unity's rect origin is the texture's bottom-left; the sheet layout is top-left.
         for c in lay.cells:
-            entries += _sprite_entry(asset, c.name, c.x, lay.height - c.y - c.h, c.w, c.h, lay.pivot_norm)
+            physics = unity_physics_shape((shapes or {}).get(c.name) or [], c.w, c.h)
+            entries += _sprite_entry(asset, c.name, c.x, lay.height - c.y - c.h, c.w, c.h, lay.pivot_norm, physics)
         table = "".join(f"      {c.name}: {file_id('sprite', asset, c.name)}\n" for c in lay.cells)
         if normal_guid:
             secondary = f"\n    - texture: {{fileID: {TEXTURE_FILE_ID}, guid: {normal_guid}, type: 3}}\n      name: _NormalMap"
@@ -133,11 +143,11 @@ TextureImporter:
   compressionQuality: 50
   spriteMode: {2 if sprites else (0 if is_normal or repeat else 1)}
   spriteExtrude: 1
-  spriteMeshType: {0 if sprites else 1}
+  spriteMeshType: {0 if sprites or border else 1}
   alignment: 9
   spritePivot: {{x: {_f(lay.pivot_norm[0]) if lay else 0.5}, y: {_f(lay.pivot_norm[1]) if lay else 0.5}}}
   spritePixelsToUnits: {_f(ppu)}
-  spriteBorder: {{x: 0, y: 0, z: 0, w: 0}}
+  spriteBorder: {_border(border)}
   spriteGenerateFallbackPhysicsShape: 0
   alphaUsage: 1
   alphaIsTransparency: {0 if is_normal or repeat else 1}
@@ -508,6 +518,14 @@ README_TEXTURES = """- Textures/: texture liền mạch, import sẵn Wrap Mode 
   tileset.png (nếu có): các biến thể xếp một hàng, mỗi ô vuông cạnh = chiều cao ảnh, dùng làm Tile Palette."""
 
 
+README_UI = """- UI/: mỗi phần tử một sprite (Sprite Mode Single, Mesh Type Full Rect){sliced}.{states}"""
+README_UI_SLICED = """ — viền 9-slice đã đặt sẵn
+  (Sprite Editor > Border). Image component chọn Image Type = Sliced là kéo giãn giữ nguyên góc và khung"""
+README_UI_STATES = """
+  Nút có thêm <tên>_hover/_pressed/_disabled cùng viền: Button > Transition = Sprite Swap, gán Highlighted/Pressed/
+  Disabled Sprite tương ứng."""
+
+
 README_WANG = """- Textures/{asset}_wang.png: bộ Wang góc 16 ô (4×4), đã cắt sẵn 16 sprite tên wang_<số>_<góc NW NE SW SE>
   (a = vật liệu 1, b = vật liệu 2, vd wang_06_abba). Đặt ô sao cho hai ô cạnh nhau cùng nhãn ở góc chung là liền
   mạch; Textures/{asset}_wang.json ghi nhãn góc/cạnh từng ô (index = nw*8 + ne*4 + sw*2 + se).
@@ -542,6 +560,7 @@ def export(src: Source) -> Files:
     notes: list[str] = []
     if src.sheet is not None and src.meta is not None:
         lay = layout(src.meta, src.clip_hint, directional_rows=src.directional_rows)
+        col = for_sheet(src, lay)
         pixel = src.is_pixel()
         notes.append((README_SHEET if lay.facing else README_FLIPBOOK).format(asset=a, ppu=_f(src.ppu)))
         tex_rel, normal_rel = f"{a}.png", f"{a}_normal.png"
@@ -549,7 +568,12 @@ def export(src: Source) -> Files:
         normal_guid = guid(u, a, normal_rel) if src.normal is not None else None
         size = (lay.width, lay.height)
         files += [(tex_rel, src.sheet),
-                  (f"{tex_rel}.meta", texture_meta(a, tex_guid, lay, size, src.ppu, pixel, normal_guid).encode())]
+                  (f"{tex_rel}.meta", texture_meta(a, tex_guid, lay, size, src.ppu, pixel, normal_guid,
+                                                   shapes=col.shapes if col else None).encode())]
+        if col is not None:
+            notes.append("- Collider: mỗi sprite có Custom Physics Shape vẽ theo alpha (Sprite Editor > Custom Physics "
+                         "Shape) — thêm PolygonCollider2D là tự lấy viền." + (" Pivot đặt ở hàng pixel thấp nhất (chân)."
+                                                                                if lay.facing else ""))
         if src.normal is not None and normal_guid:
             files += [(normal_rel, src.normal),
                       (f"{normal_rel}.meta",
@@ -576,9 +600,15 @@ def export(src: Source) -> Files:
         files += [(f"Spine/{n}", p) for n, p in src.spine_pages]
         notes.append(f"- Spine/: {stem}.json + {stem}.atlas.txt + ảnh trang — cần package spine-unity 4.2 "
                      "(tự tạo SkeletonData khi import).")
-    for n, p in src.glb:
+    from studio_core.export import rig3d
+
+    rig_files, rig_notes = rig3d.unity_files(src, lambda rel: guid(u, a, rel))
+    files += rig_files
+    notes += rig_notes
+    glbs = [(n, p) for n, p in src.glb if not rig3d.fbx_twin(src, n)]
+    for n, p in glbs:
         files.append((f"Models/{n}", p))
-    if src.glb:
+    if glbs:
         notes.append("- Models/*.glb: cần package glTFast (com.unity.cloud.gltfast) để import.")
     if any(n.endswith("_lods.glb") for n, _ in src.glb):
         files.append(("Editor/AssetStudioLodGroup.cs", LOD_GROUP_SCRIPT.encode()))
@@ -604,10 +634,23 @@ def export(src: Source) -> Files:
                                                          repeat=role != "atlas").encode())]
     if src.textures:
         notes.append(README_TEXTURES)
+    for n, p, b, _ in src.ui:
+        rel = f"UI/{n}.png"
+        files += [(rel, p), (f"{rel}.meta", texture_meta(a, guid(u, a, rel), None, _image_size(p), src.ppu,
+                                                         src.pixel is True, border=b).encode())]
+    if src.ui:
+        notes.append(README_UI.format(sliced=README_UI_SLICED if any(any(b) for _, _, b, _ in src.ui) else "",
+                                      states=README_UI_STATES if any(s for *_, s in src.ui) else ""))
     files += [(f"Audio/{n}", p) for n, p in src.audio]
     if src.audio:
         notes.append("- Audio/: Unity tự import thành AudioClip. File *_loop nối liền đầu-cuối: bật Loop ở AudioSource "
                      "(nhạc dài nên đặt Load Type = Streaming).")
+    if src.pbr:
+        from studio_core.export.pbr import unity_files
+
+        pbr_files, pbr_notes = unity_files(src)
+        files += pbr_files
+        notes += pbr_notes
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

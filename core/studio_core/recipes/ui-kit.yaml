@@ -1,0 +1,32 @@
+id: ui-kit
+name: Bộ UI kit 9-slice (Z-Image)
+description: >-
+  Chủ đề → Z-Image vẽ một sheet mockup UI (nút, khung, thanh, ô, tab; không chữ) → chọn → xoá nền, tách từng phần
+  tử → tính viền 9-slice + trạng thái hover/pressed/disabled → bảng xem trước kéo giãn 3× → duyệt. Xuất Unity
+  (spriteBorder) / Godot (StyleBoxTexture).
+inputs:
+  prompt: {type: text, label: Chủ đề UI, placeholder: "dark fantasy RPG, carved stone frames with gold trim"}
+  count: {type: int, default: 2, min: 1, max: 4, label: Số sheet để chọn}
+steps:
+  - id: gen
+    kind: comfy.t2i_zimage_turbo
+    params:
+      "57:27.text": "A game UI kit asset sheet, ${inputs.prompt}. Flat 2D front view of separate user interface elements laid out in a neat grid with wide empty gaps between them, on a plain pure white background: three wide rectangular buttons, one large empty window panel with a decorative frame, one empty horizontal progress bar frame, one filled horizontal health bar, four square inventory slots, two tab buttons. No outer frame or border around the whole sheet. Ornaments only on the four corners; the straight edges between the corners are plain and even so each element can be stretched as a 9-slice. Every element is blank: no text, no letters, no numbers, no icons, no symbols. Clean edges, no shadows on the background, no perspective, no screen, no characters."
+      "57:13.batch_size": "${inputs.count}"
+  - id: pick
+    kind: gate.pick
+    in: {images: gen.images}
+    params: {k: 0}
+  - id: split
+    kind: op.ui_split
+    in: {images: pick.images}
+  - id: slice
+    kind: op.nine_slice
+    in: {images: split.images}
+  - id: approve
+    kind: gate.approve
+    in: {preview: slice.preview, images: slice.images, slices: slice.slices}
+outputs:
+  final: slice.images
+  preview: slice.preview
+  slices: slice.slices

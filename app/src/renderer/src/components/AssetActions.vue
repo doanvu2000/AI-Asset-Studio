@@ -4,10 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowUpRight, Check, Download, FolderOpen, GripVertical, Link2, LoaderCircle } from '@lucide/vue'
 import { useAssetFile } from '@/composables/assetFile'
 import BundleMenu from './BundleMenu.vue'
+import FollowUpMenu from './FollowUpMenu.vue'
+import type { BlobRef } from '@/api/types'
 import { exportName, useVersions } from '@/stores/versions'
 
 const props = defineProps<{
   hash: string
+  blob?: BlobRef
   filename?: string
   runId?: string
   versionId?: string
@@ -29,6 +32,7 @@ const runLink = computed(() => {
   return id && !(route.name === 'run' && route.params.id === id) ? id : null
 })
 const bundleStep = computed(() => props.stepId ?? version.value?.step_id)
+const sourceRun = computed(() => props.runId ?? version.value?.run_id)
 const offTitle = 'Chỉ dùng được trong app desktop'
 </script>
 
@@ -48,6 +52,7 @@ const offTitle = 'Chỉ dùng được trong app desktop'
       <span v-if="!compact">Xuất…</span>
     </button>
     <BundleMenu v-if="bundleStep && file.available" :step-id="bundleStep" :name="version?.asset_name.trim() || undefined" :compact="compact" />
+    <FollowUpMenu :hash="hash" :blob="blob ?? version?.blob" :run-id="sourceRun" :step-id="bundleStep" :compact="compact" />
     <button
       type="button"
       class="btn btn-plain"

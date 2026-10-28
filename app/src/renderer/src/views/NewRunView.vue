@@ -24,6 +24,7 @@ import { useToasts } from '@/stores/toasts'
 import { stepName } from '@/composables/format'
 import { RECIPE_GROUP_LABEL, RECOMMENDED_RECIPES, recipeGroup, recipePitch, type RecipeGroup } from '@/assets/art'
 import { QUICK_MATERIALS, quickStyleLabel } from '@/assets/quickPrompts'
+import { PREFILL_PREFIX } from '@/composables/followUp'
 
 const recipes = useRecipes()
 const projects = useProjects()
@@ -170,6 +171,30 @@ watch(
     varyBy.value = textInputs.value.length ? 'prompts' : 'files'
     batchFiles.value = []
     void nextTick(() => formEl.value?.querySelector('textarea')?.focus())
+  },
+  { immediate: true }
+)
+
+// "Dùng tiếp cho…" links here with `input.<name>=<hash>` (repeated for list inputs); those files show as already added.
+watch(
+  selected,
+  async (r) => {
+    if (!r) return
+    const wanted = Object.entries(route.query).filter(([k]) => k.startsWith(PREFILL_PREFIX))
+    if (!wanted.length) return
+    void router.replace({ query: Object.fromEntries(Object.entries(route.query).filter(([k]) => !k.startsWith(PREFILL_PREFIX))) })
+    for (const [k, v] of wanted) {
+      const name = k.slice(PREFILL_PREFIX.length)
+      const hashes = (Array.isArray(v) ? v : [v]).filter((h): h is string => !!h)
+      if (!isBlob(r.inputs[name]?.type ?? '') || !hashes.length) continue
+      try {
+        blobs[name] = await Promise.all(hashes.map((h) => api().blobInfo(h)))
+        touched.add(name)
+        errors[name] = null
+      } catch (e) {
+        toasts.error(e, 'Không nạp được tệp từ kết quả trước')
+      }
+    }
   },
   { immediate: true }
 )

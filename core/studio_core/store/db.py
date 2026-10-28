@@ -87,6 +87,12 @@ CREATE TABLE IF NOT EXISTS cache (
     outputs TEXT NOT NULL,
     created_at REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS manifests (
+    project_id TEXT PRIMARY KEY,
+    rows TEXT NOT NULL DEFAULT '[]',
+    updated_at REAL NOT NULL
+);
 """
 
 

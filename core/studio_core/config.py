@@ -9,7 +9,7 @@ from studio_core.paths import default_data_dir, package_dir, recipes_dir
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL_KEYS = ("comfy_dir", "comfy_python", "comfy_models_dir", "comfy_workflows_dir", "blender_exe", "codex_exe",
-             "claude_exe", "ffmpeg_exe")
+             "claude_exe", "ffmpeg_exe", "godot_exe", "unity_exe", "unity_project")
 
 
 def _default_codex_exe() -> str:
@@ -54,6 +54,9 @@ class Settings(BaseModel):
     codex_home: Path = Path.home() / ".codex"
     claude_exe: Path = Field(default_factory=lambda: Path(_default_claude_exe()))
     ffmpeg_exe: Path = Field(default_factory=lambda: Path(_default_ffmpeg_exe()))
+    godot_exe: Path = Path(r"L:\AI\tools\godot\Godot_v4.7.2-stable_win64_console.exe")
+    unity_exe: Path = Path(r"F:\Unity\6000.3.6f1\Editor\Unity.exe")
+    unity_project: Path = Path(r"L:\AI\unity-test-batch")
 
     lane_limits: dict[str, int] = {"gpu": 1, "blender": 1, "cloud": 3, "cpu": 4}
     allowed_origins: list[str] = ["app://studio", "http://localhost:5173", "http://127.0.0.1:5173"]

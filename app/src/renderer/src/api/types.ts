@@ -341,6 +341,9 @@ export interface ExportPreset {
 export interface BatchItem {
   inputs: Record<string, unknown>
   title?: string
+  /** Overrides the batch's recipe_id for this item. */
+  recipe_id?: string
+  meta?: Record<string, unknown>
 }
 
 export interface BatchCreateBody {
@@ -420,7 +423,43 @@ export interface ProjectPatchBody {
   archived?: boolean
 }
 
-export type ToolKey = 'comfy_dir' | 'comfy_python' | 'comfy_models_dir' | 'comfy_workflows_dir' | 'blender_exe' | 'codex_exe' | 'claude_exe' | 'ffmpeg_exe'
+/** Status of an asset-list row, from its last run (core engine/manifest.row_status). */
+export type ManifestStatus = 'todo' | 'running' | 'review' | 'approved' | 'failed'
+
+export interface ManifestRow {
+  id: string
+  name: string
+  recipe_id: string
+  inputs: Record<string, unknown>
+  notes: string
+  run_id: string | null
+}
+
+export interface ManifestRowView extends ManifestRow {
+  status: ManifestStatus
+  run_status: RunStatus | null
+}
+
+export interface ManifestView {
+  project_id: string
+  rows: ManifestRowView[]
+  counts: Partial<Record<ManifestStatus, number>>
+  updated_at: number | null
+  added?: string[]
+  batch_id?: string
+  run_ids?: string[]
+  dropped?: string[]
+}
+
+export interface GddProposal {
+  rows: ManifestRow[]
+  dropped: string[]
+  cost_usd?: number | null
+}
+
+export type ManifestFormat = 'csv' | 'yaml'
+
+export type ToolKey = 'comfy_dir' | 'comfy_python' | 'comfy_models_dir' | 'comfy_workflows_dir' | 'blender_exe' | 'codex_exe' | 'claude_exe' | 'ffmpeg_exe' | 'godot_exe' | 'unity_exe' | 'unity_project'
 
 export interface ToolPath {
   key: ToolKey
@@ -565,4 +604,64 @@ export interface SetupStartBody {
   packs: string[]
   blender: boolean
   claude: boolean
+}
+
+/** Project-wide consistency QA (core engine/project_qa.py). */
+export type ProjectQaKey = 'palette' | 'scale' | 'outline' | 'light'
+export type ProjectQaGrade = 'ok' | 'warn' | 'bad' | 'skip'
+
+export interface ProjectQaIssue {
+  key: ProjectQaKey
+  label: string
+  severity: 'warn' | 'bad'
+  message: string
+  /** English Klein edit instruction. */
+  fix: string
+}
+
+export interface ProjectQaFix {
+  recipe_id: string
+  title: string
+  inputs: Record<string, unknown>
+}
+
+export interface ProjectQaAsset {
+  version_id: string
+  run_id: string
+  asset_name: string
+  status: VersionStatus
+  blob: BlobRef
+  colors: string[]
+  score: number | null
+  grade: ProjectQaGrade
+  parts: Partial<Record<ProjectQaKey, { score: number; [k: string]: unknown }>>
+  issues: ProjectQaIssue[]
+  note: string
+  fix?: ProjectQaFix | null
+  vision_note?: string
+}
+
+export interface ProjectQaReport {
+  project_id: string
+  created_at: number | null
+  assets: ProjectQaAsset[]
+  summary: { total: number; scored: number; score: number | null; flagged: number; counts: Record<ProjectQaGrade, number> } | null
+  reference?: {
+    palette: string[]
+    palette_source: string
+    fill_median: number | null
+    outlined: boolean | null
+    outline_median: number | null
+    light: number | null
+    light_label: string | null
+  }
+  vision?: { summary?: string; cost_usd?: number | null; model?: string; error?: { code: string; message: string } }
+  only_approved?: boolean
+}
+
+export interface ProjectQaFixResult {
+  run_id: string
+  recipe_id: string
+  inputs: Record<string, unknown>
+  title: string
 }

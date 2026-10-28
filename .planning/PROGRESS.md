@@ -910,3 +910,35 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [x] Art recipe: 9 webp mới (audio-sfx/music, vfx-flipbook, spine-anim-ref, concept-2d-style, spine-skin-variant,
   sprite-8dir-anim/pixel/3d-pixel) qua `app/scripts/gen-art.py` (Codex), `art/index.ts` + pitch spine-anim-ref; typecheck sạch.
 - [x] Nghiên cứu: `.planning/PLAN-2026-10-29-feature-ideas.md` (12 đề xuất, chờ chủ nhân duyệt).
+- [~] 2026-10-29 00:3x Đợt 1 giao 4 subagent: #1 dùng tiếp, #7 upscale ESRGAN, #2 manifest GDD, #3 UI kit. Push xong (1046c2b).
+- [x] 2026-10-29 00:39 Handoff mới: `.planning/HANDOFF-2026-10-29-0039.md`
+- [x] 2026-10-29 #1 "Dùng tiếp cho…" xong (agent): `engine/chain.py` (`$meta.then`), runner `_start_chain`, recipe
+  `spine-character-image`, `GET /api/blobs/{hash}/info`, app `followUp.ts` + `FollowUpMenu.vue` + NewRunView `input.*`.
+  `tests/test_chain.py` 12 pass; typecheck còn 1 lỗi `mock/server.ts:1506` thuộc #2 (chờ agent #2).
+- [x] 2026-10-29 #7 Upscale ESRGAN xong (agent): `RealESRGAN_x4plus` (BSD-3, có sẵn F:), workflow `upscale_esrgan`,
+  `ops/upscale.py` (prep/post, alpha Lanczos riêng, pixel art nearest, atlas scale), recipe `upscale`, pack `upscale`
+  manifest. `test_upscale.py` 11 pass; live 3 run OK (rương x4 17.6s, VFX x2, coin nearest), VRAM ~0.6GB.
+  Chưa live atlas (e2e_text 1 file); toàn pixel art vẫn khởi động comfy ~12s.
+- [x] 2026-10-29 #2 Danh sách asset từ GDD xong (agent): bảng `manifests` (db/repo), `engine/manifest.py` (row,
+  status, CSV/YAML), `adapters/gdd.py` (Claude ≤30 dòng), `api/manifest.py` (`/api/projects/{id}/manifest` GET/PUT,
+  from-gdd, import, export, run), batch per-item `recipe_id`/`meta` (`routes.start_batch`, áp style trước khi check),
+  MCP `get_asset_list`/`asset_list_from_gdd`/`run_asset_list`, app tab "Danh sách asset" (`ManifestPanel.vue`).
+  `test_manifest.py` 8 pass; live GDD mẫu → 18 dòng/38s/$0.085 Opus. Typecheck sạch (đã sửa mock:1506).
+- [~] 2026-10-29 Đợt 2 giao song song (không chờ #3): #5 QA dự án, #10 rig 3D, #9 PBR, #4 engine preview (Godot+Unity batchmode).
+  Full pytest + typecheck chạy nền để kiểm đợt 1.
+- [x] 2026-10-29 Kiểm đợt 1 (#1/#7/#2, #3 dở): pytest 528 pass / 4 skip; typecheck sạch.
+- [x] 2026-10-29 #3 UI kit xong (agent): `ops/ui.py` (`op.ui_split`, `op.nine_slice` + states hover/pressed/disabled),
+  recipe `ui-kit`, `ui-kit-style`, `icon-pack`; Unity spriteBorder + `UI/` README, Godot StyleBoxTexture + `<asset>_ui.tscn`.
+  `test_ui_kit.py` 7 pass, full 528 pass. Live: ui-kit 36s, ui-kit-style 53s, icon-pack 6 icon ~350s.
+  Sửa `scripts/e2e_text.py:49-51` (gate k>0 chọn k đầu). Còn: ngọc giữa cạnh → off_center, chưa mở engine thật, chưa art.
+- [x] 2026-10-29 #9 PBR xong (agent): `ops/pbr.py` (`op.pbr`), `export/pbr.py` (Unity URP Lit .mat + PBR/, Godot StandardMaterial3D),
+  recipe `pbr-material`, texture-seamless input `pbr`. `test_pbr.py` 8 pass, full 536 pass. Chưa mở engine thật.
+- [x] 2026-10-29 Nghiên cứu lượt 2 → #13–#22 (plan file). **Chủ nhân chốt làm cả 10** + cho tự chạy đêm, **được commit**
+  từng phần khi test xanh (KHÔNG push). Hàng đợi: 13,14,15,16,17,18,19,20,21,22 rồi đợt 3 (#8+12, #6 local, #11 spike).
+  Tối đa ~4 agent, GPU khoá bằng `mkdir` thư mục `L:/AI/AI-Asset-Studio/.gpu-lock` (agent tạo trước live run, xoá sau).
+- [x] 2026-10-29 #5 QA đồng bộ dự án xong (agent): `engine/project_qa.py` (palette OKLab/tỉ lệ/viền/hướng sáng),
+  `adapters/project_qa.py` (Claude vision), router `/api/projects/{id}/qa` (+`/fix` → variants-2d), MCP `project_qa*`,
+  tab "Kiểm tra đồng bộ" `QaPanel.vue`. 6 test pass. Heuristic chưa thử asset thật.
+- [~] 2026-10-29 Đang chạy: #10 rig 3D, #4 engine preview, art 5 recipe, #13 collider, #14 rarity. Chờ: #15–#22, đợt 3.
+- [x] 2026-10-29 Art 5 recipe mới xong (upscale, ui-kit, ui-kit-style, icon-pack, spine-character-image).
+- [x] 2026-10-29 02:30 Kiểm: pytest 560 pass / 4 skip, typecheck sạch → commit mốc. Handoff mới: `.planning/HANDOFF-2026-10-29-0230.md`

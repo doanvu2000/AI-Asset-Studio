@@ -6,12 +6,16 @@ from ..contracts import ExecutorRegistry, Resource
 from .audio import AudioPost
 from .executors import ALL_OPS, Sheet
 from .fx import FX_OPS
+from .pbr import PBR_OPS
 from .pixel import PIXEL_OPS
 from .presets import PresetStore
+from .rarity import RARITY_OPS
 from .rig import RIG_OPS
 from .spine_ref import SPINE_REF_OPS, VideoFrames
 from .spine_variant import VARIANT_OPS
 from .tile import TILE_OPS
+from .ui import UI_OPS
+from .upscale import UPSCALE_OPS
 from .vfx import VfxFrames
 
 
@@ -28,6 +32,6 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
     registry.register(VideoFrames(settings))
     registry.register(AudioPost(settings))
     registry.register(VfxFrames())
-    for tile_cls in TILE_OPS:
+    for tile_cls in (*TILE_OPS, *UI_OPS, *UPSCALE_OPS, *PBR_OPS, *RARITY_OPS):
         registry.register(tile_cls())
     return []

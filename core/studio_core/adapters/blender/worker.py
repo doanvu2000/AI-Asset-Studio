@@ -23,6 +23,7 @@ from mathutils import Matrix, Vector
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cleanup_math as cm  # noqa: E402
 import skin_math  # noqa: E402
+import rig3d_math  # noqa: E402
 
 LIGHT_PRESETS = {
     # (rotation_euler degrees, energy) per sun; tuned in P0 because sun 3 + ambient 1 rendered too dark.
@@ -836,14 +837,14 @@ def joints_to_world(joints, verts, p):
     return out
 
 
-def build_armature(scene, pts):
+def build_armature(scene, pts, bones=RIG_BONES):
     data = bpy.data.armatures.new("rig")
     arm = bpy.data.objects.new("rig", data)
     scene.collection.objects.link(arm)
     bpy.context.view_layer.objects.active = arm
     arm.select_set(True)
     bpy.ops.object.mode_set(mode="EDIT")
-    for name, parent, a, b in RIG_BONES:
+    for name, parent, a, b in bones:
         eb = data.edit_bones.new(name)
         eb.head, eb.tail = pts[a], pts[b]
         if (eb.tail - eb.head).length < 1e-4:
@@ -1018,10 +1019,10 @@ def _rotation(spec):
     return Matrix.Rotation(math.radians(deg), 4, axis)
 
 
-def apply_pose(arm, pose, drop):
+def apply_pose(arm, pose, drop, bones=RIG_BONES):
     """Rotations are about world axes through each bone's rest head, composed down the chain."""
     deltas = {}
-    for name, parent, _, _ in RIG_BONES:
+    for name, parent, _, _ in bones:
         bone = arm.data.bones[name]
         parent_delta = deltas.get(parent, Matrix.Translation((0, 0, drop)))
         head = bone.head_local
@@ -1111,8 +1112,195 @@ def animate_dirs(p, emit):
             "pivot": [res / 2, res * (0.5 + vmid / ortho)]}
 
 
+def _flatten_meshes(meshes):
+    """Unparented meshes with identity transforms, so the exported skin binds in clean object space."""
+    for o in meshes:
+        mw = o.matrix_world.copy()
+        o.parent = None
+        o.matrix_world = mw
+        if o.data.users > 1:
+            o.data = o.data.copy()
+    for o in [o for o in bpy.context.scene.objects if o.type != "MESH"]:
+        bpy.data.objects.remove(o, do_unlink=True)
+    for o in meshes:
+        o.data.transform(o.matrix_world)
+        o.matrix_world = Matrix.Identity(4)
+    bpy.context.view_layer.update()
+
+
+def _op_kwargs(op, kw):
+    # Exporter options drift between Blender releases; an unknown keyword would fail the whole export.
+    known = set(op.get_rna_type().properties.keys())
+    return {k: v for k, v in kw.items() if k in known}
+
+
+def _preview_camera(scene, v, height, elev_deg, headroom):
+    elev = math.radians(elev_deg)
+    r = float(np.sqrt((v[:, :2] ** 2).sum(1)).max()) * 1.3
+    zmin, zmax = float(v[:, 2].min()), float(v[:, 2].max())
+    vlo = zmin * math.cos(elev) - r * math.sin(elev) - 0.03 * height
+    vhi = (zmax + headroom) * math.cos(elev) + r * math.sin(elev)
+    cam_data = bpy.data.cameras.new("preview_cam")
+    cam_data.type = "ORTHO"
+    cam_data.ortho_scale = max(2 * r, vhi - vlo) * 1.05
+    cam_data.clip_end = (r + zmax) * 4 + 20
+    cam = bpy.data.objects.new("preview_cam", cam_data)
+    scene.collection.objects.link(cam)
+    scene.camera = cam
+    fwd = Vector((0, math.cos(elev), -math.sin(elev)))
+    up = Vector((0, math.sin(elev), math.cos(elev)))
+    base = up * ((vlo + vhi) / 2) - fwd * (r + zmax + 10)
+
+    def aim(angle):
+        a = math.radians(angle)
+        cam.location = Matrix.Rotation(a, 3, "Z") @ base
+        cam.rotation_euler = (math.pi / 2 - elev, 0, a)
+    return cam, aim
+
+
+def _verify_exports(glb, fbx):
+    reset()
+    bpy.ops.import_scene.gltf(filepath=glb)
+    arms = [o for o in bpy.context.scene.objects if o.type == "ARMATURE"]
+    out = {"glb_bones": sorted(b.name for b in arms[0].data.bones) if arms else [],
+           "glb_animations": sorted(a.name for a in bpy.data.actions),
+           "glb_skinned": sum(1 for o in bpy.context.scene.objects if o.type == "MESH"
+                              and any(m.type == "ARMATURE" for m in o.modifiers))}
+    reset()
+    try:
+        bpy.ops.import_scene.fbx(filepath=fbx)
+        out["fbx_actions"] = sorted(a.name for a in bpy.data.actions)
+        arms = [o for o in bpy.context.scene.objects if o.type == "ARMATURE"]
+        out["fbx_bones"] = sorted(b.name for b in arms[0].data.bones) if arms else []
+    except Exception as e:
+        out["fbx_error"] = repr(e)
+    return out
+
+
+def rig_export(p, emit):
+    """Auto-rig a static mesh with Humanoid bone names, bake the procedural clips as one NLA track each, export
+    GLB + FBX and render a rest turntable plus key poses per clip from the baked actions."""
+    t0 = time.perf_counter()
+    reset()
+    scene = bpy.context.scene
+    meshes = import_glb(p["glb"])
+    _flatten_meshes(meshes)
+    v = world_verts(meshes)
+    lo, hi = v.min(0), v.max(0)
+    foot = Vector(((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2]))
+    for o in meshes:
+        o.data.transform(Matrix.Translation(-foot))
+    bpy.context.view_layer.update()
+    v = world_verts(meshes)
+    height = float(v[:, 2].max() - v[:, 2].min())
+    pts = rig3d_math.humanoid_points(joints_to_world(p["joints"], v, p))
+    emit({"event": "progress", "value": 0, "max": 4, "label": "xương + weight"})
+    arm = build_armature(scene, pts, rig3d_math.RIG)
+    weights = bind_mesh(meshes, arm, height)
+    arm.name = arm.data.name = str(p.get("armature") or "Armature")
+    for old, new in rig3d_math.HUMANOID.items():
+        arm.data.bones[old].name = new
+        for o in meshes:
+            g = o.vertex_groups.get(old)
+            if g is not None and o.vertex_groups.get(new) is None:
+                g.name = new
+    bones = rig3d_math.renamed(rig3d_math.RIG)
+
+    fps = int(p.get("fps", 30))
+    scene.render.fps = fps
+    clips = p["clips"]
+    headroom = 0.3 * height if any(c["name"] == "attack" for c in clips) else 0.0
+    _, aim = _preview_camera(scene, v, height, float(p.get("elevation", 15)), headroom)
+    add_lights(scene, p)
+    configure_output(scene, p, int(p.get("res", 384)))
+    out_dir = p["out_dir"]
+    os.makedirs(out_dir, exist_ok=True)
+    previews = []
+
+    def shoot(path, label, angle, frame=None):
+        def go():
+            if frame is not None:
+                scene.frame_set(frame)
+            aim(angle)
+        previews.append({"file": path, "label": label})
+        return path, go, label
+
+    render_shots(scene, [shoot(os.path.join(out_dir, f"rest_{a:03d}.png"), f"rest {a}°", a)
+                         for a in (0, 90, 180, 270)], None, emit)
+
+    for pb in arm.pose.bones:
+        pb.rotation_mode = "QUATERNION"
+    arm.animation_data_create()
+    deform = [m for o in meshes for m in o.modifiers if m.type == "ARMATURE"]
+    baked = []
+    for clip in clips:
+        name = clip["name"]
+        ts = rig3d_math.clip_samples(clip, fps)
+        act = bpy.data.actions.new(name)
+        arm.animation_data.action = act
+        # Keying only needs bone matrices; skipping the mesh deform makes each per-bone depsgraph update cheap.
+        for m in deform:
+            m.show_viewport = False
+        prev = {}
+        for k, t in enumerate(ts):
+            pose, drop = clip_pose(name, t, 1, True, height)
+            apply_pose(arm, rig3d_math.rename_pose(pose), drop, bones)
+            for pb in arm.pose.bones:
+                q = pb.rotation_quaternion.copy()
+                if pb.name in prev:
+                    q.make_compatible(prev[pb.name])
+                    pb.rotation_quaternion = q
+                prev[pb.name] = q
+                pb.keyframe_insert("location", frame=k, group=pb.name)
+                pb.keyframe_insert("rotation_quaternion", frame=k, group=pb.name)
+        for m in deform:
+            m.show_viewport = True
+        loop = bool(clip.get("loop", True))
+        keys = rig3d_math.preview_keys(len(ts), loop)
+        render_shots(scene, [shoot(os.path.join(out_dir, f"{name}_k{k:03d}.png"), f"{name} · khung {k}", 30, k)
+                             for k in keys], None, emit)
+        track = arm.animation_data.nla_tracks.new()
+        track.name = name
+        track.strips.new(name, 0, act)
+        track.mute = True
+        arm.animation_data.action = None
+        for pb in arm.pose.bones:
+            pb.matrix_basis = Matrix.Identity(4)
+        baked.append({**clip, "first": 0, "last": len(ts) - 1, "keys": len(ts), "loop": loop})
+    for track in arm.animation_data.nla_tracks:
+        track.mute = False
+        for s in track.strips:
+            s.mute = False
+    scene.frame_set(0)
+
+    emit({"event": "progress", "value": 3, "max": 4, "label": "xuất GLB + FBX"})
+    bpy.ops.object.select_all(action="DESELECT")
+    gltf = bpy.ops.export_scene.gltf
+    gltf(**_op_kwargs(gltf, {"filepath": p["out_glb"], "export_format": "GLB", "use_selection": False,
+                             "export_animations": True, "export_animation_mode": "NLA_TRACKS", "export_skins": True,
+                             "export_yup": True, "export_apply": False}))
+    # Unity: -Z forward / Y up with "FBX All" scaling imports at scale 1 facing +Z; leaf bones only add junk joints.
+    fbx = bpy.ops.export_scene.fbx
+    fbx(**_op_kwargs(fbx, {"filepath": p["out_fbx"], "use_selection": False, "object_types": {"ARMATURE", "MESH"},
+                           "apply_unit_scale": True, "apply_scale_options": "FBX_SCALE_ALL", "axis_forward": "-Z",
+                           "axis_up": "Y", "use_space_transform": True, "bake_space_transform": False,
+                           "add_leaf_bones": False, "primary_bone_axis": "Y", "secondary_bone_axis": "X",
+                           "armature_nodetype": "NULL", "bake_anim": True, "bake_anim_use_all_bones": True,
+                           "bake_anim_use_nla_strips": True, "bake_anim_use_all_actions": False,
+                           "bake_anim_force_startend_keying": True, "bake_anim_step": 1.0,
+                           "bake_anim_simplify_factor": 0.0, "path_mode": "COPY", "embed_textures": True,
+                           "mesh_smooth_type": "FACE"}))
+    faces = sum(len(o.data.polygons) for o in meshes)
+    engine = scene.render.engine
+    check = _verify_exports(p["out_glb"], p["out_fbx"])
+    return {"total_s": round(time.perf_counter() - t0, 2), "weights": weights, "height": round(height, 4),
+            "fps": fps, "clips": baked, "bones": [b[0] for b in bones], "faces": faces, "previews": previews,
+            "check": check, "engine": engine}
+
+
 HANDLERS = {
     "ping": lambda p, emit: {"blender": bpy.app.version_string, "pid": os.getpid(), "engines": engine_ids()},
+    "rig_export": rig_export,
     "warmup": warmup,
     "render_dirs": render_dirs,
     "animate_dirs": animate_dirs,

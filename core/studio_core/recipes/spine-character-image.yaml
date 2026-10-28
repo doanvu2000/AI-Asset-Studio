@@ -1,0 +1,90 @@
+id: spine-character-image
+name: Nhân vật Spine từ ảnh
+description: Ảnh nhân vật (mặt trước, tốt nhất là T-pose) → tách nền → SAM3.1 tách part → Claude chỉnh khớp → layers → Flux2 Klein vá chỗ khuất ở khớp → Spine 4.2 (JSON + atlas + png, 6 anim) → duyệt
+inputs:
+  image: {type: image, label: Ảnh nhân vật (mặt trước, tay dang ngang)}
+  name: {type: text, default: character, label: Tên skeleton}
+  rig: {type: enum, default: claude, options: [claude, auto], label: Đặt khớp (claude = Claude soát lại ước lượng)}
+  fill: {type: bool, default: true, label: Vá chỗ khuất ở khớp (Flux2 Klein)}
+  overlap: {type: float, default: 0.6, min: 0.2, max: 1.5, label: Độ chồng ở khớp}
+steps:
+  - id: rmbg
+    kind: comfy.remove_bg_birefnet
+    in: {image: inputs.image}
+  - id: segment
+    kind: comfy.segment_sam3
+    in: {image: inputs.image}
+    map_param: "3.text"
+    params:
+      "3.text": ["head, hair", "torso, skirt, belt", "arm:2, glove:2, shoulder:2", "hand:2", "leg:2, boot:2, shoe:2", "cape, cloak", "weapon:2, bow, arrow, sword, axe, spear, wand"]
+      "4.threshold": 0.35
+  - id: parts
+    kind: op.parts
+    in: {image: rmbg.images, masks: segment.images}
+    params: {roles: [head, torso, arm, hand, leg, cape, prop]}
+  - id: bones
+    kind: claude.task
+    in: {images: [rmbg.images, parts.preview]}
+    params:
+      model: opus
+      max_turns: 2
+      _auto_retry: 1
+      system: You place joints for a 2D cutout (Spine) rig of a front-view character. Coordinates are image pixels, origin top-left, x right, y down. The character's left side (suffix _l) is on the IMAGE RIGHT.
+      prompt: |
+        Image 1 is the character (transparent background), image 2 is an automatic part segmentation with estimated joints (dots) and bones (lines).
+        Image size: ${steps.parts.meta.size}. Part boxes [x0, y0, x1, y1]: ${steps.parts.meta.boxes}
+        Estimated joints: ${steps.parts.meta.joints}
+        Return all joints. Keep an estimate unless it is clearly wrong; then move it onto the real anatomical pivot (shoulder ball, elbow bend, wrist, hip socket, knee, ankle, base of the neck, top of the head, pelvis center between the hips). Joints must stay inside their limb.
+      schema:
+        type: object
+        properties:
+          joints:
+            type: object
+            properties:
+              head_top: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              neck: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              pelvis: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              shoulder_l: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              elbow_l: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              wrist_l: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              hand_tip_l: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              shoulder_r: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              elbow_r: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              wrist_r: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              hand_tip_r: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              hip_l: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              knee_l: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              ankle_l: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              foot_tip_l: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              hip_r: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              knee_r: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              ankle_r: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+              foot_tip_r: {type: array, items: {type: number}, minItems: 2, maxItems: 2}
+            required: [head_top, neck, pelvis, shoulder_l, elbow_l, wrist_l, hand_tip_l, shoulder_r, elbow_r, wrist_r, hand_tip_r, hip_l, knee_l, ankle_l, foot_tip_l, hip_r, knee_r, ankle_r, foot_tip_r]
+          notes: {type: string}
+        required: [joints, notes]
+  - id: layers
+    kind: op.layers
+    in: {image: rmbg.images, labels: parts.labels, parts: parts.meta, bones: bones.json}
+    params: {rig: "${inputs.rig}", fill: "${inputs.fill}", overlap: "${inputs.overlap}",
+             inpaint: [torso, upper_arm_l, upper_arm_r, thigh_l, thigh_r, head, cape]}
+  - id: fill
+    kind: comfy.inpaint_flux2_klein4b
+    in: {image: layers.holes}
+    map: image
+    params: {"14.text": "Fill in the hidden area so this body part and its clothing continue seamlessly underneath, as if the limb covering it were removed. Same art style, same colors and shading, clean edges, plain white background."}
+  - id: export
+    kind: op.spine_export
+    in: {layers: layers.layers, meta: layers.meta, holes: layers.holes, fills: fill.images, image: rmbg.images}
+    params: {name: "${inputs.name}", animations: true}
+  - id: approve
+    kind: gate.approve
+    in: {preview: export.preview, frames: export.frames, skeleton: export.skeleton, atlas: export.atlas,
+         texture: export.texture, html: export.html, report: export.report, layers_preview: layers.preview}
+outputs:
+  skeleton: approve.skeleton
+  atlas: approve.atlas
+  texture: approve.texture
+  html: approve.html
+  preview: approve.preview
+  frames: approve.frames

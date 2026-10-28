@@ -423,5 +423,24 @@
         "class": "SaveImage"
       }
     ]
+  },
+  "upscale_esrgan": {
+    "file": "upscale_esrgan.api.json",
+    "template": "utility_upscale_model (Real-ESRGAN x4plus)",
+    "images": [
+      {
+        "key": "1.image",
+        "title": "Load Image",
+        "default": "example.png"
+      }
+    ],
+    "texts": [],
+    "seeds": [],
+    "outputs": [
+      {
+        "node": "save",
+        "class": "SaveImage"
+      }
+    ]
   }
 }

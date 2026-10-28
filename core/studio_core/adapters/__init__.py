@@ -7,7 +7,7 @@ from ..config import Settings
 from ..contracts import ExecutorRegistry, Resource
 from .blender import (BlenderAgentExecutor, BlenderAnimateDirsExecutor, BlenderCleanupExecutor, BlenderGameReadyExecutor,
                       BlenderRenderDirsExecutor, BlenderResource,
-                      BlenderScriptExecutor, Procedural3DExecutor)
+                      BlenderRigExportExecutor, BlenderScriptExecutor, Procedural3DExecutor)
 from .claude import ClaudeBriefExecutor, ClaudeResource, ClaudeTaskExecutor
 from .codex import CodexImageExecutor, CodexResource
 from .spine_review import SpineReviewLoopExecutor
@@ -28,6 +28,7 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     registry.register(BlenderCleanupExecutor(settings, blender))
     registry.register(BlenderGameReadyExecutor(settings, blender))
     registry.register(BlenderAnimateDirsExecutor(settings, blender, comfy))
+    registry.register(BlenderRigExportExecutor(settings, blender, comfy))
     registry.register(ClaudeBriefExecutor(settings))
     registry.register(SpineReviewLoopExecutor(settings))
     registry.register(BlenderScriptExecutor(settings, blender))

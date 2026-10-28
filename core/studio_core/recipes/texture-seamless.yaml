@@ -1,6 +1,6 @@
 id: texture-seamless
 name: Texture liền mạch (Z-Image)
-description: Prompt vật liệu → N ảnh Z-Image → chọn → làm liền mạch (gạch, ván — nắn phối cảnh nhẹ + căn theo chu kỳ hàng; chồng mép phải lên mép trái, cắt theo đường ít lệch nhất) → chấm điểm mối nối + xem lát 3×3 → bản nhỏ, normal map, pixel art (tuỳ chọn) → duyệt
+description: Prompt vật liệu → N ảnh Z-Image → chọn → làm liền mạch (gạch, ván — nắn phối cảnh nhẹ + căn theo chu kỳ hàng; chồng mép phải lên mép trái, cắt theo đường ít lệch nhất) → chấm điểm mối nối + xem lát 3×3 → bản nhỏ, normal map, pixel art, bộ map PBR (tuỳ chọn) → duyệt
 inputs:
   prompt: {type: text, label: Vật liệu, placeholder: "mossy cobblestone floor"}
   count: {type: int, default: 4, min: 1, max: 8, label: Số biến thể}
@@ -9,6 +9,7 @@ inputs:
   flatten: {type: float, default: 0.5, min: 0, max: 1, label: San phẳng ánh sáng}
   grid: {type: enum, default: auto, options: [auto, "off"], label: "Căn theo hàng gạch/ván (auto = khi ảnh có chu kỳ rõ)"}
   normal: {type: bool, default: true, label: Tạo normal map}
+  pbr: {type: bool, default: false, label: "Tạo bộ map PBR (height, roughness, metallic, AO + material Unity/Godot)"}
   pixel: {type: int, default: 0, options: [0, 32, 64, 128], label: "Pixel art (px, 0 = tắt)"}
   colors: {type: int, default: 16, options: [8, 12, 16, 24, 32], label: Số màu pixel art}
   review: {type: bool, default: true, label: Duyệt trước khi xong}
@@ -33,6 +34,10 @@ steps:
     kind: op.tile_normal
     in: {images: fit.images}
     params: {enabled: "${inputs.normal}"}
+  - id: mat
+    kind: op.pbr
+    in: {images: fit.images}
+    params: {enabled: "${inputs.pbr}"}
   - id: pix
     kind: op.tile_pixel
     in: {images: fit.images}
@@ -43,7 +48,7 @@ steps:
   - id: approve
     kind: gate.approve
     in: {images: check.images, preview: check.preview, report: check.report, nmap: check.nmap,
-         pixel: check.pixel, sizes: check.sizes}
+         pixel: check.pixel, sizes: check.sizes, pbr: mat.maps, pbr_preview: mat.preview, pbr_material: mat.material}
     params: {enabled: "${inputs.review}"}
 outputs:
   final: approve.images
@@ -52,3 +57,4 @@ outputs:
   nmap: approve.nmap
   pixel: approve.pixel
   sizes: approve.sizes
+  pbr: approve.pbr

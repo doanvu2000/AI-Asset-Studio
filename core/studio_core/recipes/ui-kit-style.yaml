@@ -1,0 +1,35 @@
+id: ui-kit-style
+name: Bộ UI kit 9-slice theo style tham chiếu (Flux.2 Klein)
+description: >-
+  Ảnh style tham chiếu (màn hình game, UI có sẵn) + chủ đề → Klein vẽ sheet mockup UI cùng nét, chất liệu, bảng màu
+  → chọn → xoá nền, tách phần tử → viền 9-slice + trạng thái nút → xem trước kéo giãn → duyệt.
+inputs:
+  image: {type: image, label: Ảnh style tham chiếu}
+  prompt: {type: text, label: Chủ đề UI, placeholder: "wooden frames with brass corners"}
+steps:
+  - id: ref
+    kind: op.trim_pad_resize
+    in: {images: inputs.image}
+    params: {size: 1024, pad: 0.04, background: white}
+  - id: gen
+    kind: comfy.edit_flux2_klein4b
+    in: {image: ref.images}
+    params:
+      "75:74.text": "Draw a completely new picture: a game UI kit asset sheet, ${inputs.prompt}. Separate user interface elements in a neat grid with wide empty gaps between them on a plain pure white background: three wide rectangular buttons, one large empty window panel, one empty horizontal progress bar frame, one filled health bar, four square inventory slots, two tab buttons. Use exactly the same art style as the reference image: the same materials, frame and border style, line work, shading and colour palette. The reference image is only a style sample: do not copy its layout, characters or scene. No outer frame or border around the whole sheet. Ornaments only on the four corners; the straight edges between the corners are plain and even so each element can be stretched as a 9-slice. Every element is blank: no text, no letters, no numbers, no icons. Flat front view, no perspective."
+  - id: pick
+    kind: gate.pick
+    in: {images: gen.images}
+    params: {k: 0}
+  - id: split
+    kind: op.ui_split
+    in: {images: pick.images}
+  - id: slice
+    kind: op.nine_slice
+    in: {images: split.images}
+  - id: approve
+    kind: gate.approve
+    in: {preview: slice.preview, images: slice.images, slices: slice.slices}
+outputs:
+  final: slice.images
+  preview: slice.preview
+  slices: slice.slices

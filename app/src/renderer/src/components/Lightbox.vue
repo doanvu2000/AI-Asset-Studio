@@ -209,7 +209,7 @@ function growFromOrigin(el: Element): void {
               <button ref="closeBtn" class="btn btn-plain btn-icon" aria-label="Đóng (Esc)" title="Đóng (Esc)" @click="emit('close')"><X /></button>
             </div>
             <QaBreakdown v-if="showQa" class="row-qa" :qa="shownVersion?.qa" :busy="qaBusy" can-recompute @recompute="recomputeQa" />
-            <AssetActions class="row2" :hash="shown.hash" :filename="filename" :run-id="runId" :version-id="versionId" />
+            <AssetActions class="row2" :hash="shown.hash" :blob="shown" :filename="filename" :run-id="runId" :version-id="versionId" />
           </figcaption>
         </figure>
         <button v-if="canNav" type="button" class="nav next" :disabled="atEnd" aria-label="Sau (→)" title="Sau (→)" @click="step(1)">

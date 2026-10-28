@@ -1,6 +1,7 @@
 import { ApiError, type ListRunsQuery, type RecipeBody, type StudioApi, type VersionsQuery } from '../client'
 import { FrameBatcher, type EventSink, type EventStream } from '../ws'
 import type { CoreDiagnostics } from '../../../../preload/types'
+import type { EnginePreviewJob, PreviewEngines } from '../enginePreview'
 import {
   STEP_DONE_OK,
   type BatchCreateBody,
@@ -38,7 +39,9 @@ import { renderWalkSheet } from './walkSheet'
 import { mockStatsOverview } from './stats'
 import type { StatsOverview, StatsQuery } from '../types'
 import type { QaPart, QaRecomputeResult, QaResult } from '../types'
+import type { GddProposal, ManifestFormat, ManifestRow, ManifestStatus, ManifestView } from '../types'
 import type { SetupJob, SetupPlan, SetupStartBody } from '../types'
+import type { ProjectQaAsset, ProjectQaFixResult, ProjectQaReport } from '../types'
 import { MOCK_KINDS, MOCK_PRESETS, MOCK_TOOLS, mockValidate, stepDeps } from './catalog'
 import { normalizeStyle, styleFills } from '@/composables/projectStyle'
 import sampleGlbUrl from './assets/sample-prop.glb?url'
@@ -579,6 +582,12 @@ export class MockCore implements StudioApi, EventStream {
     const ref: BlobRef = { hash: hex(), mime: file.type || 'application/octet-stream', size: file.size, name: file.name }
     this.blobs.set(ref.hash, { url: URL.createObjectURL(file), seed: Math.floor(Math.random() * 1e6), ref })
     return ref
+  }
+
+  async blobInfo(hash: string): Promise<BlobRef> {
+    const b = this.blobs.get(hash)
+    if (!b) throw new ApiError('not_found', `unknown blob: ${hash}`, 404)
+    return b.ref
   }
 
   // ---- seed data ----
@@ -1466,6 +1475,114 @@ export class MockCore implements StudioApi, EventStream {
     return this.patchProject(id, { archived: true })
   }
 
+  private manifests = new Map<string, ManifestRow[]>()
+
+  private manifestView(projectId: string, extra: Partial<ManifestView> = {}): ManifestView {
+    const rows = (this.manifests.get(projectId) ?? []).map((r) => {
+      const run = r.run_id ? this.runs.get(r.run_id) : undefined
+      const approved = !!run && [...this.versionMap.values()].some((v) => v.run_id === run.id && v.status === 'approved')
+      const status: ManifestStatus = !run || run.status === 'cancelled' ? 'todo' : run.status === 'running' ? 'running'
+        : run.status === 'failed' || run.status === 'interrupted' ? 'failed' : approved ? 'approved' : 'review'
+      return { ...r, status, run_status: run?.status ?? null }
+    })
+    const counts: ManifestView['counts'] = {}
+    for (const r of rows) counts[r.status] = (counts[r.status] ?? 0) + 1
+    return clone({ project_id: projectId, rows, counts, updated_at: now(), ...extra })
+  }
+
+  async getManifest(projectId: string): Promise<ManifestView> {
+    await this.ready
+    return this.manifestView(projectId)
+  }
+
+  async putManifest(projectId: string, rows: ManifestRow[]): Promise<ManifestView> {
+    await sleep(80)
+    this.manifests.set(projectId, clone(rows).map((r) => ({ ...r, id: r.id || uid('row') })))
+    return this.manifestView(projectId)
+  }
+
+  async manifestFromGdd(_projectId: string, text: string, limit = 30): Promise<GddProposal> {
+    await sleep(1200)
+    const words = text.split(/\s+/).filter((w) => w.length > 4).slice(0, Math.min(limit, 5))
+    const recipe = [...this.builtins.keys()][0] ?? 'concept-2d'
+    return { rows: words.map((w) => ({ id: uid('row'), name: w, recipe_id: recipe, inputs: { prompt: w }, notes: 'mock', run_id: null })), dropped: [] }
+  }
+
+  async runManifest(projectId: string, rowIds?: string[]): Promise<ManifestView> {
+    const view = this.manifestView(projectId)
+    const chosen = view.rows.filter((r) => (rowIds ? rowIds.includes(r.id) : r.status === 'todo' || r.status === 'failed'))
+    if (!chosen.length) throw new ApiError('invalid', 'no rows to run', 400)
+    const batch_id = uid('batch')
+    const run_ids: string[] = []
+    const rows = this.manifests.get(projectId) ?? []
+    for (const [i, r] of chosen.entries()) {
+      const meta = { source: 'manifest', batch_id, batch_index: i, batch_total: chosen.length, batch_title: 'Danh sách asset', manifest_row: r.id }
+      const { run_id } = await this.startRun({ recipe_id: r.recipe_id, inputs: r.inputs, title: r.name, params: { $meta: meta }, project_id: projectId })
+      run_ids.push(run_id)
+      const stored = rows.find((x) => x.id === r.id)
+      if (stored) stored.run_id = run_id
+    }
+    return this.manifestView(projectId, { batch_id, run_ids })
+  }
+
+  async exportManifest(projectId: string, _format: ManifestFormat): Promise<string> {
+    return JSON.stringify(this.manifests.get(projectId) ?? [], null, 1)
+  }
+
+  async importManifest(_projectId: string, _format: ManifestFormat, _text: string, _append: boolean): Promise<ManifestView> {
+    throw new ApiError('invalid', 'Bản mock không đọc CSV/YAML', 400)
+  }
+
+  private projectQa = new Map<string, ProjectQaReport>()
+
+  async getProjectQa(projectId: string): Promise<ProjectQaReport> {
+    await this.ready
+    return clone(this.projectQa.get(projectId) ?? { project_id: projectId, created_at: null, assets: [], summary: null })
+  }
+
+  async runProjectQa(projectId: string, body: { only_approved?: boolean; vision?: boolean } = {}): Promise<ProjectQaReport> {
+    await sleep(body.vision ? 1500 : 500)
+    const list = [...this.versionMap.values()].filter(
+      (v) => v.project_id === projectId && v.blob.mime.startsWith('image/') && v.status !== 'rejected' && (!body.only_approved || v.status === 'approved')
+    )
+    // Deterministic pseudo-scores from the hash so the panel shows a mix of grades.
+    const assets: ProjectQaAsset[] = list.slice(0, 120).map((v): ProjectQaAsset => {
+      const score = 45 + (parseInt(v.blob.hash.slice(0, 4), 16) % 56)
+      const issues: ProjectQaAsset['issues'] =
+        score < 80 ? [{ key: 'palette', label: 'Bảng màu', severity: score < 60 ? 'bad' : 'warn', message: 'Màu lệch bảng màu chung (gấp 1.9× mức chung)', fix: 'recolor it using only this color palette: #2d3a4a, #6aa84f' }] : []
+      return {
+        version_id: v.id, run_id: v.run_id, asset_name: v.asset_name, status: v.status, blob: v.blob, colors: ['#2d3a4a', '#6aa84f', '#e0c068'],
+        score, grade: score >= 80 ? 'ok' : score >= 60 ? 'warn' : 'bad', parts: { palette: { score } }, issues, note: '',
+        fix: issues.length ? { recipe_id: 'variants-2d', title: `Sửa QA · ${v.asset_name}`, inputs: { image: v.blob.hash, instructions: issues[0]!.fix } } : null,
+        vision_note: body.vision && score < 60 ? 'Tông màu lạc so với cả bộ' : undefined
+      }
+    }).sort((a, b) => (a.score ?? 0) - (b.score ?? 0))
+    const scored = assets.map((a) => a.score ?? 0)
+    const report: ProjectQaReport = {
+      project_id: projectId, created_at: now(), assets,
+      summary: { total: assets.length, scored: scored.length, score: scored.length ? Math.round(scored.reduce((x, y) => x + y, 0) / scored.length) : null,
+        flagged: assets.filter((a) => a.issues.length).length,
+        counts: { ok: assets.filter((a) => a.grade === 'ok').length, warn: assets.filter((a) => a.grade === 'warn').length, bad: assets.filter((a) => a.grade === 'bad').length, skip: 0 } },
+      reference: { palette: ['#2d3a4a', '#6aa84f', '#e0c068', '#c2c3c7'], palette_source: 'Màu chung của các asset trong dự án', fill_median: 0.86, outlined: true, outline_median: 3.2, light: 135, light_label: 'trên-trái' },
+      vision: body.vision ? { summary: 'Bộ asset khá đồng bộ; vài asset lệch tông màu cần chỉnh trước.', cost_usd: 0.04, model: 'claude-opus-5-5' } : undefined
+    }
+    this.projectQa.set(projectId, report)
+    return clone(report)
+  }
+
+  async fixProjectQa(projectId: string, versionId: string, instructions?: string): Promise<ProjectQaFixResult> {
+    const v = this.versionMap.get(versionId)
+    if (!v) throw new ApiError('not_found', `unknown version: ${versionId}`, 404)
+    const entry = this.projectQa.get(projectId)?.assets.find((a) => a.version_id === versionId)
+    const text = instructions?.trim() || String(entry?.fix?.inputs.instructions ?? '')
+    if (!text) throw new ApiError('invalid', 'no issues to fix for this asset; pass instructions', 400)
+    const recipe_id = this.builtins.has('variants-2d') ? 'variants-2d' : ([...this.builtins.keys()][0] ?? 'variants-2d')
+    const title = `Sửa QA · ${v.asset_name}`
+    const inputs = { image: v.blob.hash, instructions: text }
+    const { run_id } = await this.startRun({ recipe_id, inputs, title, params: { $meta: { source: 'project_qa', qa_version: versionId } }, project_id: projectId })
+    return { run_id, recipe_id, inputs, title }
+  }
+
   async statsOverview(q: StatsQuery = {}): Promise<StatsOverview> {
     await this.ready
     await sleep(120)
@@ -1514,5 +1631,22 @@ export class MockCore implements StudioApi, EventStream {
     v.qa = this.mockQa(v)
     this.emit('version.updated', v, v.run_id)
     return clone(v)
+  }
+
+  async enginePreviewEngines(): Promise<PreviewEngines> {
+    const off = { available: false, path: '', reason: 'Bản xem thử không chạy được engine thật' }
+    return { engines: { godot: { ...off }, unity: { ...off } } }
+  }
+
+  async startEnginePreview(): Promise<EnginePreviewJob> {
+    throw new ApiError('engine_unavailable', 'Bản xem thử không chạy được engine thật', 409)
+  }
+
+  async enginePreviewJob(jobId: string): Promise<EnginePreviewJob> {
+    throw new ApiError('not_found', `unknown engine preview: ${jobId}`, 404)
+  }
+
+  async cancelEnginePreview(jobId: string): Promise<EnginePreviewJob> {
+    return this.enginePreviewJob(jobId)
   }
 }

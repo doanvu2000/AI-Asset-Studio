@@ -24,7 +24,7 @@ RENDER_KEYS = ("elevation", "count", "res", "mirror", "engine", "samples", "supe
 def worker_hash() -> str:
     h = blake3.blake3(WORKER_SCRIPT.read_bytes())
     # Frozen builds point cleanup_math.__file__ at a .pyc that does not exist on disk.
-    for side in ("cleanup_math.py", "skin_math.py"):
+    for side in ("cleanup_math.py", "skin_math.py", "rig3d_math.py"):
         h.update(WORKER_SCRIPT.with_name(side).read_bytes())
     return h.hexdigest()
 

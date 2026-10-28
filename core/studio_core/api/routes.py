@@ -20,14 +20,17 @@ from studio_core.api.errors import ApiError, OrjsonResponse
 from studio_core.adapters.translate import MAX_TEXTS
 from studio_core.engine.kinds import describe_kinds
 from studio_core.engine.library import RecipeLibrary, issue, merge_text, to_text, validate
+from studio_core.engine.projects import apply_style
 from studio_core.engine.recipe import Recipe, RecipeError
 from studio_core.ops.presets import ExportPreset, PresetStore
 from studio_core.store.bundle import ENGINES, BundleError, engine_ready, export_bundle, export_engine, sheet_meta
 from studio_core.store.export import export_copy
 from studio_core.contracts import (
+    DEFAULT_PROJECT,
     BlobStore,
     Engine,
     GateResolution,
+    ProjectStyle,
     Repo,
     Resource,
     RunStatus,
@@ -232,10 +235,12 @@ async def delete_recipe(request: Request, rid: str) -> Response:
 class BatchItem(BaseModel):
     inputs: dict[str, Any] = {}
     title: str = ""
+    recipe_id: str | None = None
+    meta: dict[str, Any] = {}
 
 
 class BatchCreate(BaseModel):
-    recipe_id: str
+    recipe_id: str = ""
     items: list[BatchItem]
     inputs: dict[str, Any] = {}
     params: dict[str, Any] | None = None
@@ -246,40 +251,61 @@ class BatchCreate(BaseModel):
 MAX_BATCH = 200
 
 
-@api.post("/batches")
-async def create_batch(request: Request, body: BatchCreate) -> Response:
-    """N runs of one recipe tagged with `$meta.batch_*`; every item is checked before the first run starts."""
+async def _project_style(request: Request, project_id: str) -> ProjectStyle | None:
+    get_project = getattr(_repo(request), "get_project", None)
+    if project_id == DEFAULT_PROJECT or get_project is None:
+        return None
+    p = await get_project(project_id)
+    if p is None:
+        raise ApiError(404, "not_found", f"unknown project: {project_id}")
+    return p.style
+
+
+async def start_batch(request: Request, body: BatchCreate) -> dict[str, Any]:
+    """N runs tagged with `$meta.batch_*`; an item's recipe_id overrides the batch's. Every item is checked (with the
+    project style applied, as start_run will) before the first run starts."""
     if not body.items:
         raise ApiError(400, "invalid", "batch needs at least one item")
     if len(body.items) > MAX_BATCH:
         raise ApiError(400, "invalid", f"batch limited to {MAX_BATCH} items")
     eng = _engine(request)
     merged = [{**body.inputs, **it.inputs} for it in body.items]
+    recipe_ids = [it.recipe_id or body.recipe_id for it in body.items]
+    if missing := [i + 1 for i, rid in enumerate(recipe_ids) if not rid]:
+        raise ApiError(400, "invalid", f"item {missing[0]}: no recipe_id")
+    style = await _project_style(request, body.project_id)
     get_recipe_fn = getattr(eng, "get_recipe", None)
     if get_recipe_fn is not None:
-        try:
-            recipe = get_recipe_fn(body.recipe_id)
-            check = getattr(eng, "check_inputs", None)
-            for i, values in enumerate(merged):
-                try:
-                    if check is not None:
-                        await check(recipe, values)
-                    else:
-                        recipe.coerce_inputs(values)
-                except ValueError as e:
-                    raise ApiError(400, "invalid", f"item {i + 1}: {e}") from e
-        except LookupError as e:
-            raise ApiError(404, "not_found", str(e)) from e
+        check = getattr(eng, "check_inputs", None)
+        for i, (rid, values) in enumerate(zip(recipe_ids, merged)):
+            try:
+                recipe = get_recipe_fn(rid)
+            except LookupError as e:
+                raise ApiError(404, "not_found", f"item {i + 1}: {e}" if len(set(recipe_ids)) > 1 else str(e)) from e
+            if style is not None:
+                values = apply_style(recipe, values, style)[0]
+            try:
+                if check is not None:
+                    await check(recipe, values)
+                else:
+                    recipe.coerce_inputs(values)
+            except ValueError as e:
+                raise ApiError(400, "invalid", f"item {i + 1}: {e}") from e
     batch_id = uuid.uuid4().hex
     params = dict(body.params or {})
     base_meta = dict(params.get(META_KEY) or {})
     run_ids: list[str] = []
-    for i, (it, values) in enumerate(zip(body.items, merged)):
-        meta = {"source": "app", **base_meta, "batch_id": batch_id, "batch_index": i, "batch_total": len(body.items),
-                "batch_title": body.title}
-        run_ids.append(await _engine_call(eng.start_run(body.recipe_id, values, {**params, META_KEY: meta},
+    for i, (it, rid, values) in enumerate(zip(body.items, recipe_ids, merged)):
+        meta = {"source": "app", **base_meta, **it.meta, "batch_id": batch_id, "batch_index": i,
+                "batch_total": len(body.items), "batch_title": body.title}
+        run_ids.append(await _engine_call(eng.start_run(rid, values, {**params, META_KEY: meta},
                                                         project_id=body.project_id, title=it.title)))
-    return _json({"batch_id": batch_id, "run_ids": run_ids}, 201)
+    return {"batch_id": batch_id, "run_ids": run_ids}
+
+
+@api.post("/batches")
+async def create_batch(request: Request, body: BatchCreate) -> Response:
+    return _json(await start_batch(request, body), 201)
 
 
 def _presets(request: Request) -> PresetStore:
@@ -424,6 +450,15 @@ async def get_blob(request: Request, hash: str) -> Response:
     if ref is None or not await asyncio.to_thread(path.is_file):
         raise ApiError(404, "not_found", f"unknown blob: {hash}")
     return FileResponse(path, media_type=ref.mime, headers={"Cache-Control": _IMMUTABLE})
+
+
+@api.get("/blobs/{hash}/info")
+async def blob_info(request: Request, hash: str) -> Response:
+    _blob_path(_blobs(request), hash)
+    ref = await _blobs(request).get(hash)
+    if ref is None:
+        raise ApiError(404, "not_found", f"unknown blob: {hash}")
+    return _json(ref)
 
 
 class BlobExport(BaseModel):
