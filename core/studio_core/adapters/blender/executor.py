@@ -220,6 +220,68 @@ class BlenderAnimateDirsExecutor:
             "seconds": round(time.perf_counter() - t0, 2), "blender_version": self.blender.version})
 
 
+class BlenderGameReadyExecutor:
+    """LOD chain + baked normal/AO from a dense mesh; mode `off` passes the mesh through so recipes can opt out."""
+    kind = "blender.game_ready"
+    lane = Lane.BLENDER
+    version = "1"
+
+    def __init__(self, settings: Settings, blender: BlenderResource):
+        self.settings = settings
+        self.blender = blender
+        self.required_resource = blender
+
+    def cacheable(self, params: dict[str, Any]) -> bool:
+        return True
+
+    def cache_material(self, params: dict[str, Any]) -> str:
+        return worker_hash()
+
+    async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        mesh = _single_mesh(inputs)
+        if str(params.get("mode", "remesh")).lower() == "off":
+            return StepResult(outputs={"meshes": [mesh], "maps": []}, meta={"mode": "off"})
+        try:
+            p = cleanup_math.game_ready_params({"mode": "remesh", **params})
+        except (TypeError, ValueError) as e:
+            raise StepError("blender_bad_params", str(e)) from e
+        t0 = time.perf_counter()
+        src = ctx.job_dir / "in.glb"
+
+        def stage() -> None:
+            ctx.job_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ctx.blobs.path(mesh.hash), src)
+
+        await asyncio.to_thread(stage)
+
+        def on_event(ev: dict[str, Any]) -> None:
+            if "value" in ev:
+                ctx.progress(ev["value"], ev.get("max", 1), ev.get("label"))
+
+        stem = (mesh.name or "mesh").rsplit(".", 1)[0].removesuffix("_clean")
+        ctx.progress(0, 1, "blender")
+        res = await self.blender.call("game_ready", {**p, "glb": str(src), "out_prefix": str(ctx.job_dir / "out"),
+                                                     "name": stem},
+                                      on_event=on_event, timeout=float(params.get("_timeout_s", 900)))
+        meshes = []
+        for i, lod in enumerate(res["lods"]):
+            path = Path(lod["file"])
+            if not path.exists():
+                raise StepError("blender_no_output", f"game_ready did not write LOD{i}")
+            meshes.append(await ctx.blobs.put_file(path, name=f"{stem}_lod{i}.glb", mime="model/gltf-binary"))
+        combined = Path(res.get("combined") or "")
+        if res.get("combined") and combined.exists():
+            meshes.append(await ctx.blobs.put_file(combined, name=f"{stem}_lods.glb", mime="model/gltf-binary"))
+        maps = [await ctx.blobs.put_file(Path(f), name=f"{stem}_{name}.png", mime="image/png")
+                for name, f in res["maps"].items() if Path(f).exists()]
+        meta = {**{k: v for k, v in res.items() if k != "combined"},
+                "lods": [{k: v for k, v in lod.items() if k != "file"} for lod in res["lods"]],
+                "maps": sorted(res["maps"])}
+        return StepResult(outputs={"meshes": meshes, "maps": maps}, meta={
+            **meta, "params": p, "seconds": round(time.perf_counter() - t0, 2),
+            "blender_version": self.blender.version})
+
+
 class BlenderCleanupExecutor:
     kind = "blender.cleanup"
     lane = Lane.BLENDER

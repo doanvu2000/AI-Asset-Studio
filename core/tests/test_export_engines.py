@@ -308,3 +308,13 @@ def test_sheet_meta_only_for_plain_eight_dir_sheets(tmp_path: Path) -> None:
     assert sheet_meta(step(base), blobs) is not None
     assert sheet_meta(step({**base, "frames": [*base["frames"][:7], None]}), blobs) is None
     assert sheet_meta(step({**base, "clips": [{"name": "walk", "row0": 0, "rows": 8, "frames": 1}]}), blobs) is None
+
+
+def test_unity_lod_group_script_for_combined_lods(tmp_path: Path) -> None:
+    glb = tmp_path / "chest_lods.glb"
+    glb.write_bytes(b"glTF")
+    files = dict(unity.export(Source(asset="Chest", uid="u1", glb=[("chest_lods.glb", glb)])))
+    assert "Models/chest_lods.glb" in files and "Editor/AssetStudioLodGroup.cs" in files
+    assert b"LODGroup" in files["Editor/AssetStudioLodGroup.cs"]
+    plain = dict(unity.export(Source(asset="Chest", uid="u1", glb=[("chest_lod0.glb", glb)])))
+    assert "Editor/AssetStudioLodGroup.cs" not in plain

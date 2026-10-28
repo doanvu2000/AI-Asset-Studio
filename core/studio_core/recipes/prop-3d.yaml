@@ -1,11 +1,13 @@
 id: prop-3d
 name: Prop 3D (TRELLIS → GLB)
-description: Text → concept → chọn → TRELLIS mesh có texture → Blender dọn mesh → kiểm GLB → turntable → duyệt
+description: Text → concept → chọn → TRELLIS mesh có texture → Blender dọn mesh → kiểm GLB → LOD + bake cho game → turntable → duyệt
 inputs:
   prompt: {type: text, label: Prompt}
   faces: {type: int, default: 30000, min: 2000, max: 200000, label: Số mặt}
   texture: {type: int, default: 2048, options: [1024, 2048, 4096], label: Texture}
   height: {type: float, default: 1.0, min: 0.01, max: 100, label: Chiều cao (m)}
+  game_mode: {type: enum, default: remesh, options: [remesh, decimate, "off"], label: Mesh cho game (LOD + bake normal/AO)}
+  game_faces: {type: int, default: 5000, min: 300, max: 100000, label: Số tam giác LOD0}
 steps:
   - id: concept
     kind: comfy.t2i_zimage_turbo
@@ -27,12 +29,17 @@ steps:
     kind: op.glb_validate
     in: {mesh: cleanup.meshes}
     params: {require_textures: true}
+  - id: gameready
+    kind: blender.game_ready
+    in: {mesh: validate.meshes}
+    params: {mode: "${inputs.game_mode}", target_faces: "${inputs.game_faces}", lods: "1,0.5,0.25", bake: "normal,ao",
+             texture_size: 2048}
   - id: turntable
     kind: blender.render_dirs
     in: {mesh: validate.meshes}
     params: {count: 16, res: 256, elevation: 20}
   - id: approve
     kind: gate.approve
-    in: {meshes: validate.meshes, preview: turntable.images}
+    in: {meshes: validate.meshes, preview: turntable.images, game: gameready.meshes, maps: gameready.maps}
 outputs:
   final: approve.meshes

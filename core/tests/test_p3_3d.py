@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from PIL import Image
 
-from studio_core.adapters.blender import BlenderCleanupExecutor, BlenderRenderDirsExecutor
+from studio_core.adapters.blender import BlenderCleanupExecutor, BlenderGameReadyExecutor, BlenderRenderDirsExecutor
 from studio_core.adapters.blender import cleanup_math as cm
 from studio_core.config import Settings
 from studio_core.contracts import ExecutorRegistry, Lane, StepError
@@ -202,6 +202,7 @@ def test_p3_recipes_load(tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path)
     reg.register(BlenderRenderDirsExecutor(settings, object()))  # type: ignore[arg-type]
     reg.register(BlenderCleanupExecutor(settings, object()))  # type: ignore[arg-type]
+    reg.register(BlenderGameReadyExecutor(settings, object()))  # type: ignore[arg-type]
     reg.register_prefix("comfy.", lambda kind: type("C", (), {"kind": kind, "lane": Lane.GPU})())  # type: ignore[arg-type, return-value]
     for rid in ("prop-3d", "sprite-8dir-3d", "sprite-8dir-glb"):
         for s in recipes[rid].steps:
@@ -301,5 +302,60 @@ def test_animate_dirs_executor_orders_direction_major(tmp_path: Path) -> None:
         bad = await ctx.blobs.put_bytes(b'{"joints": {"neck": [1, 2]}}', name="j.json", mime="application/json")
         with pytest.raises(StepError, match="19-joint"):
             await ex.run(ctx, {"frames": 3}, {"mesh": [mesh], "joints": [bad], "front": [front]})
+
+    asyncio.run(go())
+
+
+def test_game_ready_params() -> None:
+    p = cm.game_ready_params({"lods": "1,0.4,0.1", "bake": "normal"})
+    assert p["mode"] == "decimate" and p["lods"] == [1.0, 0.4, 0.1] and p["bake"] == ["normal"]
+    assert cm.game_ready_params({"bake": ""})["bake"] == []
+    for bad in ({"mode": "quad"}, {"lods": "0.5,1"}, {"bake": "height"}, {"texture_size": 300}, {"target_faces": 10}):
+        with pytest.raises(ValueError):
+            cm.game_ready_params(bad)
+
+
+class FakeGameReady:
+    version = "5.2"
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def call(self, cmd: str, params: dict[str, Any], on_event: Any = None, timeout: float = 0) -> Any:
+        self.calls.append((cmd, params))
+        on_event({"value": 1, "max": 6, "label": "import"})
+        on_event({"label": "bake normal"})
+        lods = []
+        for i, r in enumerate(params["lods"]):
+            f = f"{params['out_prefix']}_lod{i}.glb"
+            Path(f).write_bytes(make_glb())
+            lods.append({"file": f, "faces": int(params["target_faces"] * r)})
+        maps = {}
+        for name in params["bake"]:
+            f = str(Path(params["out_prefix"]).with_name(f"{name}.png"))
+            Path(f).write_bytes(b"\x89PNG")
+            maps[name] = f
+        combined = f"{params['out_prefix']}_lods.glb"
+        Path(combined).write_bytes(make_glb())
+        return {"lods": lods, "maps": maps, "remesh": "voxel+decimate", "combined": combined}
+
+
+def test_game_ready_executor(tmp_path: Path) -> None:
+    async def go() -> None:
+        ctx = FakeCtx(tmp_path)
+        src = await ctx.blobs.put_bytes(make_glb(), name="axe_clean.glb", mime="model/gltf-binary")
+        fake = FakeGameReady()
+        ex = BlenderGameReadyExecutor(Settings(data_dir=tmp_path), fake)  # type: ignore[arg-type]
+        res = await ex.run(ctx, {"target_faces": 2000}, {"mesh": [src]})
+        cmd, params = fake.calls[0]
+        assert cmd == "game_ready" and params["mode"] == "remesh" and params["lods"] == [1.0, 0.5, 0.25]
+        assert params["name"] == "axe"
+        assert [m.name for m in res.outputs["meshes"]] == ["axe_lod0.glb", "axe_lod1.glb", "axe_lod2.glb", "axe_lods.glb"]
+        assert sorted(m.name for m in res.outputs["maps"]) == ["axe_ao.png", "axe_normal.png"]
+        assert res.meta["lods"][1] == {"faces": 1000} and res.meta["maps"] == ["ao", "normal"]
+        off = await ex.run(ctx, {"mode": "off"}, {"mesh": [src]})
+        assert off.outputs["meshes"] == [src] and len(fake.calls) == 1
+        with pytest.raises(StepError, match="blender_bad_params"):
+            await ex.run(ctx, {"mode": "quad"}, {"mesh": [src]})
 
     asyncio.run(go())

@@ -46,7 +46,7 @@ async def save_previews(c: httpx.AsyncClient, run_id: str, recipe: str, data_dir
             strip.paste(im, ((i % 8) * w, (i // 8) * h))
         strip.save(data_dir / "r4_turntable_magenta.png")
         print("saved", data_dir / "r4_turntable_magenta.png")
-    for key in ("cleanup", "validate", "render", "turntable"):
+    for key in ("cleanup", "validate", "gameready", "render", "turntable"):
         if key in steps:
             meta = {k: v for k, v in steps[key]["meta"].items() if k not in ("spec", "params", "angles", "ready_at")}
             print(f"{key} meta:", json.dumps(meta)[:600])

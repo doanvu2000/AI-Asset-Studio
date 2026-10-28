@@ -395,6 +395,220 @@ def cleanup(p, emit):
             "total_s": round(time.perf_counter() - t0, 2), "out": p["out"]}
 
 
+def join_meshes(meshes):
+    if len(meshes) > 1:
+        with bpy.context.temp_override(object=meshes[0], active_object=meshes[0], selected_objects=meshes,
+                                       selected_editable_objects=meshes):
+            bpy.ops.object.join()
+    return meshes[0]
+
+
+def duplicate(o, name):
+    c = o.copy()
+    c.data = o.data.copy()
+    c.name = name
+    bpy.context.scene.collection.objects.link(c)
+    return c
+
+
+def select_only(objs, active):
+    for o in bpy.context.scene.objects:
+        o.select_set(o in objs)
+    bpy.context.view_layer.objects.active = active
+
+
+def smart_uv(o):
+    select_only([o], o)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.ops.mesh.select_all(action="SELECT")
+    bpy.ops.uv.smart_project(angle_limit=math.radians(66), island_margin=0.01)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def retopo(o, target_faces, diag):
+    """New even topology; UVs and materials are lost, so the caller re-unwraps and bakes colour back from the source.
+    QuadriFlow refuses TRELLIS meshes even after a voxel remesh (consistency check), so those get voxel + decimate."""
+    select_only([o], o)
+    merge_by_distance([o], diag * 1e-4)
+    # A quad is two glTF triangles.
+    res = bpy.ops.object.quadriflow_remesh(target_faces=max(target_faces // 2, 50), use_mesh_symmetry=False,
+                                           use_preserve_sharp=True, use_preserve_boundary=True, seed=0)
+    if "FINISHED" in res and o.data.polygons:
+        return "quadriflow"
+    o.data.remesh_voxel_size = diag / 200
+    bpy.ops.object.voxel_remesh()
+    ratio = cm.decimate_ratio(sum(len(f.vertices) - 2 for f in o.data.polygons), target_faces)
+    if ratio is not None:
+        decimate([o], ratio)
+    if not o.data.polygons:
+        raise RuntimeError("voxel remesh produced no faces")
+    return "voxel+decimate"
+
+
+def bake_image(name, size, non_color):
+    img = bpy.data.images.new(name, size, size, alpha=False, float_buffer=False)
+    img.colorspace_settings.name = "Non-Color" if non_color else "sRGB"
+    return img
+
+
+def bake_into(scene, high, low, img, bake_type, extrusion, emit_label, emit):
+    for slot in low.material_slots:
+        nt = slot.material.node_tree
+        node = nt.nodes.new("ShaderNodeTexImage")
+        node.image = img
+        nt.nodes.active = node
+    select_only([high, low], low)
+    kw = {"pass_filter": {"COLOR"}} if bake_type == "DIFFUSE" else {}
+    bpy.ops.object.bake(type=bake_type, use_selected_to_active=True, cage_extrusion=extrusion,
+                        max_ray_distance=extrusion * 2, margin=8, **kw)
+    for slot in low.material_slots:
+        nt = slot.material.node_tree
+        nt.nodes.remove(nt.nodes.active)
+    emit({"event": "progress", "label": emit_label})
+
+
+def principled(mat):
+    return next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+
+
+def gltf_occlusion_group():
+    # The glTF exporter reads ambient occlusion from a node group with this exact name and an "Occlusion" input.
+    g = bpy.data.node_groups.get("glTF Material Output")
+    if g is None:
+        g = bpy.data.node_groups.new("glTF Material Output", "ShaderNodeTree")
+        g.interface.new_socket("Occlusion", in_out="INPUT", socket_type="NodeSocketFloat")
+    return g
+
+
+def wire_maps(mat, normal_img, ao_img):
+    nt = mat.node_tree
+    bsdf = principled(mat)
+    if normal_img:
+        tex = nt.nodes.new("ShaderNodeTexImage")
+        tex.image = normal_img
+        nm = nt.nodes.new("ShaderNodeNormalMap")
+        nt.links.new(tex.outputs["Color"], nm.inputs["Color"])
+        nt.links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
+    if ao_img:
+        tex = nt.nodes.new("ShaderNodeTexImage")
+        tex.image = ao_img
+        sep = nt.nodes.new("ShaderNodeSeparateColor")
+        grp = nt.nodes.new("ShaderNodeGroup")
+        grp.node_tree = gltf_occlusion_group()
+        nt.links.new(tex.outputs["Color"], sep.inputs["Color"])
+        nt.links.new(sep.outputs[0], grp.inputs["Occlusion"])
+
+
+def game_ready(p, emit):
+    t0 = time.perf_counter()
+    reset()
+    scene = bpy.context.scene
+    high = join_meshes(import_glb(p["glb"]))
+    bake_world([high])
+    high.name = "high"
+    faces_high = len(high.data.polygons)
+    lo, hi = bbox([high])
+    diag = float(np.linalg.norm(hi - lo))
+    emit({"event": "progress", "value": 1, "max": 6, "label": "import"})
+
+    low = duplicate(high, "lod0")
+    for i, slot in enumerate(low.material_slots):
+        if slot.material:
+            low.material_slots[i].material = slot.material.copy()
+    fallback, remesh = None, None
+    if p["mode"] == "remesh":
+        try:
+            remesh = retopo(low, p["target_faces"], diag)
+        except RuntimeError as e:
+            fallback = str(e)
+    if p["mode"] == "decimate" or fallback:
+        ratio = cm.decimate_ratio(len(low.data.polygons), p["target_faces"])
+        if ratio is not None:
+            decimate([low], ratio)
+    if not low.data.uv_layers or p["mode"] == "remesh" and not fallback:
+        smart_uv(low)
+    smooth_by_angle([low], p["smooth_angle"])
+    emit({"event": "progress", "value": 2, "max": 6, "label": "lod0"})
+
+    set_engine(scene, "CYCLES")
+    scene.cycles.samples = p["samples"]
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new("w")
+    extrusion = 0.01 * diag
+    size = p["texture_size"]
+    out_dir = os.path.dirname(p["out_prefix"])
+    images = {}
+    if not any(s.material for s in low.material_slots) and not (p["mode"] == "remesh" and not fallback):
+        low.data.materials.clear()
+        blank = bpy.data.materials.new("lod0")
+        blank.use_nodes = True
+        low.data.materials.append(blank)
+    if p["mode"] == "remesh" and not fallback:
+        mat = bpy.data.materials.new("lod0")
+        mat.use_nodes = True
+        low.data.materials.clear()
+        low.data.materials.append(mat)
+        color = bake_image("basecolor", size, False)
+        bake_into(scene, high, low, color, "DIFFUSE", extrusion, "bake color", emit)
+        tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
+        tex.image = color
+        mat.node_tree.links.new(tex.outputs["Color"], principled(mat).inputs["Base Color"])
+        images["basecolor"] = color
+    if "normal" in p["bake"]:
+        images["normal"] = bake_image("normal", size, True)
+        bake_into(scene, high, low, images["normal"], "NORMAL", extrusion, "bake normal", emit)
+    if "ao" in p["bake"]:
+        images["ao"] = bake_image("ao", size, True)
+        bake_into(scene, high, low, images["ao"], "AO", extrusion, "bake ao", emit)
+    for slot in low.material_slots:
+        wire_maps(slot.material, images.get("normal"), images.get("ao"))
+    files = {}
+    for name, img in images.items():
+        path = os.path.join(out_dir, f"{name}.png")
+        img.filepath_raw = path
+        img.file_format = "PNG"
+        img.save()
+        files[name] = path
+    emit({"event": "progress", "value": 4, "max": 6, "label": "bake"})
+
+    lods = [low]
+    for i, r in enumerate(p["lods"][1:], 1):
+        o = duplicate(low, f"lod{i}")
+        o.data.materials.clear()
+        for slot in low.material_slots:
+            o.data.materials.append(slot.material)
+        decimate([o], r)
+        smooth_by_angle([o], p["smooth_angle"])
+        lods.append(o)
+    emit({"event": "progress", "value": 5, "max": 6, "label": "lods"})
+
+    high.hide_render = True
+    out = []
+    for i, o in enumerate(lods):
+        path = f"{p['out_prefix']}_lod{i}.glb"
+        select_only([o], o)
+        bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", export_image_format="AUTO",
+                                  use_selection=True, export_apply=True)
+        lo_i, hi_i = bbox([o])
+        out.append({"file": path, "faces": len(o.data.polygons),
+                    "tris": sum(len(f.vertices) - 2 for f in o.data.polygons),
+                    "dims": [round(float(x), 4) for x in hi_i - lo_i]})
+    # One file with every LOD sharing one texture set; nodes keep the usual _LODn naming (the exported Unity
+    # bundle's editor script builds the LODGroup from it, since glTF importers do not).
+    stem = p.get("name") or os.path.basename(p["out_prefix"])
+    for i, o in enumerate(lods):
+        o.name = f"{stem}_LOD{i}"
+    combined = f"{p['out_prefix']}_lods.glb"
+    select_only(lods, lods[0])
+    bpy.ops.export_scene.gltf(filepath=combined, export_format="GLB", export_image_format="AUTO",
+                              use_selection=True, export_apply=True)
+    emit({"event": "progress", "value": 6, "max": 6, "label": "export"})
+    return {"faces_high": faces_high, "mode": p["mode"], "remesh": remesh, "fallback": fallback, "lods": out,
+            "combined": combined, "maps": files,
+            "device": scene.cycles.device, "dims_high": [round(float(x), 4) for x in hi - lo],
+            "total_s": round(time.perf_counter() - t0, 2)}
+
+
 def warmup(p, emit):
     t0 = time.perf_counter()
     reset()
@@ -893,6 +1107,7 @@ HANDLERS = {
     "render_dirs": render_dirs,
     "animate_dirs": animate_dirs,
     "cleanup": cleanup,
+    "game_ready": game_ready,
     "script": run_script,
 }
 

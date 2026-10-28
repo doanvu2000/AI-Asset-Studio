@@ -40,6 +40,32 @@ def merge_distance(value: Any) -> float:
     return max(0.0, float(value))
 
 
+GAME_READY_MODES = ("decimate", "remesh")
+BAKE_MAPS = ("normal", "ao")
+
+
+def game_ready_params(params: dict[str, Any]) -> dict[str, Any]:
+    mode = str(params.get("mode", "decimate")).lower()
+    if mode not in GAME_READY_MODES:
+        raise ValueError(f"mode must be one of {GAME_READY_MODES}, got {mode!r}")
+    target = int(params.get("target_faces") or 5000)
+    if target < 100:
+        raise ValueError(f"target_faces must be >= 100, got {target}")
+    raw = params.get("lods", [1.0, 0.5, 0.25])
+    lods = [float(x) for x in (raw.split(",") if isinstance(raw, str) else raw)]
+    if not lods or lods[0] != 1.0 or any(not 0 < b < a for a, b in zip(lods, lods[1:])):
+        raise ValueError(f"lods must start at 1 and strictly decrease within (0, 1], got {raw!r}")
+    bake = params.get("bake", list(BAKE_MAPS))
+    bake = [b.strip() for b in (bake.split(",") if isinstance(bake, str) else bake) if b and b.strip()]
+    if any(b not in BAKE_MAPS for b in bake):
+        raise ValueError(f"bake entries must be in {BAKE_MAPS}, got {bake!r}")
+    size = int(params.get("texture_size", 1024))
+    if size not in (512, 1024, 2048, 4096):
+        raise ValueError(f"texture_size must be 512|1024|2048|4096, got {size}")
+    return {"mode": mode, "target_faces": target, "lods": lods, "bake": bake, "texture_size": size,
+            "smooth_angle": float(params.get("smooth_angle", 40)), "samples": int(params.get("samples", 16))}
+
+
 def normalize_params(params: dict[str, Any]) -> dict[str, Any]:
     origin = str(params.get("origin", "feet")).lower()
     if origin not in ORIGINS:
