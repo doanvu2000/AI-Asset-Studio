@@ -327,6 +327,18 @@ def test_flipbook_meta_is_one_clip_in_reading_order() -> None:
     assert len(lay.tracks) == 1 and len(lay.tracks[0].cells) == 10
     t = lay.tracks[0]
     assert (t.fps, t.loop) == (24, False) and (t.cells[5].x, t.cells[5].y) == (64, 64)
+    assert t.name == "burst" and not lay.facing
+
+
+def test_flipbook_export_has_no_facing(tmp_path: Path) -> None:
+    meta = {"frame_w": 64, "frame_h": 64, "cols": 4, "rows": 3, "count": 10, "padding": 0, "pivot": [32, 32],
+            "flipbook": {"fps": 24, "loop": True}}
+    src = Source(asset="Fire", sheet=_png(tmp_path, "f.png", (256, 192)), meta=meta, clip_hint="fire")
+    u = _files(unity.export(src))
+    assert "Animations/fire.anim" in u and "pivot giữa ô" in u["README.txt"].decode()
+    gd = _files(godot.export(src))
+    assert "asset_studio_sprite.gd" not in gd and b"script" not in gd["Fire.tscn"]
+    assert b'&"fire"' in gd["Fire.tres"] and b"offset = Vector2(0.0, 0.0)" in gd["Fire.tscn"]
 
 
 def test_audio_exports_one_file_per_clip(tmp_path: Path) -> None:

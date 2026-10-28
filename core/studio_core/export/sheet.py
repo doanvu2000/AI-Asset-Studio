@@ -54,7 +54,7 @@ class Track:
 
     @property
     def name(self) -> str:
-        return f"{self.clip}_{self.dir}"
+        return f"{self.clip}_{self.dir}" if self.dir else self.clip
 
 
 @dataclass
@@ -74,6 +74,10 @@ class Layout:
 
     def clips(self) -> list[str]:
         return list(dict.fromkeys(t.clip for t in self.tracks))
+
+    @property
+    def facing(self) -> bool:
+        return any(t.dir for t in self.tracks)
 
 
 def _directional(angles: list[Any], compass_only: bool = True) -> bool:
@@ -98,9 +102,9 @@ def layout(meta: dict[str, Any], clip_hint: str = "anim", fps: float = 8.0, dire
     def cell(name: str, r: int, c: int) -> Cell:
         return Cell(name, c * (fw + pad), r * (fh + pad), fw, fh)
 
-    def add_track(clip: str, angle: float, cells: list[Cell], t_fps: float, loop: bool) -> None:
+    def add_track(clip: str, angle: float, cells: list[Cell], t_fps: float, loop: bool, facing: bool = True) -> None:
         out.cells.extend(cells)
-        out.tracks.append(Track(clip, compass(angle), angle, cells, t_fps, loop))
+        out.tracks.append(Track(clip, compass(angle) if facing else "", angle, cells, t_fps, loop))
 
     clip_hint = ident(clip_hint, "anim")
     row_angles = meta.get("row_angles")
@@ -112,7 +116,7 @@ def layout(meta: dict[str, Any], clip_hint: str = "anim", fps: float = 8.0, dire
     if isinstance(flip, dict):
         # VFX: one clip over every cell in reading order, wrapping rows, with no facing.
         add_track(clip_hint, 0.0, [cell(f"{clip_hint}_{i}", *divmod(i, cols)) for i in range(count)],
-                  float(flip.get("fps") or fps), bool(flip.get("loop")))
+                  float(flip.get("fps") or fps), bool(flip.get("loop")), facing=False)
     elif isinstance(clips, list) and clips:
         for i, c in enumerate(clips):
             name = ident(str(c.get("name") or f"clip{i}"), f"clip{i}")

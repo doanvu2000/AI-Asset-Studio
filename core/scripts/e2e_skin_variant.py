@@ -1,6 +1,7 @@
 """Live E2E: spine-skin-variant on a skeleton + atlas (+ pages next to it), picking every Klein edit.
 
-Usage: python scripts/e2e_skin_variant.py <data_dir> <skeleton.json> <file.atlas> "<instruction>\n<instruction>"
+Usage: python scripts/e2e_skin_variant.py <data_dir> <skeleton.json> <file.atlas> "<instruction>\n<instruction>" [engine]
+An engine (unity|godot) also exports the approve step to it.
 """
 import asyncio
 import json
@@ -24,7 +25,7 @@ async def upload(c: httpx.AsyncClient, f: Path, mime: str) -> str:
     return r.json()["hash"]
 
 
-async def main(data_dir: Path, skeleton: Path, atlas: Path, instructions: str) -> None:
+async def main(data_dir: Path, skeleton: Path, atlas: Path, instructions: str, engine: str = "") -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
     token = secrets.token_hex(16)
     proc, port = spawn(data_dir, token)
@@ -72,6 +73,9 @@ async def main(data_dir: Path, skeleton: Path, atlas: Path, instructions: str) -
                     (data_dir / ref["name"]).write_bytes((await c.get(f"/api/blobs/{ref['hash']}")).content)
                     print("saved", data_dir / ref["name"])
                 print("variant meta:", json.dumps(steps["variant"]["meta"])[:800])
+                if engine:
+                    ex = await c.post(f"/api/steps/{steps['approve']['id']}/export", json={"engine": engine})
+                    print(f"export {engine}:", ex.status_code, json.dumps(ex.json())[:1200])
             await c.post("/api/shutdown")
     finally:
         try:
@@ -81,4 +85,5 @@ async def main(data_dir: Path, skeleton: Path, atlas: Path, instructions: str) -
 
 
 if __name__ == "__main__":
-    asyncio.run(main(Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4].replace("\\n", "\n")))
+    asyncio.run(main(Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4].replace("\\n", "\n"),
+                     sys.argv[5] if len(sys.argv) > 5 else ""))

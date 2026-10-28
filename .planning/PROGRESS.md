@@ -894,3 +894,13 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   đọc theo hàng; vfx-flipbook outputs final/meta = sheet. Live: VFX loop → xuất Unity: clip 16 frame 24fps LoopTime 1.
   skin variant: op trả thêm `skeleton` + `texture` (trang v1), approve chuyển tiếp → engine thấy Spine (unit test).
   `e2e_text.py` tham số thứ 5 = engine để xuất luôn. pytest 488/4, typecheck sạch. Chưa commit.
+- [x] 2026-10-29 00:07 Handoff mới: `.planning/HANDOFF-2026-10-29-0007.md`
+
+## Phiên 2026-10-29 (sau HANDOFF-0007)
+- [x] Kiểm thật xuất biến thể skin: `e2e_skin_variant.py` thêm tham số 5 = engine (xuất bước approve). mix-and-match-pro
+  65s/run; Unity → `Spine/` json + atlas.txt (trỏ `mix-and-match_v1.png`) + trang `_v1` + README; Godot → `.spine-json`
+  + `.atlas` + trang `_v1`. Đạt.
+- [x] VFX xuất engine: track flipbook không có hướng (`Track.dir=""`, `Layout.facing`) → clip tên `<clip>` (không còn
+  `sheet_S.anim`); README Unity/Godot riêng cho flipbook (pivot giữa ô); Godot bỏ `asset_studio_sprite.gd` + script
+  trong .tscn khi không có hướng. Test `test_flipbook_export_has_no_facing`. pytest 489 pass / 4 skip.
+- Bỏ qua: LOD riêng cho Godot (Godot tự sinh), ảnh art recipe audio/VFX (icon fallback, chỉ thẩm mỹ).

@@ -497,6 +497,10 @@ README_SHEET = """- {asset}.png: sprite sheet đã cắt sẵn (Sprite Mode Mult
 - Animations/<clip>_<hướng>.anim + {asset}.controller: mỗi clip là một state blend tree 2D
   (Simple Directional), tham số MoveX/MoveY = hướng nhìn. Animator.Play("<clip>") để đổi clip.
 - {asset}.prefab: SpriteRenderer + Animator gắn sẵn. Sprite không cần script hay package thêm."""
+README_FLIPBOOK = """- {asset}.png: flipbook đã cắt sẵn (Sprite Mode Multiple), tên khung <clip>_<số>. PPU {ppu}, pivot giữa ô.
+- Animations/<clip>.anim + {asset}.controller: một clip đọc các ô theo hàng, fps lúc tạo, loop theo chế độ
+  (oneshot không lặp).
+- {asset}.prefab: SpriteRenderer + Animator gắn sẵn, tự phát khi vào scene. Không cần script hay package thêm."""
 
 
 README_TEXTURES = """- Textures/: texture liền mạch, import sẵn Wrap Mode = Repeat, có mipmap (bản pixel art: Point, không mipmap);
@@ -539,7 +543,7 @@ def export(src: Source) -> Files:
     if src.sheet is not None and src.meta is not None:
         lay = layout(src.meta, src.clip_hint, directional_rows=src.directional_rows)
         pixel = src.is_pixel()
-        notes.append(README_SHEET.format(asset=a, ppu=_f(src.ppu)))
+        notes.append((README_SHEET if lay.facing else README_FLIPBOOK).format(asset=a, ppu=_f(src.ppu)))
         tex_rel, normal_rel = f"{a}.png", f"{a}_normal.png"
         tex_guid = guid(u, a, tex_rel)
         normal_guid = guid(u, a, normal_rel) if src.normal is not None else None

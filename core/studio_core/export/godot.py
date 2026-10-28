@@ -50,16 +50,16 @@ def default_animation(lay: Layout) -> str:
 def scene(name: str, lay: Layout, frames_file: str, pixel: bool) -> str:
     ox, oy = lay.frame_w / 2 - lay.pivot[0], lay.frame_h / 2 - lay.pivot[1]
     anim = default_animation(lay)
-    lines = [
-        '[gd_scene format=3]', '',
-        f'[ext_resource type="SpriteFrames" path="{frames_file}" id="1_frames"]',
-        '[ext_resource type="Script" path="asset_studio_sprite.gd" id="2_script"]', '',
-        f'[node name="{name}" type="AnimatedSprite2D"]',
-    ]
+    lines = ['[gd_scene format=3]', '', f'[ext_resource type="SpriteFrames" path="{frames_file}" id="1_frames"]']
+    if lay.facing:
+        lines.append('[ext_resource type="Script" path="asset_studio_sprite.gd" id="2_script"]')
+    lines += ['', f'[node name="{name}" type="AnimatedSprite2D"]']
     if pixel:
         lines.append("texture_filter = 1")
     lines += ['sprite_frames = ExtResource("1_frames")', f'animation = &"{anim}"', f'autoplay = "{anim}"',
-              f"offset = Vector2({_num(ox)}, {_num(oy)})", 'script = ExtResource("2_script")']
+              f"offset = Vector2({_num(ox)}, {_num(oy)})"]
+    if lay.facing:
+        lines.append('script = ExtResource("2_script")')
     return "\n".join(lines) + "\n"
 
 
@@ -206,6 +206,9 @@ README_SHEET = """- {asset}.tres: SpriteFrames, animation <clip>_<hướng> (S, 
   màn hình), mỗi khung là AtlasTexture cắt từ {asset}.png, tốc độ = fps, loop theo clip.
 - {asset}.tscn: AnimatedSprite2D dùng SpriteFrames trên, offset đặt gốc ở chân nhân vật.
 - asset_studio_sprite.gd: gọi face("walk", velocity) để chọn hướng gần nhất."""
+README_FLIPBOOK = """- {asset}.tres: SpriteFrames, một animation <clip> đọc các ô theo hàng, tốc độ = fps lúc tạo, loop theo chế độ
+  (oneshot dừng ở khung cuối). Mỗi khung là AtlasTexture cắt từ {asset}.png.
+- {asset}.tscn: AnimatedSprite2D tự phát, gốc ở giữa ô (đặt node tại tâm hiệu ứng)."""
 
 
 def export(src: Source) -> Files:
@@ -216,13 +219,14 @@ def export(src: Source) -> Files:
         lay = layout(src.meta, src.clip_hint, directional_rows=src.directional_rows)
         tex, normal = f"{a}.png", (f"{a}_normal.png" if src.normal is not None else None)
         files.append((tex, src.sheet))
-        notes.append(README_SHEET.format(asset=a))
+        notes.append((README_SHEET if lay.facing else README_FLIPBOOK).format(asset=a))
         if normal and src.normal is not None:
             files.append((normal, src.normal))
             notes.append(f"- {normal}: normal map, gắn qua CanvasTexture nên sprite nhận ánh sáng Light2D.")
         files += [(f"{a}.tres", sprite_frames(lay, tex, normal).encode()),
-                  (f"{a}.tscn", scene(a, lay, f"{a}.tres", src.is_pixel()).encode()),
-                  ("asset_studio_sprite.gd", helper(lay).encode())]
+                  (f"{a}.tscn", scene(a, lay, f"{a}.tres", src.is_pixel()).encode())]
+        if lay.facing:
+            files.append(("asset_studio_sprite.gd", helper(lay).encode()))
     if src.spine_json is not None and src.spine_atlas is not None:
         stem = Path(src.spine_json[0]).stem
         files += [(f"Spine/{stem}.spine-json", src.spine_json[1]), (f"Spine/{stem}.atlas", src.spine_atlas[1])]
