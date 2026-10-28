@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI Asset Studio · Báo cáo 27/10</title>
+<style>
+/* Layout: one 980px reading column, Apple-style grouped sections on a light grey ground, sticky segmented nav. */
+:root {
+  color-scheme: light;
+  --ground: #f5f5f7;
+  --surface: #ffffff;
+  --ink: #1d1d1f;
+  --ink-2: #515154;
+  --ink-3: #6e6e73;
+  --hair: #d2d2d7;
+  --fill: #f0f0f3;
+  --blue: #0066cc;
+  --blue-soft: #e8f1fc;
+  --green: #1e7a34;
+  --green-soft: #e6f4ea;
+  --orange: #b24a00;
+  --orange-soft: #fdf0e4;
+  --purple: #6e3fc2;
+  --purple-soft: #f1ebfb;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  --r-lg: 18px;
+  --r-md: 12px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+body {
+  margin: 0; background: var(--ground); color: var(--ink);
+  font: 400 17px/1.55 var(--font); -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 980px; margin: 0 auto; padding-inline: 20px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+p { margin: 0; }
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; border-radius: 8px; }
+code { font: 500 0.86em var(--mono); background: var(--fill); padding: 1px 6px; border-radius: 6px; color: var(--ink); }
+
+/* nav */
+.nav {
+  position: sticky; top: 0; z-index: 10;
+  background: rgba(245, 245, 247, 0.82); backdrop-filter: saturate(180%) blur(18px); -webkit-backdrop-filter: saturate(180%) blur(18px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+.nav .wrap { display: flex; align-items: center; gap: 16px; padding-block: 10px; }
+.brand { font-weight: 600; font-size: 15px; white-space: nowrap; }
+.seg { display: flex; gap: 2px; background: #e3e3e8; padding: 3px; border-radius: 10px; overflow-x: auto; margin-left: auto; scrollbar-width: none; }
+.seg::-webkit-scrollbar { display: none; }
+.seg a {
+  font-size: 13px; font-weight: 500; color: var(--ink); padding: 6px 12px; border-radius: 8px; white-space: nowrap;
+  min-height: 32px; display: flex; align-items: center; transition: background .2s, box-shadow .2s;
+}
+.seg a:hover { text-decoration: none; background: rgba(255,255,255,.6); }
+.seg a.on { background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+
+/* hero */
+.hero { padding-block: 56px 32px; display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: center; }
+.eyebrow { font-size: 14px; font-weight: 600; color: var(--blue); letter-spacing: .02em; margin-bottom: 8px; }
+.hero h1 { font-size: clamp(34px, 6vw, 52px); line-height: 1.07; font-weight: 700; letter-spacing: -0.025em; }
+.hero .lede { font-size: 20px; line-height: 1.45; color: var(--ink-2); margin-top: 16px; max-width: 34em; }
+.meta-line { margin-top: 18px; font-size: 14px; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.compass { width: 200px; max-width: 100%; }
+.compass text { font: 600 10.5px var(--font); fill: var(--ink-3); }
+
+/* stats */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stat { background: var(--surface); border-radius: var(--r-lg); padding: 20px 20px 18px; }
+.stat b { display: block; font: 700 34px/1.1 var(--font-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.stat span { display: block; font-size: 14px; color: var(--ink-3); margin-top: 6px; line-height: 1.35; }
+
+/* sections */
+section { padding-block: 56px 8px; }
+.sec-head { margin-bottom: 22px; }
+.sec-head h2 { font-size: clamp(26px, 4vw, 34px); font-weight: 700; letter-spacing: -0.02em; }
+.sec-head p { color: var(--ink-3); margin-top: 6px; max-width: 40em; }
+
+.group { background: var(--surface); border-radius: var(--r-lg); overflow: hidden; }
+.group + .group { margin-top: 16px; }
+
+/* timeline */
+.tl details { border-top: 1px solid var(--hair); }
+.tl details:first-child { border-top: 0; }
+.tl summary {
+  list-style: none; cursor: pointer; display: grid; grid-template-columns: 92px 1fr auto; gap: 16px; align-items: center;
+  padding: 16px 20px; min-height: 56px;
+}
+.tl summary::-webkit-details-marker { display: none; }
+.tl summary:hover { background: #fafafc; }
+.tl .when { font: 600 13px var(--font); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.tl .what { font-weight: 600; min-width: 0; }
+.tl .what small { display: block; font-weight: 400; color: var(--ink-3); font-size: 15px; margin-top: 1px; }
+.chev { width: 10px; height: 10px; border-right: 2px solid var(--ink-3); border-bottom: 2px solid var(--ink-3); transform: rotate(45deg); transition: transform .2s; margin-right: 4px; }
+.tl details[open] .chev { transform: rotate(-135deg); }
+.tl ul { margin: 0; padding: 0 20px 18px 128px; display: grid; gap: 8px; }
+.tl li { color: var(--ink-2); font-size: 16px; }
+
+/* capability grid */
+.caps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.cap { background: var(--surface); border-radius: var(--r-lg); padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.cap-head { display: flex; align-items: center; gap: 12px; }
+.ico { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex: none; }
+.ico svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ico.blue { background: var(--blue-soft); color: var(--blue); }
+.ico.green { background: var(--green-soft); color: var(--green); }
+.ico.orange { background: var(--orange-soft); color: var(--orange); }
+.ico.purple { background: var(--purple-soft); color: var(--purple); }
+.cap h3 { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
+.cap ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--ink-2); font-size: 16px; }
+.cap li::marker { color: var(--hair); }
+
+/* flow strip */
+.flow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 20px; }
+.node { background: var(--fill); border-radius: 10px; padding: 8px 12px; font-size: 15px; font-weight: 500; }
+.node small { display: block; font-size: 12px; color: var(--ink-3); font-weight: 400; }
+.node.end { background: var(--blue-soft); color: var(--blue); }
+.arrow { color: var(--ink-3); font-size: 15px; }
+.flow-cap { padding: 0 20px 18px; color: var(--ink-3); font-size: 15px; }
+
+/* table */
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 16px; min-width: 560px; }
+th { text-align: left; font-size: 13px; font-weight: 600; color: var(--ink-3); padding: 14px 20px 10px; border-bottom: 1px solid var(--hair); }
+td { padding: 13px 20px; border-bottom: 1px solid var(--fill); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.num { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+td .sub { display: block; font-size: 14px; color: var(--ink-3); }
+
+/* pills */
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.ok { background: var(--green-soft); color: var(--green); }
+.pill.warn { background: var(--orange-soft); color: var(--orange); }
+.pill.info { background: var(--blue-soft); color: var(--blue); }
+.pill.idea { background: var(--purple-soft); color: var(--purple); }
+
+/* open items */
+.rows .row { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; padding: 16px 20px; border-top: 1px solid var(--fill); align-items: start; }
+.rows .row:first-child { border-top: 0; }
+.row h4 { margin: 0; font-size: 17px; font-weight: 600; }
+.row p { color: var(--ink-2); font-size: 15px; grid-column: 1; margin-top: 2px; }
+.row .pill { grid-column: 2; grid-row: 1; }
+
+/* roadmap */
+.horizons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.hz { background: var(--surface); border-radius: var(--r-lg); padding: 22px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.hz-head h3 { font-size: 21px; font-weight: 700; letter-spacing: -0.015em; }
+.hz-head p { font-size: 14px; color: var(--ink-3); margin-top: 2px; }
+.hz ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 14px; }
+.hz li { display: grid; gap: 3px; }
+.hz li b { font-weight: 600; font-size: 16px; line-height: 1.35; }
+.hz li span { font-size: 14.5px; color: var(--ink-2); line-height: 1.45; }
+.hz.now .hz-head h3 { color: var(--blue); }
+.hz.next .hz-head h3 { color: var(--green); }
+.hz.later .hz-head h3 { color: var(--purple); }
+
+.callout { margin-top: 16px; background: var(--blue-soft); border-radius: var(--r-lg); padding: 20px 22px; display: grid; gap: 6px; }
+.callout b { color: var(--blue); font-size: 15px; }
+.callout p { color: var(--ink); }
+
+footer { padding-block: 56px 48px; color: var(--ink-3); font-size: 14px; }
+footer .wrap { display: grid; gap: 6px; }
+
+@media (max-width: 860px) {
+  .horizons { grid-template-columns: 1fr; }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 680px) {
+  body { font-size: 16px; }
+  .hero { grid-template-columns: 1fr; padding-block: 36px 24px; }
+  .compass { width: 150px; }
+  .caps { grid-template-columns: 1fr; }
+  .tl summary { grid-template-columns: 1fr auto; gap: 4px 12px; }
+  .tl .when { grid-column: 1; }
+  .tl .what { grid-column: 1; }
+  .tl .chev { grid-column: 2; grid-row: 1 / span 2; }
+  .tl ul { padding-left: 20px; }
+  .brand { display: none; }
+  .seg { margin-left: 0; }
+  .wrap { padding-inline: 16px; }
+}
+</style>
+</head>
+<body>
+
+<nav class="nav" aria-label="Mục lục">
+  <div class="wrap">
+    <span class="brand">AI Asset Studio</span>
+    <div class="seg" id="seg">
+      <a href="#tong-quan" class="on">Tổng quan</a>
+      <a href="#hanh-trinh">Hành trình</a>
+      <a href="#nang-luc">Năng lực</a>
+      <a href="#so-lieu">Số liệu</a>
+      <a href="#con-mo">Còn mở</a>
+      <a href="#huong-tiep">Hướng tiếp</a>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap">
+
+  <header class="hero" id="tong-quan">
+    <div>
+      <p class="eyebrow">Báo cáo tiến độ · 27/10/2026</p>
+      <h1>Từ một câu mô tả đến bộ asset dùng được ngay trong game.</h1>
+      <p class="lede">AI Asset Studio là app desktop chạy trên máy nhà: gõ ý tưởng, chọn quy trình, nhận về sprite 8 hướng có hoạt ảnh, nhân vật Spine, texture lát liền mạch, rồi xuất thẳng sang Unity hoặc Godot.</p>
+      <div class="meta-line">
+        <span>Bắt đầu 18/10/2026</span>
+        <span>Nhánh <code>master</code> · đã push</span>
+        <span>Bản Portable cập nhật 10:19 hôm nay</span>
+      </div>
+    </div>
+    <svg class="compass" viewBox="0 0 200 200" role="img" aria-label="8 hướng sprite: Xuống, Xuống-trái, Trái, Lên-trái, Lên, Lên-phải, Phải, Xuống-phải">
+      <circle cx="100" cy="100" r="62" fill="#fff" stroke="#d2d2d7"/>
+      <circle cx="100" cy="100" r="22" fill="#e8f1fc"/>
+      <g stroke="#0066cc" stroke-width="2.2" stroke-linecap="round">
+        <line x1="100" y1="100" x2="100" y2="150"/>
+        <line x1="100" y1="100" x2="65" y2="135" opacity=".55"/>
+        <line x1="100" y1="100" x2="50" y2="100" opacity=".55"/>
+        <line x1="100" y1="100" x2="65" y2="65" opacity=".55"/>
+        <line x1="100" y1="100" x2="100" y2="50" opacity=".55"/>
+        <line x1="100" y1="100" x2="135" y2="65" opacity=".55"/>
+        <line x1="100" y1="100" x2="150" y2="100" opacity=".55"/>
+        <line x1="100" y1="100" x2="135" y2="135" opacity=".55"/>
+      </g>
+      <circle cx="100" cy="150" r="5" fill="#0066cc"/>
+      <text x="100" y="180" text-anchor="middle" fill="#0066cc">Xuống · 0°</text>
+      <text x="100" y="30" text-anchor="middle">Lên</text>
+      <text x="12" y="104">Trái</text>
+      <text x="160" y="104">Phải</text>
+      <text x="100" y="104" text-anchor="middle" style="font-size:9px">8 hướng</text>
+    </svg>
+  </header>
+
+  <div class="stats" role="list">
+    <div class="stat" role="listitem"><b>20</b><span>quy trình tạo asset (recipe)</span></div>
+    <div class="stat" role="listitem"><b>394</b><span>test tự động pass, 4 skip, 0 lỗi</span></div>
+    <div class="stat" role="listitem"><b>3</b><span>đích xuất: Unity, Godot, Spine 4.2</span></div>
+    <div class="stat" role="listitem"><b>50</b><span>commit trong 10 ngày</span></div>
+  </div>
+
+  <section id="hanh-trinh">
+    <div class="sec-head">
+      <h2>Hành trình</h2>
+      <p>Các đợt việc theo thứ tự thời gian. Bấm vào từng dòng để xem chi tiết.</p>
+    </div>
+    <div class="group tl">
+      <details>
+        <summary><span class="when">18/10 sáng</span><span class="what">Nền móng<small>Thử nghiệm công cụ, dựng core và app</small></span><span class="chev" aria-hidden="true"></span></summary>
+        <ul>
+          <li>Chốt kiến trúc: core Python (FastAPI + SQLite) chạy cạnh app Electron/Vue. Mỗi quy trình là một đồ thị bước khai báo bằng YAML.</li>
+          <li>Thử nghiệm ComfyUI, Codex (sinh ảnh nền trong suốt), Blender headless, Claude SDK. Ghi các bẫy vào <code>P0-REPORT.md</code>.</li>
+          <li>Hàng đợi GPU, cache theo bước, cổng duyệt ảnh, quy trình ảnh 2D đầu tiên.</li>
+        </ul>
+      </details>
+      <details>
+        <summary><span class="when">18/10 chiều</span><span class="what">3D, Claude, Spine<small>Ảnh → mesh → sprite 8 hướng; nhân vật Spine</small></span><span class="chev" aria-hidden="true"></span></summary>
+        <ul>
+          <li>Tuyến chính: ảnh → mesh TRELLIS → Blender render trực giao 8 hướng → sprite sheet chân thẳng hàng.</li>
+          <li>Tìm ra nguyên nhân crash (mesh 46 triệu mặt làm cạn RAM) và giới hạn độ phân giải.</li>
+          <li>Đa góc: Qwen vẽ thêm trái/sau/phải để mesh có lưng đúng. Tự kiểm góc và sinh lại khi lệch.</li>
+          <li>Claude viết brief, điều khiển Blender, dựng prop thủ tục. Nhân vật Spine tách lớp tự động.</li>
+          <li>MCP server để Claude Code và Codex gọi app. Trình sửa đồ thị quy trình, chạy theo lô.</li>
+        </ul>
+      </details>
+      <details>
+        <summary><span class="when">18/10 tối</span><span class="what">Đóng gói và giao diện<small>Bản Portable, nâng cấp UI theo Apple HIG</small></span><span class="chev" aria-hidden="true"></span></summary>
+        <ul>
+          <li>Đóng gói PyInstaller + electron-builder, bản Portable để data cạnh file exe.</li>
+          <li>Nhật ký chẩn đoán, viewer GLB/sheet/Spine, kéo file ra Explorer, tiến độ trên taskbar.</li>
+          <li>Đại tu UI: kết quả nổi bật, duyệt ảnh ngay trong dòng, Ctrl+K, minh hoạ do Codex vẽ.</li>
+        </ul>
+      </details>
+      <details>
+        <summary><span class="when">19/10</span><span class="what">Ổn định chất lượng mesh<small>Kiểm mesh bằng hình bóng, dịch prompt</small></span><span class="chev" aria-hidden="true"></span></summary>
+        <ul>
+          <li>Kiểm mesh: render 4 góc, so hình bóng với ảnh gốc, dưới 0,75 thì sinh lại với seed mới.</li>
+          <li>Dịch prompt Việt sang Anh trước khi sinh ảnh (Z-Image hiểu tiếng Việt kém).</li>
+          <li>Mẫu nhanh 12 chủ đề + 10 phong cách, theme sáng/tối, thẻ thông số máy, art style D.</li>
+        </ul>
+      </details>
+      <details>
+        <summary><span class="when">27/10 đêm</span><span class="what">Hoạt ảnh và xuất engine<small>Idle/walk/run/attack, normal map, pixel art, Unity, Godot</small></span><span class="chev" aria-hidden="true"></span></summary>
+        <ul>
+          <li>Sửa 33 lỗi từ đợt audit, qua thêm 3 vòng audit.</li>
+          <li>Sprite 8 hướng có hoạt ảnh (idle, walk, run, attack), kèm sheet normal map để đánh đèn 2D.</li>
+          <li>Pixel art với bảng màu chung, giới hạn số màu cứng.</li>
+          <li>Xuất Unity (slice, .anim, blend tree 8 hướng, prefab) và Godot (SpriteFrames, scene, hàm <code>face()</code>). Kiểm trong engine thật: 0 lỗi.</li>
+          <li>Dự án: gom asset cùng phong cách. Thư viện chọn nhiều, duyệt hàng loạt, so sánh 2 asset.</li>
+        </ul>
+      </details>
+      <details>
+        <summary><span class="when">27/10 sáng</span><span class="what">Bốn tính năng mới<small>Bóng đổ, chấm điểm, texture liền mạch, chi phí</small></span><span class="chev" aria-hidden="true"></span></summary>
+        <ul>
+          <li>Bóng đổ và viền cho sprite, bật/tắt theo từng lượt chạy.</li>
+          <li>Chấm điểm chất lượng 0–100 cho mỗi ảnh. Lọc “Điểm thấp” trong Thư viện.</li>
+          <li>Texture và tileset lát liền mạch. Xem lát 3×3 / 5×5 ngay trong app, xuất material sang engine.</li>
+          <li>Bảng chi phí và thời gian theo quy trình, theo ngày, bước tốn nhất.</li>
+        </ul>
+      </details>
+      <details open>
+        <summary><span class="when">27/10 trưa</span><span class="what">Dọn mục còn mở<small>Gạch theo lưới, tileset Wang, skinning theo bề mặt</small></span><span class="chev" aria-hidden="true"></span></summary>
+        <ul>
+          <li>Texture gạch/ván: tự dò chu kỳ lưới để hàng gạch khớp qua mép lát.</li>
+          <li>Tileset Wang góc 16 ô cho chuyển cỏ ↔ đất. Godot tự nhận terrain, Unity cắt sẵn 16 sprite.</li>
+          <li>Skinning theo bề mặt: áo choàng không bị tay kéo theo, khiên gắn cứng vào tay. Độ giãn khi đi giảm từ 53 xuống 23.</li>
+          <li>Chi phí không còn mất khi core bị tắt ngang.</li>
+          <li>Dọn thư mục test trong project Godot/Unity, build lại bản Portable.</li>
+        </ul>
+      </details>
+    </div>
+  </section>
+
+  <section id="nang-luc">
+    <div class="sec-head">
+      <h2>App làm được gì hôm nay</h2>
+      <p>Gom theo việc chủ nhân cần làm, không theo module code.</p>
+    </div>
+
+    <div class="group" style="margin-bottom:16px">
+      <div class="flow" aria-label="Tuyến tạo sprite 8 hướng">
+        <span class="node">Ý tưởng<small>tiếng Việt</small></span><span class="arrow">→</span>
+        <span class="node">Ảnh concept<small>Z-Image / Codex</small></span><span class="arrow">→</span>
+        <span class="node">Góc phụ<small>Qwen trái/sau/phải</small></span><span class="arrow">→</span>
+        <span class="node">Mesh 3D<small>TRELLIS + kiểm IoU</small></span><span class="arrow">→</span>
+        <span class="node">Rig + hoạt ảnh<small>Blender</small></span><span class="arrow">→</span>
+        <span class="node end">Sheet 8 hướng<small>+ normal, pixel, fx</small></span>
+      </div>
+      <p class="flow-cap">Tuyến chính của sprite 8 hướng. Mỗi bước có cache, nên đổi một tham số ở cuối không phải chạy lại GPU từ đầu.</p>
+    </div>
+
+    <div class="caps">
+      <article class="cap">
+        <div class="cap-head"><span class="ico blue"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><h3>Sprite và nhân vật</h3></div>
+        <ul>
+          <li>Sprite 8 hướng từ ảnh, từ GLB, hoặc từ prompt</li>
+          <li>Hoạt ảnh idle, walk, run, attack</li>
+          <li>Normal map, pixel art, bóng đổ, viền</li>
+          <li>Nhân vật Spine 4.2 tách lớp tự động</li>
+        </ul>
+      </article>
+      <article class="cap">
+        <div class="cap-head"><span class="ico green"><svg viewBox="0 0 24 24"><path d="M3 3h18v18H3z"/><path d="M3 9h18M3 15h18M9 3v6M15 9v6M9 15v6"/></svg></span><h3>Texture và tileset</h3></div>
+        <ul>
+          <li>Texture lát liền mạch, tự khớp lưới gạch/ván</li>
+          <li>Tileset Wang 16 ô chuyển giữa hai vật liệu</li>
+          <li>Normal map và bản pixel cho tile</li>
+          <li>Xem lát 3×3 / 5×5 và “Xếp lại” ngẫu nhiên</li>
+        </ul>
+      </article>
+      <article class="cap">
+        <div class="cap-head"><span class="ico orange"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v3h16v-3"/></svg></span><h3>Xuất sang engine</h3></div>
+        <ul>
+          <li>Unity: slice, clip, blend tree 8 hướng, prefab</li>
+          <li>Godot: SpriteFrames, scene, TileSet terrain</li>
+          <li>Spine JSON + atlas, GLB cho 3D</li>
+          <li>Đã kiểm trong Unity 6 và Godot 4.7: 0 lỗi</li>
+        </ul>
+      </article>
+      <article class="cap">
+        <div class="cap-head"><span class="ico purple"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span><h3>Kiểm soát chất lượng</h3></div>
+        <ul>
+          <li>Chấm điểm 0–100 cho từng ảnh, có chi tiết lý do</li>
+          <li>Kiểm mesh bằng hình bóng, tự sinh lại khi hỏng</li>
+          <li>Kiểm góc Qwen, kiểm mép lát của texture</li>
+          <li>Cổng duyệt: chọn ảnh trước khi chạy bước đắt</li>
+        </ul>
+      </article>
+      <article class="cap">
+        <div class="cap-head"><span class="ico blue"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="16" r="3"/></svg></span><h3>Quản lý và chi phí</h3></div>
+        <ul>
+          <li>Dự án gom asset cùng phong cách</li>
+          <li>Thư viện: chọn nhiều, duyệt lô, so sánh, lọc theo điểm</li>
+          <li>Chi phí và thời gian theo quy trình, theo ngày</li>
+          <li>Chạy theo lô nhiều prompt một lúc</li>
+        </ul>
+      </article>
+      <article class="cap">
+        <div class="cap-head"><span class="ico green"><svg viewBox="0 0 24 24"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13.5 6l-3 12"/></svg></span><h3>Kết nối AI khác</h3></div>
+        <ul>
+          <li>MCP: Claude Code và Codex gọi app như một công cụ</li>
+          <li>Claude Opus viết brief, dịch prompt, điều khiển Blender</li>
+          <li>Trình sửa đồ thị để tự tạo quy trình mới</li>
+          <li>Chạy hoàn toàn trên máy, data nằm cạnh file exe</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <section id="so-lieu">
+    <div class="sec-head">
+      <h2>Số liệu đo thật</h2>
+      <p>Lấy từ các lượt chạy thật trên máy RTX, không phải ước lượng.</p>
+    </div>
+    <div class="group tbl-wrap">
+      <table>
+        <thead><tr><th>Hạng mục</th><th>Kết quả</th><th>Trạng thái</th></tr></thead>
+        <tbody>
+          <tr><td>Sprite 8 hướng đa góc (R5-mv)<span class="sub">ảnh → Qwen → mesh → sheet</span></td><td class="num">325 giây</td><td><span class="pill ok">Đạt</span></td></tr>
+          <tr><td>Sprite 8 hướng có hoạt ảnh<span class="sub">4 clip × 8 hướng</span></td><td class="num">414 giây</td><td><span class="pill ok">Đạt</span></td></tr>
+          <tr><td>Nhân vật Spine<span class="sub">tách lớp + khớp xương</span></td><td class="num">166 giây</td><td><span class="pill ok">Đạt</span></td></tr>
+          <tr><td>Chuyển pixel art<span class="sub">từ sheet có sẵn</span></td><td class="num">1,9 giây</td><td><span class="pill ok">Đạt</span></td></tr>
+          <tr><td>Kiểm mesh cứu ca hỏng<span class="sub">IoU hình bóng lần 1 → lần 2</span></td><td class="num">0,56 → 0,90</td><td><span class="pill ok">Đạt</span></td></tr>
+          <tr><td>Tileset Wang cỏ ↔ đất<span class="sub">điểm kiểm mép lát</span></td><td class="num">100 / 100</td><td><span class="pill ok">Đạt</span></td></tr>
+          <tr><td>Độ giãn mesh khi đi / khi chém<span class="sub">sau skinning theo bề mặt</span></td><td class="num">53→23 · 183→90</td><td><span class="pill info">Cải thiện</span></td></tr>
+          <tr><td>Skinning mesh 308 nghìn đỉnh</td><td class="num">9,2 giây</td><td><span class="pill ok">Đạt</span></td></tr>
+          <tr><td>Xuất Unity / Godot kiểm trong engine</td><td class="num">0 lỗi</td><td><span class="pill ok">Đạt</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="con-mo">
+    <div class="sec-head">
+      <h2>Còn mở</h2>
+      <p>Không chặn việc dùng app, nhưng nên biết khi thử.</p>
+    </div>
+    <div class="group rows">
+      <div class="row"><h4>Mảnh áo choàng dính tay ở góc 45°</h4><span class="pill warn">Hình ảnh</span><p>Một mảnh nhỏ vẫn theo tay khi chém ở hướng chéo.</p></div>
+      <div class="row"><h4>Gạch xây so le chỉ khớp theo chiều dọc</h4><span class="pill warn">Texture</span><p>Lưới thẳng khớp cả hai trục. Gạch so le nửa viên còn lệch ở mép ngang.</p></div>
+      <div class="row"><h4>Tileset Wang 1 dòng gọi qua MCP chỉ báo lỗi sau khi đã sinh ảnh</h4><span class="pill info">Tốn GPU</span><p>App đã chặn từ đầu. Core cũng nên kiểm trước bước GPU.</p></div>
+      <div class="row"><h4>Chế độ mép + prompt 2 dòng vẫn sinh ảnh dòng 2</h4><span class="pill info">Tốn GPU</span><p>Dòng 2 chỉ dùng cho Wang, nên ở chế độ mép thì bỏ qua.</p></div>
+      <div class="row"><h4>Ngưỡng chấm điểm mới hiệu chỉnh trên vài mẫu</h4><span class="pill info">Dữ liệu</span><p>Cần chạy nhiều asset thật để chỉnh lại ngưỡng cho sát.</p></div>
+      <div class="row"><h4>Spine chưa mở thử trong Spine Editor</h4><span class="pill info">Kiểm thử</span><p>Đã chạy đúng trên spine-player 4.2. Chủ nhân chốt chỉ xuất file, không cài runtime vào engine.</p></div>
+    </div>
+  </section>
+
+  <section id="huong-tiep">
+    <div class="sec-head">
+      <h2>Hướng phát triển tiếp theo</h2>
+      <p>Con đề xuất theo ba tầm. Thứ tự trong mỗi cột là thứ tự con khuyên làm.</p>
+    </div>
+    <div class="horizons">
+      <div class="hz now">
+        <div class="hz-head"><h3>Tuần này</h3><p>Hoàn thiện cái đã có</p></div>
+        <ol>
+          <li><b>Chủ nhân thử tay bản Portable</b><span>Tileset Wang “cỏ / đất”, texture gạch, xuất Godot. Lỗi nào gặp thì con sửa ngay.</span></li>
+          <li><b>Chặn input sai ở core trước bước GPU</b><span>Wang 1 dòng, chế độ mép 2 dòng. Không đốt GPU cho lượt chắc chắn hỏng.</span></li>
+          <li><b>Hiệu chỉnh ngưỡng chấm điểm</b><span>Chấm lại toàn bộ thư viện, so với đánh giá của chủ nhân, chỉnh ngưỡng.</span></li>
+          <li><b>Gạch so le khớp cả hai trục</b><span>Dò độ lệch nửa viên giữa các hàng rồi căn mép ngang theo đó.</span></li>
+        </ol>
+      </div>
+      <div class="hz next">
+        <div class="hz-head"><h3>Tháng này</h3><p>Chất lượng tự động hơn</p></div>
+        <ol>
+          <li><b>Tự sinh lại theo điểm chất lượng</b><span>Ảnh dưới ngưỡng thì tự chạy lại với seed mới, như kiểm mesh đang làm.</span></li>
+          <li><b>Kiểm nhất quán giữa các góc Qwen</b><span>Dùng Claude nhìn 4 góc, bắt lỗi kiểu gậy đổi tay trước khi dựng mesh.</span></li>
+          <li><b>Thêm clip hoạt ảnh</b><span>Bị đánh, ngã, niệm phép, nhảy. Cùng rig nên thêm clip khá rẻ.</span></li>
+          <li><b>Ước lượng thời gian và chi phí trên thẻ quy trình</b><span>Lấy từ bảng chi phí đã có, hiện trước khi bấm chạy.</span></li>
+          <li><b>Bộ asset theo dự án</b><span>Một lệnh sinh cả nhóm: nhân vật, kẻ địch, tile nền cùng một phong cách.</span></li>
+        </ol>
+      </div>
+      <div class="hz later">
+        <div class="hz-head"><h3>Xa hơn</h3><p>Mở rộng loại asset</p></div>
+        <ol>
+          <li><b>Tileset autotile 47 ô và tile động</b><span>Nước, dung nham chuyển động. Mở rộng từ Wang 16 ô.</span></li>
+          <li><b>Hiệu ứng VFX dạng sprite sheet</b><span>Lửa, nổ, phép thuật, dùng chung tuyến xuất engine.</span></li>
+          <li><b>Bộ UI cho game</b><span>Nút, khung, icon cùng phong cách dự án, xuất 9-slice.</span></li>
+          <li><b>Plugin nhập trực tiếp vào Unity/Godot</b><span>Asset mới tự xuất hiện trong project đang mở, không cần chép thư mục.</span></li>
+          <li><b>Học phong cách riêng của dự án</b><span>Huấn luyện LoRA từ asset đã duyệt để các lượt sau giữ đúng nét vẽ.</span></li>
+        </ol>
+      </div>
+    </div>
+    <div class="callout">
+      <b>Con khuyên làm trước</b>
+      <p>Tự sinh lại theo điểm chất lượng. Phần chấm điểm và cơ chế sinh lại của kiểm mesh đều đã có, chỉ cần nối lại. Mỗi lượt chạy sẽ ít phải chọn tay hơn.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Nguồn: <code>.planning/PROGRESS.md</code>, các file <code>HANDOFF-*.md</code>, <code>git log</code> nhánh master.</span>
+    <span>Lập ngày 27/10/2026.</span>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const links = [...document.querySelectorAll('#seg a')];
+  const targets = links.map(a => document.querySelector(a.getAttribute('href')));
+  const mark = () => {
+    const y = window.scrollY + 120;
+    let i = 0;
+    targets.forEach((t, k) => { if (t && t.offsetTop <= y) i = k; });
+    if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 4) i = links.length - 1;
+    links.forEach((a, k) => a.classList.toggle('on', k === i));
+  };
+  window.addEventListener('scroll', mark, { passive: true });
+  mark();
+})();
+</script>
+</body>
+</html>

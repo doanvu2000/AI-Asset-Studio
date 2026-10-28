@@ -723,3 +723,127 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   2 lần hạ hông; spine-core load OK, đầu/cuối = setup.
 - idle/walk so gốc: lệch 0.03–0.07% pixel (dress_23, walk); skirt_2 idle 0.53% vì idle gốc có key xoay chuỗi váy ≤1.7°
   mà váy cứng gốc không theo, váy mesh giờ theo → không đạt ≤0.5px ở gấu váy (đúng ý đồ, đã báo).
+
+## G1 — spine-anim-ref tổng quát cho rig khác (không chỉ spine-test)
+- [x] Thân: `torso_bones` dò theo cấu trúc (hông = cha chung 2 chân IK → tên hip/hips/pelvis → cha của trục; trục =
+  bone có chiều dài hướng lên ±45°, dừng ở bone tên `head` hoặc khi có ≥2 nhánh hướng lên = tóc); vai trò theo tên
+  đúng rồi theo vị trí; mắt = bone có key scale blink sẵn, else tên chứa eye (không brow) dưới đầu. Rig summary dòng
+  "Torso the sway drives"; schema spec thêm `bones` để Claude ghi đè; role thiếu thì bỏ qua (bounce không có hông →
+  lỗi rõ). Chuỗi secondary bỏ bone thân và bone do constraint điều khiển (`driven_bones`: path, transform mix≠0,
+  physics); rig summary dòng "Constraint-driven, do not key" + "Physics".
+- [x] `skin_parts` mặc định `auto`: skin đầu mỗi nhóm, bỏ nhóm trùng slot với nhóm đã mặc (đầm vs quần), nhóm
+  skin/body trước.
+- [x] Runtime preview: `ops/spine_pose.py` port spine-core 4.2.119 (update cache theo `order`, inherit mode, IK đủ
+  softness/stretch/compress/scale không đều, transform 4 kiểu, path constraint, timeline ik/transform/path, bezier
+  9 điểm như runtime game; `sample(..., game=False)` giữ bezier chính xác cho phân tích chuyển động). Physics giữ
+  thứ tự, không mô phỏng. Renderer thêm tint slot/attachment + blend additive.
+- [x] Đo với spine-core (rig mẫu chính thức spineboy-pro, mix-and-match-pro, tach; mọi anim, bước 0.05s): lệch
+  ≤1e-4px (chỉ khác đúng tại thời điểm key do float32 của spine-core).
+- [x] "Biên độ đã chứng minh" `proven_bends`: khớp hard seam được nới giới hạn tới biên độ anim sẵn có của rig đã gập;
+  weld `auto` bỏ cả rig nếu có khớp đã gập >45° (art mảnh cứng chồng nhau, vd spineboy: hàn làm méo giáp gối).
+  Rig tach không đổi (khớp ≤34°): weld 12 khớp như cũ, anim H6 lệch ≤0.002°, idle/walk pixel như cũ.
+- [x] Op version: rig_summary 3, add_anim 3, render_strip 2, weld 3, review loop 2. Test +4 (32 trong file); pytest
+  468 pass / 4 skip.
+- Còn lại: motion spec vẫn là kiểu "sway" (hông dẫn, thân theo, tay key) → plan `PLAN-spine-motion-types.md`.
+- Chưa commit, chưa build.
+
+## G2 — motion types (PLAN-spine-motion-types.md)
+- [x] Spec `loop` / `keys` / `cycle`; `ops/spine_cycle.py` (walk/run tại chỗ, chân bám IK, hông tự hạ theo tầm với,
+  tay ngược pha); `foot_contact` + loop check; review ghi chú chân, cycle không tính chồng gối; prompt chọn loại.
+- [x] Thử spineboy-pro + mix-and-match-pro (scratchpad `37b6596d…/cmp_*.png`): trượt 0, lún 0, loop khớp.
+- [x] Op version: rig_summary 4, add_anim 4, review loop 3. Test +3 (35 trong file); pytest 471 pass / 4 skip.
+- [x] Preset `jump` (one-shot, về setup): ngồi gom lực chân bám đất → hông bật tăng tốc tới tầm với tối đa của chân
+  (≤0.1L) → quỹ đạo parabol, gối co (chân lên nhiều hơn hông `tuck`) → tiếp đất giảm tốc, nhún 0.8 crouch → về setup;
+  tay vung sau khi ngồi, vung trước-lên khi bật, cẳng tay trễ 0.06s; thân cúi khi ngồi/tiếp đất. `takeoff`/`land`
+  (s) lấy từ video, mặc định 0.35/0.65 duration. Rig summary "Cycle (walk/run) and jump drive"; review không coi
+  jump là loop. Thử spineboy-pro + mix-and-match-pro: setup đầu/cuối khớp, trượt 0, lún 0, gối ~65° ở đỉnh.
+- [x] Op version: rig_summary 5, add_anim 5, review loop 4. Test +1 (36 trong file); pytest 472 pass / 4 skip.
+- Chưa: preset attack (Claude key bằng `keys`), nghiệm thu live với video walk/run/jump, UI hiện foot check.
+  Chưa commit.
+
+## F1 — 3D game-ready (PLAN-feature-3d-gameready.md; brainstorm PLAN-2026-10-28-feature-ideas.md, chủ nhân duyệt 6 mục)
+- [x] UI hộp kết quả chấm Spine: mục Kiểu chuyển động, Chân chạm đất (trượt/lún từng chân, đỏ khi lỗi), Key bị bỏ.
+- [x] Worker `game_ready` + executor `blender.game_ready` (Lane.BLENDER, cache theo worker_hash): `remesh` (mặc định) =
+  QuadriFlow, mesh TRELLIS bị QuadriFlow từ chối kể cả sau voxel → voxel remesh (diag/200) + decimate theo số tam
+  giác, Smart UV, bake màu từ mesh gốc; `decimate` = giữ UV/texture gốc; `off` = cho qua. Bake normal + AO (Cycles
+  GPU, selected-to-active), AO vào glTF qua node group "glTF Material Output". LOD1.. decimate từ LOD0.
+- [x] Thử Blender 5.2 thật trên GLB TRELLIS 28.6k mặt: ~3s, LOD 3988/1987/987 tam giác, GLB có base/normal/occlusion;
+  remesh 1k tam giác sạch, decimate 1k bị gai (ảnh so sánh scratchpad gr/compare.png).
+- [x] Recipe prop-3d: bước `gameready` (input game_mode remesh|decimate|off, game_faces 5000, texture 2048), approve
+  nhận thêm `game`/`maps`. Catalog kinds. Test +2; pytest 474 pass / 4 skip.
+- [x] Thêm `<tên>_lods.glb`: mọi LOD trong 1 file chung 1 bộ texture, node `<tên>_LOD0..n` (quy ước LODGroup Unity).
+- [x] Live E2E `scripts/e2e_r5.py prop-3d` (rương gỗ): succeeded 268s, gameready 7.5s, LOD 5000/2500/1250 tam giác,
+  render LOD0/LOD2 gần như bản 29k (scratchpad chest/compare.png).
+- Chưa: exporter Unity/Godot dùng `_lods.glb`; file LOD lẻ vẫn nhúng texture riêng (~8.7MB/LOD ở 2048). Chưa commit.
+
+## F4 — anim Spine sẵn: attack / hit / death
+- [x] `ops/spine_action.py`: spec `action = {type: attack|hit|death, at, facing, direction, ...}`, chân giữ IK.
+  attack: lấy đà (tay cầm vũ khí = tay có nhiều bone con nhất vung sau, thân ngả, hông lùi) → chém nhanh (`strike`
+  0.12s, vượt đà) → hồi; tay kia ngược 0.3. hit: giật lùi thân/hông, tay văng, nảy lại 1 lần. death: giật, khuỵu
+  gối kiểu rơi (gia tốc), gập người, nảy nhẹ khi chạm, giữ tư thế cuối.
+- [x] `hold` (spec + death mặc định): clip one-shot kết thúc ở tư thế cuối; `check_animation(hold=)` chỉ kiểm frame 0;
+  keys tường minh không bị kéo về setup. Prompt recipe + review note + rig summary "Cycle (walk/run), jump and action".
+- [x] Thử spineboy-pro + mix-and-match-pro (scratchpad rigs/act_*.png): chân không trượt; hit mặc định recoil 25°.
+  add_anim v6. pytest 475 pass / 4 skip. Hạn chế: facing front không nghiêng thân (chỉ hông/tay).
+
+## F6 — biến thể skin Spine (recipe spine-skin-variant)
+- [x] `ops/spine_variant.py`: `op.spine_setup_render` (tư thế setup nền trắng) → `comfy.edit_flux2_klein4b` (mỗi
+  dòng 1 biến thể, prompt "recolor only, giữ flat cel-shaded") → `gate.pick` (k=0, chọn nhiều) →
+  `op.spine_skin_variant`: căn bbox ảnh sửa vào render, bản đồ "pixel thuộc region nào" từ `rt.layers` (renderer
+  tách generator), mỗi region khớp thống kê màu YCbCr (mean/std, gain luma 0.7–1.4, chroma 0.4–3) trên pixel nội
+  thất của nó; region vẽ nhưng bị che → map cả hình; region skin khác → giữ nguyên. Ra atlas `<tên>_vN.atlas` +
+  page `_vN.png` (thay thẳng atlas gốc) + ảnh so sánh gốc|Klein|kết quả.
+- [x] Lần 1 dùng affine least-squares → màu xỉn (hồi quy về trung bình) và prompt cũ để Klein vẽ lại kim loại thật →
+  đổi sang khớp thống kê + prompt chỉ đổi màu. Live E2E mix-and-match 2 biến thể: 116s (Klein ~50s/ảnh), kết quả
+  bám ảnh Klein, giữ nét (scratchpad e2e-skin2/both.png). Lỗi còn: mảng nhỏ lệch màu (balo, giày).
+- [x] Test +1; pytest 476 pass / 4 skip. `scripts/e2e_skin_variant.py`. Chưa: skin mới trong cùng JSON (hiện là
+  atlas thay thế), chọn vùng giữ nguyên (da, mặt).
+
+## F2 — âm thanh (recipe audio-sfx, audio-music; gói model "audio")
+- [x] Comfy adapter thu output audio (`AUDIO_EXT`, history kind "audio", outputs["audio"]). Workflow API
+  `sfx_stable_audio` (Stable Audio Open 1.0 + t5-base, Comfy-Org repack không gate) và `music_ace_step15`
+  (ACE-Step 1.5 turbo + qwen 0.6b/1.7b + vae, KSampler 8 bước). Manifest: pack `audio` + 6 model có sha256.
+- [x] `ops/audio.py` `op.audio_post`: decode ffmpeg → cắt lặng (ngưỡng -40dB so đỉnh clip), fade, chuẩn hoá đỉnh,
+  loop = bỏ đoạn đầu và crossfade equal-power vào đuôi (mẫu cuối nối mẫu đầu), xuất OGG (libvorbis) + WAV, ảnh
+  dạng sóng; tên clip theo dòng mô tả (`labels` + `per_label`).
+- [x] Live SFX: 3 loại × 2 bản trong 12s (Stable Audio ~2s/clip), dạng sóng/phổ hợp lý (whoosh dài, cót két nhiều
+  transient, coin cao tần tắt dần). Music: chờ tải xong model ACE để chạy thật.
+- [x] Test `tests/test_audio.py` (cắt/fade/chuẩn hoá, loop liền, ffmpeg ghi ogg/wav, đặt tên, recipe load).
+
+## F5 — VFX flipbook (recipe vfx-flipbook; gói model "vfx")
+- [x] Workflow `vfx_wan_alpha`: Wan 2.1 T2V 14B fp8 + LoRA lightx2v (6 bước, cfg 1) + LoRA Wan Alpha + 2 VAE
+  (RGB, alpha) → JoinImageWithAlpha → PNG RGBA. Chạy được 12GB VRAM nhờ ComfyUI đẩy trọng số sang RAM (máy 64GB).
+- [x] `ops/vfx.py` `op.vfx_frames`: oneshot = bỏ frame rỗng đầu/cuối + mờ dần 3 frame cuối; loop = đoạn có frame
+  cuối gần frame đầu nhất (≥8 frame); crop vuông chung theo alpha → ô vuông → `op.sheet`. Test tổng hợp.
+- [x] Live E2E (lửa phép, oneshot 33 frame 512²): 74.5s cả recipe, Wan 14B fp8 + lightx2v 6 bước chỉ 51s trên 12GB.
+  Alpha thật, nền trong suốt sạch, quầng sáng mềm (scratchpad e2e-vfx/check.png). Model tự thêm khúc củi → prompt
+  thêm "floating in empty space, no ground/objects". Quầng sáng mờ chạm mép nên crop gần cả khung.
+- [x] App: viewer `audio` (AudioViewer: player + dạng sóng bấm để tua + nút Lặp), detect `isAudio`/`wave`.
+- [x] #1 xuất Unity: có `_lods.glb` → kèm `Editor/AssetStudioLodGroup.cs` (menu Asset Studio > Make LOD Group).
+  #6 thêm `keep` (mặc định eye,mouth) giữ màu region. Script e2e chung `scripts/e2e_text.py`.
+
+## F3 — train LoRA style (spike)
+- [x] Dataset 14 ảnh render Spine (spineboy + mix-and-match) + caption trigger `zsvstyle`, ComfyUI TrainLoraNode
+  (mã hoá dataset → SaveTrainingDataset → /free → train chỉ UNET).
+- [x] Z-Image Turbo 6B: bf16 768/512 và fp8+bypass đều OOM (PyTorch cấp 22.6GB, tràn RAM chia sẻ) → không khả thi
+  trên 12GB. Klein 4B fp8: crash native trong backward (autograd abort, cả quantized_backward bật/tắt).
+- [x] Klein 4B bf16 (tải thêm 7.75GB): train chạy được nhưng 142 s/bước (VRAM đầy, trọng số đẩy qua lại RAM) →
+  300 bước ≈ 11 giờ. Dừng spike, xoá dataset thử (`input/studio_lora_spike`, `datasets/studio_lora_*`).
+- Kết luận: train LoRA tại máy 12GB không thực dụng với ComfyUI TrainLoraNode. Hướng thay thế đề xuất: style theo
+  ảnh tham chiếu (Klein nhận reference latent) cho Dự án, hoặc train trên cloud GPU ≥24GB. Chờ chủ nhân chọn.
+- Ghi chú: `flux-2-klein-base-4b.safetensors` (bf16, 7.75GB) đã nằm ở F:/…/diffusion_models, không còn dùng — xoá được.
+- [x] 2026-10-28 22:35 Handoff mới: `.planning/HANDOFF-2026-10-28-2235.md`
+
+## Phiên 2026-10-28 22:4x (sau HANDOFF-2235) — chủ nhân: "tiếp tục làm các phần tiếp theo"
+- [x] VFX chạy lại prompt mới (lửa phép oneshot, 56.5s, gen 47s): hết khúc củi/vật thể lạ. Phát hiện VAE alpha để
+  vệt alpha rác (≤142) ở 2 hàng/cột mép mọi frame → vệt sọc đầu mỗi ô + bbox phình cả khung. `ops/vfx.py`
+  `clear_border` (2px) trước khi xử lý, op v2; test thêm. Crop vẫn gần cả khung do tia lửa thật tới mép. pytest 483/4.
+- [x] Action mặt trước (`facing: front`): thân nghiêng ngang 35% biên độ theo `direction` (xoay theo màn hình,
+  không dùng sign hướng tới); hip vẫn không trượt ngang. `spine_action.FRONT_TILT`; test so front < side. pytest 483/4.
+- [ ] Còn: skin variant balo/giày lệch màu (cần e2e + soi preview); Godot LOD bỏ qua (Godot tự sinh LOD).
+- [x] #3 chốt (chủ nhân: chỉ có GPU 12GB) → bỏ train LoRA/cloud; làm style theo ảnh tham chiếu, không train.
+  Recipe `concept-2d-style`: ảnh tham chiếu (Dự án tự điền `reference_image` qua `apply_style`, prompt được bọc
+  prefix/suffix style) → `op.trim_pad_resize` nền trắng vuông 1024 (tham số mới `background`) → Klein
+  ReferenceLatent, mỗi dòng 1 vật thể → pick → rmbg → fit → sheet. Live: 3 vật thể 141s (~43s/ảnh), ra 1024²,
+  không chép nhân vật/mũ của ảnh mẫu; khớp viền nâu, cel shading, bảng màu; chất nét tay riêng khớp vừa phải.
+  Ảnh: scratchpad style_check2.png. Script `e2e_text.py` nhận input "@file" (upload) + gate pick chọn hết. pytest 483/4.
