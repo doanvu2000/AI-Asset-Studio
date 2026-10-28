@@ -953,3 +953,12 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   Default path cứng trong config giữ nguyên (cùng kiểu comfy/blender). Unity test project còn PreviewKnight/Chest/LiveHero.
 - [~] 2026-10-29 Giao #16 âm thanh khớp cảnh.
 - [x] 2026-10-29 Kiểm: pytest 581 pass / 4 skip, typecheck sạch → commit mốc #10 + #4 (+ dở #13/#14/#15/#16).
+- [x] 2026-10-29 Chủ nhân cho phép build app để test trong đêm (ngoài commit mốc, không push). Chủ nhân đi ngủ.
+- [x] 2026-10-29 #13 Auto collider xong (agent): `export/collider.py` (marching squares + DP, gộp hull, pivot chân),
+  Unity `physicsShape`, Godot `<asset>_body.tscn` (CharacterBody2D/Area2D + CollisionPolygon2D/Occluder + script),
+  export body `collider*`, checkbox BundleMenu (điều kiện `opts.collider`). 12 test pass. Mặc định bật cho `sprite-8dir*`.
+- [~] 2026-10-29 Giao #17 hư hại + mảnh vỡ.
+- [x] 2026-10-29 #14 Bậc độ hiếm xong (agent): `ops/rarity.py` (`op.recolor_tiers`, `op.rarity_set`), recipe `item-rarity`,
+  `export/rarity.py` (Unity Rarity/ + json, Godot .tres meta tiers). 9 test pass; live 101s, IoU 0.97. Bắt buộc 5 bậc.
+- [~] 2026-10-29 Giao #18 shader preset.
+- [x] 2026-10-29 Kiểm 581 pass / 4 skip, typecheck sạch → commit mốc #13 + #14.
