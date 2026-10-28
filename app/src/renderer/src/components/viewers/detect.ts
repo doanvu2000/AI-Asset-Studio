@@ -239,13 +239,14 @@ export function featuredAcross(groups: BlobRef[][]): AssetView | null {
   return best
 }
 
-export type FileBadge = 'glb' | 'spine' | 'json' | 'atlas' | 'html' | 'text' | 'file'
+export type FileBadge = 'glb' | 'spine' | 'json' | 'atlas' | 'html' | 'text' | 'audio' | 'file'
 
 export function fileBadge(b: BlobRef): FileBadge {
   if (isGlb(b)) return 'glb'
   if (isAtlas(b)) return 'atlas'
   if (b.mime === 'text/html' || ext(b) === 'html') return 'html'
   if (isJson(b)) return 'json'
+  if (b.mime.startsWith('audio/') || /^(ogg|wav|mp3|flac)$/.test(ext(b))) return 'audio'
   if (isTextual(b)) return 'text'
   return 'file'
 }

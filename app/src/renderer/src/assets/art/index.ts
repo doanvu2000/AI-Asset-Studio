@@ -28,6 +28,7 @@ const RECIPE_ART: Record<string, string> = {
   'concept-2d': concept2d,
   'concept-2d-codex': concept2dCodex,
   'concept-2d-brief': concept2dBrief,
+  'concept-2d-style': concept2d,
   'variants-2d': variants2d,
   'sprite-8dir-2d': sprite2d,
   'sprite-8dir-2d-prompt': sprite2dPrompt,
@@ -44,6 +45,7 @@ const RECIPE_ART: Record<string, string> = {
   'procedural-3d': procedural3d,
   'spine-character': spineCharacter,
   'spine-character-mv': spineCharacterMv,
+  'spine-skin-variant': spineCharacter,
   'texture-seamless': textureSeamless,
   'tileset-seamless': tilesetSeamless
 }
@@ -73,7 +75,12 @@ const RECIPE_PITCH: Record<string, string> = {
   'spine-character': 'Prompt → nhân vật Spine 4.2 có xương + 6 anim',
   'spine-character-mv': 'Prompt → 2 bộ Spine mặt trước + mặt sau, cùng 6 anim',
   'texture-seamless': 'Prompt vật liệu → texture lặp liền mạch + điểm mối nối, normal map, bản nhỏ',
-  'tileset-seamless': 'Prompt vật liệu → nhiều biến thể chung mép, lát trộn lẫn không lộ nối'
+  'tileset-seamless': 'Prompt vật liệu → nhiều biến thể chung mép, lát trộn lẫn không lộ nối',
+  'audio-sfx': 'Mỗi dòng 1 hiệu ứng → vài bản âm thanh OGG + WAV, đã cắt lặng và chuẩn hoá',
+  'audio-music': 'Prompt + BPM → nhạc nền, có thể lặp vòng tròn ô nhịp, OGG + WAV',
+  'vfx-flipbook': 'Prompt → hiệu ứng VFX nền trong suốt → chuỗi frame / flipbook',
+  'concept-2d-style': 'Ảnh phong cách tham chiếu + prompt → concept 2D cùng phong cách',
+  'spine-skin-variant': 'Nhân vật Spine + ảnh sửa → skin mới, tô lại atlas giữ nguyên xương'
 }
 
 export function recipePitch(id: string): string | undefined {
@@ -82,16 +89,18 @@ export function recipePitch(id: string): string | undefined {
 
 export const RECOMMENDED_RECIPES: ReadonlySet<string> = new Set(['sprite-8dir-3d-mv'])
 
-export type RecipeGroup = '2d' | '3d' | 'character'
+export type RecipeGroup = '2d' | '3d' | 'character' | 'audio'
 
 export const RECIPE_GROUP_LABEL: Record<RecipeGroup, string> = {
   '2d': '2D',
   '3d': '3D',
-  character: 'Nhân vật'
+  character: 'Nhân vật',
+  audio: 'Âm thanh'
 }
 
 // Sprites and rigs are characters to the user regardless of whether they pass through a 3D mesh.
 export function recipeGroup(id: string): RecipeGroup {
+  if (id.startsWith('audio-')) return 'audio'
   if (id.startsWith('sprite-') || id.startsWith('spine-') || id.includes('character')) return 'character'
   if (id.includes('3d') || id.includes('glb') || id.includes('mesh')) return '3d'
   return '2d'

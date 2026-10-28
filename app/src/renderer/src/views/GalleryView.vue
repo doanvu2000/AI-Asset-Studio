@@ -32,7 +32,7 @@ const recipes = useRecipes()
 const toasts = useToasts()
 const file = useAssetFile()
 
-type AssetType = '2d' | '3d' | 'sprite' | 'spine' | 'texture'
+type AssetType = '2d' | '3d' | 'sprite' | 'spine' | 'texture' | 'audio'
 type StatusFilter = 'all' | VersionStatus
 type TypeFilter = 'all' | AssetType
 type SortOrder = 'new' | 'score-desc' | 'score-asc'
@@ -69,7 +69,8 @@ const TYPE_FILTERS: Array<{ id: TypeFilter; label: string }> = [
   { id: '3d', label: '3D' },
   { id: 'sprite', label: 'Sprite' },
   { id: 'spine', label: 'Spine' },
-  { id: 'texture', label: 'Texture' }
+  { id: 'texture', label: 'Texture' },
+  { id: 'audio', label: 'Âm thanh' }
 ]
 const SORTS: Array<{ id: SortOrder; label: string }> = [
   { id: 'new', label: 'Mới nhất' },
@@ -77,11 +78,12 @@ const SORTS: Array<{ id: SortOrder; label: string }> = [
   { id: 'score-asc', label: 'Điểm thấp → cao' }
 ]
 const STATUS_TEXT: Record<VersionStatus, string> = { draft: 'Nháp', approved: 'Đã duyệt', rejected: 'Từ chối' }
-const TYPE_TEXT: Record<AssetType, string> = { '2d': '2D', '3d': '3D', sprite: 'Sprite', spine: 'Spine', texture: 'Texture' }
+const TYPE_TEXT: Record<AssetType, string> = { '2d': '2D', '3d': '3D', sprite: 'Sprite', spine: 'Spine', texture: 'Texture', audio: 'Âm thanh' }
 
 const isTechnical = (b: BlobRef): boolean => isJson(b) || isAtlas(b)
 
 function classify(f: AssetView | null, recipeId: string): AssetType {
+  if (/^audio-/.test(recipeId)) return 'audio'
   if (f?.kind === 'tile' || /texture|tileset/.test(recipeId)) return 'texture'
   if (f?.kind === 'spine' || /spine/.test(recipeId)) return 'spine'
   if (f?.kind === 'sprite' || /sprite/.test(recipeId)) return 'sprite'

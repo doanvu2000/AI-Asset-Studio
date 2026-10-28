@@ -112,6 +112,14 @@ const KIND_NAMES: Record<string, string> = {
   'op.parts': 'Tách part (rig 2D)',
   'op.layers': 'Tách layer & khớp',
   'op.spine_export': 'Xuất Spine 4.2',
+  'comfy.sfx_stable_audio': 'Sinh hiệu ứng âm thanh (Stable Audio)',
+  'comfy.music_ace_step15': 'Sinh nhạc (ACE-Step 1.5)',
+  'comfy.vfx_wan_alpha': 'Sinh video VFX nền trong suốt (Wan)',
+  'op.audio_post': 'Hậu kỳ âm thanh',
+  'op.vfx_frames': 'Cắt frame VFX',
+  'op.spine_setup_render': 'Render tư thế setup (nền trắng)',
+  'op.spine_skin_variant': 'Tô lại atlas theo ảnh sửa',
+  'blender.game_ready': 'Mesh cho game (LOD + bake)',
   'gate.pick': 'Chọn ảnh',
   'gate.approve': 'Duyệt kết quả'
 }
@@ -202,6 +210,14 @@ const KIND_SHORT: Record<string, string> = {
   'blender.cleanup': 'Dọn mesh',
   'blender.render_dirs': 'Render các hướng',
   'blender.animate_dirs': 'Dựng xương + anim',
+  'comfy.sfx_stable_audio': 'Sinh âm thanh',
+  'comfy.music_ace_step15': 'Sinh âm thanh',
+  'comfy.vfx_wan_alpha': 'Sinh video VFX',
+  'op.audio_post': 'Hậu kỳ âm thanh',
+  'op.vfx_frames': 'Cắt frame VFX',
+  'op.spine_setup_render': 'Render tư thế setup',
+  'op.spine_skin_variant': 'Tô lại atlas',
+  'blender.game_ready': 'Mesh cho game',
   'blender.script': 'Chạy script Blender',
   'blender.agent': 'Blender tự động'
 }

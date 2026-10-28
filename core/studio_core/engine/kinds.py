@@ -123,6 +123,8 @@ CATALOG: dict[str, P] = {
                             "order": {"type": "list", "label": "Góc của từng khung"},
                             "asset": _text(label="Tên asset (đặt tên khung)"),
                             "normal": _bool(False, label="Sheet normal map"),
+                            "flipbook": _enum(["", "oneshot", "loop"], "", label="Flipbook VFX (1 clip theo thứ tự ô)"),
+                            "fps": _float(24, min=1, max=60, label="FPS flipbook"),
                             "optional": _bool(False, label="Bỏ qua khi đầu vào rỗng", advanced=True)}},
     "op.seamless": {"label": "Làm liền mạch (tileable)", "in": {"images": "image[]"}, "out": {"images": "image[]"},
                     "params": {"name": _text("texture", label="Tên texture"),
@@ -265,6 +267,7 @@ CATALOG: dict[str, P] = {
                                  "fade": _int(3, min=0, max=12, label="Số frame mờ dần (oneshot)")}},
     "op.audio_post": {"label": "Hậu kỳ âm thanh", "in": {"audio": "file[]"}, "out": {"audio": "file[]", "images": "image[]"},
                       "params": {"loop": _bool(False, label="Nối thành vòng lặp"),
+                                 "bpm": _float(0, min=0, max=300, label="BPM (cắt vòng lặp tròn ô nhịp, 0 = tắt)"),
                                  "trim": _bool(True, label="Cắt khoảng lặng"),
                                  "crossfade": _float(1.5, min=0, max=10, label="Crossfade vòng lặp (giây)"),
                                  "fade_out": _float(0.05, min=0, max=5, label="Fade cuối (giây)"),
@@ -280,7 +283,7 @@ CATALOG: dict[str, P] = {
     "op.spine_skin_variant": {"label": "Tô lại atlas theo ảnh sửa", "in": {"skeleton": "json", "atlas": "file[]",
                                                                          "edits": "image[]"},
                               "out": {"atlas": "file[]", "pages": "image[]", "previews": "image[]",
-                                      "report": "json"},
+                                      "report": "json", "skeleton": "json", "texture": "image[]"},
                               "params": {"keep": _text("eye,mouth", label="Giữ màu region có tên chứa (phẩy)"),
                                          "skin": _text("auto", label="Skin ghép (auto | phẩy)"),
                                          "height": _int(1024, min=256, max=2048, label="Chiều cao")}},
@@ -399,6 +402,9 @@ _COMFY_LABELS = {
     "multi_angles_qwen2511": "Nhiều góc (Qwen)",
     "segment_sam3": "Tách part (SAM 3.1)",
     "inpaint_flux2_klein4b": "Vá ảnh (Flux2 Klein)",
+    "sfx_stable_audio": "Sinh hiệu ứng âm thanh (Stable Audio)",
+    "music_ace_step15": "Sinh nhạc (ACE-Step 1.5)",
+    "vfx_wan_alpha": "Sinh video VFX nền trong suốt (Wan)",
 }
 
 
@@ -414,7 +420,9 @@ def comfy_entries(workflows_dir: Path | None) -> dict[str, P]:
     for name, entry in index.items():
         if not isinstance(entry, dict):
             continue
-        meshy = any("image" not in str(o.get("class", "")).lower() for o in entry.get("outputs", []))
+        classes = [str(o.get("class", "")).lower() for o in entry.get("outputs", [])]
+        audio = any("audio" in c for c in classes)
+        meshy = not audio and any("image" not in c for c in classes)
         params: dict[str, P] = {t["key"]: _text(t.get("default"), label=t.get("title") or t["key"], multiline=True,
                                                  node=True)
                                 for t in entry.get("texts", []) if "key" in t}
@@ -422,7 +430,7 @@ def comfy_entries(workflows_dir: Path | None) -> dict[str, P]:
         out[f"comfy.{name}"] = {
             "label": _COMFY_LABELS.get(name, f"ComfyUI · {name.replace('_', ' ')}"),
             "in": {"image": "image"} if entry.get("images") else {},
-            "out": {"meshes": "mesh"} if meshy else {"images": "image[]"},
+            "out": {"audio": "file[]"} if audio else {"meshes": "mesh"} if meshy else {"images": "image[]"},
             "params": params,
             "free_params": True,
         }

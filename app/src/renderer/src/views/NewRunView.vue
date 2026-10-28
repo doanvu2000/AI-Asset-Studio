@@ -85,7 +85,7 @@ watch(
   { immediate: true }
 )
 
-const ORDER: RecipeGroup[] = ['2d', '3d', 'character']
+const ORDER: RecipeGroup[] = ['2d', '3d', 'character', 'audio']
 const groups = computed(() => {
   const sorted = [...recipes.list].sort((a, b) => a.name.localeCompare(b.name, 'vi'))
   return ORDER.map((g) => ({ id: g, label: RECIPE_GROUP_LABEL[g], items: sorted.filter((r) => recipeGroup(r.id) === g) })).filter(

@@ -233,7 +233,13 @@ const PORT_NAMES: Record<string, string> = {
   files: 'Tệp',
   json: 'Dữ liệu',
   text: 'Văn bản',
-  spine: 'Spine'
+  spine: 'Spine',
+  audio: 'Âm thanh',
+  atlas: 'Atlas',
+  pages: 'Trang atlas',
+  previews: 'Ảnh so sánh',
+  frames: 'Frame',
+  report: 'Báo cáo'
 }
 function portName(name: string): string {
   return PORT_NAMES[name] ?? name
