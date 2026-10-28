@@ -139,10 +139,10 @@ def fit_matrix(item: dict[str, Any], lo: Vec, hi: Vec, rig: dict[str, Any]) -> M
         box_lo, box_hi = rig["head_box"]
         width = max(box_hi[0] - box_lo[0], box_hi[1] - box_lo[1])
         hat = shape == "hat"
-        s = (1.5 if hat else 1.12) * width * size / max(ext[0], ext[1])
+        s = (1.5 if hat else 1.05) * width * size / max(ext[0], ext[1])
         head_h = box_hi[2] - box_lo[2]
         anchor = [center[0], center[1], lo[2] if hat else hi[2]]
-        top = box_hi[2] - 0.35 * head_h if hat else box_hi[2] + 0.03 * head_h
+        top = box_hi[2] - 0.35 * head_h if hat else box_hi[2] + 0.01 * head_h
         target = ((box_lo[0] + box_hi[0]) / 2, (box_lo[1] + box_hi[1]) / 2, top)
         lin = _linear([(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)], (s, s, s))
     elif slot == "armor":

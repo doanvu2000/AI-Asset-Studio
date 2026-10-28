@@ -133,7 +133,8 @@ const RECIPE_PITCH: Record<string, string> = {
   'bitmap-font': 'Bộ số / ASCII / chữ Việt có dấu → bitmap font gradient, viền, bóng, vát hoặc pixel art: atlas + .fnt BMFont, Godot đọc thẳng, chạy CPU',
   'bitmap-font-klein': 'Câu chất liệu ("molten gold", "icy crystal") → Klein tô ruột chữ, giữ đúng dáng glyph TTF → bitmap font .fnt + atlas cho Godot / Unity',
   'autotile-terrain-prompt': 'Texture cỏ + prompt nền (đất, nước, cát) → Z-Image vẽ nền → bộ autotile 47 ô khớp mép, TileSet terrain Godot / RuleTile Unity',
-  'key-art-motion': 'Key art → teaser 5 giây chuyển động nhẹ (tóc, vải, hạt bay), lặp liền, MP4 + WebM + GIF + poster'
+  'key-art-motion': 'Key art → teaser 5 giây chuyển động nhẹ (tóc, vải, hạt bay), lặp liền, MP4 + WebM + GIF + poster',
+  'storyboard-animatic': 'Kịch bản cutscene + ảnh nhân vật → 4–12 shot giữ đúng nhân vật, thoại TTS mỗi người một giọng, Ken Burns + phụ đề → animatic MP4 + storyboard PDF'
 }
 
 export function recipePitch(id: string): string | undefined {

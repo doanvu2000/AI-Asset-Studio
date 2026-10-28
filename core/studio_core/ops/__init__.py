@@ -4,6 +4,7 @@ from typing import Any
 
 from ..contracts import ExecutorRegistry, Resource
 from .audio import AudioPost
+from .animatic import Animatic
 from .autotile import AUTOTILE_OPS
 from .bitmap_font import BITMAP_FONT_OPS
 from .damage import DAMAGE_OPS
@@ -45,6 +46,7 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
     registry.register(AudioPost(settings))
     registry.register(VfxFrames())
     registry.register(KeyartVideo(settings))
+    registry.register(Animatic(settings))
     for ka_cls in KEYART_OPS:
         registry.register(ka_cls())
     for dmg_cls in DAMAGE_OPS:

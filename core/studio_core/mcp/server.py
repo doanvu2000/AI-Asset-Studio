@@ -683,6 +683,25 @@ def build_server(link: CoreLink) -> MCPServer:
         return await tools._call("POST", f"/api/projects/{_safe_id(project_id, 'project_id')}/style/build",
                                  json={"vision": vision}, timeout=300)
 
+    @mcp.tool(annotations=acts)
+    async def build_asset_pack(project_id: str, engines: list[Literal["unity", "godot"]] | None = None,
+                               license: Literal["cc0", "cc-by-4.0", "proprietary"] = "cc0",
+                               version: str | None = None, include: list[str] | None = None,
+                               out_dir: str | None = None, author: str = "", org: str = "assetstudio",
+                               description: str = "") -> dict[str, Any]:
+        """Package a project's approved assets into a Unity UPM package and/or Godot addon folder + zip on local
+        disk (never pushed anywhere), with README, CHANGELOG (vs the previous pack), LICENSE and provenance.json
+        (recipe, models + licenses, prompts, seeds per asset; assets made with non-commercial/unverified models are
+        flagged). version None = previous pack's patch + 1; include = approved version ids (None = all);
+        out_dir = absolute folder (None = <data>/packs)."""
+        body: dict[str, Any] = {"engines": engines or ["unity"], "license": license, "author": author, "org": org,
+                                "description": description}
+        for k, v in (("version", version), ("include", include), ("out_dir", out_dir)):
+            if v is not None:
+                body[k] = v
+        return await tools._call("POST", f"/api/projects/{_safe_id(project_id, 'project_id')}/pack", json=body,
+                                 timeout=900)
+
     @mcp.tool(annotations=read_only)
     async def recipe_stats(days: int | None = 30, project_id: str | None = None) -> dict[str, Any]:
         """Cost and time per recipe over the last `days` calendar days including today (from local midnight, the

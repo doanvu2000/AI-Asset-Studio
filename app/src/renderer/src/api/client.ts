@@ -12,6 +12,9 @@ import type {
   StyleBibleEdit,
   StyleBibleView,
   DuplicatesReport,
+  PackBody,
+  PackListing,
+  PackResult,
   MoreLikePlan,
   SimilarIndexStatus,
   SimilarQuery,
@@ -88,7 +91,8 @@ export interface StudioApi {
   listRuns(q?: ListRunsQuery): Promise<RunRow[]>
   getRun(id: string): Promise<RunDetail>
   cancelRun(id: string): Promise<void>
-  retryStep(stepId: string): Promise<void>
+  /** `keep`: on a regenerate, candidate hashes the step reuses instead of redrawing (storyboard frames). */
+  retryStep(stepId: string, keep?: string[]): Promise<void>
   gates(): Promise<StepRow[]>
   resolveGate(stepId: string, res: GateResolution): Promise<void>
   uploadBlob(file: File): Promise<BlobRef>
@@ -157,6 +161,10 @@ export interface StudioApi {
   similarSearch(query: { file?: File; text?: string }, q?: SimilarQuery): Promise<SimilarResult>
   moreLike(target: { blob?: string; version_id?: string }): Promise<MoreLikePlan>
   projectDuplicates(projectId: string, q?: { threshold?: number; only_approved?: boolean }): Promise<DuplicatesReport>
+  /** Packs built so far, the next auto version and the approved assets a pack would include. */
+  projectPacks(projectId: string): Promise<PackListing>
+  /** Writes the Unity package / Godot addon + zip to local disk only. */
+  buildPack(projectId: string, body: PackBody): Promise<PackResult>
   similarStatus(): Promise<SimilarIndexStatus>
   reindexSimilar(body?: { project_id?: string; force?: boolean }): Promise<SimilarIndexStatus>
 }
@@ -238,7 +246,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
       ),
     getRun: (id) => call('GET', `/api/runs/${enc(id)}`),
     cancelRun: (id) => call('POST', `/api/runs/${enc(id)}/cancel`),
-    retryStep: (id) => call('POST', `/api/steps/${enc(id)}/retry`),
+    retryStep: (id, keep) => call('POST', `/api/steps/${enc(id)}/retry`, keep?.length ? { keep } : undefined),
     gates: () => call('GET', '/api/gates'),
     resolveGate: (id, res) => call('POST', `/api/gates/${enc(id)}`, res),
     uploadBlob(file) {
@@ -320,6 +328,8 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     moreLike: (target) => call('GET', `/api/search/more-like${query(target)}`),
     projectDuplicates: (id, q = {}) =>
       call('GET', `/api/projects/${enc(id)}/duplicates${query({ threshold: q.threshold, only_approved: q.only_approved ? 'true' : undefined })}`, undefined, SLOW_TIMEOUT_MS),
+    projectPacks: (id) => call('GET', `/api/projects/${enc(id)}/packs`),
+    buildPack: (id, body) => call('POST', `/api/projects/${enc(id)}/pack`, body, SLOW_TIMEOUT_MS),
     similarStatus: () => call('GET', '/api/search/status'),
     reindexSimilar: (body = {}) => call('POST', '/api/search/reindex', body)
   }

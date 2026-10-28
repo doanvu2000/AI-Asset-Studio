@@ -14,6 +14,8 @@ export interface GateItem {
   since: number
 }
 
+const KEEP_AWARE: ReadonlySet<string> = new Set(['storyboard.frames'])
+
 function uniqueBlobs(inputs: StepRow['inputs']): BlobRef[] {
   const seen = new Set<string>()
   return Object.values(inputs)
@@ -132,11 +134,16 @@ export const useGates = defineStore('gates', () => {
       .pop()
   }
 
-  async function regenerate(g: GateItem): Promise<void> {
-    const src = sourceStep(g)
-    if (!src) throw new Error('Không tìm thấy bước sinh ảnh của lượt chạy này')
-    await api().retryStep(src.id)
+  /** Source steps that can redraw only the candidates not kept (one frame per storyboard shot). */
+  function canKeep(g: GateItem): boolean {
+    return KEEP_AWARE.has(sourceStep(g)?.kind ?? '')
   }
 
-  return { items, loaded, error, list, count, onStep, onAwaiting, commit, load, resolve, sourceStep, regenerate }
+  async function regenerate(g: GateItem, keep?: string[]): Promise<void> {
+    const src = sourceStep(g)
+    if (!src) throw new Error('Không tìm thấy bước sinh ảnh của lượt chạy này')
+    await api().retryStep(src.id, keep?.length ? keep : undefined)
+  }
+
+  return { items, loaded, error, list, count, onStep, onAwaiting, commit, load, resolve, sourceStep, canKeep, regenerate }
 })

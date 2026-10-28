@@ -24,7 +24,8 @@ OPT_OUT_KEY = "use_style_bible"
 RECORD_KEY = "style_bible"
 PROMPT_INPUTS = ("prompt", "idea")
 STYLE_REF_NAMES = ("style_ref", "style_image", "style_reference")
-VISUAL_KINDS = ("comfy.t2i", "comfy.edit", "comfy.inpaint", "codex.", "claude.brief", "blender.", "op.npc_portraits")
+VISUAL_KINDS = ("comfy.t2i", "comfy.edit", "comfy.inpaint", "codex.", "claude.brief", "blender.", "op.npc_portraits",
+                "storyboard.")
 AUDIO_MARKERS = ("audio", "sfx", "music", "tts.", "soundscape")
 
 

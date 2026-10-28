@@ -339,7 +339,14 @@ function registerIpc(): void {
     const err = await shell.openPath(logsDir())
     if (err) throw new Error(err)
   })
-  ipcMain.on('studio:log', (e, level: unknown, message: unknown) => {
+  // Selects the item in Explorer, never opens it: a renderer-supplied path must not be able to launch anything.
+  handle('studio:revealPath', (_e, raw) => {
+    if (typeof raw !== 'string' || raw.length > 1024 || !isAbsolute(raw)) throw new Error('invalid path')
+    const p = normalize(raw)
+    if (!existsSync(p)) throw new Error(`Không tìm thấy ${p}`)
+    shell.showItemInFolder(p)
+  })
+  ipcMain.on('studio:log',(e, level: unknown, message: unknown) => {
     if (!isTrustedSender(e.senderFrame?.url)) return
     if (typeof level !== 'string' || !RENDERER_LEVELS.has(level) || typeof message !== 'string') return
     const dropped = rendererLimit.take()

@@ -45,7 +45,7 @@ class StubEngine:
     async def cancel_run(self, run_id: str) -> None:
         self.calls.append(("cancel", run_id))
 
-    async def retry_step(self, step_id: str) -> None:
+    async def retry_step(self, step_id: str, keep: list[str] | None = None) -> None:
         self.calls.append(("retry", step_id))
 
     async def resolve_gate(self, step_id: str, res: GateResolution) -> None:

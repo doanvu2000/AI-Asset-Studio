@@ -34,6 +34,8 @@ export interface StudioBridge {
   copyDiagnostics(payload: DiagPayload): Promise<CopyResult>
   exportDiagnostics(payload: DiagPayload): Promise<ExportResult | null>
   openLogsDir(): Promise<void>
+  /** Shows an existing absolute file/folder selected in Explorer (never opens it). */
+  revealPath(path: string): Promise<void>
   /** Opens <data>/settings.json in the default editor (created as `{}` when missing); the way to fix paths while the core is down. */
   openSettingsFile(): Promise<void>
   restartCore(): Promise<void>

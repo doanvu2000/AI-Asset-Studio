@@ -16,6 +16,7 @@ const bridge: StudioBridge = {
   copyDiagnostics: (payload) => ipcRenderer.invoke('studio:copyDiagnostics', payload),
   exportDiagnostics: (payload) => ipcRenderer.invoke('studio:exportDiagnostics', payload),
   openLogsDir: () => ipcRenderer.invoke('studio:openLogsDir'),
+  revealPath: (path) => ipcRenderer.invoke('studio:revealPath', path),
   openSettingsFile: () => ipcRenderer.invoke('studio:openSettingsFile'),
   restartCore: () => ipcRenderer.invoke('studio:restartCore'),
   getTheme: () => ipcRenderer.invoke('studio:getTheme'),

@@ -80,8 +80,8 @@ def test_fit_weapon_grips_hand_and_points_forward_up() -> None:
 def test_fit_helmet_hat_and_armor_boxes() -> None:
     lo, hi = (-0.5, -0.5, 0.0), (0.5, 0.5, 0.5)
     helmet = pdm.fit_matrix({"slot": "helmet", "shape": "helmet"}, lo, hi, RIG)
-    assert _close(pdm.apply(helmet, (0.0, 0.0, 0.5)), (0.0, 0.0, 1.006))
-    assert pdm.apply(helmet, (0.5, 0.0, 0.5))[0] == pytest.approx(0.2 * 1.12 / 2)
+    assert _close(pdm.apply(helmet, (0.0, 0.0, 0.5)), (0.0, 0.0, 1.002))
+    assert pdm.apply(helmet, (0.5, 0.0, 0.5))[0] == pytest.approx(0.2 * 1.05 / 2)
     hat = pdm.fit_matrix({"slot": "helmet", "shape": "hat"}, lo, hi, RIG)
     assert _close(pdm.apply(hat, (0.0, 0.0, 0.0)), (0.0, 0.0, 1.0 - 0.35 * 0.2))
     armor = pdm.fit_matrix({"slot": "armor", "shape": "plate"}, (-0.5, -0.3, 0.0), (0.5, 0.3, 1.0), RIG)

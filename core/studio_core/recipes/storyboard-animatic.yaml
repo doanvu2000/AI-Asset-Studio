@@ -1,0 +1,62 @@
+id: storyboard-animatic
+name: Storyboard → animatic (kịch bản → MP4 có thoại)
+description: >-
+  Kịch bản cutscene ngắn (Việt / Anh) + 1–3 ảnh nhân vật → Claude chia 4–12 shot (cỡ cảnh, chuyển động máy, prompt,
+  nhân vật, câu thoại + người nói + biểu cảm, gợi ý SFX / nhạc) → mỗi shot: Klein vẽ từ ảnh nhân vật (giữ đúng mặt,
+  trang phục) hoặc Z-Image khi không có nhân vật, cùng câu style (style bible của project nếu có) → duyệt bảng
+  storyboard: chọn khung giữ lại, "Tạo lại ảnh chưa chọn" chỉ vẽ lại shot còn lại; shot không chọn bị cắt → TTS
+  CPU đọc thoại, mỗi người nói một giọng → (tuỳ chọn) nhạc nền ACE-Step + SFX Stable Audio → ffmpeg dựng Ken Burns
+  theo chuyển động máy, crossfade, shot tự kéo dài cho vừa câu thoại, phụ đề in vào video + .srt → animatic.mp4
+  (H.264 + AAC), storyboard.png / .pdf, shots.json → duyệt.
+inputs:
+  script: {type: text, multiline: true, label: Kịch bản cutscene,
+           placeholder: "Đêm mưa ở cổng làng. Lão Tư đứng chờ dưới mái hiên. Minh chạy tới, ướt sũng.\nLÃO TƯ: Cháu về muộn thế? Lũ sói đã xuống núi rồi.\nMINH: Cháu biết. Nhưng cháu tìm được thanh kiếm của cha."}
+  characters: {type: text, multiline: true, default: "", label: "Nhân vật theo thứ tự ảnh (mỗi dòng: Tên, mô tả)",
+               placeholder: "Lão Tư, ông lão gác cổng làng\nMinh, chàng trai trẻ"}
+  character_1: {type: image, required: false, label: Ảnh nhân vật 1}
+  character_2: {type: image, required: false, label: Ảnh nhân vật 2}
+  character_3: {type: image, required: false, label: Ảnh nhân vật 3}
+  style: {type: text, default: "cinematic 2D game cutscene illustration, painterly, dramatic lighting",
+          label: Phong cách}
+  aspect: {type: enum, default: "16:9", options: ["16:9", "9:16", "1:1", "4:3"], label: Khung hình}
+  seconds: {type: int, default: 30, min: 10, max: 180, label: Độ dài mong muốn (giây)}
+  max_shots: {type: int, default: 8, min: 4, max: 12, label: Số shot tối đa}
+  music: {type: bool, default: false, label: Thêm nhạc nền (ACE-Step, chậm hơn)}
+  sfx: {type: bool, default: false, label: Thêm hiệu ứng âm thanh từng shot (Stable Audio)}
+  burn_subtitles: {type: bool, default: true, label: In phụ đề vào video (luôn có .srt)}
+  resolution: {type: enum, default: 720p, options: [720p, 1080p], label: Độ phân giải video}
+steps:
+  - id: plan
+    kind: claude.storyboard
+    in: {images: [inputs.character_1, inputs.character_2, inputs.character_3]}
+    params: {script: "${inputs.script}", characters: "${inputs.characters}", style: "${inputs.style}",
+             aspect: "${inputs.aspect}", seconds: "${inputs.seconds}", max_shots: "${inputs.max_shots}", model: opus,
+             _auto_retry: 1}
+  - id: frames
+    kind: storyboard.frames
+    in: {plan: plan.json, characters: [inputs.character_1, inputs.character_2, inputs.character_3]}
+    params: {style: "${inputs.style}"}
+  - id: board
+    kind: gate.pick
+    in: {images: frames.images}
+    params: {k: 0}
+  - id: voice
+    kind: tts.npc_voice
+    in: {dialogue: plan.dialogue}
+  - id: score
+    kind: storyboard.score
+    in: {plan: plan.json}
+    params: {music: "${inputs.music}", sfx: "${inputs.sfx}"}
+  - id: assemble
+    kind: op.animatic
+    in: {plan: plan.json, frames: board.images, voice: voice.audio, tts: voice.json, score: score.audio}
+    params: {burn_subtitles: "${inputs.burn_subtitles}", resolution: "${inputs.resolution}"}
+  - id: approve
+    kind: gate.approve
+    in: {video: assemble.video, sheet: assemble.sheet, srt: assemble.srt, pdf: assemble.pdf, shots: assemble.json}
+outputs:
+  final: approve.video
+  storyboard: approve.sheet
+  subtitles: approve.srt
+  pdf: approve.pdf
+  shots: approve.shots

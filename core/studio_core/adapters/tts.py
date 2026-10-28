@@ -219,6 +219,8 @@ class NpcVoiceExecutor:
         voices = {lang: pick_voice(lang, str(params.get(f"voice_{lang}") or "auto"), hint) for lang in langs}
         jobs = [(line, lang) for line in doc.get("lines") or [] for lang in langs
                 if str((line.get("text") or {}).get(lang) or "").strip()]
+        if not jobs and doc.get("allow_empty"):
+            return StepResult(outputs={}, meta={"clips": 0})
         if not jobs:
             raise StepError("op_no_input", "dialogue has no lines to voice")
         await asyncio.to_thread(Path(ctx.job_dir).mkdir, parents=True, exist_ok=True)
@@ -226,7 +228,12 @@ class NpcVoiceExecutor:
         for i, (line, lang) in enumerate(jobs):
             ctx.progress(i, len(jobs), f"{lang} {line['id']}")
             text = str(line["text"][lang])
-            sp = await asyncio.to_thread(engine.synth, text, lang, voices[lang], speed)
+            # A line may carry its own speaker voice (storyboard cast); an explicit speed param still wins.
+            lv = line.get("voice") if isinstance(line.get("voice"), dict) else None
+            voice = pick_voice(lang, str(lv.get("name") or "auto"), lv) if lv else voices[lang]
+            line_speed = (min(1.4, max(0.7, float(lv.get("speed") or speed)))
+                          if lv and not float(params.get("speed") or 0) else speed)
+            sp = await asyncio.to_thread(engine.synth, text, lang, voice, line_speed)
             stem = f"{lang}_{line['id']}"
             path = Path(ctx.job_dir) / f"{stem}.wav"
             await asyncio.to_thread(write_wav, path, sp.samples, sp.rate)

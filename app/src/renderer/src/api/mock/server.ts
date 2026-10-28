@@ -44,6 +44,7 @@ import type { SetupJob, SetupPlan, SetupStartBody } from '../types'
 import type { ProjectQaAsset, ProjectQaFixResult, ProjectQaReport } from '../types'
 import type { StyleBible, StyleBibleEdit, StyleBibleView } from '../types'
 import type { DuplicateGroup, DuplicatesReport, MoreLikePlan, SimilarAsset, SimilarIndexStatus, SimilarQuery, SimilarResult } from '../types'
+import type { PackBody, PackListing, PackRecord, PackResult } from '../types'
 import { MOCK_KINDS, MOCK_PRESETS, MOCK_TOOLS, mockValidate, stepDeps } from './catalog'
 import { normalizeStyle, styleFills } from '@/composables/projectStyle'
 import sampleGlbUrl from './assets/sample-prop.glb?url'
@@ -1689,6 +1690,56 @@ export class MockCore implements StudioApi, EventStream {
 
   async reindexSimilar(): Promise<SimilarIndexStatus> {
     return { ...(await this.similarStatus()), queued: 0 }
+  }
+
+  private packMap = new Map<string, PackRecord[]>()
+
+  private packCandidates(projectId: string): PackListing['assets'] {
+    const bySteps = new Map<string, VersionRow[]>()
+    for (const v of this.versionMap.values()) {
+      if (v.project_id !== projectId || v.status !== 'approved') continue
+      bySteps.set(v.step_id, [...(bySteps.get(v.step_id) ?? []), v])
+    }
+    return [...bySteps.entries()].map(([step_id, vs]) => {
+      const v0 = vs[0]!
+      return {
+        name: v0.asset_name, step_id, run_id: v0.run_id, recipe_id: this.runs.get(v0.run_id)?.recipe_id ?? null,
+        version_ids: vs.map((v) => v.id), engine_ready: v0.blob.mime.startsWith('image/'), preview_hash: v0.blob.hash
+      }
+    })
+  }
+
+  private nextPackVersion(projectId: string): string {
+    const last = this.packMap.get(projectId)?.[0]?.version
+    if (!last) return '1.0.0'
+    const [a = 1, b = 0, c = 0] = last.split('.').map(Number)
+    return `${a}.${b}.${c + 1}`
+  }
+
+  async projectPacks(projectId: string): Promise<PackListing> {
+    await this.ready
+    const slug = this.project(projectId).name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'pack'
+    return clone({ project_id: projectId, slug, next_version: this.nextPackVersion(projectId), default_dir: 'D:\\StudioData\\packs',
+      packs: this.packMap.get(projectId) ?? [], assets: this.packCandidates(projectId), skipped: [] })
+  }
+
+  async buildPack(projectId: string, body: PackBody): Promise<PackResult> {
+    const listing = await this.projectPacks(projectId)
+    await sleep(1200)
+    if (body.version && !/^\d+\.\d+\.\d+$/.test(body.version)) throw new ApiError('invalid', 'version must be semver MAJOR.MINOR.PATCH', 422)
+    const items = listing.assets.filter((a) => !body.include || a.version_ids.some((id) => body.include!.includes(id)))
+    if (!items.length) throw new ApiError('not_packable', 'no approved assets to pack', 422)
+    const version = body.version || listing.next_version
+    const prev = listing.packs[0]
+    const names = items.map((a) => a.name)
+    const dir = `${body.out_dir || listing.default_dir}\\${listing.slug}-${version}`
+    const rec: PackRecord = { version, created_at: Date.now() / 1000, engines: body.engines, license: body.license,
+      package: `com.${body.org || 'assetstudio'}.${listing.slug}`, commercial: 'restricted', dir, zip: body.zip === false ? null : `${dir}.zip`,
+      changes: { added: prev ? [] : names, updated: prev ? names.slice(0, 1) : [], removed: [] } }
+    this.packMap.set(projectId, [rec, ...(this.packMap.get(projectId) ?? []).filter((p) => p.version !== version)])
+    return clone({ ...rec, previous: prev?.version ?? null, warnings: [], skipped: [],
+      provenance: { commercial: 'restricted', non_commercial: [], restricted: names.slice(0, 1), unverified: [] },
+      items: items.map((a, i) => ({ name: a.name, folder: a.name.replace(/\W+/g, '_'), commercial: i === 0 ? 'restricted' : 'yes' })) })
   }
 
   private styleBibles = new Map<string, StyleBible>()

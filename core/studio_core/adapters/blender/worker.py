@@ -1208,7 +1208,12 @@ def pd_import(path, name):
 
 
 def _box(v):
-    return [[float(x) for x in v.min(0)], [float(x) for x in v.max(0)]] if len(v) else None
+    """Percentiles, so a stray strand of hair or a cape corner does not inflate a hat or breastplate."""
+    if len(v) < 8:
+        return None
+    lo, hi = np.percentile(v, 3, axis=0), np.percentile(v, 97, axis=0)
+    lo[2], hi[2] = v[:, 2].min(), v[:, 2].max()
+    return [[float(x) for x in lo], [float(x) for x in hi]]
 
 
 def pd_rig(s):
@@ -1217,7 +1222,7 @@ def pd_rig(s):
     bones = {b.name: [list(b.head_local), list(b.tail_local)] for b in arm.data.bones}
     neck, pelvis = pts["neck"], pts["pelvis"]
     half = abs(pts["shoulder_l"][0] - pts["shoulder_r"][0]) / 2 or 0.15 * s["height"]
-    head = v[v[:, 2] >= neck[2]]
+    head = v[v[:, 2] >= neck[2] + 0.15 * (pts["head_top"][2] - neck[2])]
     torso = v[(v[:, 2] >= pelvis[2]) & (v[:, 2] <= neck[2]) & (np.abs(v[:, 0] - pelvis[0]) <= half)]
     h = s["height"]
     fallback = [[pelvis[0] - half, pelvis[1] - 0.1 * h, pelvis[2]], [pelvis[0] + half, pelvis[1] + 0.1 * h, neck[2]]]

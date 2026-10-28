@@ -1027,3 +1027,13 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   `adapters/keyart_motion.py`, recipe `key-art-motion`, `VideoViewer.vue`, CSP thêm `media-src` (`app/src/main/index.ts:93` — có thể sửa
   luôn audio bị chặn ở bản build). 8 test; live 720p 654s (Wan 623s), VRAM peak 11.9GB, $0.035. 5B chuyển động mạnh hơn "nhẹ" → crossfade có thể ghost.
 - [x] 2026-10-29 Kiểm 733 pass / 4 skip, typecheck sạch → commit mốc #22 + #23 (kèm code dở #25/#26/#29/#6).
+- [~] 2026-10-29 Giao #11 spike Qwen-Image-Layered (chỉ báo cáo → .planning/SPIKE-2026-10-29-qwen-image-layered.md). Đang chạy: #25, #26, #29, #6, #11.
+- [x] 2026-10-29 ~05:40 Cả 5 agent (#25, #26, #29, #6, #11) chết do hết quota session (429); quota reset → gửi tiếp (resume) từng agent, code dở trong working tree.
+- [x] 2026-10-29 #25 Bitmap font xong (agent, đã nằm trong b675948): recipe `bitmap-font` (CPU 7 preset) + `bitmap-font-klein`
+  (Klein tô ruột, alpha TTF), `ops/bitmap_font.py`, `ops/sfnt_kern.py` (GPOS kern), `export/bitmap_font.py` (Godot .fnt FontFile + demo tscn,
+  Unity Custom Font .fontsettings chưa mở Unity). 12 test; Godot OK có dấu Việt; live Klein ~40s.
+- [x] 2026-10-29 #6 Đóng gói asset pack local xong (agent): `store/pack.py` (`build_pack`, `finalize_unity` dedupe script + GUID,
+  asmdef, meta thiếu), `store/model_licenses.py` (bảng license tự lập — CẦN chủ nhân rà), `api/pack.py`, MCP `build_asset_pack`,
+  `PackDialog.vue`, IPC `studio:revealPath`. UPM + Godot addon + provenance.json + CHANGELOG + zip. 5 test; Godot import OK, Unity
+  batchmode compile OK GUID unique. Lỗi import vòng `ops/animatic.py` ↔ `adapters/storyboard.py` (#29) → đã nhắn agent #29 sửa.
+- [x] 2026-10-29 Kiểm 745 pass / 4 skip, typecheck sạch → commit mốc #6 (+ #25 hoàn thiện, code dở #26/#29).

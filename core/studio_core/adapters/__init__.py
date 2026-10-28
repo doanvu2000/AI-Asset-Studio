@@ -14,6 +14,7 @@ from .localize import ClaudeLocalizeExecutor
 from .soundscape import ClaudeSoundscapeExecutor
 from .keyart_motion import ClaudeKeyartMotionExecutor
 from .npc import ClaudeNpcDialogueExecutor
+from .storyboard import ClaudeStoryboardExecutor, StoryboardFramesExecutor, StoryboardScoreExecutor
 from .tts import NpcVoiceExecutor
 from .store_layout import ClaudeStoreLayoutExecutor
 from .spine_review import SpineReviewLoopExecutor
@@ -41,6 +42,10 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     registry.register(ClaudeKeyartMotionExecutor(settings))
     registry.register(ClaudeNpcDialogueExecutor(settings))
     registry.register(NpcVoiceExecutor(settings))
+    registry.register(ClaudeStoryboardExecutor(settings))
+    registry.register(StoryboardFramesExecutor(registry.resolve, comfy))
+    # Music/SFX are optional: no resource requirement, so a run with both off never boots ComfyUI.
+    registry.register(StoryboardScoreExecutor(registry.resolve))
     registry.register(ClaudeLocalizeExecutor(settings))
     registry.register(ClaudeStoreLayoutExecutor(settings))
     registry.register(SpineReviewLoopExecutor(settings))

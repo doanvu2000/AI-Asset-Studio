@@ -377,9 +377,13 @@ async def cancel_run(request: Request, run_id: str) -> Response:
     return _json({"ok": True})
 
 
+class RetryBody(BaseModel):
+    keep: list[str] | None = Field(None, max_length=256)
+
+
 @api.post("/steps/{step_id}/retry")
-async def retry_step(request: Request, step_id: str) -> Response:
-    await _engine_call(_engine(request).retry_step(step_id))
+async def retry_step(request: Request, step_id: str, body: RetryBody | None = None) -> Response:
+    await _engine_call(_engine(request).retry_step(step_id, body.keep if body else None))
     return _json({"ok": True})
 
 

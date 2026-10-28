@@ -773,7 +773,7 @@ class StudioEngine:
             if st.run.status == RunStatus.RUNNING and not self._closed:
                 self._start_driver(st)
 
-    async def retry_step(self, step_id: str) -> None:
+    async def retry_step(self, step_id: str, keep: list[str] | None = None) -> None:
         row = await self.repo.get_step(step_id)
         if row is None:
             raise NotFoundError(f"unknown step: {step_id}")
@@ -793,6 +793,10 @@ class StudioEngine:
                 if target.status not in _RETRYABLE and not regen:
                     raise EngineStateError(f"step {target.key} is {target.status.value}; only failed/cancelled steps "
                                            "or the source of a waiting gate can be retried")
+                if regen and (keep or "_keep" in target.params):
+                    # Candidates picked at the waiting gate survive the regenerate (executors that know `_keep`).
+                    params = {k: v for k, v in target.params.items() if k != "_keep"}
+                    await self._set_step(target, params={**params, "_keep": list(keep)} if keep else params)
                 for s in st.ordered():
                     if s.key == target.key or s.key in downstream or s.status in (StepStatus.SKIPPED,
                                                                                     StepStatus.CANCELLED):

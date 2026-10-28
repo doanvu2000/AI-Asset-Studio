@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
-import { Archive, ArchiveRestore, ArrowLeft, BookMarked, Check, ClipboardList, FolderKanban, Images, Languages, ListChecks, LoaderCircle, Plus, RotateCw, Save, ScanSearch, X } from '@lucide/vue'
+import { Archive, ArchiveRestore, ArrowLeft, BookMarked, Check, ClipboardList, FolderKanban, Images, Languages, ListChecks, LoaderCircle, Package, Plus, RotateCw, Save, ScanSearch, X } from '@lucide/vue'
 import type { BlobRef, PixelStyle, ProjectStyle } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -12,6 +12,7 @@ import RunRowItem from '@/components/RunRowItem.vue'
 import ManifestPanel from '@/components/ManifestPanel.vue'
 import QaPanel from '@/components/QaPanel.vue'
 import StyleBiblePanel from '@/components/StyleBiblePanel.vue'
+import PackDialog from '@/components/PackDialog.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import RelTime from '@/components/RelTime.vue'
 import { useProjects } from '@/stores/projects'
@@ -33,6 +34,7 @@ const toasts = useToasts()
 const router = useRouter()
 
 const project = computed(() => projects.byId(props.id))
+const packOpen = ref(false)
 const loadError = ref<string | null>(null)
 const loading = ref(false)
 
@@ -279,6 +281,7 @@ function newAsset(): void {
         </button>
         <button v-if="!project.archived" type="button" class="btn btn-plain" :disabled="archiving" @click="setArchived(true)"><Archive /> Lưu trữ</button>
         <button v-else type="button" class="btn btn-plain" :disabled="archiving" @click="setArchived(false)"><ArchiveRestore /> Khôi phục</button>
+        <button type="button" class="btn" title="Đóng gói asset đã duyệt thành Unity package / Godot addon + zip trên máy" @click="packOpen = true"><Package /> Đóng gói</button>
         <button type="button" class="btn btn-primary" @click="newAsset"><Plus /> Tạo asset trong dự án</button>
       </template>
     </PageHeader>
@@ -509,6 +512,7 @@ function newAsset(): void {
         </section>
       </div>
     </div>
+    <PackDialog :open="packOpen" :project-id="id" @close="packOpen = false" />
   </div>
 </template>
 

@@ -37,6 +37,14 @@ const valid = computed(() => (need.value ? picked.value.size === need.value : pi
 const instruction = computed(() => (need.value ? `Chọn ${need.value} ảnh để chạy tiếp` : 'Chọn ít nhất 1 ảnh để chạy tiếp'))
 const prompt = computed(() => sourcePrompt(runs.runs.get(props.gate.runId)))
 const canRegenerate = computed(() => !!gates.sourceStep(props.gate))
+// Storyboard frames: the picked tiles are kept and only the rest are redrawn.
+const keepSome = computed(
+  () => gates.canKeep(props.gate) && picked.value.size > 0 && picked.value.size < candidates.value.length
+)
+
+function selectAll(): void {
+  picked.value = new Set(candidates.value.map((b) => b.hash))
+}
 
 function toggle(i: number): void {
   const b = candidates.value[i]
@@ -70,8 +78,8 @@ async function regenerate(): Promise<void> {
   if (regenerating.value) return
   regenerating.value = true
   try {
-    await gates.regenerate(props.gate)
-    toasts.push('Đang tạo lại ảnh với seed mới', 'info', 2500)
+    await gates.regenerate(props.gate, keepSome.value ? [...picked.value] : undefined)
+    toasts.push(keepSome.value ? 'Đang vẽ lại các ảnh chưa chọn' : 'Đang tạo lại ảnh với seed mới', 'info', 2500)
   } catch (e) {
     toasts.error(e, 'Không tạo lại được ảnh')
   } finally {
@@ -141,13 +149,20 @@ onKeyStroke(true, (e) => {
       <button
         class="btn"
         :disabled="!canRegenerate || regenerating || sending"
-        :title="canRegenerate ? 'Không ảnh nào ổn: chạy lại bước sinh ảnh với seed mới' : 'Không xác định được bước sinh ảnh'"
+        :title="
+          !canRegenerate
+            ? 'Không xác định được bước sinh ảnh'
+            : keepSome
+              ? 'Giữ các ảnh đã chọn, chỉ vẽ lại ảnh chưa chọn với seed mới'
+              : 'Không ảnh nào ổn: chạy lại bước sinh ảnh với seed mới'
+        "
         @click="regenerate"
       >
         <LoaderCircle v-if="regenerating" class="spin" />
         <RefreshCw v-else />
-        Tạo lại ảnh
+        {{ keepSome ? 'Tạo lại ảnh chưa chọn' : 'Tạo lại ảnh' }}
       </button>
+      <button v-if="!need && candidates.length > 1" class="btn" :disabled="sending" @click="selectAll">Chọn tất cả</button>
       <span class="spacer" />
       <span class="num secondary">{{ picked.size }}{{ need ? ` / ${need}` : '' }} đã chọn</span>
       <button class="btn btn-primary" :class="{ 'btn-lg': !inline }" :disabled="!valid || sending" @click="submit">

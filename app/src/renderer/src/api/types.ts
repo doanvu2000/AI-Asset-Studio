@@ -783,3 +783,68 @@ export interface SimilarIndexStatus {
   queued?: number
   hint?: string
 }
+
+export type PackEngine = 'unity' | 'godot'
+export type PackLicense = 'cc0' | 'cc-by-4.0' | 'proprietary'
+/** Commercial use of the models behind an asset: restricted = conditional terms, unknown = not verified. */
+export type PackCommercial = 'yes' | 'restricted' | 'unknown' | 'no'
+
+export interface PackChanges {
+  added: string[]
+  updated: string[]
+  removed: string[]
+}
+
+export interface PackRecord {
+  version: string
+  created_at: number
+  engines: PackEngine[]
+  license: PackLicense
+  package: string
+  changes: PackChanges
+  commercial: PackCommercial
+  dir: string
+  zip: string | null
+}
+
+export interface PackCandidate {
+  name: string
+  step_id: string
+  run_id: string
+  recipe_id: string | null
+  version_ids: string[]
+  engine_ready: boolean
+  preview_hash: string | null
+}
+
+export interface PackListing {
+  project_id: string
+  slug: string
+  next_version: string
+  default_dir: string
+  packs: PackRecord[]
+  assets: PackCandidate[]
+  skipped: { name: string; step_id: string; reason: string }[]
+}
+
+export interface PackBody {
+  engines: PackEngine[]
+  license: PackLicense
+  version?: string
+  /** Approved version ids; omitted = every approved version of the project. */
+  include?: string[]
+  author?: string
+  org?: string
+  description?: string
+  /** Absolute folder; omitted = <data>/packs. */
+  out_dir?: string
+  zip?: boolean
+}
+
+export interface PackResult extends PackRecord {
+  previous: string | null
+  warnings: string[]
+  provenance: { commercial: PackCommercial; non_commercial: string[]; restricted: string[]; unverified: string[] }
+  items: { name: string; folder: string; commercial: PackCommercial }[]
+  skipped: { name: string; step_id: string; reason: string }[]
+}

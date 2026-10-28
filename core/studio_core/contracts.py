@@ -361,8 +361,9 @@ class Engine(Protocol):
 
     async def cancel_run(self, run_id: str) -> None: ...
 
-    async def retry_step(self, step_id: str) -> None:
-        """New attempt of a failed/cancelled step; downstream steps reset to pending; run back to running."""
+    async def retry_step(self, step_id: str, keep: list[str] | None = None) -> None:
+        """New attempt of a failed/cancelled step; downstream steps reset to pending; run back to running.
+        `keep`: on a regenerate, candidate hashes the step should reuse instead of redrawing."""
 
     async def resolve_gate(self, step_id: str, res: GateResolution) -> None: ...
 

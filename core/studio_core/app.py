@@ -49,7 +49,7 @@ class UnavailableEngine:
     async def cancel_run(self, run_id: str) -> None:
         raise self._fail()
 
-    async def retry_step(self, step_id: str) -> None:
+    async def retry_step(self, step_id: str, keep: list[str] | None = None) -> None:
         raise self._fail()
 
     async def resolve_gate(self, step_id: str, res: GateResolution) -> None:
