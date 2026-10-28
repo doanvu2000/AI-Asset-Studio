@@ -66,7 +66,7 @@ def fit_timeline(shots: list[dict[str, Any]], voice: dict[str, float], fps: int 
         d = max(float(s.get("duration") or 0), need, MIN_SHOT, 2 * xfade + 0.25)
         d = math.ceil(d * fps - 1e-6) / fps
         entry = {"id": s["id"], "start": round(t, 3), "duration": round(d, 4), "frames": round(d * fps),
-                 "planned": float(s.get("duration") or 0), "extended": d > float(s.get("duration") or 0) + 1e-6}
+                 "planned": float(s.get("duration") or 0), "extended": d > float(s.get("duration") or 0) + 1 / fps}
         if v > 0:
             entry.update(line_start=round(t + lead, 3), line_end=round(t + lead + v, 3), voice_seconds=round(v, 3))
         out.append(entry)
@@ -228,7 +228,9 @@ def contact_sheet(panels: list[tuple[Image.Image, list[str]]], lang: str, cols: 
     sample = " ".join(r for _, rows in panels for r in rows)[:400] or "A"
     font = _font(lang, sample, fs)
     probe = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-    wrapped = [[w for r in rows for w in (_wrap(probe, r, font, panel_w - 8) or [""])][:6] for _, rows in panels]
+    # The long description gets 3 rows at most so the dialogue line under it is never cut off.
+    wrapped = [[w for k, r in enumerate(rows)
+                for w in (_wrap(probe, r, font, panel_w - 8) or [""])[:3 if k == 1 else 2]] for _, rows in panels]
     text_h = 8 + (fs + 4) * max(len(w) for w in wrapped)
     cols = max(1, min(cols, len(panels)))
     nrows = math.ceil(len(panels) / cols)

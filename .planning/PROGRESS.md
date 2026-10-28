@@ -1037,3 +1037,11 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   `PackDialog.vue`, IPC `studio:revealPath`. UPM + Godot addon + provenance.json + CHANGELOG + zip. 5 test; Godot import OK, Unity
   batchmode compile OK GUID unique. Lỗi import vòng `ops/animatic.py` ↔ `adapters/storyboard.py` (#29) → đã nhắn agent #29 sửa.
 - [x] 2026-10-29 Kiểm 745 pass / 4 skip, typecheck sạch → commit mốc #6 (+ #25 hoàn thiện, code dở #26/#29).
+- [x] 2026-10-29 #11 Spike Qwen-Image-Layered xong: Apache-2.0, fp8mixed 20.5GB + VAE tải vào `F:\work\AI\comfyUI_models`, ComfyUI 0.41
+  native. 1024²/4 layer 557s, VRAM 10.9–11.1GB. Tách theo độ sâu (không theo bộ phận) → không thay SAM3 cho Spine. Đề xuất recipe
+  `image-layers` (PNG + PSD, 1.5–2 ngày). Báo cáo `.planning/SPIKE-2026-10-29-qwen-image-layered.md`. CHỜ chủ nhân quyết build.
+- [x] 2026-10-29 #29 Storyboard → animatic xong (agent): `adapters/storyboard.py` (`claude.storyboard`, `storyboard.frames` Klein ghép
+  nhân vật/Z-Image, `storyboard.score`), `ops/animatic.py` (`op.animatic` zoompan + xfade + phụ đề PNG + mix), recipe `storyboard-animatic`;
+  retry giữ ảnh đã chọn (`runner.retry_step(keep)`, API `{keep}`, GatePicker "Tạo lại ảnh chưa chọn"/"Chọn tất cả"). Sửa import vòng.
+  7 test; live 4 shot ~190s, $0.077, video 18.6s. Nhạc/SFX chưa chạy thật.
+- [x] 2026-10-29 Kiểm 745 pass / 4 skip, typecheck sạch → commit mốc #29 + báo cáo spike #11.
