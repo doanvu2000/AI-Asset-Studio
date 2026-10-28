@@ -395,6 +395,92 @@ def test_bounce_hip_and_knee_gap() -> None:
     assert cross is not None and cross["overlap"] and cross["time"] == pytest.approx(1.0)
 
 
+def renamed(doc: dict[str, Any], names: dict[str, str]) -> dict[str, Any]:
+    text = json.dumps(doc)
+    for old, new in names.items():
+        text = text.replace(f'"{old}"', f'"{new}"')
+    return json.loads(text)
+
+
+def test_torso_found_by_structure_on_other_names() -> None:
+    from studio_core.ops.spine_ref import add_anim
+
+    assert sa.torso_bones(two_legs()) == {"hip": "hip", "spine": "spine", "chest": "chest", "neck": "neck",
+                                          "head": "head", "eyes": ["eye_L", "eye_R"]}
+    names = {"hip": "Bip_Pelvis", "spine": "torso_a", "chest": "torso_b", "neck": "nk", "head": "skull",
+             "eye_L": "Pupil_L", "eye_R": "Pupil_R"}
+    doc = renamed(two_legs(), names)
+    roles = sa.torso_bones(doc)
+    assert roles == {"hip": "Bip_Pelvis", "spine": "torso_a", "chest": "torso_b", "neck": "nk", "head": "skull",
+                     "eyes": []}
+    assert "Torso the sway drives" in sa.rig_summary(doc) and "head=skull" in sa.rig_summary(doc)
+    res = add_anim(json.dumps(doc), {**SPEC, "bounce": [[1.0, 4]]}, "sway")
+    assert {"Bip_Pelvis", "torso_a", "torso_b", "nk", "skull"} <= set(res["anim"]["bones"])
+    assert not {"hip", "spine", "eye_L"} & set(res["anim"]["bones"])
+    res = add_anim(json.dumps(doc), {**SPEC, "bones": {"eyes": ["Pupil_L", "Pupil_R"]}}, "sway")
+    assert "scale" in res["anim"]["bones"]["Pupil_L"]
+
+    no_legs = renamed(skeleton(), {"hip": "base"})
+    assert sa.torso_bones(no_legs)["hip"] == "base"
+    short = renamed(skeleton(), {"neck": "n0", "chest": "c0"})
+    short["bones"] = [b for b in short["bones"] if b["name"] != "n0"]
+    for b in short["bones"]:
+        if b.get("parent") == "n0":
+            b["parent"] = "c0"
+    assert sa.torso_bones(short) | {"eyes": []} == {"hip": "hip", "spine": "spine", "chest": "c0", "neck": None,
+                                                    "head": "head", "eyes": []}
+
+
+def test_pose_transform_and_path_constraints() -> None:
+    doc = {"bones": [{"name": "root"}, {"name": "t", "parent": "root", "x": 50, "rotation": 30},
+                     {"name": "b", "parent": "root", "length": 10},
+                     {"name": "c1", "parent": "root", "length": 10}, {"name": "c2", "parent": "c1", "x": 10,
+                                                                     "length": 10}],
+           "slots": [{"name": "p", "bone": "root", "attachment": "p"}],
+           "transform": [{"name": "tc", "bones": ["b"], "target": "t", "mixScaleX": 0, "mixShearY": 0}],
+           "path": [{"name": "pc", "order": 1, "bones": ["c1", "c2"], "target": "p", "rotateMode": "chain"}],
+           "skins": [{"name": "default", "attachments": {"p": {"p": {
+               "type": "path", "vertexCount": 6, "lengths": [100, 200],
+               "vertices": [0, -20, 0, 0, 0, 20, 0, 40, 0, 60, 0, 80]}}}}]}
+    pose = rt.Pose(doc)
+    m, p = pose.world["b"]
+    assert p == pytest.approx([50, 0]) and math.degrees(math.atan2(m[1, 0], m[0, 0])) == pytest.approx(30)
+    for bone, y in (("c1", 0), ("c2", 10)):
+        m, p = pose.world[bone]
+        assert p == pytest.approx([0, y], abs=1e-6) and math.degrees(math.atan2(m[1, 0], m[0, 0])) == pytest.approx(90)
+    doc["animations"] = {"off": {"transform": {"tc": [{"mixRotate": 0, "mixX": 0}]}}}
+    assert rt.Pose(doc, "off", 0.5).world["b"][1] == pytest.approx([0, 0])
+    assert sa.driven_bones(doc) == {"b", "c1", "c2"}
+
+
+def test_proven_bends_keep_rigid_piece_rigs_unwelded() -> None:
+    from studio_core.ops import spine_weld as sw
+
+    doc = limb(False)
+    assert sw.resolve_joints(doc, "auto") == ["lower", "hand"]
+    assert sa.proven_bends(doc, ["lower"])["lower"] == pytest.approx(0)
+    doc["animations"]["swing"] = {"bones": {"lower": {"rotate": [{"value": 0}, {"time": 0.5, "value": 70}]}}}
+    assert sa.proven_bends(doc, ["lower"])["lower"] == pytest.approx(70, abs=0.5)
+    assert sw.resolve_joints(doc, "auto") == []
+    assert sw.resolve_joints(doc, "lower") == ["lower"]  # an explicit list is kept
+    lim = sa.joint_limits(doc)["lower"]
+    assert lim["limit"] == pytest.approx(70, abs=0.5) and lim["proven"] == 70
+
+
+def test_auto_skin_parts_skip_overlapping_slots() -> None:
+    from studio_core.ops.spine_ref import auto_skin_parts, skin_parts
+
+    doc = {"skins": [{"name": "default"},
+                     {"name": "bottom/bottom_0", "attachments": {"legs": {}}},
+                     {"name": "bottom/bottom_1", "attachments": {"legs": {}}},
+                     {"name": "dress/dress_0", "attachments": {"legs": {}, "torso": {}}},
+                     {"name": "skin/skin_0", "attachments": {"arm": {}}}]}
+    assert auto_skin_parts(doc) == ["skin/skin_0", "bottom/bottom_0"]
+    assert skin_parts({"skin": "auto"}, doc) == ["skin/skin_0", "bottom/bottom_0"]
+    assert skin_parts({"skin": "a, b"}, doc) == ["a", "b"]
+    assert auto_skin_parts({"skins": [{"name": "default"}, {"name": "girl"}, {"name": "boy"}]}) == ["girl"]
+
+
 def test_weld_joints_bends_as_one_piece() -> None:
     from studio_core.ops import spine_weld as sw
 
@@ -629,3 +715,143 @@ def test_fingers_follow_and_forced_weld() -> None:
     skins, changed, _ = sw.weld(doc, ["finger!"])
     hand = {s["name"]: s["attachments"] for s in skins}["top/top_0"]["hand"]["box"]
     assert changed >= 1 and hand["type"] == "mesh"
+
+
+def test_walk_cycle_loops_with_planted_feet() -> None:
+    from studio_core.ops import spine_cycle as sc
+    from studio_core.ops.spine_ref import add_anim
+
+    doc = two_legs()
+    assert "Cycle (walk/run), jump and action drive: feet foot_ik (moves leg), foot_ik2 (moves leg2)" in sa.rig_summary(doc)
+    res = add_anim(json.dumps(doc), {"duration": 2.0, "ease": 0.4, "cycle": {"type": "walk"}}, "walk")
+    assert res["loop"] and res["cycle"] == "walk"
+    bones = res["anim"]["bones"]
+    assert {"translate"} <= set(bones["foot_ik"]) and {"translate"} <= set(bones["foot_ik2"])
+    hip = bones["hip"]["translate"]
+    assert max(k["y"] for k in hip) <= 0 and hip[0] == {**hip[-1], "time": 0.0}
+    new = json.loads(res["text"])
+    assert sa.check_animation(new, "walk", loop=True) == []
+    feet = sc.foot_contact(new, "walk")
+    assert feet is not None and not feet["fault"] and feet["slide_ratio"] < 0.01
+    xs = [k["x"] for k in bones["foot_ik"]["translate"]]
+    assert max(xs) - min(xs) > 30
+    with pytest.raises(StepError):
+        add_anim(json.dumps(doc), {"duration": 1.5, "ease": 0.4, "cycle": {"type": "walk"}}, "walk")
+    with pytest.raises(StepError):
+        add_anim(json.dumps(skeleton()), {"duration": 1.0, "ease": 0.4, "cycle": {"type": "run"}}, "run")
+
+
+def test_jump_one_shot_returns_to_setup() -> None:
+    from studio_core.ops import spine_cycle as sc
+    from studio_core.ops.spine_ref import add_anim
+
+    doc = two_legs()
+    res = add_anim(json.dumps(doc), {"duration": 1.6, "ease": 0.4, "jump": {"takeoff": 0.5, "land": 0.9}}, "jump")
+    assert not res["loop"] and res["cycle"] == "jump"
+    bones = res["anim"]["bones"]
+    new = json.loads(res["text"])
+    assert sa.check_animation(new, "jump") == []
+    hip = {k["time"]: k["y"] for k in bones["hip"]["translate"]}
+    foot = {k["time"]: k["y"] for k in bones["foot_ik"]["translate"]}
+    assert min(v for t, v in hip.items() if t < 0.5) < 0 and max(hip.values()) == max(hip[t] for t in hip if
+                                                                                         0.5 < t < 0.9)
+    assert all(v == 0 for t, v in foot.items() if t <= 0.5 or t >= 0.9) and max(foot.values()) > 0
+    feet = sc.foot_contact(new, "jump")
+    assert feet is not None and not feet["fault"]
+    with pytest.raises(StepError):
+        add_anim(json.dumps(doc), {"duration": 1.0, "ease": 0.4, "jump": {"takeoff": 0.5, "land": 0.9}}, "jump")
+
+
+def test_generic_keys_loop_and_dropped() -> None:
+    from studio_core.ops.spine_ref import add_anim
+
+    spec = {"duration": 2.0, "ease": 0.4,
+            "keys": {"foot_ik": {"translate": [[0.5, 0, 30], [1.0, 10, 0]]}, "head": {"rotate": [[0.6, 8]]},
+                     "chest": {"scale": [[0.5, 1.1, 0.9]]}}}
+    bones = sa.build_animation(spec)["bones"]
+    tr = bones["foot_ik"]["translate"]
+    assert (tr[0]["x"], tr[0]["y"]) == (0, 0) and (tr[-1]["x"], tr[-1]["y"]) == (0, 0) and len(tr[0]["curve"]) == 8
+    assert (bones["chest"]["scale"][0]["x"], bones["chest"]["scale"][-1]["y"]) == (1.0, 1.0)
+    looped = sa.build_animation({**spec, "loop": True})["bones"]
+    head = looped["head"]["rotate"]
+    assert head[0]["value"] == 8 and head[-1] == {"time": 2.0, "value": 8}
+    with pytest.raises(sa.SpecError):
+        sa.build_animation({**spec, "keys": {"head": {"shear": [[0, 1]]}}})
+    assert set(sa.MOTION_SPEC_SCHEMA["required"]) == {"duration", "ease"}
+
+    doc = two_legs()
+    doc["transform"] = [{"name": "t", "bones": ["tail1"], "target": "hip"}]
+    res = add_anim(json.dumps(doc), {**spec, "keys": {**spec["keys"], "tail1": {"rotate": [[0.5, 5]]}}}, "act")
+    assert res["dropped"] == ["tail1"] and "tail1" not in res["anim"]["bones"]
+
+
+def test_foot_contact_flags_sliding_foot() -> None:
+    from studio_core.ops import spine_cycle as sc
+
+    doc = two_legs()
+    doc["animations"]["slide"] = {"bones": {"foot_ik": {"translate": [
+        {"x": 0}, {"time": 0.5, "x": 20, "curve": "stepped"}, {"time": 0.51, "x": 20}, {"time": 1.0, "x": 0}]}}}
+    feet = sc.foot_contact(doc, "slide")
+    assert feet is not None and feet["fault"] and feet["feet"][0]["bone"] == "foot_ik"
+
+
+def test_actions_attack_hit_death() -> None:
+    from studio_core.ops import spine_cycle as sc
+    from studio_core.ops.spine_ref import add_anim
+
+    doc = two_legs()
+    for kind, hold in (("attack", False), ("hit", False), ("death", True)):
+        res = add_anim(json.dumps(doc), {"duration": 1.6, "ease": 0.4, "action": {"type": kind, "at": 0.5}}, kind)
+        assert res["cycle"] == kind and res["hold"] is hold and not res["loop"]
+        new = json.loads(res["text"])
+        assert sa.check_animation(new, kind, hold=hold) == []
+        feet = sc.foot_contact(new, kind)
+        assert feet is not None and not feet["fault"]
+        hip = res["anim"]["bones"]["hip"]["translate"]
+        if hold:
+            assert hip[-1]["y"] < -10 and sa.check_animation(new, kind) != []
+        else:
+            assert (hip[-1]["x"], hip[-1]["y"]) == (0, 0)
+    trunk = {}
+    for facing in ("side", "front"):
+        res = add_anim(json.dumps(doc), {"duration": 1.6, "ease": 0.4,
+                                         "action": {"type": "death", "at": 0.5, "facing": facing}}, "death")
+        bones = res["anim"]["bones"]
+        trunk[facing] = max((abs(k["value"]) for n in ("spine", "chest") for k in bones.get(n, {}).get("rotate", [])),
+                            default=0.0)
+        if facing == "front":
+            assert bones["hip"]["translate"][-1]["x"] == 0
+    # Front view still tilts the trunk, just less than the side-view slump.
+    assert 0 < trunk["front"] < trunk["side"]
+    with pytest.raises(StepError):
+        add_anim(json.dumps(doc), {"duration": 1.0, "ease": 0.4, "action": {"type": "dance"}}, "x")
+    held = sa.build_animation({"duration": 1.0, "ease": 0.4, "hold": True, "keys": {"head": {"rotate": [[0.5, 20]]}}})
+    assert held["bones"]["head"]["rotate"][-1]["value"] == 20
+
+
+def test_skin_variant_recolors_atlas(tmp_path: Path) -> None:
+    from studio_core.ops import spine_variant as sv
+
+    skel, atlas, page = write_rig(tmp_path / "src")
+    ctx = FakeCtx(tmp_path)
+    sk, at, pg = _ref(ctx, skel, "rig.json"), _ref(ctx, atlas, "rig.atlas"), _ref(ctx, page, "rig.png")
+    params = {"skin": "top_0", "height": 200}
+    res = asyncio.run(sv.SpineSetupRender().run(ctx, params, {"skeleton": [sk], "atlas": [at, pg]}))
+    render = Image.open(ctx.blobs.path(res.outputs["images"][0].hash)).convert("RGB")
+    edited = Image.fromarray(255 - np.asarray(render)).resize((render.width * 2, render.height * 2))
+    white = (np.asarray(render.resize(edited.size)) > 250).all(2, keepdims=True)
+    edited = Image.fromarray(np.where(white, 255, np.asarray(edited)).astype(np.uint8))
+    ed_path = tmp_path / "e.png"
+    edited.save(ed_path)
+    ed = _ref(ctx, ed_path, "e.png")
+    out = asyncio.run(sv.SpineSkinVariant().run(ctx, params, {"skeleton": [sk], "atlas": [at, pg], "edits": [ed]}))
+    assert [r.name for r in out.outputs["atlas"]] == ["rig_v1.atlas"]
+    text = ctx.blobs.path(out.outputs["atlas"][0].hash).read_text()
+    new_page = out.outputs["pages"][0]
+    assert new_page.name in text and page.name not in text.split()
+    before = np.asarray(Image.open(page).convert("RGBA"), float)
+    after = np.asarray(Image.open(ctx.blobs.path(new_page.hash)).convert("RGBA"), float)
+    red = (before[..., 3] > 250) & (before[..., 0] > 200) & (before[..., 1] < 50)
+    assert (after[..., 3] == before[..., 3]).all() and red.any()
+    assert np.abs(after[red, :3] - (255 - before[red, :3])).mean() < 25
+    assert out.meta["variants"][0]["regions_fitted"] >= 1

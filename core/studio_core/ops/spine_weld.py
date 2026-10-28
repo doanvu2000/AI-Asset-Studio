@@ -11,9 +11,10 @@ from typing import Any
 
 import numpy as np
 
-from .spine_anim import _member_spans, _tip_joints
+from .spine_anim import _member_spans, _tip_joints, proven_bends
 from .spine_runtime import Pose, _region_corners
 
+WELD_PROVEN_MAX = 45.0
 Influence = tuple[str, float | None, float | None, float]  # bone, local x/y (None = compute), weight
 
 
@@ -76,8 +77,13 @@ def resolve_joints(doc: dict[str, Any], mode: str, spec: dict[str, Any] | None =
         ik = set(ik_joints(doc))
         hinges = [j["bone"] for j in _tip_joints(doc)
                   if (j["hard"] and j["bone"] in spec["arm_keys"]) or j["bone"] in ik]
-        return weld_candidates(doc, hinges) + fingers
-    return weld_candidates(doc) + fingers
+        picked = weld_candidates(doc, hinges) + fingers
+    else:
+        picked = weld_candidates(doc) + fingers
+    # A rig whose own animations already bend a joint far is drawn as overlapping rigid pieces (armour, props):
+    # welding would warp them, and that art style holds for the whole rig.
+    proven = proven_bends(doc, [j.rstrip("!") for j in picked])
+    return [] if any(v > WELD_PROVEN_MAX for v in proven.values()) else picked
 
 
 def _inside(poly: np.ndarray, p: np.ndarray) -> bool:

@@ -18,6 +18,7 @@ from .spine_runtime import Pose
 
 DEFAULT_BONES = {"hip": "hip", "spine": "spine", "chest": "chest", "neck": "neck", "head": "head",
                  "eyes": ["eye_L", "eye_R"]}
+TORSO_ROLES = ("spine", "chest", "neck", "head")
 
 MOTION_SPEC_SEMANTICS = (
     "Spine is y-up, positive rotation = CCW; rotate/translate keys are offsets from setup pose, scale keys are "
@@ -37,7 +38,25 @@ MOTION_SPEC_SEMANTICS = (
     "graph 'smooth' (default) gives every timeline monotone tangents, so motion flows through inner keys and only "
     "stops at turns; 'ease' stops at every key. offset = {arms: s, hip_tilt: s} delays all arm keys / the hip tilt "
     "behind the body (overlap). Skirt chains swing as a damped spring driven by the hip's sideways acceleration and "
-    "hang from the hip: skirt = {amp deg, freq Hz, freq_falloff, damping, grow, chain_delay s, enabled}.")
+    "hang from the hip: skirt = {amp deg, freq Hz, freq_falloff, damping, grow, chain_delay s, enabled}. "
+    "Motion types beyond sway: keys = {bone: {rotate: [[t, deg]], translate: [[t, x, y]], scale: [[t, x, y]]}} "
+    "keys any bone and channel directly (offsets; translate in the bone's parent space; explicit keys win over "
+    "everything generated), e.g. leg IK targets for a jump or kick, the root for a lunge. loop true makes a looping "
+    "clip: tracks may start away from setup and the last frame equals the first instead of returning to setup. "
+    "cycle = {type: walk|run, period s, facing: side|front, direction: 1 (toward +x) | -1, stride, lift, bob, "
+    "hip_sway (leg lengths), contact (planted share of the period), arm_swing deg, forearm (share of arm_swing), "
+    "lean deg} generates an in-place locomotion loop: feet planted through the leg IK targets, hip bob, arms "
+    "against the legs, trunk lean; it implies loop and needs duration = whole periods. Unset fields take "
+    "measured defaults (walk: period 1, stride 1.15, lift 0.3, contact 0.55, bob 0.06, arm_swing 30, forearm "
+    "0.35, lean 2; run: 0.66, 1.5, 0.6, 0.35, 0.1, 50, 0.5, 8). jump = {takeoff s, land s, height, crouch, tuck "
+    "(leg lengths), facing, direction, arm_swing deg, forearm, lean deg} generates a one-shot in-place jump: "
+    "crouch with the feet planted, launch, ballistic arc with the knees tucked, landing absorbed by a second "
+    "crouch, back to setup (defaults: takeoff 0.35*duration, land takeoff+0.3*duration, height 0.6, crouch "
+    "0.25, tuck 0.15, arm_swing 50, forearm 0.4, lean 12). action = {type: attack|hit|death, at s (the strike / "
+    "impact moment), facing, direction, ...} generates a one-shot combat move with the feet planted: attack (strike "
+    "s, swing deg, forearm, lean deg, step leg lengths; the arm holding a weapon swings), hit (recoil deg, push, "
+    "flail deg), death (fall s, drop leg lengths, slump deg, recoil deg; holds the collapsed last pose). hold true "
+    "lets any one-shot clip end away from setup pose (death implies it).")
 
 HARD_SEAM_LIMIT = 20.0
 COVERED_LIMIT = 40.0
@@ -46,6 +65,7 @@ KNEE_OVERLAP = 0.35
 HYPEREXTEND = 3.0
 
 _PAIRS = {"type": "array", "items": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}}
+_TRIPLES = {"type": "array", "items": {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}}
 MOTION_SPEC_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -78,12 +98,34 @@ MOTION_SPEC_SCHEMA: dict[str, Any] = {
             "bone": {"type": "string"}, "src": {"type": "array", "items": {"type": "string"}},
             **{k: {"type": "number"} for k in ("drag", "lag", "wave_amp", "wave_period", "wave_phase", "limit")}},
             "required": ["bone", "src"]}},
+        "bones": {"type": "object", "properties": {
+            **{r: {"type": "string"} for r in ("hip", *TORSO_ROLES)},
+            "eyes": {"type": "array", "items": {"type": "string"}}}},
         "hang": {"type": "array", "items": {
             "type": "object", "properties": {"bone": {"type": "string"}, "amount": {"type": "number"},
                                              "lag": {"type": "number"}}, "required": ["bone"]}},
+        "loop": {"type": "boolean"},
+        "keys": {"type": "object", "additionalProperties": {
+            "type": "object", "properties": {"rotate": _PAIRS, "translate": _TRIPLES, "scale": _TRIPLES}}},
+        "cycle": {"type": "object", "properties": {
+            "type": {"type": "string", "enum": ["walk", "run"]},
+            "facing": {"type": "string", "enum": ["side", "front"]},
+            **{k: {"type": "number"} for k in ("period", "direction", "stride", "lift", "contact", "bob", "hip_sway",
+                                               "arm_swing", "forearm", "lean")}},
+            "required": ["type"]},
+        "hold": {"type": "boolean"},
+        "action": {"type": "object", "properties": {
+            "type": {"type": "string", "enum": ["attack", "hit", "death"]},
+            "facing": {"type": "string", "enum": ["side", "front"]},
+            **{k: {"type": "number"} for k in ("at", "direction", "strike", "swing", "forearm", "lean", "step",
+                                               "recoil", "push", "flail", "fall", "drop", "slump")}},
+            "required": ["type"]},
+        "jump": {"type": "object", "properties": {
+            "facing": {"type": "string", "enum": ["side", "front"]},
+            **{k: {"type": "number"} for k in ("takeoff", "land", "height", "crouch", "tuck", "direction",
+                                               "arm_swing", "forearm", "lean")}}},
     },
-    "required": ["duration", "ease", "sway_signal", "hip", "upper_body", "arm_keys", "secondary", "blinks",
-                 "blink_closed_scale"],
+    "required": ["duration", "ease"],
 }
 REVIEW_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -170,6 +212,56 @@ def _pinned(keys: list[tuple[float, float]]) -> list[tuple[float, float]]:
     if abs(keys[-1][1]) > 1e-9:
         keys.append((keys[-1][0] + 0.3, 0.0))
     return keys
+
+
+def _closed(pts: list[tuple[float, ...]], end: float, loop: bool, rest: tuple[float, ...], hold: bool = False
+            ) -> list[tuple[float, ...]]:
+    """Explicit keys of any width made to start and end at `rest` (setup), or for a loop to end where they start;
+    `hold` keeps the last key as the clip's final pose."""
+    pts = sorted(pts)
+    if not loop:
+        if pts[0][0] > 0:
+            pts.insert(0, (0.0, *rest))
+        pts[0] = (0.0, *rest)
+        if not hold and any(abs(a - b) > 1e-9 for a, b in zip(pts[-1][1:], rest)):
+            pts.append((pts[-1][0] + 0.3, *rest))
+        return pts
+    pts = [p for p in pts if p[0] <= end + 1e-6]
+    if pts[0][0] > 0:
+        pts.insert(0, (0.0, *pts[0][1:]))
+    if pts[-1][0] < end - 1e-6:
+        pts.append((end, *pts[0][1:]))
+    else:
+        pts[-1] = (end, *pts[0][1:])
+    return pts
+
+
+def _xy_smooth(keys: list[tuple[float, ...]], smooth: bool, k: float) -> list[dict[str, Any]]:
+    if not smooth:
+        return _xy_track(keys, k)  # type: ignore[arg-type]
+    mx = _slopes([(t, x) for t, x, _ in keys])
+    my = _slopes([(t, y) for t, _, y in keys])
+    out = []
+    for i, (t, x, y) in enumerate(keys):
+        key: dict[str, Any] = {"time": round(t, 4), "x": round(x, 3), "y": round(y, 3)}
+        if i + 1 < len(keys):
+            t1, x1, y1 = keys[i + 1]
+            dt = (t1 - t) / 3
+            key["curve"] = [round(t + dt, 4), round(x + mx[i] * dt, 3), round(t1 - dt, 4),
+                            round(x1 - mx[i + 1] * dt, 3), round(t + dt, 4), round(y + my[i] * dt, 3),
+                            round(t1 - dt, 4), round(y1 - my[i + 1] * dt, 3)]
+        out.append(key)
+    return out
+
+
+def _triples(raw: Any, what: str) -> list[tuple[float, ...]]:
+    try:
+        out = [(float(a), float(b), float(c)) for a, b, c in raw]
+    except (TypeError, ValueError):
+        raise SpecError(f"{what}: expected [[time, x, y], ...]") from None
+    if not out:
+        raise SpecError(f"{what}: empty")
+    return out
 
 
 def _blink_track(blinks: list[float], closed: float) -> list[dict[str, Any]]:
@@ -341,11 +433,14 @@ def joint_limits(doc: dict[str, Any], spec: dict[str, Any] | None = None,
     covers = covers or {}
     setup = {b["name"]: float(b.get("rotation", 0.0)) for b in doc["bones"]}
     out: dict[str, dict[str, Any]] = {}
-    for j in _tip_joints(doc):
-        if j["hard"]:
-            cover = covers.get(j["bone"])
-            out[j["bone"]] = {"limit": COVERED_LIMIT if cover else HARD_SEAM_LIMIT, "hard": True,
-                              **({"cover": cover} if cover else {})}
+    hard = [j for j in _tip_joints(doc) if j["hard"]]
+    proven = proven_bends(doc, [j["bone"] for j in hard])
+    for j in hard:
+        cover = covers.get(j["bone"])
+        lim = COVERED_LIMIT if cover else HARD_SEAM_LIMIT
+        out[j["bone"]] = {"limit": max(lim, proven[j["bone"]]), "hard": True,
+                          **({"cover": cover} if cover else {}),
+                          **({"proven": round(proven[j["bone"]])} if proven[j["bone"]] > lim else {})}
     ik_bones = {b for c in doc.get("ik") or [] for b in c.get("bones") or []}
     by = {b["name"]: b for b in doc["bones"]}
     for b in welded or []:
@@ -368,6 +463,33 @@ def joint_limits(doc: dict[str, Any], spec: dict[str, Any] | None = None,
     for b, j in out.items():
         j["setup"] = setup[b]
         j["lo"], j["hi"] = bend_range(setup[b], j["limit"])
+    return out
+
+
+PROVEN_STEP = 0.1
+
+
+def proven_bends(doc: dict[str, Any], joints: list[str]) -> dict[str, float]:
+    """Largest bend (deg, vs setup, measured between the joint's and its parent's world x axes) the rig's own
+    animations already put each joint through: art that ships bent that far is drawn to bend there."""
+    parent = {b["name"]: b.get("parent") for b in doc["bones"]}
+    joints = [j for j in joints if parent.get(j)]
+    out = dict.fromkeys(joints, 0.0)
+    if not joints:
+        return out
+
+    def rel(p: Pose) -> dict[str, float]:
+        return {j: math.degrees(math.atan2(p.world[j][0][1, 0], p.world[j][0][0, 0])
+                                - math.atan2(p.world[parent[j]][0][1, 0], p.world[parent[j]][0][0, 0]))
+                for j in joints}
+
+    base = rel(Pose(doc))
+    for name, a in (doc.get("animations") or {}).items():
+        end = max((float(k.get("time", 0)) for tl in (a.get("bones") or {}).values() for tr in tl.values()
+                   for k in tr), default=0.0)
+        for i in range(int(end / PROVEN_STEP + 1e-6) + 1):
+            for j, v in rel(Pose(doc, name, i * PROVEN_STEP)).items():
+                out[j] = max(out[j], abs((v - base[j] + 180) % 360 - 180))
     return out
 
 
@@ -497,26 +619,34 @@ def build_animation(spec: dict[str, Any], bone_map: dict[str, Any] | None = None
                     limits: dict[str, dict[str, Any]] | None = None,
                     hang: list[dict[str, Any]] | None = None,
                     skirt: dict[str, Any] | None = None,
-                    follow: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    names = {**DEFAULT_BONES, **(spec.get("bones") or {}), **(bone_map or {})}
+                    follow: list[dict[str, Any]] | None = None,
+                    cycle: dict[str, Any] | None = None) -> dict[str, Any]:
+    names = {**(DEFAULT_BONES if bone_map is None else bone_map), **(spec.get("bones") or {})}
     k = float(spec.get("ease", 0.4))
     smooth = spec.get("graph", "smooth") != "ease"
     off = spec.get("offset") or {}
     end = float(spec["duration"])
+    loop = bool(spec.get("loop", bool(cycle and cycle["loop"])))
+    hold = not loop and bool(spec.get("hold", bool(cycle and cycle["hold"])))
     sway = _pairs(spec.get("sway_signal") or [[0, 0], [end - 0.3, 0]], "sway_signal")
     bones: dict[str, dict[str, list]] = {}
 
     def track(keys: list[tuple[float, float]]) -> list[dict[str, Any]]:
         return _rotate_track(keys, k, smooth)
 
-    def rot(name: str, keys: list[tuple[float, float]]) -> None:
-        bones.setdefault(name, {})["rotate"] = track(keys)
+    def rot(name: str | None, keys: list[tuple[float, float]]) -> None:
+        if name:
+            bones.setdefault(name, {})["rotate"] = track(keys)
 
     hip = spec.get("hip") or {}
+    if not names.get("hip"):
+        hip = {}
     # Zero-depth entries are anchors a key-list habit adds ([0, 0], [end, 0]); only real dips are beats.
     beats = sorted(b for b in _pairs(spec["bounce"], "bounce") if abs(b[1]) > 1e-6) if spec.get("bounce") else []
     if beats and not (beats[0][0] > 0 and beats[-1][0] < end):
         raise SpecError(f"bounce: beat times must lie inside (0, {end:g})")
+    if beats and not names.get("hip"):
+        raise SpecError("bounce needs a hip bone; the rig has none (no leg IK pair, no hip/pelvis bone)")
     if beats:
         hip_tl = bones.setdefault(names["hip"], {})
         hip_tl["translatey"] = track(_bounce(beats, end))
@@ -536,18 +666,50 @@ def build_animation(spec: dict[str, Any], bone_map: dict[str, Any] | None = None
         rot(names["chest"], _scaled(sway, -float(lean.get("chest", 0)), lag * 1.5))
         rot(names["neck"], _scaled(sway, float(lean.get("neck", 0)), lag * 2))
         rot(names["head"], _scaled(sway, float(lean.get("head", 0)), lag * 2.5))
+    if cycle:
+        from .spine_cycle import cycle_keys
+
+        for b, tl in cycle_keys(cycle, end, limits).items():
+            cur = bones.setdefault(b, {})
+            if "translate" in tl:
+                cur.pop("translatex", None)
+                cur.pop("translatey", None)
+            cur.update(tl)
     lags = spec.get("arm_lag") or {}
     for bone, keys in (spec.get("arm_keys") or {}).items():
-        pts = _pinned(_pairs(keys, f"arm_keys.{bone}"))
+        raw_pts = _pairs(keys, f"arm_keys.{bone}")
+        pts = _closed(raw_pts, end, True, (0.0,)) if loop else _pinned(raw_pts)
         if limits and bone in limits:
             lo, hi = limits[bone]["lo"], limits[bone]["hi"]
             pts = [(t, min(max(v, lo), hi)) for t, v in pts]
         if smooth:
             pts = _drift_holds(pts)
         d = float(lags.get(bone, 0.0)) + float(off.get("arms", 0.0))
-        rot(bone, [pts[0], *((t + d, v) for t, v in pts[1:])])
+        shifted = [pts[0], *((t + d, v) for t, v in pts[1:])]
+        rot(bone, _closed(shifted, end, True, (0.0,)) if loop else shifted)
+    explicit = set(spec.get("arm_keys") or {})
+    for bone, chans in (spec.get("keys") or {}).items():
+        if not isinstance(chans, dict):
+            raise SpecError(f"keys.{bone}: expected {{rotate|translate|scale: [...]}}")
+        for ch, raw in chans.items():
+            if ch == "rotate":
+                pts = _closed(_pairs(raw, f"keys.{bone}.rotate"), end, loop, (0.0,), hold)
+                if limits and bone in limits:
+                    pts = [(t, min(max(v, limits[bone]["lo"]), limits[bone]["hi"])) for t, v in pts]
+                rot(bone, _drift_holds(pts) if smooth else pts)
+                explicit.add(bone)
+            elif ch in ("translate", "scale"):
+                rest = (1.0, 1.0) if ch == "scale" else (0.0, 0.0)
+                cur = bones.setdefault(bone, {})
+                if ch == "translate":
+                    cur.pop("translatex", None)
+                    cur.pop("translatey", None)
+                cur[ch] = _xy_smooth(_closed(_triples(raw, f"keys.{bone}.{ch}"), end, loop, rest, hold), smooth,
+                                     k)
+            else:
+                raise SpecError(f"keys.{bone}: unknown channel {ch!r} (rotate, translate, scale)")
     for f in follow or []:
-        if f["bone"] not in (spec.get("arm_keys") or {}):
+        if f["bone"] not in explicit:
             rot(f["bone"], _follow_keys(bones, f, end))
     skirt_bones = {b for c in (skirt or {}).get("chains") or [] for b in c}
     for chain in spec.get("secondary") or []:
@@ -557,27 +719,33 @@ def build_animation(spec: dict[str, Any], bone_map: dict[str, Any] | None = None
             gain = float(chain["gain"]) * (1 + float(chain.get("falloff", 0)) * i)
             rot(bone, _scaled(sway, gain, min(float(chain.get("lag", 0)) * (i + 1), max(end - sway[-1][0], 0.0))))
     for h in hang or []:
-        if h["bone"] not in (spec.get("arm_keys") or {}):
+        if h["bone"] not in explicit:
             rot(h["bone"], _hang_keys(bones, h, end))
     if skirt:
         from .spine_skirt import skirt_keys
 
-        for b, keys in skirt_keys(bones, skirt, names["hip"], end).items():
+        for b, keys in skirt_keys(bones, skirt, names.get("hip") or skirt.get("hip"), end).items():
             rot(b, keys)
     if spec.get("blinks"):
         blink = _blink_track(spec["blinks"], float(spec.get("blink_closed_scale", 0.15)))
-        for eye in names["eyes"]:
+        for eye in names.get("eyes") or []:
             bones.setdefault(eye, {})["scale"] = blink
 
     for name, tl in bones.items():
         for kind, track in tl.items():
             if track[-1]["time"] > end + 1e-6:
                 raise SpecError(f"{name}.{kind} has a key at {track[-1]['time']}s, after duration {end}s")
+            first = {k2: v for k2, v in track[0].items() if k2 not in ("time", "curve")}
+            if loop and track[0]["time"] > 1e-6:
+                track.insert(0, {"time": 0.0, **first})
             if track[-1]["time"] < end - 1e-6:
-                # Last key pinned at `end` so the clip lasts exactly `duration` and rests at setup pose.
+                # Last key pinned at `end` so the clip lasts exactly `duration` and rests at setup pose (looping:
+                # where it started).
                 track[-1].pop("curve", None)
                 last = {k2: v for k2, v in track[-1].items() if k2 not in ("time", "curve")}
-                track.append({"time": end, **last})
+                track.append({"time": end, **(first if loop else last)})
+            elif loop:
+                track[-1] = {"time": track[-1]["time"], **first}
     return {"bones": bones}
 
 
@@ -618,8 +786,10 @@ def add_animation(text: str, name: str, anim: dict[str, Any]) -> str:
     return text[:last_end] + ',"animations":{' + entry + "}" + text[last_end:]
 
 
-def check_animation(doc: dict[str, Any], name: str, tol: float = 1e-3) -> list[str]:
-    """Problems: unknown bones, and frame 0 / last frame not matching setup pose."""
+def check_animation(doc: dict[str, Any], name: str, tol: float = 1e-3, loop: bool = False,
+                    hold: bool = False) -> list[str]:
+    """Problems: unknown bones, and frame 0 / last frame not matching setup pose (looping: each other; holding a
+    last pose: frame 0 only)."""
     anim = doc["animations"][name]
     known = {b["name"] for b in doc["bones"]}
     problems = [f"unknown bone: {b}" for b in sorted(set(anim.get("bones", {})) - known)]
@@ -627,13 +797,14 @@ def check_animation(doc: dict[str, Any], name: str, tol: float = 1e-3) -> list[s
         return problems
     end = max((k.get("time", 0) for tl in anim.get("bones", {}).values() for tr in tl.values() for k in tr),
               default=0.0)
-    setup = Pose(doc)
-    for t in (0.0, end):
+    setup = Pose(doc, name, 0.0) if loop else Pose(doc)
+    for t in ((end,) if loop else (0.0,) if hold else (0.0, end)):
         pose = Pose(doc, name, t)
         worst = max((float(np.abs(np.r_[pose.world[b][0].ravel() - setup.world[b][0].ravel(),
                                          pose.world[b][1] - setup.world[b][1]]).max()), b) for b in setup.world)
         if worst[0] > tol:
-            problems.append(f"t={t:g}s is not setup pose ({worst[1]} off by {worst[0]:.3g})")
+            problems.append(f"t={t:g}s is not {'the first frame' if loop else 'setup pose'} ({worst[1]} off by "
+                            f"{worst[0]:.3g})")
     return problems
 
 
@@ -654,6 +825,7 @@ def _chains(doc: dict[str, Any]) -> list[list[str]]:
     def stem(n: str) -> str:
         return re.sub(r"\d+$", "", n)
 
+    driven = driven_bones(doc)
     seen: set[str] = set()
     chains = []
     for b in doc["bones"]:
@@ -670,9 +842,25 @@ def _chains(doc: dict[str, Any]) -> list[list[str]]:
                 break
             run.append(nxt[0])
         if len(run) >= 2:
-            chains.append(run)
             seen.update(run)
+            if not driven & set(run):
+                chains.append(run)
     return chains
+
+
+def driven_bones(doc: dict[str, Any]) -> set[str]:
+    """Bones a path, transform (any non-zero mix) or physics constraint moves: keys on them fight the constraint."""
+    out: set[str] = set()
+    for c in doc.get("path") or []:
+        if c.get("mixRotate", 1) or c.get("mixX", 1) or c.get("mixY", c.get("mixX", 1)):
+            out.update(c.get("bones") or [])
+    for c in doc.get("transform") or []:
+        mixes = [c.get(k, 1) for k in ("mixRotate", "mixX", "mixScaleX", "mixShearY")]
+        mixes += [c.get("mixY", c.get("mixX", 1)), c.get("mixScaleY", c.get("mixScaleX", 1))]
+        if any(mixes):
+            out.update(c.get("bones") or [])
+    out.update(c["bone"] for c in doc.get("physics") or [] if c.get("bone"))
+    return out
 
 
 def leg_chains(doc: dict[str, Any]) -> list[dict[str, Any]]:
@@ -705,6 +893,75 @@ def hip_bone(doc: dict[str, Any]) -> str | None:
 
     right = set(up(parent.get(legs[1]["bones"][0])))
     return next((n for n in up(parent.get(legs[0]["bones"][0])) if n in right), None)
+
+
+def torso_bones(doc: dict[str, Any]) -> dict[str, Any]:
+    """Bones the sway drives, found by structure: hip = the legs' common parent (else a hip/pelvis-named bone, else
+    the trunk's parent), trunk = bones with length walked upward from it; roles go by exact name when the rig uses
+    the usual ones, else by position. Eyes = bones an existing blink scales, else eye-named bones under the head."""
+    by = {b["name"]: b for b in doc["bones"]}
+    kids: dict[str | None, list[str]] = {}
+    for b in doc["bones"]:
+        kids.setdefault(b.get("parent"), []).append(b["name"])
+    angles = _world_angles(doc)
+
+    def tilt(n: str) -> float:
+        return abs((angles[n] - 90 + 180) % 360 - 180)
+
+    def up_child(n: str | None, through_empty: bool = False) -> str | None:
+        found = []
+        for k in kids.get(n, []):
+            if by[k].get("length", 0) > 0:
+                if tilt(k) <= 45:
+                    found.append(k)
+            elif through_empty:
+                c = up_child(k, True)
+                if c:
+                    found.append(c)
+        # Two upward branches is a head with hair strands, not more trunk.
+        if not through_empty and len(found) > 1:
+            return None
+        return min(found, key=tilt, default=None)
+
+    hip = hip_bone(doc) or next((b["name"] for b in doc["bones"]
+                                 if b["name"].lower() in ("hip", "hips", "pelvis")), None)
+    first = up_child(hip, True) if hip else next(
+        (b["name"] for b in doc["bones"] if b.get("length", 0) > 0 and tilt(b["name"]) <= 45), None)
+    if first and not hip:
+        p = by[first].get("parent")
+        hip = p if p and by[p].get("parent") else None
+    trunk: list[str] = []
+    n = first
+    while n and len(trunk) < 8:
+        trunk.append(n)
+        n = None if n.lower() == "head" else up_child(n)
+    roles: dict[str, Any] = {"hip": hip, **dict.fromkeys(TORSO_ROLES)}
+    lower = {b.lower(): b for b in trunk}
+    for r in TORSO_ROLES:
+        roles[r] = lower.get(r)
+    k = len(trunk)
+    spots = {"spine": 0 if k else None, "head": k - 1 if k >= 2 else None,
+             "chest": (1 if k == 3 else k - 3) if k >= 3 else None, "neck": k - 2 if k >= 4 else None}
+    for r, i in spots.items():
+        if roles[r] is None and i is not None and trunk[i] not in roles.values():
+            roles[r] = trunk[i]
+
+    blinkers = sorted({b for a in (doc.get("animations") or {}).values() for b, tl in (a.get("bones") or {}).items()
+                       if _is_eye(b) and "scale" in tl and b in by})
+    if not blinkers and roles["head"]:
+        stack, under = [roles["head"]], []
+        while stack:
+            c = stack.pop()
+            under.append(c)
+            stack += kids.get(c, [])
+        blinkers = [b["name"] for b in doc["bones"] if b["name"] in under and _is_eye(b["name"])]
+    roles["eyes"] = blinkers
+    return roles
+
+
+def _is_eye(name: str) -> bool:
+    n = name.lower()
+    return "eye" in n and "brow" not in n
 
 
 def knee_gap(doc: dict[str, Any], anim: str, step: float = 0.02) -> dict[str, Any] | None:
@@ -755,6 +1012,8 @@ def rig_summary(doc: dict[str, Any], limit: int = 3000, covers: dict[str, str] |
             seam = ("welded (skin and clothing are 2-bone weighted meshes here, they bend as one piece; bend it "
                     "naturally)" if lim.get("welded")
                     else f"hard seam covered by {lim['cover']} (seam hidden, bend it)" if lim.get("cover")
+                    else f"hard seam, but the rig's own animations bend it {lim['proven']}° (the art is drawn "
+                         "to bend there)" if lim.get("proven")
                     else "hard seam (region/single-bone mesh)")
             lines.append(f"joint {j['bone']}: {seam}, setup {j['setup']:.1f}°, {how}, "
                          f"offset range [{lim['lo']:.1f}, {lim['hi']:.1f}]°, no hyperextension")
@@ -767,6 +1026,15 @@ def rig_summary(doc: dict[str, Any], limit: int = 3000, covers: dict[str, str] |
             f"{c['name']} {'>'.join(c['bones'])} -> {c['target']}"
             f"{' bend+' if c.get('bendPositive', True) else ' bend-'}{' stretch' if c.get('stretch') else ''}"
             for c in doc["ik"]))
+    from .spine_cycle import arm_chains, foot_drivers
+
+    feet = foot_drivers(doc)
+    if len(feet) >= 2:
+        arms = arm_chains(doc)
+        lines.append("Cycle (walk/run), jump and action drive: feet "
+                     + ", ".join(f"{f['driver']} (moves {f['ik']})" for f in feet)
+                     + "; arms " + (", ".join(f"{a['upper']}>{a['lower']}" for a in arms) or "none found (key them)")
+                     + f"; leg length {sum(f['length'] for f in feet) / len(feet):.0f}px")
     from .spine_skirt import skirt_chains
 
     generated = [f"skirt chains {' ; '.join('>'.join(c) for c in skirt_chains(doc))} (damped spring)"
@@ -776,6 +1044,17 @@ def rig_summary(doc: dict[str, Any], limit: int = 3000, covers: dict[str, str] |
                  f"held accessories {', '.join(held_bones(doc))} (hang by gravity)" if held_bones(doc) else ""]
     if any(generated):
         lines.append("Generated, do not key: " + "; ".join(g for g in generated if g))
+    driven = driven_bones(doc)
+    if driven:
+        lines.append(f"Constraint-driven, do not key: {', '.join(sorted(driven))[:600]}")
+    physics = [c["bone"] for c in doc.get("physics") or [] if c.get("bone")]
+    if physics:
+        lines.append(f"Physics (simulated in game, still in the preview; do not judge their motion): "
+                     f"{', '.join(physics)[:400]}")
+    torso = torso_bones(doc)
+    lines.append("Torso the sway drives (spec 'bones' overrides): " + ", ".join(
+        f"{r}={torso[r] or 'none'}" for r in ("hip", *TORSO_ROLES))
+        + f"; blink eyes={','.join(torso['eyes']) or 'none (blinks ignored)'}")
     legs = leg_chains(doc)
     hip = hip_bone(doc)
     if hip:
@@ -783,11 +1062,12 @@ def rig_summary(doc: dict[str, Any], limit: int = 3000, covers: dict[str, str] |
                      + ", ".join(f"{c['ik']} {'>'.join(c['bones'])} L{c['length']:.0f}" for c in legs)
                      + f"); knee gap at setup {legs[1]['x'] - legs[0]['x']:.0f}px")
     skirt_bones = {b for c in skirt_chains(doc) for b in c}
-    candidates = [c for c in chains if not set(c) & skirt_bones]
+    trunk = {b for r in TORSO_ROLES if (b := torso[r])}
+    candidates = [c for c in chains if not set(c) & (skirt_bones | trunk)]
     if candidates:
         lines.append("Chains (secondary candidates): " + "; ".join(">".join(c) for c in candidates))
     for aname, anim in (doc.get("animations") or {}).items():
-        eyes = {b: tl["scale"] for b, tl in anim.get("bones", {}).items() if "eye" in b.lower() and "scale" in tl}
+        eyes = {b: tl["scale"] for b, tl in anim.get("bones", {}).items() if _is_eye(b) and "scale" in tl}
         if eyes:
             xs = sorted({round(float(k.get("x", 1)), 3) for keys in eyes.values() for k in keys})
             lines.append(f"Blink in '{aname}': scale on {', '.join(sorted(eyes))}, x values {xs}")

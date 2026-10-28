@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 from ..config import _default_ffmpeg_exe
 from ..contracts import BlobRef, Outputs, StepContext, StepError, StepResult
 from . import spine_anim as sa
+from . import spine_cycle as sc
 from . import spine_runtime as rt
 from . import spine_skirt as sk
 from . import spine_weld as sw
@@ -225,11 +226,11 @@ def render_knee_zoom(doc: dict[str, Any], images: rt.RegionImages, anim: str, t:
 
 class SpineRigSummary(OpExecutor):
     kind = "op.spine_rig_summary"
-    version = "2"
+    version = "5"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         _, doc = await read_skeleton(ctx, inputs)
-        covers = sa.joint_covers(doc, skin_parts(params), str(params.get("joint_cover") or "auto"))
+        covers = sa.joint_covers(doc, skin_parts(params, doc), str(params.get("joint_cover") or "auto"))
         welded = await welded_joints(ctx, inputs)
         text = await asyncio.to_thread(sa.rig_summary, doc, int(params.get("limit", 3000)), covers, welded)
         ref = await ctx.blobs.put_bytes(text.encode("utf-8"), name="rig_summary.txt", mime="text/plain")
@@ -238,8 +239,30 @@ class SpineRigSummary(OpExecutor):
                                                             "hip": sa.hip_bone(doc)})
 
 
-def skin_parts(params: dict[str, Any]) -> list[str]:
-    return [p for p in re.split(r"[,\s]+", str(params.get("skin") or "")) if p]
+def skin_parts(params: dict[str, Any], doc: dict[str, Any] | None = None) -> list[str]:
+    raw = str(params.get("skin") or "").strip()
+    if raw.lower() == "auto":
+        return auto_skin_parts(doc) if doc else []
+    return [p for p in re.split(r"[,\s]+", raw) if p]
+
+
+def auto_skin_parts(doc: dict[str, Any]) -> list[str]:
+    """First skin of each 'category/name' group, skipping a group whose slots overlap one already worn (a dress over
+    bottoms); skin/body groups go first so the bare-skin view keeps working. No groups: the first non-default skin."""
+    skins = [s for s in doc.get("skins") or [] if s.get("name") != "default"]
+    first: dict[str, dict[str, Any]] = {}
+    for s in skins:
+        first.setdefault(s["name"].split("/")[0] if "/" in s["name"] else "", s)
+    if "" in first and len(first) > 1:
+        first.pop("")
+    picked, used = [], set()
+    for s in sorted(first.values(), key=lambda s: not any(k in s["name"].lower() for k in ("skin", "body"))):
+        slots = set(s.get("attachments") or {})
+        if slots & used:
+            continue
+        picked.append(s["name"])
+        used |= slots
+    return picked
 
 
 async def welded_joints(ctx: StepContext, inputs: Outputs) -> list[str]:
@@ -251,7 +274,7 @@ async def welded_joints(ctx: StepContext, inputs: Outputs) -> list[str]:
 
 class SpineWeldJoints(OpExecutor):
     kind = "op.spine_weld_joints"
-    version = "2"
+    version = "3"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         text, doc = await read_skeleton(ctx, inputs)
@@ -279,7 +302,7 @@ class SpineWeldJoints(OpExecutor):
 
 class SpineAddAnim(OpExecutor):
     kind = "op.spine_add_anim"
-    version = "2"
+    version = "6"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         text, _ = await read_skeleton(ctx, inputs)
@@ -287,7 +310,8 @@ class SpineAddAnim(OpExecutor):
         if isinstance(spec, dict) and isinstance(spec.get("spec"), dict):
             spec = spec["spec"]  # a review result {score, critique, spec}
         name = str(params.get("name") or "anim").strip()
-        covers = sa.joint_covers(json.loads(text), skin_parts(params), str(params.get("joint_cover") or "auto"))
+        skel = json.loads(text)
+        covers = sa.joint_covers(skel, skin_parts(params, skel), str(params.get("joint_cover") or "auto"))
         res = await asyncio.to_thread(add_anim, text, spec, name, covers, await welded_joints(ctx, inputs),
                                       str(params.get("hang") or "auto"))
         stem = Path(_one(inputs, "skeleton").name or "skeleton.json").stem
@@ -304,26 +328,36 @@ def add_anim(text: str, spec: Any, name: str, covers: dict[str, str] | None = No
     if not isinstance(spec, dict) or "duration" not in spec:
         raise StepError("spec_invalid", "motion spec must be an object with at least 'duration'")
     doc = json.loads(text)
-    hip = sa.hip_bone(doc)
-    bone_map = {"hip": hip} if hip and not (spec.get("bones") or {}).get("hip") else None
+    bone_map = sa.torso_bones(doc)
+    # Keys on constraint-driven bones fight the constraint every frame: dropped, and reported back to the reviewer.
+    driven = sa.driven_bones(doc)
+    dropped = sorted(b for b in (spec.get("keys") or {}) if b in driven)
+    if dropped:
+        spec = {**spec, "keys": {b: v for b, v in spec["keys"].items() if b not in driven}}
     try:
         plan = sa.hang_plan(doc, spec, hang)
         swing = sk.skirt_plan(doc, spec, skirt)
         fingers = sa.follow_plan(doc, spec)
-        anim = sa.build_animation(spec, bone_map, sa.joint_limits(doc, spec, covers, welded), plan, swing, fingers)
+        cycle = sc.cycle_plan(doc, spec, bone_map)
+        anim = sa.build_animation(spec, bone_map, sa.joint_limits(doc, spec, covers, welded), plan, swing, fingers,
+                                  cycle)
     except (sa.SpecError, KeyError, TypeError, ValueError) as e:
         raise StepError("spec_invalid", f"motion spec: {e}") from e
     new_text = sa.add_animation(text, name, anim)
-    problems = sa.check_animation(json.loads(new_text), name)
+    loop = bool(spec.get("loop", bool(cycle and cycle["loop"])))
+    hold = not loop and bool(spec.get("hold", bool(cycle and cycle["hold"])))
+    problems = sa.check_animation(json.loads(new_text), name, loop=loop, hold=hold)
     if problems:
         raise StepError("spec_invalid", "; ".join(problems[:6]), detail={"problems": problems})
     return {"text": new_text, "anim": anim, "hang": [h["bone"] for h in plan],
-            "skirt": swing["chains"] if swing else [], "follow": fingers}
+            "skirt": swing["chains"] if swing else [], "follow": fingers, "loop": loop, "hold": hold,
+            "dropped": dropped,
+            "cycle": cycle["kind"] if cycle else None}
 
 
 class SpineRenderStrip(OpExecutor):
     kind = "op.spine_render_strip"
-    version = "1"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         _, doc = await read_skeleton(ctx, inputs)
@@ -331,7 +365,7 @@ class SpineRenderStrip(OpExecutor):
         anim = params.get("anim") or None
         dur = animation_duration(doc, anim) if anim else 0.0
         times = _times(params.get("times", "auto"), dur, int(params.get("count", 8))) if anim else [0.0]
-        parts = skin_parts(params)
+        parts = skin_parts(params, doc)
         strip, meta = await asyncio.to_thread(render_strip, doc, images, anim, times, parts,
                                               int(params.get("height", 560)))
         if meta["missing_skins"]:

@@ -1,0 +1,226 @@
+"""Skin variants of an existing Spine skeleton: render the setup pose, let an image editor (Flux.2 Klein) restyle the
+whole figure at once so parts stay consistent, then match each atlas region's colour statistics to the pixels it
+owns in the edit and apply that to the region's texture. The art (lines, shading) is kept and nothing moves, so the
+variant atlas drops in for the original one; hidden regions take the whole-figure map."""
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+from PIL import Image, ImageFilter
+
+from ..contracts import Outputs, StepContext, StepError, StepResult
+from . import spine_runtime as rt
+from .executors import OpExecutor, _images_in, _put_png
+from .spine import _over
+from .spine_ref import read_skeleton, region_images, skin_parts
+
+BG = (255, 255, 255, 255)
+
+
+def setup_render(doc: dict[str, Any], images: rt.RegionImages, parts: list[str], height: int = 1024
+                 ) -> tuple[Image.Image, np.ndarray, list[str]]:
+    """(setup pose RGBA on transparent, owner map: index into paths of the top region per pixel or -1, paths)."""
+    skins, _ = rt.resolve_skins(doc, parts)
+    atts = rt.skin_attachments(doc, skins)
+    pose = rt.Pose(doc)
+    pts = rt.attachment_points(pose, atts)
+    if not len(pts):
+        raise StepError("op_bad_input", "nothing visible with these skins")
+    (x0, y0), (x1, y1) = pts.min(0), pts.max(0)
+    pad = 0.04 * max(x1 - x0, y1 - y0)
+    box = (x0 - pad, y0 - pad, x1 + pad, y1 + pad)
+    scale = height / (box[3] - box[1])
+    canvas = None
+    owner = None
+    paths: list[str] = []
+    for slot, path, layer in rt.layers(pose, atts, images, box, scale):
+        if canvas is None:
+            canvas = Image.new("RGBa", layer.size, (0, 0, 0, 0))
+            owner = np.full((layer.height, layer.width), -1, np.int32)
+        if slot.get("blend") == "additive":
+            continue
+        canvas = _over(canvas, layer)
+        if path not in paths:
+            paths.append(path)
+        owner[np.asarray(layer)[..., 3] > 128] = paths.index(path)
+    if canvas is None:
+        raise StepError("op_bad_input", "nothing visible with these skins")
+    return canvas.convert("RGBA"), owner, paths
+
+
+def on_background(img: Image.Image) -> Image.Image:
+    bg = Image.new("RGBA", img.size, BG)
+    bg.alpha_composite(img)
+    return bg.convert("RGB")
+
+
+def _content_box(rgb: np.ndarray) -> tuple[int, int, int, int] | None:
+    ys, xs = np.nonzero(np.abs(rgb.astype(np.int16) - 255).max(2) > 30)
+    return None if len(xs) < 50 else (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
+
+
+def align_edit(render: Image.Image, edited: Image.Image) -> Image.Image:
+    """The editor resizes and may shift the figure a little: map its content box onto the render's."""
+    target = _content_box(np.asarray(on_background(render)))
+    src = _content_box(np.asarray(edited.convert("RGB")))
+    if target is None or src is None:
+        return edited.convert("RGB").resize(render.size, Image.Resampling.LANCZOS)
+    out = Image.new("RGB", render.size, BG[:3])
+    tw, th = target[2] - target[0], target[3] - target[1]
+    out.paste(edited.convert("RGB").crop(src).resize((tw, th), Image.Resampling.LANCZOS), target[:2])
+    return out
+
+
+def _interior(owner: np.ndarray, alpha: np.ndarray) -> np.ndarray:
+    # Pixels whose 3x3 neighbourhood is one region and opaque: no outline blending, tolerant of a 1px shift.
+    ok = (alpha >= 250) & (owner >= 0)
+    h, w = owner.shape
+    pad = np.pad(owner, 1, constant_values=-2)
+    for dy in (0, 1, 2):
+        for dx in (0, 1, 2):
+            ok &= pad[dy:dy + h, dx:dx + w] == owner
+    return ok
+
+
+# BT.601 full-range: luma apart from chroma, so a recolour can keep the art's shading contrast.
+_YCC = np.array([[0.299, 0.587, 0.114], [-0.168736, -0.331264, 0.5], [0.5, -0.418688, -0.081312]])
+_RGB = np.linalg.inv(_YCC)
+# Gain limits on (luma, chroma) spread: the editor adds texture (metal glints, cloth weave) that the flat art does
+# not have, and a full std match would turn that into noise; chroma may grow more (grey cloth -> saturated red).
+GAIN = ((0.7, 1.4), (0.4, 3.0))
+
+
+def _stats(ycc: np.ndarray) -> np.ndarray:
+    return np.stack([ycc.mean(0), ycc.std(0) + 1e-3])
+
+
+def colour_maps(render: Image.Image, edited: Image.Image, owner: np.ndarray, paths: list[str]
+                ) -> tuple[dict[str, np.ndarray], np.ndarray, dict[str, int]]:
+    """Per region a (2, 2, 3) map [[src mean, src std], [dst mean, dst std]] in YCbCr over the pixels the region
+    owns (statistics, not per-pixel fits: the edit need not line up exactly), the whole-figure map for regions
+    drawn but hidden, and pixels used per region."""
+    blur = ImageFilter.BoxBlur(1)
+    src = (np.asarray(on_background(render), np.float64) / 255) @ _YCC.T
+    dst = (np.asarray(edited.filter(blur), np.float64) / 255) @ _YCC.T
+    mask = _interior(owner, np.asarray(render)[..., 3])
+    if mask.sum() < 50:
+        raise StepError("op_bad_input", "the setup render has almost no opaque interior to learn colours from")
+    whole = np.stack([_stats(src[mask]), _stats(dst[mask])])
+    maps, used = {}, {}
+    for i, p in enumerate(paths):
+        m = mask & (owner == i)
+        n = int(m.sum())
+        used[p] = n
+        if n >= 20:
+            maps[p] = np.stack([_stats(src[m]), _stats(dst[m])])
+        else:
+            maps[p] = whole
+    return maps, whole, used
+
+
+def _apply(rgb: np.ndarray, m: np.ndarray) -> np.ndarray:
+    (mu_s, sd_s), (mu_t, sd_t) = m
+    gain = sd_t / sd_s
+    gain[0] = np.clip(gain[0], *GAIN[0])
+    gain[1:] = np.clip(gain[1:], *GAIN[1])
+    ycc = (rgb @ _YCC.T - mu_s) * gain + mu_t
+    return ycc @ _RGB.T
+
+
+def recolor_page(page: Image.Image, regions: list[Any], maps: dict[str, np.ndarray], whole: np.ndarray,
+                 pma: bool) -> Image.Image:
+    """Regions the render never drew (other skins) keep their colours."""
+    arr = np.asarray(page.convert("RGBA"), np.float64) / 255
+    rgb, a = arr[..., :3], arr[..., 3:]
+    if pma:
+        rgb = np.where(a > 0, rgb / np.maximum(a, 1e-6), 0)
+    out = rgb.copy()
+    for r in regions:
+        m = maps.get(r.name)
+        if m is None:
+            continue
+        w, h = (r.height, r.width) if r.degrees in (90, 270) else (r.width, r.height)
+        out[r.y:r.y + h, r.x:r.x + w] = _apply(rgb[r.y:r.y + h, r.x:r.x + w], m)
+    out = out.clip(0, 1)
+    if pma:
+        out = out * a
+    return Image.fromarray((np.concatenate([out, a], 2) * 255 + 0.5).astype(np.uint8), "RGBA")
+
+
+def rename_pages(atlas_text: str, names: dict[str, str]) -> str:
+    return "\n".join(names.get(line.strip(), line) for line in atlas_text.splitlines()) + "\n"
+
+
+class SpineSetupRender(OpExecutor):
+    """Setup pose on white, the input for an image editor."""
+    kind = "op.spine_setup_render"
+    version = "1"
+
+    async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        _, doc = await read_skeleton(ctx, inputs)
+        images = region_images(ctx, inputs)
+        img, _, paths = await asyncio.to_thread(setup_render, doc, images,
+                                                skin_parts({"skin": params.get("skin", "auto")}, doc),
+                                                int(params.get("height", 1024)))
+        ref = await _put_png(ctx, on_background(img), "setup.png")
+        return StepResult(outputs={"images": [ref]}, meta={"size": list(img.size), "regions": len(paths)})
+
+
+class SpineSkinVariant(OpExecutor):
+    """Per edited render: a recoloured copy of every atlas page, the atlas pointing at them, and a preview."""
+    kind = "op.spine_skin_variant"
+    version = "2"
+
+    async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        _, doc = await read_skeleton(ctx, inputs)
+        images = region_images(ctx, inputs)
+        atlas_ref = inputs["atlas"][0]
+        atlas_text = await asyncio.to_thread(ctx.blobs.path(atlas_ref.hash).read_text, encoding="utf-8-sig")
+        edits = [Image.open(ctx.blobs.path(r.hash)) for r in _images_in(inputs, "edits")]
+        parts = skin_parts({"skin": params.get("skin", "auto")}, doc)
+        render, owner, paths = await asyncio.to_thread(setup_render, doc, images, parts,
+                                                       int(params.get("height", 1024)))
+        keep = [w.strip().lower() for w in str(params.get("keep", "eye,mouth")).split(",") if w.strip()]
+        stem = (atlas_ref.name or "skeleton").rsplit(".", 1)[0]
+        ctx.job_dir.mkdir(parents=True, exist_ok=True)
+        out: dict[str, list] = {"atlas": [], "pages": [], "previews": [], "report": []}
+        report = []
+        for i, edited in enumerate(edits, 1):
+            tag = f"v{i}"
+            aligned = align_edit(render, edited)
+            maps, whole, used = await asyncio.to_thread(colour_maps, render, aligned, owner, paths)
+            maps = {k: v for k, v in maps.items() if not any(w in k.lower() for w in keep)}
+            names = {p.name: f"{Path(p.name).stem}_{tag}{Path(p.name).suffix}" for p in images.atlas.pages}
+            page_files = []
+            for pi, page in enumerate(images.atlas.pages):
+                regions = [r for r in images.atlas.regions.values() if r.page == pi]
+                img = await asyncio.to_thread(recolor_page, Image.open(images.pages[pi]), regions, maps, whole,
+                                              page.pma)
+                f = ctx.job_dir / names[page.name]
+                await asyncio.to_thread(img.save, f)
+                page_files.append(f)
+                out["pages"].append(await ctx.blobs.put_file(f, name=f.name, mime="image/png"))
+            text = rename_pages(atlas_text, names)
+            atlas_file = ctx.job_dir / f"{stem}_{tag}.atlas"
+            atlas_file.write_text(text, encoding="utf-8")
+            out["atlas"].append(await ctx.blobs.put_file(atlas_file, name=atlas_file.name, mime="text/plain"))
+            variant = rt.RegionImages.from_files(atlas_file, page_files)
+            after, _, _ = await asyncio.to_thread(setup_render, doc, variant, parts, int(params.get("height", 1024)))
+            pair = Image.new("RGB", (render.width * 3, render.height), BG[:3])
+            pair.paste(on_background(render), (0, 0))
+            pair.paste(aligned, (render.width, 0))
+            pair.paste(on_background(after), (render.width * 2, 0))
+            out["previews"].append(await _put_png(ctx, pair, f"{stem}_{tag}_preview.png"))
+            report.append({"variant": tag, "atlas": atlas_file.name, "pages": list(names.values()),
+                           "regions_fitted": sum(1 for n in used.values() if n >= 20),
+                           "regions_drawn": len(paths), "regions": len(images.atlas.regions)})
+        out["report"].append(await ctx.blobs.put_bytes(json.dumps(report, indent=2).encode(), name="variants.json",
+                                                       mime="application/json"))
+        return StepResult(outputs=out, meta={"variants": report})
+
+
+VARIANT_OPS: tuple[type[OpExecutor], ...] = (SpineSetupRender, SpineSkinVariant)

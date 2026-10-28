@@ -45,6 +45,8 @@ const warning = computed(() => {
   return typeof w === 'string' ? w : ''
 })
 const pct = (v: number): string => `${Math.round(v * 100)}%`
+const CYCLE_LABEL: Record<string, string> = { walk: 'Đi bộ (lặp)', run: 'Chạy (lặp)', jump: 'Nhảy tại chỗ (một lần, về setup)' }
+const motionLabel = (r: ReviewRound): string => (r.cycle ? (CYCLE_LABEL[r.cycle] ?? r.cycle) : 'Clip lặp: frame cuối = frame đầu')
 const fmt = (v: unknown): string => (v === null || v === undefined ? '—' : typeof v === 'string' ? v : JSON.stringify(v))
 
 function download(): void {
@@ -156,6 +158,22 @@ onKeyStroke('Escape', (e) => {
               <template v-if="round?.bounce?.length">
                 <h3>Nhún hông</h3>
                 <p class="caption">{{ round.bounce.length }} lần: {{ round.bounce.map(([t, d]) => `${t}s · ${d}px`).join(', ') }}</p>
+              </template>
+              <template v-if="round?.cycle || round?.loop">
+                <h3>Kiểu chuyển động</h3>
+                <p class="caption">{{ motionLabel(round) }}</p>
+              </template>
+              <template v-if="round?.feet">
+                <h3>Chân chạm đất <span class="caption" :class="{ bad: round.feet.fault }">{{ round.feet.fault ? '· trượt/lún' : '· ổn' }}</span></h3>
+                <ul class="feet caption">
+                  <li v-for="f in round.feet.feet" :key="f.bone" :class="{ bad: f.slide_ratio > 0.06 || f.sink_ratio > 0.05 }">
+                    <span class="mono">{{ f.bone }}</span> · trượt {{ f.slide }}px ({{ pct(f.slide_ratio) }} chân) lúc t={{ f.time }}s · lún {{ f.sink }}px
+                  </li>
+                </ul>
+              </template>
+              <template v-if="round?.dropped?.length">
+                <h3>Key bị bỏ</h3>
+                <p class="caption">Bone do constraint điều khiển, không key được: <span class="mono">{{ round.dropped.join(', ') }}</span></p>
               </template>
               <h3>Spec thay đổi <span class="caption">({{ round?.diff.length ?? 0 }})</span></h3>
               <p v-if="!round?.diff.length" class="caption">Không có thay đổi{{ round?.spec ? '' : ' (không có spec cũ để so)' }}.</p>
@@ -366,8 +384,13 @@ onKeyStroke('Escape', (e) => {
   flex: none;
   margin-top: 2px;
 }
-.caption.bad {
+.caption.bad,
+.feet .bad {
   color: var(--st-fail);
+}
+.feet {
+  margin: 0;
+  padding-left: 16px;
 }
 .spin {
   animation: spin 1s linear infinite;

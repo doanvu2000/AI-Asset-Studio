@@ -10,6 +10,7 @@ from typing import Any
 from ..config import Settings
 from ..contracts import Lane, Outputs, StepContext, StepError, StepResult
 from ..ops import spine_anim as sa
+from ..ops import spine_cycle as sc
 from ..ops.rig import _read_json
 from ..ops.spine_skirt import keyed_chains
 from ..ops.spine_ref import (
@@ -42,7 +43,7 @@ Rig:
 
 Current spec (round {round} of at most {rounds}):
 {spec}
-{limits}{legs}{history}
+{limits}{legs}{feet}{history}
 Compare the draft with the reference: arm height, elbow and wrist, hip amplitude, hip bounce (count the dips over
 the whole reference clip; a count in the brief wins and is the total for the clip, not per sway), lean, head tilt,
 timing, blink spacing. Also judge:
@@ -56,6 +57,9 @@ timing, blink spacing. Also judge:
   hand close-up).
 - skirts and dresses: the waist stays put, the skirt hangs straight from the hip (it does not lean with the chest),
   the hem sways gently and out of step across the folds, with no tear or visible mesh edge (see the skirt views).
+- feet: a planted foot stays put on the ground (or, in an in-place walk/run cycle, slides back at a steady speed)
+  and never sinks below it; tune a generated `jump` through its fields; for a kick or lunge key the leg IK targets
+  in `keys`. A loop (cycle or loop true) must flow from the last frame into the first without a pop.
 - a hand-carried accessory (bag) must hang down by gravity, never be flung sideways (see the render wearing it); the
   generator counter-rotates it, so fix a flung bag by softening the arm/wrist keys, not by keying the bag.
 Return a 0-10 match score for the CURRENT draft, a short critique (Markdown, cite tile numbers), and a corrected
@@ -86,7 +90,7 @@ def parse_spec(raw: Any) -> dict[str, Any]:
 class SpineReviewLoopExecutor:
     kind = "claude.spine_review_loop"
     lane = Lane.CLOUD
-    version = "1"
+    version = "3"
 
     def __init__(self, settings: Settings, query: QueryFn = sdk_query):
         self.settings = settings
@@ -99,7 +103,7 @@ class SpineReviewLoopExecutor:
         return ""
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
-        text, _ = await read_skeleton(ctx, inputs)
+        text, skel = await read_skeleton(ctx, inputs)
         images = region_images(ctx, inputs)
         spec = parse_spec(await _read_json(ctx, inputs, "spec"))
         refs = await load_images(ctx, inputs.get("ref") or [])
@@ -110,7 +114,7 @@ class SpineReviewLoopExecutor:
         name = str(params.get("name") or "anim").strip()
         rounds = max(1, min(int(params.get("rounds", 3)), 8))
         accept = float(params.get("accept_score", 8))
-        parts = skin_parts(params)
+        parts = skin_parts(params, skel)
         welded = await welded_joints(ctx, inputs)
         covers = {b: s for b, s in sa.joint_covers(json.loads(text), parts, str(params.get("joint_cover") or "auto"))
                   .items() if b not in welded}
@@ -158,6 +162,10 @@ class SpineReviewLoopExecutor:
                     bare_ref = await ctx.blobs.put_bytes(bare_png, name=f"{name}_round{r + 1}_zoom_bare.png",
                                                          mime="image/png")
             knee = await asyncio.to_thread(sa.knee_gap, doc, name)
+            if knee and res.get("cycle") in ("walk", "run"):
+                # Legs pass each other every step of a walk/run seen from the side: not an overlap fault.
+                knee = {**knee, "overlap": False, "passing": True}
+            feet = await asyncio.to_thread(sc.foot_contact, doc, name)
             knee_png, knee_ref = None, None
             if knee:
                 knee_img = await asyncio.to_thread(render_knee_zoom, doc, images, name, knee["time"], knee["knees"],
@@ -198,6 +206,7 @@ class SpineReviewLoopExecutor:
                 brief=params.get("brief") or "(none)", name=name, duration=dur,
                 ref_note=_ref_note(ref_meta), rig=rig or "(not given)", round=r + 1, rounds=rounds,
                 spec=json.dumps(spec, separators=(",", ":")), limits=_limits_note(limits), legs=_knee_note(knee),
+                feet=_feet_note(feet, res),
                 history=HISTORY_NOTE.format(rows="\n".join(
                     f"- round {h['round']}: score {h.get('score')}: {h.get('critique', h.get('error', ''))}"
                     for h in history)) if history else "")
@@ -222,10 +231,11 @@ class SpineReviewLoopExecutor:
                      "bounce": spec.get("bounce"), "hang": res["hang"],
                      "held": held[1] if held else None, "held_view": held_ref.hash if held_ref else None,
                      "hand": hand[1] if hand else None, "hand_zoom": hand_ref.hash if hand_ref else None,
-                     "skirt": res["skirt"], "skirt_views": [{"skin": s, "image": ref.hash} for ref, s in view_refs]}
+                     "skirt": res["skirt"], "skirt_views": [{"skin": s, "image": ref.hash} for ref, s in view_refs],
+                     "feet": feet, "loop": res.get("loop"), "cycle": res.get("cycle"), "dropped": res.get("dropped")}
             history.append(entry)
             overlap = bool(knee and knee["overlap"])
-            fault = overlap or seam
+            fault = overlap or seam or bool(feet and feet["fault"])
             if best is None or (not fault, score) > (not best["fault"], best["score"]):
                 best = {**entry, "res": res, "strip_ref": strip_ref, "overlap": overlap, "fault": fault}
             if score >= accept and not fault:
@@ -288,6 +298,31 @@ def _knee_note(knee: dict[str, Any] | None) -> str:
     return (f"Knee check ({' / '.join(knee['knees'])}): closest horizontal gap {knee['min_gap']:g}px at "
             f"t={knee['time']:g}s = {knee['ratio'] * 100:.0f}% of setup {knee['setup_gap']:g}px (overlap below "
             f"{sa.KNEE_OVERLAP * 100:.0f}%): {state}.\n")
+
+
+def _feet_note(feet: dict[str, Any] | None, res: dict[str, Any]) -> str:
+    out = ""
+    if feet:
+        rows = "; ".join(f"{f['bone']} slide {f['slide']:g}px ({f['slide_ratio'] * 100:.1f}% leg) at t={f['time']:g}s, "
+                         f"sink {f['sink']:g}px" for f in feet["feet"])
+        state = (f"FAULT: a planted foot slides (over {sc.SLIDE_FAULT * 100:.0f}% of the leg) or sinks (over "
+                 f"{sc.SINK_FAULT * 100:.0f}%); fix the leg IK target keys" if feet["fault"] else "ok")
+        out += f"Foot check (planted feet vs a steady line): {rows}: {state}.\n"
+    if res.get("cycle") == "jump":
+        out += ("This is a generated in-place jump (crouch, launch, arc, landing, settle): judge timing, height, "
+                "crouch depth and arm swing against the reference.\n")
+    elif res.get("cycle") in ("attack", "hit", "death"):
+        out += (f"This is a generated {res['cycle']} (feet planted, hip/trunk/arms keyed"
+                + (", ends holding the collapsed pose" if res.get("hold") else ", returns to setup")
+                + "): judge the timing of the strike/impact and the weight shift against the reference.\n")
+    elif res.get("cycle"):
+        out += (f"This is a looping {res['cycle']} cycle: the knees passing each other is expected; judge stride, "
+                "lift, bob, arm swing and lean against the reference.\n")
+    elif res.get("loop"):
+        out += "This clip loops: its last frame equals its first.\n"
+    if res.get("dropped"):
+        out += f"Dropped keys on constraint-driven bones (do not key them): {', '.join(res['dropped'])}.\n"
+    return out
 
 
 def _ref_note(meta: Any) -> str:

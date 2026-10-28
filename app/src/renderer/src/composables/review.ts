@@ -30,7 +30,18 @@ export interface ReviewRound {
   hand?: { bone: string; time: number } | null
   skirtViews?: Array<{ skin: string; image: string }>
   held?: { bone: string; time: number; skin: string } | null
+  feet?: FootCheck | null
+  loop?: boolean
+  cycle?: string | null
+  dropped?: string[]
   error?: string
+}
+
+export interface FootCheck {
+  feet: Array<{ bone: string; slide: number; slide_ratio: number; time: number; sink: number; sink_ratio: number }>
+  slide_ratio: number
+  sink_ratio: number
+  fault: boolean
 }
 
 export interface KneeGap {
@@ -110,6 +121,10 @@ export async function loadRounds(review: StepReview, oldSpec: unknown): Promise<
       skirtViews: Array.isArray(r.skirt_views) ? (r.skirt_views as ReviewRound['skirtViews']) : [],
       held: (r.held as ReviewRound['held']) ?? null,
       bounce: Array.isArray(r.bounce) ? (r.bounce as Array<[number, number]>) : null,
+      feet: (r.feet as FootCheck | undefined) ?? null,
+      loop: r.loop === true,
+      cycle: typeof r.cycle === 'string' ? r.cycle : null,
+      dropped: Array.isArray(r.dropped) ? (r.dropped as string[]) : [],
       error: typeof r.error === 'string' ? r.error : undefined
     }))
   }

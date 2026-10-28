@@ -1,0 +1,37 @@
+id: spine-skin-variant
+name: Biến thể skin Spine (Flux.2 Klein)
+description: >-
+  Skeleton Spine có sẵn + atlas + mỗi dòng 1 lệnh đổi màu/chất liệu → render tư thế setup → Flux.2 Klein sửa cả
+  nhân vật một lần → chọn bản ưng → học bản đồ màu cho từng region rồi tô lại atlas (giữ nét, không xê dịch) → atlas
+  biến thể thay thẳng cho atlas gốc + ảnh so sánh → duyệt.
+inputs:
+  skeleton: {type: file, ext: [json], label: Skeleton JSON}
+  atlas: {type: file, ext: [atlas, txt], siblings: atlas_pages, label: "Atlas (các trang png cùng thư mục tự đi kèm)"}
+  instructions: {type: text, multiline: true, label: Lệnh đổi (mỗi dòng 1 biến thể),
+                 placeholder: "red armor with golden trim\nnight-blue outfit, silver metal"}
+  skin_parts: {type: text, default: auto, label: "Skin ghép để render (auto = skin đầu mỗi nhóm | skin,skin)"}
+  keep: {type: text, default: "eye,mouth", label: "Giữ nguyên màu region có tên chứa (phẩy, vd eye,mouth,face)"}
+steps:
+  - id: render
+    kind: op.spine_setup_render
+    in: {skeleton: inputs.skeleton, atlas: inputs.atlas}
+    params: {skin: "${inputs.skin_parts}", height: 1024}
+  - id: edit
+    kind: comfy.edit_flux2_klein4b
+    in: {image: render.images}
+    params:
+      "75:74.text": "Recolor this flat 2D cartoon game character: ${inputs.instructions | lines}. Change only the colors. Keep the exact same flat cel-shaded art style, line art, shapes, proportions, pose, face and framing; no new details, no realistic or metallic rendering, plain white background."
+    map_param: "75:74.text"
+  - id: pick
+    kind: gate.pick
+    in: {images: edit.images}
+    params: {k: 0}
+  - id: variant
+    kind: op.spine_skin_variant
+    in: {skeleton: inputs.skeleton, atlas: inputs.atlas, edits: pick.images}
+    params: {skin: "${inputs.skin_parts}", height: 1024, keep: "${inputs.keep}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: variant.previews, atlas: variant.atlas, pages: variant.pages, report: variant.report}
+outputs:
+  final: approve.atlas

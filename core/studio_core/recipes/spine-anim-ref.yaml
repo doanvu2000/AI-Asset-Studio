@@ -11,7 +11,7 @@ inputs:
   anim_id: {type: text, default: sway, label: Tên anim}
   brief: {type: text, multiline: true, label: Mô tả + trigger, placeholder: "Nhấc một tay, lắc hông nhẹ, chớp mắt..."}
   ref_window: {type: text, default: auto, label: "Đoạn video (vd 1.6-5.6 hoặc auto)"}
-  skin_parts: {type: text, default: "skincolor_0,eyes_0,lip_0,hair_0,top_0,bottom_0,shoes_0", label: Skin ghép để render}
+  skin_parts: {type: text, default: auto, label: "Skin ghép để render (auto = skin đầu mỗi nhóm | skin,skin)"}
   weld_joints: {type: text, default: auto, label: "Khớp hàn mesh weight (auto | none | bone,bone)"}
   skirt_chains: {type: text, default: auto, label: "Chuỗi xương váy (auto | none | a>b>c;d>e>f)"}
   skirt_views: {type: text, default: auto, label: "Skin váy/đầm để soi (auto | none | skin,skin)"}
@@ -59,8 +59,32 @@ steps:
         arm_keys = {bone: [[time, rotate offset], ...]} for any bone (use the arm/forearm/hand bones from the rig);
         secondary = chains from the rig's "Chains" line: rotate = gain*(1+falloff*i)*s delayed lag*(i+1);
         blinks = times of eye close (eye scaleX -> blink_closed_scale, see the rig's blink line).
-        Every key list starts at time 0 with value 0 and ends at or before duration-0.3 with value 0, so the clip
-        starts and ends at setup pose. Time 0 of the clip is where the motion starts in the video.
+        First pick the motion type from the reference and the brief:
+        - sway / idle / gesture in place (the body stays over its feet): the sway fields below, clip starts and
+          ends at setup pose.
+        - walk or run (feet step in a repeating pattern): set cycle = {type: walk|run, facing: side if the
+          character is seen from the side else front, direction: 1 if it moves toward image right else -1,
+          period = seconds per full cycle (two steps) measured in the reference} and duration = a whole number
+          of periods; tune stride/lift/bob/arm_swing/lean (leg lengths / degrees) only where the reference
+          differs from the defaults. It loops and moves in place (no root travel).
+        - jump in place (both feet leave the ground together): set jump = {facing, direction, takeoff and land =
+          seconds when the feet leave and touch the ground in the reference, height = how far the hip rises above
+          standing at the peak, in leg lengths} and leave the rest to defaults unless the reference differs; it ends at setup pose. Add
+          keys only for what the preset does not move (weapon, cape).
+        - melee attack, hit reaction or death: set action = {type: attack|hit|death, facing, direction, at =
+          seconds of the strike (attack) or of the impact (hit, death) in the reference}; tune swing/lean/step
+          (attack), recoil/push (hit), fall/drop/slump (death) only where the reference differs. Attack and hit
+          return to setup; death ends holding the collapsed pose. Add keys only for what the preset does not move.
+        - other one-shot action (kick, sit, fall, cast): use keys = {bone: {rotate|translate|scale: [[t, ...]]}}
+          on the bones that act: leg IK targets from the rig's IK line for the feet (translate, y up), the hip
+          for crouch/rise, arms and weapon; anticipation before the action, overshoot and settle after. Feet
+          that stay on the ground keep their IK targets still.
+        Set loop true for any clip meant to repeat (idle loops too). Without loop every key list starts at time 0
+        with value 0 and ends at or before duration-0.3 with value 0, so the clip starts and ends at setup pose;
+        hold true instead keeps the last keys as the final pose (a fall, a knockdown, a pose to blend from).
+        Time 0 of the clip is where the motion starts in the video. Unused sway fields may be left out.
+        The rig's "Torso the sway drives" line names the hip/spine/chest/neck/head/eye bones the generator keys;
+        if a role is wrong for this rig, set bones = {role: bone} (eyes = [bones]); otherwise leave bones out.
         Mind screen direction: the character faces the viewer, so its left side (_L bones) is on the image right
         unless the rig angles say otherwise.
         Joints listed as "hard seam" in the rig (separate images, e.g. elbows and wrists) show a sharp corner when
