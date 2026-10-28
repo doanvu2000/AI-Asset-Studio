@@ -3,7 +3,7 @@
 # so close those sessions and the app first, or leave this waiting with -Wait.
 param([switch]$Wait)
 
-$src = 'L:\AI\AI-Asset-Studio\app\release\0.1.0\win-unpacked'
+$src = 'L:\AI\AI-Asset-Studio\app\release\1.0.0\win-unpacked'
 $dst = 'L:\AI\AI Asset Studio Portable'
 
 function Busy { @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -like "$dst\*" }) }

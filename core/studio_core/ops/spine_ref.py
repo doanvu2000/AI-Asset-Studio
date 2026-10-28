@@ -120,6 +120,23 @@ def render_strip(doc: dict[str, Any], images: rt.RegionImages, anim: str | None,
                    "anim": anim}
 
 
+def render_joint_zoom(doc: dict[str, Any], images: rt.RegionImages, anim: str, t: float, bone: str,
+                      parts: list[str], size: int = 420) -> Image.Image:
+    """Close-up around a joint pivot (radius ≈ the parent bone's length) at time t, labelled."""
+    skins, _ = rt.resolve_skins(doc, parts)
+    atts = rt.skin_attachments(doc, skins)
+    pose = rt.Pose(doc, anim, t)
+    by = {b["name"]: b for b in doc["bones"]}
+    parent = by[bone].get("parent")
+    r = 0.75 * max(by.get(parent, {}).get("length", 0.0), by[bone].get("length", 0.0), 40.0)
+    x, y = pose.world[bone][1]
+    box = (x - r, y - r, x + r, y + r)
+    cell = Image.new("RGBA", (size, size), STRIP_BG)
+    cell.alpha_composite(rt.render(pose, atts, images, box, size / (2 * r)))
+    _label(cell, f"zoom {bone} t={t:g}s")
+    return cell
+
+
 class SpineRigSummary(OpExecutor):
     kind = "op.spine_rig_summary"
     version = "1"
@@ -155,7 +172,7 @@ def add_anim(text: str, spec: Any, name: str) -> dict[str, Any]:
     if not isinstance(spec, dict) or "duration" not in spec:
         raise StepError("spec_invalid", "motion spec must be an object with at least 'duration'")
     try:
-        anim = sa.build_animation(spec)
+        anim = sa.build_animation(spec, limits=sa.joint_limits(json.loads(text), spec))
     except (sa.SpecError, KeyError, TypeError, ValueError) as e:
         raise StepError("spec_invalid", f"motion spec: {e}") from e
     new_text = sa.add_animation(text, name, anim)

@@ -99,6 +99,12 @@ onKeyStroke('Escape', (e) => {
                 <figcaption class="caption">Bản nháp vòng {{ round.round }}</figcaption>
                 <BlobImage :hash="round.strip" full class="img" />
               </figure>
+              <figure v-if="round?.zoom">
+                <figcaption class="caption">
+                  Khớp gập sâu nhất<template v-if="round.bend"> · {{ round.bend.bone }} t={{ round.bend.time }}s · {{ round.bend.total }}° (giới hạn {{ round.bend.limit }}°)</template>
+                </figcaption>
+                <BlobImage :hash="round.zoom" full class="img zoom" />
+              </figure>
               <figure v-for="b in images.refs" :key="b.hash">
                 <figcaption class="caption">Tham chiếu{{ b.name ? ` · ${b.name}` : '' }}</figcaption>
                 <BlobImage :hash="b.hash" full class="img" />
@@ -227,6 +233,9 @@ onKeyStroke('Escape', (e) => {
 }
 .text {
   min-width: 0;
+}
+.zoom {
+  width: min(100%, 320px);
 }
 .text h3 {
   margin: 0 0 6px;

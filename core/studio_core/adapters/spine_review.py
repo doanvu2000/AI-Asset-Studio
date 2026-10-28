@@ -11,7 +11,15 @@ from ..config import Settings
 from ..contracts import Lane, Outputs, StepContext, StepError, StepResult
 from ..ops import spine_anim as sa
 from ..ops.rig import _read_json
-from ..ops.spine_ref import add_anim, animation_duration, read_skeleton, read_text, region_images, render_strip
+from ..ops.spine_ref import (
+    add_anim,
+    animation_duration,
+    read_skeleton,
+    read_text,
+    region_images,
+    render_joint_zoom,
+    render_strip,
+)
 from .claude import QueryFn, ask, load_images, put_json, sdk_query
 
 SYSTEM = ("You are a senior Spine 2D animator. You tune a procedural motion spec so the rendered animation matches "
@@ -26,9 +34,11 @@ Rig:
 
 Current spec (round {round} of at most {rounds}):
 {spec}
-{history}
+{limits}{history}
 Compare the draft with the reference: arm height, elbow and wrist, hip amplitude, lean, head tilt, timing, blink
-spacing. Return a 0-10 match score for the CURRENT draft, a short critique (Markdown, cite tile numbers), and a
+spacing. Also judge the joints: does any elbow/wrist show a visible seam or sharp corner (see the zoom image)? If so,
+lower the score and fix it within the joint limits rather than bending further; mention the joint limits in the
+critique. Return a 0-10 match score for the CURRENT draft, a short critique (Markdown, cite tile numbers), and a
 corrected full spec. Keep the same bone names; only bones listed in the rig exist."""
 
 HISTORY_NOTE = """
@@ -99,26 +109,41 @@ class SpineReviewLoopExecutor:
                                                             int(params.get("height", 520)))
             strip_ref = await ctx.blobs.put_bytes(_png(strip_img), name=f"{name}_round{r + 1}.png", mime="image/png")
             strips.append(strip_ref)
+            limits = sa.joint_limits(doc, spec)
+            deep = sa.deepest_bend(doc, name, limits)
+            zoom_png, zoom_ref = None, None
+            if deep:
+                zoom_img = await asyncio.to_thread(render_joint_zoom, doc, images, name, deep[1], deep[0], parts)
+                zoom_png = _png(zoom_img)
+                zoom_ref = await ctx.blobs.put_bytes(zoom_png, name=f"{name}_round{r + 1}_zoom.png", mime="image/png")
             ctx.progress(r + 0.5, rounds, f"vòng {r + 1}: Claude chấm")
             prompt = PROMPT.format(
                 images_note=(f"Images 1-{len(refs)}: reference video frames (contact sheets, row-major tiles labelled "
                              f"#index time). Image {len(refs) + 1}: render of the current draft at the times "
-                             "labelled on each cell."),
+                             "labelled on each cell."
+                             + (f" Image {len(refs) + 2}: close-up of joint {deep[0]} at t={deep[1]:g}s, its deepest "
+                                "bend relative to its limit." if deep else "")),
                 brief=params.get("brief") or "(none)", name=name, duration=dur,
                 ref_note=_ref_note(ref_meta), rig=rig or "(not given)", round=r + 1, rounds=rounds,
-                spec=json.dumps(spec, separators=(",", ":")),
+                spec=json.dumps(spec, separators=(",", ":")), limits=_limits_note(limits),
                 history=HISTORY_NOTE.format(rows="\n".join(
                     f"- round {h['round']}: score {h.get('score')}: {h.get('critique', h.get('error', ''))}"
                     for h in history)) if history else "")
             reply = await ask(self.query, {**params, "schema": sa.REVIEW_SCHEMA, "system": SYSTEM,
                                            "max_turns": params.get("max_turns", 2)},
-                              prompt, str(ctx.job_dir), [*refs, (_png(strip_img), "image/png")], ctx=ctx)
+                              prompt, str(ctx.job_dir),
+                              [*refs, (_png(strip_img), "image/png"), *([(zoom_png, "image/png")] if zoom_png else [])],
+                              ctx=ctx)
             out = reply.structured if isinstance(reply.structured, dict) else {}
             score = float(out.get("score", 0) or 0)
             new_spec = out.get("spec") if isinstance(out.get("spec"), dict) else spec
             entry = {"round": r + 1, "score": score, "critique": str(out.get("critique", "")), "spec": spec,
                      "next_spec": new_spec, "diff": sa.diff_spec(spec, new_spec), "strip": strip_ref.hash,
-                     "times": times, "missing_skins": strip_meta["missing_skins"]}
+                     "times": times, "missing_skins": strip_meta["missing_skins"],
+                     "zoom": zoom_ref.hash if zoom_ref else None,
+                     "deepest_bend": {"bone": deep[0], "time": deep[1], "offset": round(deep[2], 2),
+                                      "total": round(limits[deep[0]]["setup"] + deep[2], 2),
+                                      "limit": limits[deep[0]]["limit"]} if deep else None}
             history.append(entry)
             if best is None or score > best["score"]:
                 best = {**entry, "res": res, "strip_ref": strip_ref}
@@ -145,6 +170,15 @@ class SpineReviewLoopExecutor:
             "score": best["score"], "critique": best["critique"], "best_round": best["round"],
             "accepted": review["accepted"],
             "score_history": [h.get("score") for h in history if "score" in h]})
+
+
+def _limits_note(limits: dict[str, dict[str, Any]]) -> str:
+    if not limits:
+        return ""
+    rows = [f"- {b}: setup {j['setup']:.1f} deg, allowed rotate offset [{j['lo']:.1f}, {j['hi']:.1f}]"
+            f"{' (hard seam)' if j.get('hard') else ''}" for b, j in limits.items()]
+    return ("Joint limits (keys outside are clamped by the generator; hard-seam joints show a sharp corner when "
+            "bent further):\n" + "\n".join(rows) + "\n")
 
 
 def _ref_note(meta: Any) -> str:

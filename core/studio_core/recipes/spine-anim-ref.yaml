@@ -49,7 +49,11 @@ steps:
         Every key list starts at time 0 with value 0 and ends at or before duration-0.3 with value 0, so the clip
         starts and ends at setup pose. Time 0 of the clip is where the motion starts in the video.
         Mind screen direction: the character faces the viewer, so its left side (_L bones) is on the image right
-        unless the rig angles say otherwise. Write the full spec.
+        unless the rig angles say otherwise.
+        Joints listed as "hard seam" in the rig (separate images, e.g. elbows and wrists) show a sharp corner when
+        bent far: keep their arm_keys inside the listed offset range (the generator clamps anything outside it), and
+        express a bigger gesture through the shoulder/upper arm instead. arm_lag = {bone: seconds} lets forearm and
+        hand trail the upper arm. Write the full spec.
   - id: review
     kind: claude.spine_review_loop
     in: {skeleton: inputs.skeleton, atlas: inputs.atlas, ref: frames.sheets, spec: spec.json, rig: rig.summary,

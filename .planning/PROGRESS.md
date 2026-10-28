@@ -632,3 +632,16 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   chưa tới 8); spine-core load OK, t=0 và t=3.6 lệch setup 0; bỏ entry `sway` thì file == gốc từng byte.
 - Giới hạn: auto-crop video không cắt được khi nền là UI game rối; badge chưa có ở danh sách version; chưa build Portable.
 - Chưa commit.
+- 11:15 commit `ba302df` (R1–R5, chủ nhân duyệt). Tắt core Portable, build core + Portable, chép vào `L:\AI\AI Asset Studio Portable`; MCP Portable list_recipes thấy `spine-anim-ref` (22 recipe). `update-portable.ps1` trỏ sang release\1.0.0.
+
+## R6 — giới hạn gập khớp (yêu cầu spine-test, run ae551415 bị chê lộ khuỷu)
+- [x] `spine_anim`: `_tip_joints` (khớp ở đầu bone cha; cứng = không có mesh weighted trải 2 bone), `joint_limits`
+  (hard seam 20°, spec `elbow_max`/`joint_limits` chỉ được siết), `bend_range` (tổng gập ≤ limit, duỗi ngược ≤ 3°;
+  khớp vẽ sẵn gập quá limit thì ±limit từ setup), kẹp `arm_keys`, port `arm_lag`, `deepest_bend`; rig summary ghi khớp.
+- [x] Review loop: ảnh zoom khớp lúc gập sâu nhất + mục chấm mối nối + danh sách giới hạn trong prompt; review.json có
+  `zoom`, `deepest_bend`; app ReviewDialog hiện ảnh zoom. Prompt bước spec nêu giới hạn.
+- [x] Test +3 (17 trong file). pytest 453 pass / 4 skip; typecheck sạch.
+- [x] Chạy lại input run ae551415 (6 vòng, accept 8) qua MCP core dev (scratchpad `608ff0e6…/r6`): 6 → 7.2 → 7.6 → 8.0;
+  khuỷu tổng gập max 10.9° (L −10.9…−2.4, R 2.8…10.9); critique cả 4 vòng nhắc giới hạn khớp; spine-core load OK,
+  đầu/cuối = setup.
+- Chưa commit, chưa build Portable.

@@ -271,3 +271,65 @@ def test_video_frames_with_ffmpeg(tmp_path: Path) -> None:
     assert len(res.outputs["sheets"]) == 1 and len(res.outputs["frames"]) == 4
     x0, y0, x1, y1 = res.meta["crop"]
     assert x0 >= 30 and x1 <= 110 and y0 >= 30
+
+
+def limb(mesh_span: bool) -> dict[str, Any]:
+    doc = skeleton()
+    doc["bones"] += [{"name": "upper", "parent": "chest", "rotation": 180, "length": 40},
+                     {"name": "lower", "parent": "upper", "x": 40, "rotation": -8, "length": 30},
+                     {"name": "hand", "parent": "lower", "x": 30, "rotation": -30, "length": 10}]
+    n = len(doc["bones"])
+    doc["slots"] += [{"name": "upper", "bone": "upper", "attachment": "box"},
+                     {"name": "lower", "bone": "lower", "attachment": "box"},
+                     {"name": "hand", "bone": "hand", "attachment": "box"}]
+    atts = doc["skins"][1]["attachments"]
+    atts["upper"] = {"box": {"width": 16, "height": 8}}
+    atts["hand"] = {"box": {"width": 16, "height": 8}}
+    if mesh_span:
+        w = [1, n - 3, 0, 0, 1, 2, n - 3, 40, 0, 0.5, n - 2, 0, 0, 0.5, 1, n - 2, 30, 0, 1]
+        atts["lower"] = {"box": {"type": "mesh", "uvs": [0, 0, 1, 0, 1, 1], "triangles": [0, 1, 2], "vertices": w,
+                                 "width": 16, "height": 8}}
+    else:
+        atts["lower"] = {"box": {"width": 16, "height": 8}}
+    return doc
+
+
+def test_bend_range() -> None:
+    assert sa.bend_range(-8.36, 20) == pytest.approx((-11.64, 11.36))
+    assert sa.bend_range(8.76, 20) == pytest.approx((-11.76, 11.24))
+    assert sa.bend_range(-30, 20) == (-20, 20)
+    assert sa.bend_range(28.39, 20) == (-20, 20)
+    lo, hi = sa.bend_range(0, 20)
+    assert lo == 0 and hi == 20 or (lo == -3 and hi == 20)
+
+
+def test_hard_seam_joints_and_clamp() -> None:
+    hard = sa.joint_limits(limb(False))
+    assert set(hard) == {"lower", "hand"} and hard["lower"]["limit"] == 20
+    soft = sa.joint_limits(limb(True))
+    assert "lower" not in soft and "hand" in soft
+    assert "joint lower: hard seam" in sa.rig_summary(limb(False))
+    assert "Weighted (bend freely): " in sa.rig_summary(limb(True))
+    # a spec may tighten a hard seam but not loosen it
+    assert sa.joint_limits(limb(False), {"elbow_max": 45, "joint_limits": {"lower": 12}})["lower"]["limit"] == 12
+    assert sa.joint_limits(limb(False), {"joint_limits": {"lower": 60}})["lower"]["limit"] == 20
+
+    doc = limb(False)
+    spec = {**SPEC, "arm_keys": {"lower": [[0, 0], [0.5, -47], [1.0, 10], [1.5, 0]]}, "arm_lag": {"lower": 0.1}}
+    anim = sa.build_animation(spec, limits=sa.joint_limits(doc, spec))
+    keys = anim["bones"]["lower"]["rotate"]
+    assert [k["time"] for k in keys[:3]] == [0, 0.6, 1.1]
+    doc["animations"]["sway"] = anim
+    for i in range(41):
+        total = -8 + rt.Pose(doc, "sway", i * 0.05).local["lower"].rotation + 8
+        assert -20 - 1e-6 <= total <= 3 + 1e-6
+    bone, t, v = sa.deepest_bend(doc, "sway", sa.joint_limits(doc, spec))
+    assert bone == "lower" and t == pytest.approx(0.6) and v == pytest.approx(-12)
+
+
+def test_joint_zoom_render(tmp_path: Path) -> None:
+    from studio_core.ops.spine_ref import render_joint_zoom
+    _, atlas, page = write_rig(tmp_path)
+    img = render_joint_zoom(limb(False), rt.RegionImages.from_files(atlas, [page]), "idle", 0.5, "lower", ["top_0"],
+                            size=200)
+    assert img.size == (200, 200) and (np.asarray(img)[..., 0] > 200).any()

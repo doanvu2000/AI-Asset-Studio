@@ -24,7 +24,13 @@ MOTION_SPEC_SEMANTICS = (
     "y = -hip.dip_y*|s|; hip rotate = hip.tilt*s; spine/chest/neck/head follow s with upper_body gains and lag; "
     "arm_keys = {bone: [[time, rotate offset], ...]} for any bone; secondary chains: rotate = "
     "gain*(1+falloff*i)*s delayed lag*(i+1); blinks = times of eye close (eye scaleX -> blink_closed_scale). "
-    "Every key list starts at time 0 with value 0 and ends at or before duration-0.3 with value 0.")
+    "Every key list starts at time 0 with value 0 and ends at or before duration-0.3 with value 0. "
+    "arm_lag = {bone: seconds} delays that bone's arm_keys (follow-through). Joints marked 'hard seam' in the rig "
+    "(separate images or single-bone meshes, e.g. elbow, wrist) are clamped to their max bend (default 20 deg, see "
+    "joint_limits / elbow_max): bending further only shows a sharp seam, so stay within it.")
+
+HARD_SEAM_LIMIT = 20.0
+HYPEREXTEND = 3.0
 
 _PAIRS = {"type": "array", "items": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}}
 MOTION_SPEC_SCHEMA: dict[str, Any] = {
@@ -47,6 +53,9 @@ MOTION_SPEC_SCHEMA: dict[str, Any] = {
             "required": ["bones", "gain", "falloff", "lag"]}},
         "blinks": {"type": "array", "items": {"type": "number"}},
         "blink_closed_scale": {"type": "number"},
+        "arm_lag": {"type": "object", "additionalProperties": {"type": "number"}},
+        "elbow_max": {"type": "number"},
+        "joint_limits": {"type": "object", "additionalProperties": {"type": "number"}},
     },
     "required": ["duration", "ease", "sway_signal", "hip", "upper_body", "arm_keys", "secondary", "blinks",
                  "blink_closed_scale"],
@@ -124,7 +133,86 @@ def _pairs(raw: Any, what: str) -> list[tuple[float, float]]:
     return out
 
 
-def build_animation(spec: dict[str, Any], bone_map: dict[str, Any] | None = None) -> dict[str, Any]:
+def bend_range(setup: float, limit: float) -> tuple[float, float]:
+    """Allowed rotate offset for a joint: total bend within `limit` toward the rig's bend side (setup < 0 bends
+    negative) and at most 3 deg of hyperextension; a joint drawn bent past the limit may move ±limit from setup."""
+    sign = -1.0 if setup < 0 else 1.0
+    if abs(setup) < limit:
+        lo, hi = sorted((sign * limit - setup, -sign * HYPEREXTEND - setup))
+    else:
+        guard = -sign * HYPEREXTEND - setup
+        lo, hi = (-limit, min(limit, guard)) if sign < 0 else (max(-limit, guard), limit)
+    return min(lo, 0.0), max(hi, 0.0)
+
+
+def _tip_joints(doc: dict[str, Any]) -> list[dict[str, Any]]:
+    """Child bones starting at their parent's tip (elbow, wrist, knee...), each with whether a weighted mesh spans
+    the joint in any skin; parent and child must both carry attachments."""
+    names = [b["name"] for b in doc["bones"]]
+    by = {b["name"]: b for b in doc["bones"]}
+    slot_bone = {s["name"]: s["bone"] for s in doc.get("slots") or []}
+    owners: set[str] = set()
+    spans: set[str] = set()
+    for skin in doc.get("skins") or []:
+        for slot, atts in (skin.get("attachments") or {}).items():
+            for a in atts.values():
+                kind = a.get("type", "region")
+                if kind not in ("region", "mesh"):
+                    continue
+                v, n = a.get("vertices") or [], len(a.get("uvs") or []) // 2
+                if kind == "mesh" and len(v) != 2 * n:
+                    bones, k = set(), 0
+                    for _ in range(n):
+                        c = int(v[k])
+                        bones.update(names[int(v[k + 1 + 4 * j])] for j in range(c))
+                        k += 1 + 4 * c
+                    owners |= bones
+                    spans |= {b for b in bones if by[b].get("parent") in bones}
+                elif slot in slot_bone:
+                    owners.add(slot_bone[slot])
+    out = []
+    for b in doc["bones"]:
+        p = by.get(b.get("parent", ""))
+        if not p or b["name"] not in owners or p["name"] not in owners:
+            continue
+        length = p.get("length", 0.0)
+        if length <= 0 or b.get("length", 0.0) <= 0:
+            continue
+        if abs(b.get("x", 0.0) - length) > 0.15 * length or abs(b.get("y", 0.0)) > 0.15 * length:
+            continue
+        out.append({"bone": b["name"], "parent": p["name"], "setup": float(b.get("rotation", 0.0)),
+                    "hard": b["name"] not in spans})
+    return out
+
+
+def joint_limits(doc: dict[str, Any], spec: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
+    """bone -> {limit, setup, lo, hi, hard}: hard-seam joints get 20 deg, which a spec (elbow_max for arm_lower_* /
+    *elbow*, joint_limits) may only tighten; other joints take the spec value as is."""
+    spec = spec or {}
+    setup = {b["name"]: float(b.get("rotation", 0.0)) for b in doc["bones"]}
+    out: dict[str, dict[str, Any]] = {}
+    for j in _tip_joints(doc):
+        if j["hard"]:
+            out[j["bone"]] = {"limit": HARD_SEAM_LIMIT, "hard": True}
+    def put(b: str, lim: float) -> None:
+        cur = out.get(b, {"hard": False})
+        out[b] = {**cur, "limit": min(cur["limit"], lim) if cur["hard"] else lim}
+
+    if spec.get("elbow_max") is not None:
+        for b in setup:
+            if b.startswith("arm_lower_") or "elbow" in b.lower():
+                put(b, abs(float(spec["elbow_max"])))
+    for b, lim in (spec.get("joint_limits") or {}).items():
+        if b in setup:
+            put(b, abs(float(lim)))
+    for b, j in out.items():
+        j["setup"] = setup[b]
+        j["lo"], j["hi"] = bend_range(setup[b], j["limit"])
+    return out
+
+
+def build_animation(spec: dict[str, Any], bone_map: dict[str, Any] | None = None,
+                    limits: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
     names = {**DEFAULT_BONES, **(spec.get("bones") or {}), **(bone_map or {})}
     k = float(spec.get("ease", 0.4))
     end = float(spec["duration"])
@@ -148,8 +236,14 @@ def build_animation(spec: dict[str, Any], bone_map: dict[str, Any] | None = None
         rot(names["chest"], _scaled(sway, -float(lean.get("chest", 0)), lag * 1.5))
         rot(names["neck"], _scaled(sway, float(lean.get("neck", 0)), lag * 2))
         rot(names["head"], _scaled(sway, float(lean.get("head", 0)), lag * 2.5))
+    lags = spec.get("arm_lag") or {}
     for bone, keys in (spec.get("arm_keys") or {}).items():
-        rot(bone, _pinned(_pairs(keys, f"arm_keys.{bone}")))
+        pts = _pinned(_pairs(keys, f"arm_keys.{bone}"))
+        if limits and bone in limits:
+            lo, hi = limits[bone]["lo"], limits[bone]["hi"]
+            pts = [(t, min(max(v, lo), hi)) for t, v in pts]
+        d = float(lags.get(bone, 0.0))
+        rot(bone, [pts[0], *((t + d, v) for t, v in pts[1:])])
     for chain in spec.get("secondary") or []:
         for i, bone in enumerate(chain["bones"]):
             gain = float(chain["gain"]) * (1 + float(chain.get("falloff", 0)) * i)
@@ -278,6 +372,19 @@ def rig_summary(doc: dict[str, Any], limit: int = 3000) -> str:
         if b.get("length"):
             ln += f" L{b['length']:.0f}"
         lines.append(ln)
+    joints = _tip_joints(doc)
+    limits = joint_limits(doc)
+    for j in joints:
+        if j["hard"]:
+            lim = limits[j["bone"]]
+            how = (f"max bend {lim['limit']:.0f}° total" if abs(j["setup"]) < lim["limit"]
+                   else f"±{lim['limit']:.0f}° from setup")
+            lines.append(f"joint {j['bone']}: hard seam (region/single-bone mesh), setup {j['setup']:.1f}°, {how}, "
+                         f"offset range [{lim['lo']:.1f}, {lim['hi']:.1f}]°, no hyperextension")
+    soft = [j["bone"] for j in joints if not j["hard"] and j["bone"] not in in_chain and j["bone"] not in
+            {c[0] for c in chains}]
+    if soft:
+        lines.append("Weighted (bend freely): " + ", ".join(soft))
     if doc.get("ik"):
         lines.append("IK: " + "; ".join(
             f"{c['name']} {'>'.join(c['bones'])} -> {c['target']}"
@@ -301,6 +408,31 @@ def rig_summary(doc: dict[str, Any], limit: int = 3000) -> str:
         for n, a in (doc.get("animations") or {}).items()))
     text = "\n".join(lines)
     return text if len(text) <= limit else text[:limit - 20] + "\n…(truncated)"
+
+
+def deepest_bend(doc: dict[str, Any], anim: str, limits: dict[str, dict[str, Any]], step: float = 0.05
+                 ) -> tuple[str, float, float] | None:
+    """(bone, time, offset) where a limited joint animated by `anim` bends furthest relative to its limit."""
+    tl = ((doc.get("animations") or {}).get(anim) or {}).get("bones") or {}
+    best = None
+    for bone, lim in limits.items():
+        keys = (tl.get(bone) or {}).get("rotate")
+        if not keys:
+            continue
+        end = float(keys[-1].get("time", 0.0))
+        for i in range(int(end / step) + 1):
+            t = round(i * step, 4)
+            v = _sample_rotate(keys, t)
+            ratio = abs(lim["setup"] + v) / max(lim["limit"], 1e-6)
+            if best is None or ratio > best[0]:
+                best = (ratio, bone, t, v)
+    return None if best is None else (best[1], best[2], best[3])
+
+
+def _sample_rotate(keys: list[dict[str, Any]], t: float) -> float:
+    from .spine_runtime import sample
+
+    return sample(keys, t, ("value",), 0.0)[0]
 
 
 def diff_spec(old: Any, new: Any, path: str = "") -> list[dict[str, Any]]:

@@ -18,6 +18,8 @@ export interface ReviewRound {
   nextSpec: unknown
   diff: SpecChange[]
   strip: string | null
+  zoom?: string | null
+  bend?: { bone: string; time: number; total: number; limit: number } | null
   error?: string
 }
 
@@ -77,6 +79,8 @@ export async function loadRounds(review: StepReview, oldSpec: unknown): Promise<
       nextSpec: r.next_spec,
       diff: (r.diff as SpecChange[] | undefined) ?? [],
       strip: typeof r.strip === 'string' ? r.strip : null,
+      zoom: typeof r.zoom === 'string' ? r.zoom : null,
+      bend: (r.deepest_bend as ReviewRound['bend']) ?? null,
       error: typeof r.error === 'string' ? r.error : undefined
     }))
   }
