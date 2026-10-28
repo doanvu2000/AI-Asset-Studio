@@ -904,3 +904,8 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   `sheet_S.anim`); README Unity/Godot riêng cho flipbook (pivot giữa ô); Godot bỏ `asset_studio_sprite.gd` + script
   trong .tscn khi không có hướng. Test `test_flipbook_export_has_no_facing`. pytest 489 pass / 4 skip.
 - Bỏ qua: LOD riêng cho Godot (Godot tự sinh), ảnh art recipe audio/VFX (icon fallback, chỉ thẩm mỹ).
+- [x] Godot LOD: `*_lods.glb` → `<stem>.tscn` (Node3D + instance GLB) + `asset_studio_lods.gd` (@tool, visibility range
+  cho node `*_LODn`, LOD n bắt đầu ở `lod_distance`×2^(n-1), mặc định 10m) + README nhắc tắt Generate LODs. Kiểm Godot
+  4.7.2 headless (`L:\AI\godot-test\LodLive`, `lod_check.gd`): 3 LOD 0–10/10–20/20–∞, fails=0. pytest 490 pass / 4 skip.
+- [ ] Art recipe audio/VFX: subagent đang làm. 2 subagent nghiên cứu ≥5 chức năng mới (thực dụng, dùng Claude/Codex
+  CLI, ComfyUI, Unity/Blender/Figma/GitHub/GitLab MCP).

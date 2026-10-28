@@ -94,6 +94,45 @@ def helper(lay: Layout) -> str:
     return HELPER.replace("__DIR_ANGLES__", pairs)
 
 
+LOD_SCRIPT = """@tool
+extends Node3D
+## Shows the *_LOD0, *_LOD1... meshes of the instanced GLB by camera distance through visibility ranges.
+
+@export var lod_distance := 10.0:
+	set(value):
+		lod_distance = value
+		_apply()
+
+
+func _ready() -> void:
+	_apply()
+
+
+func _apply() -> void:
+	if not is_inside_tree():
+		return
+	var lods := {}
+	for node in find_children("*_LOD*", "GeometryInstance3D", true, false):
+		var node_name := String(node.name)
+		var tail := node_name.substr(node_name.rfind("_LOD") + 4)
+		if tail.is_valid_int():
+			lods[tail.to_int()] = node
+	var keys := lods.keys()
+	keys.sort()
+	for k in keys.size():
+		var g: GeometryInstance3D = lods[keys[k]]
+		g.visibility_range_begin = 0.0 if k == 0 else lod_distance * pow(2.0, k - 1)
+		g.visibility_range_end = 0.0 if k == keys.size() - 1 else lod_distance * pow(2.0, k)
+"""
+
+
+def lod_scene(name: str, glb: str) -> str:
+    return (f'[gd_scene format=3]\n\n[ext_resource type="PackedScene" path="{glb}" id="1_model"]\n'
+            '[ext_resource type="Script" path="asset_studio_lods.gd" id="2_script"]\n\n'
+            f'[node name="{name}" type="Node3D"]\nscript = ExtResource("2_script")\n\n'
+            '[node name="Model" parent="." instance=ExtResource("1_model")]\n')
+
+
 def texture_material(albedo: str | None, normal: str | None, pixel: bool) -> str:
     ext, props = [], []
     if albedo:
@@ -236,6 +275,14 @@ def export(src: Source) -> Files:
         files.append((f"Models/{n}", p))
     if src.glb:
         notes.append("- Models/*.glb: Godot import GLB sẵn, kéo vào scene là dùng được.")
+    lods = [n for n, _ in src.glb if n.endswith("_lods.glb")]
+    for n in lods:
+        files.append((f"{Path(n).stem}.tscn", lod_scene(Path(n).stem, f"Models/{n}").encode()))
+    if lods:
+        files.append(("asset_studio_lods.gd", LOD_SCRIPT.encode()))
+        notes.append("- *_lods.tscn: GLB *_lods + asset_studio_lods.gd đặt visibility range cho node *_LOD0, *_LOD1… theo "
+                     "khoảng cách camera (LOD n bắt đầu ở lod_distance × 2^(n-1), mặc định 10m, chỉnh trong Inspector). "
+                     "Nên tắt Generate LODs ở tab Import của GLB này để không chồng LOD tự sinh.")
     if src.textures:
         rels = [(f"Textures/{wang_file(a, n)}", p, role) for n, p, role in src.textures]
         files += [(rel, p) for rel, p, _ in rels]

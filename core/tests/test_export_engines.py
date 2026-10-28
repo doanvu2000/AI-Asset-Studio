@@ -350,3 +350,13 @@ def test_audio_exports_one_file_per_clip(tmp_path: Path) -> None:
     for exporter in (unity.export, godot.export):
         files = _files(exporter(src))
         assert {"Audio/theme_1_loop.ogg", "Audio/hit_1.wav"} <= files.keys() and "_loop" in files["README.txt"].decode()
+
+
+def test_godot_lods_glb_gets_visibility_range_scene(tmp_path: Path) -> None:
+    glb = tmp_path / "chest_lods.glb"
+    glb.write_bytes(b"glTF")
+    files = _files(godot.export(Source(asset="Chest", glb=[("chest_lods.glb", glb)])))
+    assert 'path="Models/chest_lods.glb"' in files["chest_lods.tscn"].decode()
+    assert b"visibility_range_begin" in files["asset_studio_lods.gd"]
+    plain = _files(godot.export(Source(asset="Chest", glb=[("chest_lod0.glb", glb)])))
+    assert "asset_studio_lods.gd" not in plain
