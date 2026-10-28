@@ -25,7 +25,7 @@ float value_noise(vec2 p) {
 }
 
 void fragment() {
-	vec4 c = texture(TEXTURE, UV) * COLOR;
+	vec4 c = COLOR;
 	vec2 px = UV / TEXTURE_PIXEL_SIZE / noise_scale;
 	float n = value_noise(px) * 0.65 + value_noise(px * 2.0 + 17.0) * 0.35;
 	float p = speed > 0.0 ? abs(fract(TIME * speed * 0.5) * 2.0 - 1.0) : progress;

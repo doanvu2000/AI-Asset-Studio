@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, useId, watch } from 'vue'
 import { onClickOutside, useEventListener } from '@vueuse/core'
 import { Boxes, ChevronDown, FolderDown, FolderOpen, LoaderCircle } from '@lucide/vue'
-import type { BundleEngine, BundleOptions, EngineExportOptions } from '../../../preload/types'
+import type { BundleEngine, BundleOptions, EngineExportOptions, ShaderPresetInfo } from '../../../preload/types'
 import { useAssetFile } from '@/composables/assetFile'
 import { usePresets } from '@/stores/catalog'
 
@@ -72,8 +72,42 @@ const savedTol = Number(readPref(TOL_KEY) ?? NaN)
 const tolerance = ref(Number.isFinite(savedTol) && savedTol >= 0 && savedTol <= 64 ? savedTol : 1.5)
 const tolValid = computed(() => Number.isFinite(tolerance.value) && tolerance.value >= 0 && tolerance.value <= 64)
 watch(tolerance, (v) => tolValid.value && writePref(TOL_KEY, String(v)))
+const SHADERS_KEY = 'export:shaders'
+const shaderList = computed<ShaderPresetInfo[]>(() => opts.value?.shaders ?? [])
+const picked = ref<string[]>(readJson<string[]>(SHADERS_KEY, []).filter((s) => typeof s === 'string'))
+const shaderTweaks = ref<Record<string, { color?: string; speed?: number }>>({})
+const pickedInfo = computed(() => shaderList.value.filter((s) => picked.value.includes(s.id)))
+watch(picked, (v) => writePref(SHADERS_KEY, JSON.stringify(v)), { deep: true })
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    const v = JSON.parse(readPref(key) ?? 'null') as T | null
+    return Array.isArray(fallback) === Array.isArray(v) && v !== null ? v : fallback
+  } catch {
+    return fallback
+  }
+}
+function toggleShader(id: string): void {
+  picked.value = picked.value.includes(id) ? picked.value.filter((s) => s !== id) : [...picked.value, id]
+}
+function tweak(id: string, key: 'color' | 'speed', v: string | number): void {
+  shaderTweaks.value = { ...shaderTweaks.value, [id]: { ...shaderTweaks.value[id], [key]: v } }
+}
+const speedOk = (v: number | undefined): boolean => v === undefined || (Number.isFinite(v) && v >= 0 && v <= 20)
+function shaderOpts(): Pick<EngineExportOptions, 'shaders' | 'shader_params'> {
+  const ids = pickedInfo.value.map((s) => s.id)
+  if (!ids.length) return {}
+  const params: Record<string, Record<string, number | string>> = {}
+  for (const id of ids) {
+    const t = shaderTweaks.value[id]
+    if (!t) continue
+    params[id] = {}
+    if (t.color) params[id].color = t.color
+    if (t.speed !== undefined && speedOk(t.speed)) params[id].speed = t.speed
+  }
+  return { shaders: ids, shader_params: params }
+}
 function engineOpts(): EngineExportOptions {
-  const base = { ppu: ppuValid.value ? ppu.value : 100, pixel: pixelMode.value === 'auto' ? null : pixelMode.value === 'on' }
+  const base = { ppu: ppuValid.value ? ppu.value : 100, pixel: pixelMode.value === 'auto' ? null : pixelMode.value === 'on', ...shaderOpts() }
   if (!opts.value?.sprite_sheet) return base
   return { ...base, collider: colliderOn.value, collider_tolerance: tolValid.value ? tolerance.value : 1.5 }
 }
@@ -257,6 +291,49 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
                 :aria-invalid="!tolValid"
               />
             </div>
+            <div v-if="shaderList.length" class="b-shaders">
+              <span class="b-opt-label" title="Shader viết tay, đã kiểm biên dịch trên Godot 4 và Unity URP 2D; mỗi preset kèm một material">Shader</span>
+              <div class="b-chips" role="group" aria-label="Shader preset cho sprite">
+                <button
+                  v-for="s in shaderList"
+                  :key="s.id"
+                  type="button"
+                  class="b-chip"
+                  :class="{ on: picked.includes(s.id) }"
+                  :aria-pressed="picked.includes(s.id)"
+                  :title="s.hint"
+                  @click="toggleShader(s.id)"
+                >
+                  {{ s.label }}
+                </button>
+              </div>
+              <div v-for="s in pickedInfo" :key="s.id" class="b-opt b-shader">
+                <span class="b-shader-name">{{ s.label }}</span>
+                <input
+                  v-if="s.color"
+                  type="color"
+                  class="b-color"
+                  :value="shaderTweaks[s.id]?.color ?? s.color"
+                  :aria-label="`Màu ${s.label}`"
+                  @input="tweak(s.id, 'color', ($event.target as HTMLInputElement).value)"
+                />
+                <input
+                  v-if="s.speed !== null"
+                  class="field num b-speed"
+                  :class="{ bad: !speedOk(shaderTweaks[s.id]?.speed) }"
+                  type="number"
+                  min="0"
+                  max="20"
+                  step="0.1"
+                  :value="shaderTweaks[s.id]?.speed ?? s.speed"
+                  :title="`Tốc độ (Hz), 0 = đứng yên — ${s.hint}`"
+                  :aria-label="`Tốc độ ${s.label} (Hz)`"
+                  :aria-invalid="!speedOk(shaderTweaks[s.id]?.speed)"
+                  @input="tweak(s.id, 'speed', ($event.target as HTMLInputElement).valueAsNumber)"
+                />
+              </div>
+              <p v-if="pickedInfo.length === 1 && opts?.sprite_sheet" class="b-note caption">Gán sẵn material vào sprite chính</p>
+            </div>
             <p v-if="!ppuValid" class="b-err caption">PPU từ 1 đến 10000 — đang dùng 100</p>
           </div>
         </div>
@@ -379,6 +456,57 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
 .b-err {
   color: var(--danger);
 }
+.b-shaders {
+  display: grid;
+  gap: 6px;
+}
+.b-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.b-chip {
+  height: 22px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 11px;
+  background: var(--bg-sunken);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-caption);
+  transition: background-color var(--t-fast), color var(--t-fast);
+}
+.b-chip.on {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+.b-shader {
+  justify-content: flex-start;
+}
+.b-shader-name {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-caption);
+  color: var(--text-2);
+}
+.b-color {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.b-speed {
+  width: 64px;
+  height: 22px;
+  text-align: right;
+}
+.b-speed.bad {
+  box-shadow: 0 0 0 1.5px var(--danger);
+}
+.b-note {
+  color: var(--text-3);
+}
 .spin {
   animation: spin 1s linear infinite;
 }
@@ -398,6 +526,7 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
   opacity: 0;
 }
 @media (prefers-reduced-motion: reduce) {
+  .b-chip,
   .chev,
   .menu-enter-active,
   .menu-leave-active {

@@ -23,7 +23,9 @@ GODOT_CHECK = r"""extends SceneTree
 
 func _init() -> void:
 	var dir: String = OS.get_cmdline_user_args()[0]
+	var shot: String = OS.get_cmdline_user_args()[1]
 	var fails := 0
+	var k := 0
 	for f in DirAccess.get_files_at(dir + "/Shaders"):
 		if not f.ends_with(".tres"):
 			continue
@@ -40,7 +42,9 @@ func _init() -> void:
 		var s := Sprite2D.new()
 		s.texture = load(dir + "/" + dir.get_file() + ".png")
 		s.material = mat
-		s.position = Vector2(320, 320)
+		s.position = Vector2(110 + (k % 3) * 210, 120 + (k / 3) * 200)
+		s.scale = Vector2(0.9, 2.2)
+		k += 1
 		get_root().add_child(s)
 		print("SHADER_OK ", f, " uniforms=", uniforms.size())
 	var scene = load(dir + "/" + dir.get_file() + ".tscn")
@@ -50,6 +54,7 @@ func _init() -> void:
 		print("SCENE_MATERIAL ", node.material.shader.resource_path if node.material else "none")
 	for i in 6:
 		await process_frame
+	get_root().get_texture().get_image().save_png(shot)
 	quit(1 if fails else 0)
 """
 
@@ -131,7 +136,7 @@ def export(engine: str, work: Path, names: list[str], asset: str) -> Path:
                  rarity_colors={"common": "#9aa0a6", "rare": "#3d7bfd", "legendary": "#f5a623"},
                  rarity=[("common", png), ("rare", png), ("legendary", png)])
     files = (godot if engine == "godot" else unity).export(src)
-    files = apply(files, engine, src, resolve(names, {"dissolve": {"progress": 0.4}}))
+    files = apply(files, engine, src, resolve(names, {"dissolve": {"progress": 0.4}, "outline_pulse": {"width": 2, "min_alpha": 1}, "hit_flash": {"amount": 0.5}}))
     dst = work / engine / asset
     if dst.exists():
         shutil.rmtree(dst)
@@ -160,7 +165,8 @@ async def check_godot(exe: Path, work: Path) -> bool:
             run = await preview.run_proc([str(exe), "--path", str(project), "--rendering-driver", driver,
                                           "--rendering-method", method, "--audio-driver", "Dummy",
                                           "--resolution", "640x640", "--position", "-32000,-32000",
-                                          "--script", "res://check.gd", "--", f"res://{asset}"],
+                                          "--script", "res://check.gd", "--", f"res://{asset}",
+                                          str(work / f"godot_{method}_{asset}.png")],
                                          project, None, preview.GODOT_RENDER_TIMEOUT_S, cancel)
             errors, warnings = preview.godot_issues(imp.output + "\n" + run.output)
             shader_errs = [ln for ln in run.output.splitlines() if "SHADER ERROR" in ln or "shader" in ln.lower()

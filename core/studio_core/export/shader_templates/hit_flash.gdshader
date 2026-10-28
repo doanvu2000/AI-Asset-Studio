@@ -6,7 +6,7 @@ uniform float amount : hint_range(0.0, 1.0) = 0.0;
 uniform float speed : hint_range(0.0, 20.0) = 0.0;
 
 void fragment() {
-	vec4 c = texture(TEXTURE, UV) * COLOR;
+	vec4 c = COLOR;
 	float blink = speed > 0.0 ? step(0.5, fract(TIME * speed)) : 0.0;
 	float k = max(amount, blink) * flash_color.a;
 	COLOR = vec4(mix(c.rgb, flash_color.rgb, k), c.a);

@@ -104,8 +104,10 @@ def test_sam3_masks_drive_pieces():
         m = np.zeros((h, w), bool)
         m[10:h - 10, x0:x0 + 28] = True
         masks.append(m)
-    labels, method = label_pieces(src, masks, 3, 8, 0.01)
+    labels, method = label_pieces(src, masks, 3, 3, 0.01)
     assert method == "sam3" and labels.max() == 3
+    labels, _ = label_pieces(src, masks[:1], 2, 8, 0.01)
+    assert 3 <= labels.max() <= 8
     _, method = label_pieces(src, [np.zeros((h, w), bool)], 4, 8, 0.01)
     assert method == "cpu"
 

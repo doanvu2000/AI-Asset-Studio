@@ -969,3 +969,12 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   (`op.soundscape`, BPM numpy), recipe `scene-soundscape`, `export/soundscape.py`; `runner.py` map_param trải phẳng list lồng.
   9 test; live 62.7s, $0.039. Cờ BPM: nhạc căng đo 108 vs 72 (3:2) — chủ nhân nghe `music_*_loop.ogg` quyết. README vẫn in câu crossfade khi lệch.
 - [x] 2026-10-29 Kiểm 613 pass / 4 skip, typecheck sạch → commit mốc #15 + #16 (kèm code dở #17/#18).
+- [x] 2026-10-29 #17 Hư hại + mảnh vỡ xong (agent): `ops/damage.py` (`op.damage_prep/_states/_debris`), recipe `damage-states`
+  (Klein chuỗi 3 bước → BiRefNet → SAM3 → debris 4–8 mảnh), `export/damage.py` (Unity prefab Pieces + Rigidbody2D, Godot
+  `asset_studio_damage.gd` set_state/hit/break_apart). 11 test; live 161s, IoU 0.99; Godot headless OK. Unity prefab chưa mở Editor.
+- [~] 2026-10-29 Giao #19 parallax, #20 store + icon app, #21 bản địa hoá chữ trong ảnh.
+- [x] 2026-10-29 #18 Shader preset xong (agent): `export/shaders.py` + `export/shader_templates/` (6 preset gdshader + URP 2D),
+  StepExport `shaders/shader_params`, BundleMenu chip, `scripts/verify_shaders.py`. Compile OK Godot 4.7.2 (gl+vulkan) và Unity URP 17.3
+  (project mới `L:\AI\unity-urp-shadercheck`). Built-in RP (`unity-test-batch`) sẽ hồng. 6 test.
+- [x] 2026-10-29 Kiểm 619 pass / 4 skip, typecheck sạch → commit mốc #17 + #18.
+- [~] 2026-10-29 Giao #8+#12 gói NPC (chân dung + thoại + TTS).

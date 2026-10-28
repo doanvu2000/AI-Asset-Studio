@@ -167,9 +167,11 @@ def _split_largest(lab: np.ndarray, k: int, jag: float = 0.08) -> bool:
     return True
 
 
-def finalize(seeds: np.ndarray, alpha: np.ndarray, min_n: int, max_n: int, min_area: float) -> np.ndarray:
+def finalize(seeds: np.ndarray, alpha: np.ndarray, min_n: int, max_n: int, min_area: float,
+             max_share: float = 0.35) -> np.ndarray:
     """Keeps the largest seeds ≥ min_area (fraction of the object) up to max_n, grows them over every opaque pixel
-    so the pieces tile the state exactly, then splits the largest piece until there are min_n."""
+    so the pieces tile the state exactly, then splits the largest piece until there are min_n and (within max_n)
+    none holds more than max_share of the object."""
     total = max(int(alpha.sum()), 1)
     ids, counts = np.unique(seeds[(seeds > 0) & alpha], return_counts=True)
     order = [int(i) for i, n in sorted(zip(ids, counts), key=lambda t: -t[1]) if n >= min_area * total][:max_n]
@@ -180,7 +182,17 @@ def finalize(seeds: np.ndarray, alpha: np.ndarray, min_n: int, max_n: int, min_a
         lab[alpha] = 1
     lab = _nearest_fill(lab, alpha)
     k = 0
-    while len(np.unique(lab[lab > 0])) < min_n and _split_largest(lab, k):
+    while True:
+        counts = np.unique(lab[lab > 0], return_counts=True)[1]
+        n, share = len(counts), counts.max() / total if len(counts) else 0.0
+        if n >= max_n and share > max_share and k < max_n:
+            # Out of budget with one dominant body: fold the smallest piece into its neighbours to split the big one.
+            ids_, cnt_ = np.unique(lab[lab > 0], return_counts=True)
+            lab[lab == ids_[cnt_.argmin()]] = 0
+            lab = _nearest_fill(lab, alpha)
+            n -= 1
+        if not (n < min_n or (n < max_n and share > max_share)) or not _split_largest(lab, k):
+            break
         k += 1
     out = np.zeros(lab.shape, np.int32)
     _, inv = np.unique(lab[lab > 0], return_inverse=True)

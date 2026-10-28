@@ -24,10 +24,11 @@ export function checkEngine(v: unknown): BundleEngine | undefined {
   return v
 }
 
+const SHADER_ID_RE = /^[a-z][a-z0-9_]{0,31}$/
 export function checkEngineOptions(v: unknown): EngineExportOptions {
   if (v === undefined || v === null) return {}
   if (typeof v !== 'object') throw new Error('invalid export options')
-  const { ppu, pixel, collider, collider_tolerance: tol } = v as Record<string, unknown>
+  const { ppu, pixel, collider, collider_tolerance: tol, shaders, shader_params: params } = v as Record<string, unknown>
   const out: EngineExportOptions = {}
   if (ppu !== undefined && ppu !== null) {
     if (typeof ppu !== 'number' || !Number.isFinite(ppu) || ppu <= 0 || ppu > 10000) throw new Error('invalid ppu')
@@ -44,6 +45,25 @@ export function checkEngineOptions(v: unknown): EngineExportOptions {
   if (tol !== undefined && tol !== null) {
     if (typeof tol !== 'number' || !Number.isFinite(tol) || tol < 0 || tol > 64) throw new Error('invalid collider tolerance')
     out.collider_tolerance = tol
+  }
+  if (shaders !== undefined && shaders !== null) {
+    if (!Array.isArray(shaders) || shaders.length > 16 || !shaders.every((s) => typeof s === 'string' && SHADER_ID_RE.test(s)))
+      throw new Error('invalid shader presets')
+    out.shaders = shaders as string[]
+  }
+  if (params !== undefined && params !== null) {
+    if (typeof params !== 'object' || Array.isArray(params)) throw new Error('invalid shader params')
+    const clean: Record<string, Record<string, number | string>> = {}
+    for (const [id, vals] of Object.entries(params as Record<string, unknown>)) {
+      if (!SHADER_ID_RE.test(id) || typeof vals !== 'object' || vals === null || Array.isArray(vals)) throw new Error('invalid shader params')
+      clean[id] = {}
+      for (const [k, x] of Object.entries(vals as Record<string, unknown>)) {
+        const okNum = typeof x === 'number' && Number.isFinite(x)
+        if (!SHADER_ID_RE.test(k) || !(okNum || (typeof x === 'string' && x.length <= 16))) throw new Error('invalid shader params')
+        clean[id][k] = x as number | string
+      }
+    }
+    out.shader_params = clean
   }
   return out
 }

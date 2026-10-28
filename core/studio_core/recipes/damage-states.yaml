@@ -12,7 +12,8 @@ inputs:
             label: Lệnh trạng thái 2 (hư nhẹ)}
   broken: {type: text, default: "large deep cracks, split and splintered parts, a few chunks missing, dents",
            label: Lệnh trạng thái 3 (vỡ)}
-  wrecked: {type: text, default: "badly smashed, big holes, shattered and broken-off parts, barely holding together",
+  wrecked: {type: text,
+            default: "badly smashed, broken-off chunks, dark gaping holes, shattered splintered parts, barely holding together",
             label: Lệnh trạng thái 4 (nát)}
   debris_from: {type: enum, default: broken, options: [broken, wrecked], label: Trạng thái tách mảnh vỡ}
   split: {type: enum, default: auto, options: [auto, sam3, cpu], label: "Cách tách mảnh (auto = SAM3, thiếu thì CPU)"}

@@ -118,6 +118,18 @@ export interface EngineExportOptions {
   collider?: boolean | null
   /** Douglas–Peucker tolerance in pixels. */
   collider_tolerance?: number
+  /** Sprite shader preset ids (hit_flash, dissolve…) shipped with a material each; one = assigned to the sprite. */
+  shaders?: string[]
+  shader_params?: Record<string, Record<string, number | string>>
+}
+
+export interface ShaderPresetInfo {
+  id: string
+  label: string
+  hint: string
+  /** Default colour (#rrggbb) / speed (Hz) when the preset has one. */
+  color: string | null
+  speed: number | null
 }
 
 /** Drop-in folder for a game engine: sliced sheet + clips + controller/scene, Spine and GLB copied by convention. */
@@ -132,6 +144,7 @@ export interface BundleOptions {
   preset: string | null
   engines?: BundleEngine[]
   collider_default?: boolean
+  shaders?: ShaderPresetInfo[]
 }
 
 export interface ExportedBundle {

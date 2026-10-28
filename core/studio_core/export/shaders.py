@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from studio_core.export.sheet import stable_hex
 from studio_core.export.source import Files, Source
 from studio_core.paths import package_dir
 
@@ -209,9 +208,8 @@ def godot_assign(scene: str, material: str) -> str:
     return re.sub(r"load_steps=(\d+)", lambda m: f"load_steps={int(m.group(1)) + 1}", out, count=1)
 
 
-def unity_shader_guid(p: Preset) -> str:
-    # Fixed per shader: two exports in one project then share one shader asset instead of two same-named copies.
-    return stable_hex("unity-shader", p.unity)
+def unity_shader_rel(p: Preset) -> str:
+    return f"Shaders/AssetStudio_{p.unity}.shader"
 
 
 def shader_meta(g: str) -> str:
@@ -225,7 +223,7 @@ def _unity_color(v: float | str) -> str:
     return f"{{r: {r:.6g}, g: {g:.6g}, b: {b:.6g}, a: {a:.6g}}}"
 
 
-def unity_material(c: ShaderChoice, name: str, ramp_guid: str | None, rows: int) -> str:
+def unity_material(c: ShaderChoice, name: str, shader_guid: str, ramp_guid: str | None, rows: int) -> str:
     floats, colors = [], []
     for q in c.preset.params:
         if not q.unity:
@@ -252,7 +250,7 @@ Material:
   m_PrefabInstance: {{fileID: 0}}
   m_PrefabAsset: {{fileID: 0}}
   m_Name: {name}
-  m_Shader: {{fileID: {SHADER_FILE_ID}, guid: {unity_shader_guid(c.preset)}, type: 3}}
+  m_Shader: {{fileID: {SHADER_FILE_ID}, guid: {shader_guid}, type: 3}}
   m_Parent: {{fileID: 0}}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -280,9 +278,7 @@ README_GODOT = """- Shaders/: shader preset cho sprite (canvas_item, chạy cả
 README_UNITY = """- Shaders/: shader preset URP 2D (AssetStudio/Sprite/<Tên>, kiểu Sprite-Unlit, tương thích SRP Batcher, flip và
   màu SpriteRenderer, 2D Animation skinning). Cần Universal Render Pipeline — Built-in RP sẽ hiện màu hồng. Mỗi preset
   một Shaders/{asset}_<preset>.mat, kéo vào Material của SpriteRenderer. Đổi lúc chạy:
-  GetComponent<SpriteRenderer>().material.SetFloat("_Amount", 1f) (renderer.material tự tách bản riêng).
-  Nhiều asset cùng dùng một shader: GUID shader cố định nên Unity có thể báo trùng GUID — xoá bớt bản .shader trùng,
-  material vẫn trỏ đúng.{assigned}"""
+  GetComponent<SpriteRenderer>().material.SetFloat("_Amount", 1f) (renderer.material tự tách bản riêng).{assigned}"""
 
 
 def _notes(engine: str, a: str, chosen: list[ShaderChoice], assigned: str | None, rows: list[tuple[str, str]] | None
@@ -333,11 +329,13 @@ def apply(files: Files, engine: str, src: Source, chosen: list[ShaderChoice]) ->
             out.append((f"{ramp_rel}.meta", texture_meta(a, ramp_guid, None, (RAMP_WIDTH, n_rows), src.ppu,
                                                          True).encode()))
         for c in chosen:
-            rel = f"Shaders/AssetStudio_{c.preset.unity}.shader"
-            out += [(rel, template_dir() / f"AssetStudio_{c.preset.unity}.shader"),
-                    (f"{rel}.meta", shader_meta(unity_shader_guid(c.preset)).encode())]
+            # Per-export GUID: a fixed one collides when two exports land in one project and Unity re-rolls both.
+            rel = unity_shader_rel(c.preset)
+            shader_guid = guid(src.uid, a, rel)
+            out += [(rel, template_dir() / Path(rel).name), (f"{rel}.meta", shader_meta(shader_guid).encode())]
             mat = f"Shaders/{a}_{c.preset.id}.mat"
-            out += [(mat, unity_material(c, f"{a}_{c.preset.id}", ramp_guid if c is swap else None, n_rows).encode()),
+            out += [(mat, unity_material(c, f"{a}_{c.preset.id}", shader_guid, ramp_guid if c is swap else None,
+                                         n_rows).encode()),
                     (f"{mat}.meta", native_meta(guid(src.uid, a, mat), MATERIAL_FILE_ID).encode())]
         prefab = f"{a}.prefab"
         if len(chosen) == 1 and isinstance(names.get(prefab), bytes):
