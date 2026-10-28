@@ -1051,3 +1051,4 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   10 test; live 768 render 109s.
 - [x] 2026-10-29 06:12 Handoff mới: .planning/HANDOFF-2026-10-29-0612.md. Đang build dist:core → dist:portable.
 - [x] 2026-10-29 06:3x Build dist:core OK; smoke core frozen: CLIP/onnxruntime OK, TTS lỗi FileNotFound tts.py (hash nguồn) → sửa `adapters/tts.py` cache_material bỏ qua file không có; build lại, run npc-voice-csv tới gate OK.
+- [x] 2026-10-29 06:1x Build dist:portable OK (`app/release/1.0.0/win-unpacked/AI Asset Studio.exe`); mở thử: core kết nối, Tổng quan hiện GPU/RAM, ComfyUI/Blender/Codex/Claude trạng thái; đã đóng. Chưa bấm thử từng recipe mới trong UI.
