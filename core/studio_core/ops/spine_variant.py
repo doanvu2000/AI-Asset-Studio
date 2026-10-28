@@ -1,11 +1,12 @@
 """Skin variants of an existing Spine skeleton: render the setup pose, let an image editor (Flux.2 Klein) restyle the
-whole figure at once so parts stay consistent, then match each atlas region's colour statistics to the pixels it
-owns in the edit and apply that to the region's texture. The art (lines, shading) is kept and nothing moves, so the
-variant atlas drops in for the original one; hidden regions take the whole-figure map."""
+whole figure at once so parts stay consistent, then match each atlas region's colour statistics, per paint colour, to
+the pixels it owns in the edit and apply that to the region's texture. The art (lines, shading) is kept and nothing
+moves, so the variant atlas drops in for the original one; hidden regions take the whole-figure map."""
 from __future__ import annotations
 
 import asyncio
 import json
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -94,8 +95,9 @@ def _interior(owner: np.ndarray, alpha: np.ndarray) -> np.ndarray:
 _YCC = np.array([[0.299, 0.587, 0.114], [-0.168736, -0.331264, 0.5], [0.5, -0.418688, -0.081312]])
 _RGB = np.linalg.inv(_YCC)
 # Gain limits on (luma, chroma) spread: the editor adds texture (metal glints, cloth weave) that the flat art does
-# not have, and a full std match would turn that into noise; chroma may grow more (grey cloth -> saturated red).
-GAIN = ((0.7, 1.4), (0.4, 3.0))
+# not have, and a full std match would turn that into noise. A new hue (grey cloth -> red) is a shift of the median,
+# not a gain; at 3x a flat navy cluster blew up to saturated blue on a real edit.
+GAIN = ((0.7, 1.4), (0.4, 1.5))
 
 
 def _stats(ycc: np.ndarray) -> np.ndarray:
@@ -105,10 +107,44 @@ def _stats(ycc: np.ndarray) -> np.ndarray:
     return np.stack([np.median(ycc, 0), ycc.std(0) + 1e-3])
 
 
+def _main_part(m: np.ndarray) -> np.ndarray:
+    """Largest 4-connected piece of a mask. A region seen through a gap (a backpack between arm and body) is often
+    painted over there by the editor (the jacket closed), so its smaller pieces would teach the wrong colour."""
+    ys, xs = np.nonzero(m)
+    if not len(ys):
+        return m
+    y0, x0 = ys.min(), xs.min()
+    sub = m[y0:ys.max() + 1, x0:xs.max() + 1]
+    h, w = sub.shape
+    label = np.zeros(sub.shape, np.int32)
+    flat_m, flat_l = sub.ravel(), label.ravel()
+    best, best_n, cur = 0, 0, 0
+    for start in np.flatnonzero(flat_m):
+        if flat_l[start]:
+            continue
+        cur += 1
+        flat_l[start] = cur
+        queue, n = deque([start]), 0
+        while queue:
+            i = queue.popleft()
+            n += 1
+            y, x = divmod(i, w)
+            for j, ok in ((i - w, y > 0), (i + w, y < h - 1), (i - 1, x > 0), (i + 1, x < w - 1)):
+                if ok and flat_m[j] and not flat_l[j]:
+                    flat_l[j] = cur
+                    queue.append(j)
+        if n > best_n:
+            best, best_n = cur, n
+    out = np.zeros_like(m)
+    out[y0:ys.max() + 1, x0:xs.max() + 1] = label == best
+    return out
+
+
 def colour_maps(render: Image.Image, edited: Image.Image, owner: np.ndarray, paths: list[str],
                 tint: np.ndarray | None = None) -> tuple[dict[str, np.ndarray], np.ndarray, dict[str, int]]:
-    """Per region a (2, 2, 3) map [[src median, src std], [dst median, dst std]] in YCbCr over the pixels the region
-    owns (statistics, not per-pixel fits: the edit need not line up exactly), the whole-figure map for regions
+    """Per region a (K, 2, 2, 3) map, for each paint colour [[src median, src std], [dst median, dst std]] in YCbCr
+    over the pixels the region owns (statistics, not per-pixel fits: the edit need not line up exactly), the
+    whole-figure map for regions
     drawn but hidden, and pixels used per region. Both sides are divided by the slot tint: the map is applied to the
     untinted atlas, and the runtime tints the result again."""
     blur = ImageFilter.BoxBlur(1)
@@ -118,26 +154,70 @@ def colour_maps(render: Image.Image, edited: Image.Image, owner: np.ndarray, pat
     mask = _interior(owner, np.asarray(render)[..., 3])
     if mask.sum() < 50:
         raise StepError("op_bad_input", "the setup render has almost no opaque interior to learn colours from")
-    whole = np.stack([_stats(src[mask]), _stats(dst[mask])])
+    whole = np.stack([_stats(src[mask]), _stats(dst[mask])])[None]
     maps, used = {}, {}
     for i, p in enumerate(paths):
         m = mask & (owner == i)
         n = int(m.sum())
         used[p] = n
         if n >= 20:
-            maps[p] = np.stack([_stats(src[m]), _stats(dst[m])])
+            part = _main_part(m)
+            m = part if part.sum() >= 20 else m
+            s_px, d_px = src[m], dst[m]
+            lab = _clusters(s_px)
+            maps[p] = np.stack([np.stack([_stats(s_px[lab == k]), _stats(d_px[lab == k])])
+                                for k in range(lab.max() + 1)])
         else:
             maps[p] = whole
     return maps, whole, used
 
 
+# Colour clusters weigh luma less: shading moves luma inside one paint colour, a different paint moves chroma.
+_FEAT = np.array([0.5, 1.0, 1.0])
+MAX_CLUSTERS = 4
+MIN_SHARE = 0.03
+MERGE = 0.06
+SOFT = 0.05
+
+
+def _clusters(ycc: np.ndarray) -> np.ndarray:
+    """Labels 0..K-1 for the paint colours inside one region (a backpack texture with a brown bedroll and a navy
+    body needs a map per colour, one shared map drags both toward the edit's average)."""
+    f = ycc * _FEAT
+    centres = [np.median(f, 0)]
+    for _ in range(MAX_CLUSTERS - 1):
+        d = np.min([np.linalg.norm(f - c, axis=1) for c in centres], 0)
+        centres.append(f[int(d.argmax())])
+    c = np.array(centres)
+    for _ in range(12):
+        lab = np.linalg.norm(f[:, None] - c[None], axis=2).argmin(1)
+        c = np.array([f[lab == k].mean(0) if (lab == k).any() else c[k] for k in range(len(c))])
+    keep = [k for k in range(len(c)) if (lab == k).mean() >= MIN_SHARE]
+    merged: list[int] = []
+    for k in sorted(keep, key=lambda k: -(lab == k).sum()):
+        if all(np.linalg.norm(c[k] - c[j]) > MERGE for j in merged):
+            merged.append(k)
+    c = c[merged]
+    return np.linalg.norm(f[:, None] - c[None], axis=2).argmin(1)
+
+
 def _apply(rgb: np.ndarray, m: np.ndarray) -> np.ndarray:
-    (mu_s, sd_s), (mu_t, sd_t) = m
-    gain = sd_t / sd_s
-    gain[0] = np.clip(gain[0], *GAIN[0])
-    gain[1:] = np.clip(gain[1:], *GAIN[1])
-    ycc = (rgb @ _YCC.T - mu_s) * gain + mu_t
-    return ycc @ _RGB.T
+    """`m` is (K, 2, 2, 3): one map per colour cluster, blended by how close each texel is to the cluster's colour."""
+    m = m[None] if m.ndim == 3 else m
+    ycc = rgb @ _YCC.T
+    outs, dist = [], []
+    for (mu_s, sd_s), (mu_t, sd_t) in m:
+        gain = sd_t / sd_s
+        gain[0] = np.clip(gain[0], *GAIN[0])
+        gain[1:] = np.clip(gain[1:], *GAIN[1])
+        outs.append((ycc - mu_s) * gain + mu_t)
+        dist.append(np.linalg.norm((ycc - mu_s) * _FEAT, axis=-1))
+    if len(outs) == 1:
+        return outs[0] @ _RGB.T
+    d = np.stack(dist)
+    w = np.exp(-(d - d.min(0)) ** 2 / (2 * SOFT ** 2))
+    w /= w.sum(0)
+    return np.einsum("k...,k...c->...c", w, np.stack(outs)) @ _RGB.T
 
 
 def recolor_page(page: Image.Image, regions: list[Any], maps: dict[str, np.ndarray], whole: np.ndarray,
@@ -182,7 +262,7 @@ class SpineSetupRender(OpExecutor):
 class SpineSkinVariant(OpExecutor):
     """Per edited render: a recoloured copy of every atlas page, the atlas pointing at them, and a preview."""
     kind = "op.spine_skin_variant"
-    version = "4"
+    version = "7"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         _, doc = await read_skeleton(ctx, inputs)
@@ -196,7 +276,10 @@ class SpineSkinVariant(OpExecutor):
         keep = [w.strip().lower() for w in str(params.get("keep", "eye,mouth")).split(",") if w.strip()]
         stem = (atlas_ref.name or "skeleton").rsplit(".", 1)[0]
         ctx.job_dir.mkdir(parents=True, exist_ok=True)
-        out: dict[str, list] = {"atlas": [], "pages": [], "previews": [], "report": []}
+        # skeleton + atlas + texture (the first variant's pages) make the step exportable to an engine as one Spine
+        # asset; every variant stays in atlas/pages for the raw export.
+        out: dict[str, list] = {"atlas": [], "pages": [], "previews": [], "report": [],
+                                "skeleton": [inputs["skeleton"][0]], "texture": []}
         report = []
         for i, edited in enumerate(edits, 1):
             tag = f"v{i}"
@@ -212,7 +295,10 @@ class SpineSkinVariant(OpExecutor):
                 f = ctx.job_dir / names[page.name]
                 await asyncio.to_thread(img.save, f)
                 page_files.append(f)
-                out["pages"].append(await ctx.blobs.put_file(f, name=f.name, mime="image/png"))
+                ref = await ctx.blobs.put_file(f, name=f.name, mime="image/png")
+                out["pages"].append(ref)
+                if i == 1:
+                    out["texture"].append(ref)
             text = rename_pages(atlas_text, names)
             atlas_file = ctx.job_dir / f"{stem}_{tag}.atlas"
             atlas_file.write_text(text, encoding="utf-8")

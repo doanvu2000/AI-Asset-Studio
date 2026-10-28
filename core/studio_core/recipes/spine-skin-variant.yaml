@@ -32,6 +32,7 @@ steps:
     params: {skin: "${inputs.skin_parts}", height: 1024, keep: "${inputs.keep}"}
   - id: approve
     kind: gate.approve
-    in: {preview: variant.previews, atlas: variant.atlas, pages: variant.pages, report: variant.report}
+    in: {preview: variant.previews, skeleton: variant.skeleton, atlas: variant.atlas, texture: variant.texture,
+         pages: variant.pages, report: variant.report}
 outputs:
   final: approve.atlas
