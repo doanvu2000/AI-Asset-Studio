@@ -5,14 +5,17 @@ from __future__ import annotations
 import asyncio
 import json
 import math
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PIL import Image, ImageDraw
 
 from ..adapters.blender import paperdoll_math as pdm
 from ..contracts import BlobRef, Outputs, StepContext, StepError, StepResult
-from ..export.sheet import Cell, Layout, Track, layout
 from .executors import OpExecutor, _load, _put_png, _read_json
+
+if TYPE_CHECKING:
+    # export.sheet imports ops.presets, so a module-level import here would be circular.
+    from ..export.sheet import Cell, Layout, Track
 
 DOLL_FILE = "paperdoll.json"
 DOLL_TYPE = "asset-studio/paperdoll"
@@ -118,6 +121,8 @@ class Paperdoll(OpExecutor):
                 raise StepError("op_bad_input", f"expected exactly 1 '{port}'")
         rig = await _read_json(ctx, inputs["rig"][0])
         meta = await _read_json(ctx, inputs["sheet_meta"][0])
+        from ..export.sheet import layout
+
         try:
             lay = layout(meta, directional_rows=True)
             check_rig(rig, lay)

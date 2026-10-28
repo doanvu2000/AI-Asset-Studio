@@ -352,13 +352,16 @@ class TextureSheet:
             grow = (wt == 0) & (sw > 0)
             col[grow] = sc[grow] / sw[grow][..., None]
             wt[grow] = 1
+        # Edge-padded so a patch box reaching past the sheet border (glyph padding) stays inside the image.
+        self.margin = self.size
+        col = np.pad(col, ((self.margin, self.margin), (self.margin, self.margin), (0, 0)), mode="edge")
         self.img = Image.fromarray(np.clip(np.round(col * 255), 0, 255).astype(np.uint8), "RGB")
 
     def patch(self, ch: str, pen: tuple[float, float], w: int, h: int, base: int) -> np.ndarray | None:
         if ch not in self.pens:
             return None
         k = self.size / base
-        px, py = self.pens[ch]
+        px, py = self.pens[ch][0] + self.margin, self.pens[ch][1] + self.margin
         box = (px - pen[0] * k, py - pen[1] * k, px + (w - pen[0]) * k, py + (h - pen[1]) * k)
         return np.asarray(self.img.resize((w, h), Image.Resampling.BICUBIC, box=box), np.float32) / 255
 

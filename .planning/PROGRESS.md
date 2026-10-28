@@ -1017,3 +1017,13 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   11 test; embed 28ms/ảnh CPU.
 - [x] 2026-10-29 Kiểm 723 pass / 4 skip (lần 1 lỗi tạm test_p7_kinds do agent đang sửa kinds, chạy lại xanh), typecheck sạch → commit mốc #28.
 - [~] 2026-10-29 Giao #29 storyboard → animatic.
+- [x] 2026-10-29 #23 Autotile xong (agent): blob 47 + ô B đầy (8×6) vẽ CPU theo công thức khoảng cách (mép khớp theo cấu tạo),
+  `ops/autotile.py` (`op.autotile`), recipe `autotile-terrain` + `autotile-terrain-prompt`, `export/autotile.py` (Godot TileSet terrain
+  Match Corners and Sides, Unity RuleTile cần tilemap.extras). Godot 1281 ô sai 0, Unity 693 ô sai 0; live 34s. Klein bị loại (làm lộ nối).
+  Chờ #25 xong mới commit (test_bitmap_font đang đỏ do code dở).
+- [~] 2026-10-29 Giao #6 đóng gói asset pack local.
+- [x] 2026-10-29 #22 Key art động xong (agent): Wan2.2 TI2V-5B (Apache-2.0) tải 10.6GB vào `F:\work\AI\comfyUI_models` (diffusion fp16 +
+  vae), pack bootstrap `keyart_video`; workflow `keyart_wan22_ti2v`, `ops/keyart.py` (prep, crossfade/pingpong loop, MP4/WebM/GIF/poster),
+  `adapters/keyart_motion.py`, recipe `key-art-motion`, `VideoViewer.vue`, CSP thêm `media-src` (`app/src/main/index.ts:93` — có thể sửa
+  luôn audio bị chặn ở bản build). 8 test; live 720p 654s (Wan 623s), VRAM peak 11.9GB, $0.035. 5B chuyển động mạnh hơn "nhẹ" → crossfade có thể ghost.
+- [x] 2026-10-29 Kiểm 733 pass / 4 skip, typecheck sạch → commit mốc #22 + #23 (kèm code dở #25/#26/#29/#6).

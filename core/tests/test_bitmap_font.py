@@ -230,6 +230,10 @@ async def test_klein_texture_keeps_ttf_alpha(tmp_path: Path):
     assert (t[..., 3] == p[..., 3]).all()
     solid = t[..., 3] > 200
     assert t[solid, 0].mean() > 170 and t[solid, 1].mean() < 70
+    # Wide outline + shadow padding pushes patch boxes past the sheet edge for glyphs in the first row/column.
+    wide = await BitmapFont().run(ctx, {**params, "outline": 8, "shadow": 12},
+                                  {"texture": [k_ref], "sheet": sheet.outputs["sheet"]})
+    assert wide.meta["textured"]
     with pytest.raises(StepError):
         await BitmapFont().run(ctx, {**params, "charset": "ascii"},
                                {"texture": [k_ref], "sheet": sheet.outputs["sheet"]})

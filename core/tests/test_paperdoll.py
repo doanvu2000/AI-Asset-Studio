@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -87,7 +88,7 @@ def test_fit_helmet_hat_and_armor_boxes() -> None:
     top = pdm.apply(armor, (0.5, 0.3, 1.0))
     assert _close(top, (0.15 * 1.08, 0.08 * 1.15, 0.8))
     assert pdm.apply(armor, (0.0, 0.0, 0.0))[2] == pytest.approx(0.8 - 0.3 * 0.8)
-    shield = pdm.fit_matrix({"slot": "shield", "shape": "round", "side": 1}, (-0.5, -0.03, -0.5), (0.5, 0.03, 0.5),
+    shield = pdm.fit_matrix({"slot": "shield", "shape": "round", "side": 1, "bone": "forearm_l"}, (-0.5, -0.03, -0.5), (0.5, 0.03, 0.5),
                             RIG)
     face = pdm._norm(tuple(a - b for a, b in zip(pdm.apply(shield, (0, 1, 0)), pdm.apply(shield, (0, 0, 0)))))
     assert face[0] > 0 and face[1] < 0
@@ -198,6 +199,7 @@ async def test_executor_orders_frames_and_layers(tmp_path: Path) -> None:
     rig = json.loads(ctx.blobs.path(res.outputs["meta"][0].hash).read_bytes())
     assert rig["clips"][1]["name"] == "attack" and len(rig["poses"]["attack"]) == 3 and rig["body_height"] == 1.0
     with pytest.raises(StepError, match="needs a helmet mesh"):
+        (tmp_path / "x").mkdir()
         await _doll(FakeCtx(tmp_path / "x"), tmp_path / "x", helmet="mesh")
 
 
@@ -227,7 +229,7 @@ async def test_layer_sheets_share_character_cells(tmp_path: Path) -> None:
         for t, i, c in cell_frames(lay):
             dot = (c.x + i, c.y + ANGLES.index(round(t.angle)))
             assert body.getpixel(dot)[3] == 255 and layer.getpixel(dot)[3] == 255, (t.name, i)
-        assert sum(1 for p in layer.getdata() if p[3]) == len(lay.cells)
+        assert int((np.asarray(layer)[..., 3] > 0).sum()) == len(lay.cells)
     doc = json.loads(ctx.blobs.path(res.outputs["sockets"][0].hash).read_bytes())
     assert [f["cell"] for f in doc["frames"]] == [c.name for c in lay.cells]
     assert doc["frames"][0]["anim"] == "idle_S" and doc["layers"] == ["weapon", "helmet"]
