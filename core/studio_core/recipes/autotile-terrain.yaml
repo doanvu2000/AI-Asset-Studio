@@ -1,0 +1,34 @@
+id: autotile-terrain
+name: Autotile địa hình 47 ô (2 ảnh texture)
+description: >-
+  Texture địa hình A (cỏ) + texture B (đất / nước) → tự làm liền mạch nếu mép lộ → CPU vẽ bộ blob 47 ô (A trên nền B,
+  mép bo tròn lượn theo nhiễu lặp đúng chu kỳ ô, viền tối lấy màu từ A) + 1 ô B đầy, ô cạnh nhau khớp mép theo cấu
+  tạo → bản đồ ngẫu nhiên vẽ bằng chính bộ ô để soi mối nối → duyệt. Xuất Godot 4 (TileSet terrain Match Corners and
+  Sides) và Unity (RuleTile, cần gói 2D Tilemap Extras). Không cần GPU.
+inputs:
+  tile_a: {type: image, label: Texture A (địa hình phủ lên, vd cỏ)}
+  tile_b: {type: image, label: Texture B (nền, vd đất / nước)}
+  terrains: {type: text, default: "grass, dirt", label: "Tên 2 địa hình (A, B)"}
+  size: {type: int, default: 32, options: [16, 32, 64, 128], label: Cỡ ô (px)}
+  pixel: {type: bool, default: false, label: Pixel art (mép cứng, không khử răng cưa)}
+  colors: {type: int, default: 0, options: [0, 8, 16, 24, 32], label: "Giới hạn số màu pixel art (0 = tắt)"}
+  edge: {type: enum, default: organic, options: [smooth, organic, rough], label: Kiểu mép}
+  border: {type: float, default: 0.3, min: 0.1, max: 0.4, label: Độ lấn của B vào ô A (tỉ lệ ô)}
+  rim: {type: float, default: 0.06, min: 0, max: 0.15, label: "Viền tối mép A (tỉ lệ ô, 0 = tắt)"}
+  seed: {type: int, default: 0, min: 0, label: Seed hình mép}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: tiles
+    kind: op.autotile
+    in: {tile_a: inputs.tile_a, tile_b: inputs.tile_b}
+    params: {terrains: "${inputs.terrains}", size: "${inputs.size}", pixel: "${inputs.pixel}",
+             colors: "${inputs.colors}", edge: "${inputs.edge}", border: "${inputs.border}", rim: "${inputs.rim}",
+             seed: "${inputs.seed}"}
+  - id: approve
+    kind: gate.approve
+    in: {images: tiles.images, preview: tiles.preview, autotile: tiles.autotile}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  autotile: approve.autotile

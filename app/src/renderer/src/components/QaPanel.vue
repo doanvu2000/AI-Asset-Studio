@@ -7,6 +7,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import BlobImage from '@/components/BlobImage.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import RelTime from '@/components/RelTime.vue'
+import DuplicatesPanel from '@/components/DuplicatesPanel.vue'
 import { api } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 
@@ -156,6 +157,7 @@ const ref_ = computed(() => report.value?.reference)
         </div>
       </div>
     </template>
+    <DuplicatesPanel :project-id="projectId" />
   </section>
 </template>
 

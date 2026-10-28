@@ -6,6 +6,7 @@ import { useAssetFile } from '@/composables/assetFile'
 import BundleMenu from './BundleMenu.vue'
 import EnginePreview from './EnginePreview.vue'
 import FollowUpMenu from './FollowUpMenu.vue'
+import SimilarButton from './SimilarButton.vue'
 import type { BlobRef } from '@/api/types'
 import { exportName, useVersions } from '@/stores/versions'
 
@@ -55,6 +56,7 @@ const offTitle = 'Chỉ dùng được trong app desktop'
     <BundleMenu v-if="bundleStep && file.available" :step-id="bundleStep" :name="version?.asset_name.trim() || undefined" :compact="compact" />
     <EnginePreview v-if="bundleStep && file.available" :step-id="bundleStep" :name="version?.asset_name.trim() || undefined" :compact="compact" />
     <FollowUpMenu :hash="hash" :blob="blob ?? version?.blob" :run-id="sourceRun" :step-id="bundleStep" :compact="compact" />
+    <SimilarButton :hash="hash" :blob="blob ?? version?.blob" :version-id="versionId ?? version?.id" :compact="compact" />
     <button
       type="button"
       class="btn btn-plain"

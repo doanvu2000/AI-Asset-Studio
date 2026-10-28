@@ -1,0 +1,72 @@
+id: sprite-8dir-paperdoll
+name: Paper-doll trang bị (sprite 8 hướng + anim)
+description: >-
+  Mesh nhân vật đã dọn + joints.json của một run "Sprite 8 hướng + bộ anim" → Blender dựng lại đúng xương, gắn vũ khí /
+  khiên / mũ / giáp (khối có sẵn hoặc GLB riêng, vd từ Prop 3D TRELLIS) vào xương tay/đầu/ngực → render nhân vật +
+  mỗi món một lớp cùng camera, thân làm holdout nên lớp đã bị che đúng → sheet lớp trùng ô với sheet nhân vật +
+  sockets.json (vị trí/góc tay, đầu, ngực từng khung, trước/sau thân) → duyệt ảnh ghép. Xuất Unity (prefab lớp con
+  SpriteRenderer) / Godot (AnimatedSprite2D lớp con + Marker2D socket).
+inputs:
+  mesh: {type: mesh, label: "Mesh nhân vật (*_clean.glb, bước cleanup của run anim)"}
+  joints: {type: file, ext: [json], label: "joints.json (bước joints của run anim)"}
+  elevation: {type: int, default: 30, options: [30, 45, 60, 90], label: Góc nghiêng (giống run anim)}
+  res: {type: int, default: 256, options: [64, 128, 256, 512], label: Kích thước frame (giống run anim)}
+  anims: {type: text, default: "idle, walk, run, attack", label: "Anim (giống run anim)"}
+  walk_frames: {type: int, default: 8, options: [6, 8, 12], label: Số khung đi bộ}
+  weapon: {type: enum, default: sword, options: [none, sword, axe, staff, mesh], label: Vũ khí}
+  weapon_hand: {type: enum, default: right, options: [right, left], label: Tay cầm vũ khí}
+  weapon_mesh: {type: mesh, required: false, label: GLB vũ khí (tuỳ chọn, thay khối có sẵn)}
+  shield: {type: enum, default: none, options: [none, round, kite, mesh], label: Khiên}
+  shield_mesh: {type: mesh, required: false, label: GLB khiên (tuỳ chọn)}
+  helmet: {type: enum, default: helmet, options: [none, helmet, hat, mesh], label: Mũ}
+  helmet_mesh: {type: mesh, required: false, label: GLB mũ (tuỳ chọn)}
+  armor: {type: enum, default: none, options: [none, plate, mesh], label: Giáp ngực}
+  armor_mesh: {type: mesh, required: false, label: GLB giáp (tuỳ chọn)}
+  fx_shadow: {type: enum, default: none, options: [none, drop, blob], label: Bóng đổ (hậu kỳ)}
+  fx_outline: {type: enum, default: none, options: [none, "#000000", "#ffffff"], label: Viền hậu kỳ}
+  fx_width: {type: int, default: 1, options: [1, 2, 3, 4], label: Độ dày viền hậu kỳ (px)}
+steps:
+  # Same front render as sprite-8dir-anim, so the joints map onto the mesh exactly as they did there.
+  - id: front
+    kind: blender.render_dirs
+    in: {mesh: inputs.mesh}
+    params: {count: 1, elevation: 0, res: 512, supersample: 1}
+  - id: doll
+    kind: blender.paperdoll
+    in: {mesh: inputs.mesh, joints: inputs.joints, front: front.meta, weapon: inputs.weapon_mesh,
+         shield: inputs.shield_mesh, helmet: inputs.helmet_mesh, armor: inputs.armor_mesh}
+    params: {anims: "${inputs.anims}", frames: "${inputs.walk_frames}", count: 8, elevation: "${inputs.elevation}",
+             res: "${inputs.res}", supersample: 2, weapon: "${inputs.weapon}", weapon_hand: "${inputs.weapon_hand}",
+             shield: "${inputs.shield}", helmet: "${inputs.helmet}", armor: "${inputs.armor}"}
+  - id: anim_down
+    kind: op.downscale
+    in: {images: doll.images}
+    params: {factor: 2, resample: box}
+  - id: anim_fx
+    kind: op.sprite_fx
+    in: {images: anim_down.images, pivot: doll.meta}
+    params: {shadow: "${inputs.fx_shadow}", outline: "${inputs.fx_outline}", width: "${inputs.fx_width}"}
+  - id: anim_sheet
+    kind: op.sheet
+    in: {images: anim_fx.images, pivot: doll.meta}
+  - id: layer_down
+    kind: op.downscale
+    in: {images: doll.layers}
+    params: {factor: 2, resample: box, optional: true}
+  # Outline only: a shadow belongs to the character, not to every layer stacked on it.
+  - id: layer_fx
+    kind: op.sprite_fx
+    in: {images: layer_down.images}
+    params: {outline: "${inputs.fx_outline}", width: "${inputs.fx_width}", optional: true}
+  - id: layers
+    kind: op.paperdoll
+    in: {layers: layer_fx.images, rig: doll.meta, sheet: anim_sheet.sheet, sheet_meta: anim_sheet.meta}
+  - id: approve
+    kind: gate.approve
+    in: {preview: layers.preview, sockets_preview: layers.socket_preview, sheet: anim_sheet.sheet,
+         layers: layers.sheets, sockets: layers.sockets, doll: layers.doll}
+outputs:
+  final: approve.preview
+  sheet: approve.sheet
+  layers: approve.layers
+  sockets: approve.sockets

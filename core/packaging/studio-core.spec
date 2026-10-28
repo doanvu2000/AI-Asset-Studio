@@ -19,6 +19,7 @@ datas = [
     (str(PKG / "adapters" / "blender" / "cleanup_math.py"), "studio_core/adapters/blender"),
     (str(PKG / "adapters" / "blender" / "skin_math.py"), "studio_core/adapters/blender"),
     (str(PKG / "adapters" / "blender" / "rig3d_math.py"), "studio_core/adapters/blender"),
+    (str(PKG / "adapters" / "blender" / "paperdoll_math.py"), "studio_core/adapters/blender"),
     # Op cache keys hash these sources (ops/executors.py: ops_source_hash).
     (str(PKG / "ops" / "*.py"), "studio_core/ops"),
 ]

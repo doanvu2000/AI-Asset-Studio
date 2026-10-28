@@ -707,3 +707,79 @@ export interface StyleBibleEdit {
   active?: boolean
   refs?: string[]
 }
+
+/** `clip` = embedding cosine; `phash` = perceptual hash only (model not installed), score = 1 - distance/64. */
+export type SimilarMode = 'clip' | 'phash'
+
+export interface SimilarAsset {
+  version_id: string
+  run_id: string
+  project_id: string
+  asset_name: string
+  status: VersionStatus
+  blob: BlobRef
+  created_at: number
+  copies: number
+}
+
+export interface SimilarHit extends SimilarAsset {
+  score: number
+  phash_distance: number | null
+}
+
+export interface SimilarResult {
+  query: { blob?: string; file?: string | null; text?: string }
+  mode: SimilarMode
+  model: string | null
+  /** Assets still waiting for the background index (not in these results yet). */
+  pending: number
+  results: SimilarHit[]
+}
+
+export interface SimilarQuery {
+  k?: number
+  project_id?: string
+  only_approved?: boolean
+}
+
+export type DuplicateKind = 'exact' | 'near' | 'similar'
+
+export interface DuplicateGroup {
+  kind: DuplicateKind
+  members: SimilarAsset[]
+  pairs: { a: string; b: string; kind: DuplicateKind; score: number | null; phash_distance: number | null }[]
+}
+
+export interface DuplicatesReport {
+  project_id: string
+  mode: SimilarMode
+  model: string | null
+  threshold: number
+  checked: number
+  pending: number
+  groups: DuplicateGroup[]
+}
+
+/** Recipe + inputs for "Tạo thêm giống cái này" (the asset goes in `style_input` when there is one). */
+export interface MoreLikePlan {
+  recipe_id: string
+  recipe_name: string
+  inputs: Record<string, unknown>
+  style_input: string | null
+  mode: 'style_ref' | 'style_recipe' | 'same_recipe'
+  source_recipe_id: string | null
+  project_id: string | null
+  title: string
+  blob: string
+}
+
+export interface SimilarIndexStatus {
+  model: string | null
+  mode: SimilarMode
+  indexed: number
+  embedded: number
+  pending: number
+  failed: number
+  queued?: number
+  hint?: string
+}

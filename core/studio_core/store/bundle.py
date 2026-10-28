@@ -207,6 +207,18 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
     from studio_core.export.localize import localized_set
 
     src.localized, src.localized_source_lang = localized_set(step, blobs)
+    from studio_core.export.autotile import autotile_set
+
+    src.autotile, src.autotile_atlas = autotile_set(step, blobs)
+    from studio_core.export.bitmap_font import font_set
+
+    src.font, src.font_atlas = font_set(step, blobs)
+    from studio_core.export.paperdoll import paperdoll_set
+
+    src.paperdoll, src.paperdoll_layers, body = paperdoll_set(step, blobs)
+    if body is not None and src.sheet is None:
+        src.sheet, src.meta = body
+        src.directional_rows = True
     return src
 
 
@@ -351,7 +363,8 @@ def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
     return (src.sheet is not None or src.spine_json is not None or bool(src.glb) or bool(src.textures)
             or bool(src.audio) or bool(src.ui) or bool(src.pbr) or bool(src.fbx)
             or bool(src.rarity) or bool(src.luts) or bool(src.damage_states)
-            or bool(src.parallax) or bool(src.localized) or bool(src.npc))
+            or bool(src.parallax) or bool(src.localized) or bool(src.npc) or bool(src.autotile)
+            or bool(src.font))
 
 
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,

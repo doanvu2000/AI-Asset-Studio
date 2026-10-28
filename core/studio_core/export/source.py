@@ -58,6 +58,16 @@ class Source:
     # NPC pack (op.npc_pack): its npc.json doc and (expression, portrait path); voiced clips are in `audio`.
     npc: dict[str, Any] | None = None
     npc_portraits: list[tuple[str, Path]] = field(default_factory=list)
+    # Blob-47 autotile terrain (op.autotile): its autotile.json doc and atlas.
+    autotile: dict[str, Any] | None = None
+    autotile_atlas: Path | None = None
+    # Bitmap font (op.bitmap_font): its font.json doc (BMFont metrics) and atlas.
+    font: dict[str, Any] | None = None
+    font_atlas: Path | None = None
+    # Paper-doll equipment (op.paperdoll): its paperdoll.json doc (sockets doc inlined as `sockets_doc`) and the layer
+    # sheets (name, path), cut on the same cells as `sheet`.
+    paperdoll: dict[str, Any] | None = None
+    paperdoll_layers: list[tuple[str, Path]] = field(default_factory=list)
     # Set when the export asked for traced 2D colliders + foot pivot on the sprite sheet (export/collider.py).
     collider: Any = None
 

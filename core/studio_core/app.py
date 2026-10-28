@@ -117,10 +117,13 @@ def build_app(settings: Settings, token: str, *, engine: Engine | None = None,
         app.state.registry = registry
         app.state.resources = {r.name: r for r in resources}
         app.state.engine = eng
+        from studio_core.api.similar import start_index
+        image_index = await start_index(app)
         try:
             await eng.recover()
             yield
         finally:
+            await image_index.stop()
             await _shutdown(eng, resources, db)
 
     app = FastAPI(title="AI Asset Studio core", version=__version__, lifespan=lifespan,

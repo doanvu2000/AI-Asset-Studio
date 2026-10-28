@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cleanup_math as cm  # noqa: E402
 import skin_math  # noqa: E402
 import rig3d_math  # noqa: E402
+import paperdoll_math as pdm  # noqa: E402
 
 LIGHT_PRESETS = {
     # (rotation_euler degrees, energy) per sun; tuned in P0 because sun 3 + ambient 1 rendered too dark.
@@ -1035,6 +1036,43 @@ def apply_pose(arm, pose, drop, bones=RIG_BONES):
 
 def animate_dirs(p, emit):
     t0 = time.perf_counter()
+    sc = anim_scene(p)
+    scene, arm, pivot, height, clips = sc["scene"], sc["arm"], sc["pivot"], sc["height"], sc["clips"]
+    out_dir = p["out_dir"]
+    os.makedirs(out_dir, exist_ok=True)
+    angles = render_angles(int(p.get("count", 8)), False)
+    nmat = normal_material(sc["cam"]) if p.get("normals") else None
+    posed = {}
+
+    def setup(name, fi, n, loop, a):
+        def go():
+            if posed.get("key") != (name, fi):
+                apply_pose(arm, *clip_pose(name, fi, n, loop, height))
+                posed["key"] = (name, fi)
+            pivot.rotation_euler = (0, 0, math.radians(-a))
+        return go
+
+    shots, info = [], []
+    for clip in clips:
+        name, n = clip["name"], max(2, int(clip["frames"]))
+        for fi in range(n):
+            for a in angles:
+                path = os.path.join(out_dir, f"{name}_dir_{round(a):03d}_f{fi:02d}.png")
+                shots.append((path, setup(name, fi, n, bool(clip.get("loop", True)), a),
+                              f"{name} · {round(a)}° · khung {fi + 1}"))
+                info.append({"clip": name, "angle": a, "frame": fi, "file": path})
+    frames = [{**rec, "s": s, **({"normal": npath, "normal_s": ns} if npath else {})}
+              for rec, (s, npath, ns) in zip(info, render_shots(scene, shots, nmat, emit))]
+    return {"total_s": round(time.perf_counter() - t0, 2), "engine": scene.render.engine,
+            "ortho_scale": round(sc["ortho"], 4), "res": sc["res"], "supersample": sc["supersample"],
+            "elevation": p.get("elevation", 30), "frames": frames,
+            "frames_per_dir": max(int(c["frames"]) for c in clips), "weights": sc["weights"],
+            "height": round(height, 4), "pivot": [sc["res"] / 2, sc["res"] * (0.5 + sc["vmid"] / sc["ortho"])]}
+
+
+def anim_scene(p):
+    """Rigged character under a turntable root plus the shared ortho camera: animate_dirs and paperdoll_dirs must
+    frame identically so their sheets overlay pixel for pixel."""
     reset()
     scene = bpy.context.scene
     meshes = import_glb(p["glb"])
@@ -1080,36 +1118,198 @@ def animate_dirs(p, emit):
     supersample = max(1, int(p.get("supersample", 1)))
     res = int(p.get("res", 512)) * supersample
     configure_output(scene, p, res)
+    return {"scene": scene, "meshes": meshes, "pivot": pivot, "arm": arm, "height": height, "weights": weights,
+            "verts": v, "pts": pts, "cam": cam, "ortho": ortho, "vmid": vmid, "res": res, "supersample": supersample,
+            "clips": clips}
 
+
+def _pd_part(parts, mat, add, **kw):
+    add(**kw)
+    o = bpy.context.active_object
+    o.data.materials.append(mat)
+    parts.append(o)
+
+
+def _bake_join(objs, name):
+    """One mesh object with identity transform, so its local bounding box is the fitting frame."""
+    for o in objs:
+        mw = o.matrix_world.copy()
+        o.parent = None
+        if o.data.users > 1:
+            o.data = o.data.copy()
+        o.data.transform(mw)
+        o.matrix_world = Matrix.Identity(4)
+    with bpy.context.temp_override(active_object=objs[0], selected_editable_objects=objs, selected_objects=objs):
+        bpy.ops.object.join()
+    item = objs[0]
+    item.name = name
+    return item
+
+
+def pd_primitive(shape, name):
+    """Canonical frames paperdoll_math.fit_matrix expects: weapons and the kite shield run along +Z with the grip at
+    the low end and their flat side on Y; shields face +Y; helmets/hats/armor stand upright."""
+    m = bpy.ops.mesh
+    metal = new_material(f"{name}_metal", "#c3c9d2", metallic=0.35, roughness=0.35)
+    dark = new_material(f"{name}_wood", "#5b3a22", roughness=0.7)
+    gold = new_material(f"{name}_gold", "#d9a93f", metallic=0.4, roughness=0.4)
+    cloth = new_material(f"{name}_cloth", "#7a2f36", roughness=0.8)
+    parts = []
+    if shape == "sword":
+        _pd_part(parts, dark, m.primitive_cylinder_add, radius=0.025, depth=0.16, location=(0, 0, 0.08))
+        _pd_part(parts, gold, m.primitive_uv_sphere_add, radius=0.035, location=(0, 0, 0))
+        _pd_part(parts, gold, m.primitive_cube_add, size=1, location=(0, 0, 0.17), scale=(0.26, 0.06, 0.04))
+        _pd_part(parts, metal, m.primitive_cube_add, size=1, location=(0, 0, 0.59), scale=(0.075, 0.018, 0.8))
+    elif shape == "axe":
+        _pd_part(parts, dark, m.primitive_cylinder_add, radius=0.028, depth=1.0, location=(0, 0, 0.5))
+        _pd_part(parts, metal, m.primitive_cube_add, size=1, location=(0.12, 0, 0.86), scale=(0.32, 0.04, 0.22))
+    elif shape == "staff":
+        _pd_part(parts, dark, m.primitive_cylinder_add, radius=0.025, depth=1.0, location=(0, 0, 0.5))
+        _pd_part(parts, gold, m.primitive_uv_sphere_add, radius=0.07, location=(0, 0, 1.02))
+    elif shape == "round":
+        _pd_part(parts, dark, m.primitive_cylinder_add, radius=0.5, depth=0.06, rotation=(math.pi / 2, 0, 0))
+        _pd_part(parts, metal, m.primitive_uv_sphere_add, radius=0.11, location=(0, 0.03, 0), scale=(1, 0.5, 1))
+    elif shape == "kite":
+        _pd_part(parts, metal, m.primitive_cube_add, size=1, location=(0, 0, 0.45), scale=(0.6, 0.06, 0.9))
+        _pd_part(parts, cloth, m.primitive_cube_add, size=1, location=(0, 0.035, 0.45), scale=(0.16, 0.02, 0.6))
+    elif shape == "helmet":
+        _pd_part(parts, metal, m.primitive_uv_sphere_add, radius=0.5, segments=32, ring_count=16)
+        _pd_part(parts, gold, m.primitive_cylinder_add, radius=0.515, depth=0.1, location=(0, 0, 0.05),
+                 end_fill_type="NOTHING")
+        dome = parts[0]
+        dome.data.vertices.foreach_set("co", [c if i % 3 != 2 else max(c, 0.0) for i, c in enumerate(
+            [x for vert in dome.data.vertices for x in vert.co])])
+    elif shape == "hat":
+        _pd_part(parts, cloth, m.primitive_cone_add, radius1=0.45, depth=1.0, location=(0, 0, 0.5))
+        _pd_part(parts, cloth, m.primitive_cylinder_add, radius=0.8, depth=0.04, location=(0, 0, 0.02))
+    elif shape == "plate":
+        _pd_part(parts, metal, m.primitive_cylinder_add, radius=0.5, depth=1.0, location=(0, 0, 0.5),
+                 scale=(1, 0.62, 1), end_fill_type="NOTHING")
+    else:
+        raise RuntimeError(f"unknown paper-doll shape {shape}")
+    for o in parts:
+        o.data.update()
+    return _bake_join(parts, name)
+
+
+def pd_import(path, name):
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=path)
+    new = [o for o in bpy.data.objects if o not in before]
+    meshes = [o for o in new if o.type == "MESH"]
+    extras = [o for o in new if o.type != "MESH"]
+    if not meshes:
+        raise RuntimeError(f"no mesh in {name} glb")
+    bpy.context.view_layer.update()
+    item = _bake_join(meshes, name)
+    for o in extras:
+        bpy.data.objects.remove(o, do_unlink=True)
+    return item
+
+
+def _box(v):
+    return [[float(x) for x in v.min(0)], [float(x) for x in v.max(0)]] if len(v) else None
+
+
+def pd_rig(s):
+    """Rest-pose bones (armature space = turntable space) plus head and torso boxes for fitting hats and armor."""
+    arm, v, pts = s["arm"], s["verts"], s["pts"]
+    bones = {b.name: [list(b.head_local), list(b.tail_local)] for b in arm.data.bones}
+    neck, pelvis = pts["neck"], pts["pelvis"]
+    half = abs(pts["shoulder_l"][0] - pts["shoulder_r"][0]) / 2 or 0.15 * s["height"]
+    head = v[v[:, 2] >= neck[2]]
+    torso = v[(v[:, 2] >= pelvis[2]) & (v[:, 2] <= neck[2]) & (np.abs(v[:, 0] - pelvis[0]) <= half)]
+    h = s["height"]
+    fallback = [[pelvis[0] - half, pelvis[1] - 0.1 * h, pelvis[2]], [pelvis[0] + half, pelvis[1] + 0.1 * h, neck[2]]]
+    return {"height": h, "bones": bones, "head_box": _box(head) or [list(neck), list(pts["head_top"])],
+            "torso_box": _box(torso) or fallback}
+
+
+def paperdoll_dirs(p, emit):
+    """animate_dirs' character frames, then one layer per equipment item rendered with the character as a holdout,
+    so every layer already carries the body's occlusion and only needs stacking on top of the character."""
+    t0 = time.perf_counter()
+    s = anim_scene(p)
+    scene, arm, pivot, height, clips = s["scene"], s["arm"], s["pivot"], s["height"], s["clips"]
     out_dir = p["out_dir"]
     os.makedirs(out_dir, exist_ok=True)
-    angles = render_angles(int(p.get("count", 8)), False)
-    nmat = normal_material(cam) if p.get("normals") else None
-    posed = {}
+    rig = pd_rig(s)
+    items = []
+    for spec in p.get("equip") or []:
+        obj = pd_import(spec["glb"], spec["name"]) if spec.get("glb") else pd_primitive(spec["shape"], spec["name"])
+        v = np.array([list(x.co) for x in obj.data.vertices], dtype=np.float64)
+        rest = Matrix(pdm.fit_matrix(spec, tuple(v.min(0)), tuple(v.max(0)), rig))
+        obj.parent = pivot
+        obj.matrix_parent_inverse = Matrix.Identity(4)
+        obj.hide_render = True
+        items.append({"spec": spec, "obj": obj, "rest": rest, "center": Vector(v.mean(0))})
 
-    def setup(name, fi, n, loop, a):
+    def follow():
+        for it in items:
+            bone = arm.data.bones[it["spec"]["bone"]]
+            delta = arm.pose.bones[bone.name].matrix @ bone.matrix_local.inverted()
+            it["obj"].matrix_basis = delta @ it["rest"]
+
+    def socket_pose():
+        socks = {}
+        for name, (bone, t) in pdm.SOCKETS.items():
+            pb = arm.pose.bones[bone]
+            socks[name] = {"p": [round(x, 5) for x in pb.head.lerp(pb.tail, t)],
+                           "d": [round(x, 5) for x in (pb.tail - pb.head)]}
+        centers = {it["spec"]["name"]: [round(x, 5) for x in it["obj"].matrix_basis @ it["center"]] for it in items}
+        return {"sockets": socks, "items": centers}
+
+    poses = {}
+    for clip in clips:
+        n = max(2, int(clip["frames"]))
+        poses[clip["name"]] = []
+        for fi in range(n):
+            apply_pose(arm, *clip_pose(clip["name"], fi, n, bool(clip.get("loop", True)), height))
+            follow()
+            poses[clip["name"]].append(socket_pose())
+
+    angles = render_angles(int(p.get("count", 8)), False)
+    state = {}
+
+    def show(layer):
+        if state.get("layer", "?") == layer:
+            return
+        for o in s["meshes"]:
+            o.is_holdout = layer is not None
+        for it in items:
+            it["obj"].hide_render = it["spec"]["name"] != layer
+        state["layer"] = layer
+
+    def setup(layer, name, fi, n, loop, a):
         def go():
-            if posed.get("key") != (name, fi):
+            show(layer)
+            if state.get("key") != (name, fi):
                 apply_pose(arm, *clip_pose(name, fi, n, loop, height))
-                posed["key"] = (name, fi)
+                follow()
+                state["key"] = (name, fi)
             pivot.rotation_euler = (0, 0, math.radians(-a))
         return go
 
     shots, info = [], []
-    for clip in clips:
-        name, n = clip["name"], max(2, int(clip["frames"]))
-        for fi in range(n):
-            for a in angles:
-                path = os.path.join(out_dir, f"{name}_dir_{round(a):03d}_f{fi:02d}.png")
-                shots.append((path, setup(name, fi, n, bool(clip.get("loop", True)), a),
-                              f"{name} · {round(a)}° · khung {fi + 1}"))
-                info.append({"clip": name, "angle": a, "frame": fi, "file": path})
-    frames = [{**rec, "s": s, **({"normal": npath, "normal_s": ns} if npath else {})}
-              for rec, (s, npath, ns) in zip(info, render_shots(scene, shots, nmat, emit))]
-    return {"total_s": round(time.perf_counter() - t0, 2), "engine": scene.render.engine, "ortho_scale": round(ortho, 4),
-            "res": res, "supersample": supersample, "elevation": p.get("elevation", 30), "frames": frames,
-            "frames_per_dir": max(int(c["frames"]) for c in clips), "weights": weights, "height": round(height, 4),
-            "pivot": [res / 2, res * (0.5 + vmid / ortho)]}
+    for layer in [None] + [it["spec"]["name"] for it in items]:
+        for clip in clips:
+            name, n = clip["name"], max(2, int(clip["frames"]))
+            for fi in range(n):
+                for a in angles:
+                    stem = f"{name}_dir_{round(a):03d}_f{fi:02d}"
+                    path = os.path.join(out_dir, f"{layer}_{stem}.png" if layer else f"{stem}.png")
+                    shots.append((path, setup(layer, name, fi, n, bool(clip.get("loop", True)), a),
+                                  f"{layer or 'nhân vật'} · {name} · {round(a)}° · khung {fi + 1}"))
+                    info.append({"layer": layer, "clip": name, "angle": a, "frame": fi, "file": path})
+    done = [{**rec, "s": sec} for rec, (sec, _, _) in zip(info, render_shots(scene, shots, None, emit))]
+    show(None)
+    return {"total_s": round(time.perf_counter() - t0, 2), "engine": scene.render.engine,
+            "ortho_scale": round(s["ortho"], 4), "res": s["res"], "supersample": s["supersample"],
+            "elevation": p.get("elevation", 30), "weights": s["weights"], "height": round(height, 4),
+            "frames": [f for f in done if f["layer"] is None], "layers": [f for f in done if f["layer"]],
+            "frames_per_dir": max(int(c["frames"]) for c in clips), "poses": poses,
+            "equip": [{k: v for k, v in it["spec"].items() if k != "glb"} for it in items],
+            "pivot": [s["res"] / 2, s["res"] * (0.5 + s["vmid"] / s["ortho"])]}
 
 
 def _flatten_meshes(meshes):
@@ -1304,6 +1504,7 @@ HANDLERS = {
     "warmup": warmup,
     "render_dirs": render_dirs,
     "animate_dirs": animate_dirs,
+    "paperdoll_dirs": paperdoll_dirs,
     "cleanup": cleanup,
     "game_ready": game_ready,
     "script": run_script,

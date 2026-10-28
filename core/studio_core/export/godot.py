@@ -416,6 +416,24 @@ def export(src: Source) -> Files:
         lo_files, lo_notes = localized_files(src)
         files += lo_files
         notes += lo_notes
+    if src.autotile:
+        from studio_core.export.autotile import godot_files as autotile_files
+
+        at_files, at_notes = autotile_files(src)
+        files += at_files
+        notes += at_notes
+    if src.font and src.font_atlas:
+        from studio_core.export.bitmap_font import godot_files as font_files
+
+        bf_files, bf_notes = font_files(src)
+        files += bf_files
+        notes += bf_notes
+    if src.paperdoll:
+        from studio_core.export.paperdoll import godot_files as paperdoll_files
+
+        pd_files, pd_notes = paperdoll_files(src)
+        files += pd_files
+        notes += pd_notes
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

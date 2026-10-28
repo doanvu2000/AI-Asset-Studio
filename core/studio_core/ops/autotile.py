@@ -280,8 +280,8 @@ def edge_profiles(cells: np.ndarray, o: AutotileOptions, steps: int = 64) -> flo
 
 
 def seam_check(cells: np.ndarray, tiles: list[np.ndarray]) -> dict[str, Any]:
-    """Edge-line agreement plus the colour step across tile borders against the steps inside tiles (≈1 = no
-    visible seam) on a map painted with the set."""
+    """Mean colour step across tile borders over the mean step inside tiles on a map painted with the set
+    (≤ ~1 = no visible seam)."""
     img = tile_map(cells, tiles).astype(np.float32)
     t = tiles[0].shape[0]
     ratios = {}

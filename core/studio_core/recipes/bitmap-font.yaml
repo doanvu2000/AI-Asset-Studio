@@ -1,0 +1,42 @@
+id: bitmap-font
+name: Bitmap font theo style game
+description: >-
+  Bộ ký tự (số, ASCII, ASCII + đủ chữ Việt có dấu, hoặc tự nhập) → vẽ từng glyph từ font máy có đủ chữ (tự chọn theo
+  kiểu nếu để auto) → style trên CPU: gradient, viền, đổ bóng, vát nổi, sáng viền trong, hoặc pixel art không khử răng
+  cưa → atlas power-of-two có chừa lề cho viền/bóng + .fnt BMFont (advance, bearing, kerning lấy từ TTF) + font.json
+  → ảnh xem trước "Điểm: 12345", "LEVEL UP!", pangram → duyệt. Không cần GPU. Godot 4 đọc thẳng .fnt; Unity nhận
+  Custom Font + .fnt.
+inputs:
+  charset: {type: enum, default: vietnamese, options: [digits, ascii, vietnamese, custom], label: Bộ ký tự}
+  custom: {type: text, default: "", label: "Ký tự thêm (bắt buộc khi chọn custom)", placeholder: "★♥→"}
+  preset: {type: enum, default: gold, options: [gold, ice, wood, candy, neon, plain, pixel], label: Kiểu chữ}
+  font: {type: text, default: auto, label: "Font (auto | segoe_black, arial_bold, impact… | đường dẫn .ttf)"}
+  size: {type: int, default: 48, min: 8, max: 256, label: Cỡ chữ (px)}
+  colors: {type: text, default: auto, label: "Màu gradient (auto | #trên, #dưới)"}
+  outline: {type: float, default: -1, min: -1, max: 32, label: "Viền (px, -1 = theo kiểu)"}
+  outline_color: {type: text, default: auto, label: Màu viền}
+  shadow: {type: float, default: -1, min: -1, max: 32, label: "Bóng lệch xuống (px, -1 = theo kiểu)"}
+  bevel: {type: float, default: -1, min: -1, max: 1, label: "Vát nổi (0..1, -1 = theo kiểu)"}
+  glow: {type: float, default: -1, min: -1, max: 1, label: "Sáng viền trong (0..1, -1 = theo kiểu)"}
+  pixel: {type: enum, default: auto, options: [auto, "on", "off"], label: "Pixel art (auto = theo kiểu)"}
+  pixel_scale: {type: int, default: 3, min: 1, max: 4, label: Phóng pixel (x)}
+  name: {type: text, default: game_font, label: Tên font (tên file)}
+  sample: {type: text, default: "", label: Câu mẫu thêm (xem trước)}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: font
+    kind: op.bitmap_font
+    params: {charset: "${inputs.charset}", custom: "${inputs.custom}", preset: "${inputs.preset}",
+             font: "${inputs.font}", size: "${inputs.size}", colors: "${inputs.colors}",
+             outline: "${inputs.outline}", outline_color: "${inputs.outline_color}", shadow: "${inputs.shadow}",
+             bevel: "${inputs.bevel}", glow: "${inputs.glow}", pixel: "${inputs.pixel}",
+             pixel_scale: "${inputs.pixel_scale}", name: "${inputs.name}", sample: "${inputs.sample}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: font.preview, images: font.images, fnt: font.fnt, font: font.font}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  fnt: approve.fnt
+  font: approve.font

@@ -186,7 +186,14 @@ watch(
     for (const [k, v] of wanted) {
       const name = k.slice(PREFILL_PREFIX.length)
       const hashes = (Array.isArray(v) ? v : [v]).filter((h): h is string => !!h)
-      if (!isBlob(r.inputs[name]?.type ?? '') || !hashes.length) continue
+      const spec = r.inputs[name]
+      // "Tạo thêm giống" also passes the source run's text/number inputs.
+      if (spec && !isBlob(spec.type) && hashes.length) {
+        values[name] = isNum(spec.type) ? Number(hashes[0]) : spec.type === 'bool' ? hashes[0] === 'true' : hashes[0]!
+        touched.add(name)
+        continue
+      }
+      if (!isBlob(spec?.type ?? '') || !hashes.length) continue
       try {
         blobs[name] = await Promise.all(hashes.map((h) => api().blobInfo(h)))
         touched.add(name)

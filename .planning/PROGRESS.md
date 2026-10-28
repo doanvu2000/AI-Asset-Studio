@@ -1010,3 +1010,10 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   `$meta.use_style_bible:false` để tắt), MCP get/build_style_bible, `StyleBiblePanel.vue` + ô trong NewRunView. 4 test; live Claude ~9s ~$0.02.
 - [x] 2026-10-29 Kiểm 689 pass / 4 skip, typecheck sạch → commit mốc #27 (+ NPC hoàn thiện, code dở #22/#23/#25/#28).
 - [~] 2026-10-29 Giao #26 paper-doll trang bị.
+- [x] 2026-10-29 #28 Tìm asset giống xong (agent): `engine/similar.py` (pHash/dHash, cosine, nhóm trùng, `more_like`),
+  `engine/image_index.py` (bảng `image_index`, worker nền khi duyệt), `adapters/embedder.py` (CLIP ViT-B/32 ONNX int8 qua onnxruntime,
+  tokenizer tự viết), `api/similar.py`, MCP find_similar/duplicate_assets; app SimilarDrawer/SimilarButton/DuplicatesPanel.
+  Dep `onnxruntime` 1.31.1 (MIT). Model ≈150MB `F:\work\AI\comfyUI_models\similarity\clip-vit-base-patch32\` — CHƯA vào manifest bootstrap.
+  11 test; embed 28ms/ảnh CPU.
+- [x] 2026-10-29 Kiểm 723 pass / 4 skip (lần 1 lỗi tạm test_p7_kinds do agent đang sửa kinds, chạy lại xanh), typecheck sạch → commit mốc #28.
+- [~] 2026-10-29 Giao #29 storyboard → animatic.

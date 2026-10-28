@@ -43,6 +43,7 @@ import type { GddProposal, ManifestFormat, ManifestRow, ManifestStatus, Manifest
 import type { SetupJob, SetupPlan, SetupStartBody } from '../types'
 import type { ProjectQaAsset, ProjectQaFixResult, ProjectQaReport } from '../types'
 import type { StyleBible, StyleBibleEdit, StyleBibleView } from '../types'
+import type { DuplicateGroup, DuplicatesReport, MoreLikePlan, SimilarAsset, SimilarIndexStatus, SimilarQuery, SimilarResult } from '../types'
 import { MOCK_KINDS, MOCK_PRESETS, MOCK_TOOLS, mockValidate, stepDeps } from './catalog'
 import { normalizeStyle, styleFills } from '@/composables/projectStyle'
 import sampleGlbUrl from './assets/sample-prop.glb?url'
@@ -1587,6 +1588,107 @@ export class MockCore implements StudioApi, EventStream {
     const inputs = { image: v.blob.hash, instructions: text }
     const { run_id } = await this.startRun({ recipe_id, inputs, title, params: { $meta: { source: 'project_qa', qa_version: versionId } }, project_id: projectId })
     return { run_id, recipe_id, inputs, title }
+  }
+
+  // Pseudo-embedding: closeness of the hash prefix, plus a bonus for the same run, so results look plausible.
+  private similarPool(q: SimilarQuery = {}): SimilarAsset[] {
+    const byHash = new Map<string, SimilarAsset>()
+    for (const v of [...this.versionMap.values()].sort((a, b) => b.created_at - a.created_at)) {
+      if (!v.blob.mime.startsWith('image/') || v.status === 'rejected' || (q.only_approved && v.status !== 'approved')) continue
+      if (q.project_id && v.project_id !== q.project_id) continue
+      if (!byHash.has(v.blob.hash)) byHash.set(v.blob.hash, { version_id: v.id, run_id: v.run_id, project_id: v.project_id, asset_name: v.asset_name, status: v.status, blob: v.blob, created_at: v.created_at, copies: 1 })
+    }
+    return [...byHash.values()]
+  }
+
+  private mockScore(a: string, b: string, sameRun: boolean): number {
+    const p = (h: string): number => parseInt(h.slice(0, 6), 16) / 0xffffff
+    return Math.min(0.999, 0.55 + 0.4 * (1 - Math.abs(p(a) - p(b))) + (sameRun ? 0.04 : 0))
+  }
+
+  async similarAssets(target: { blob?: string; version_id?: string }, q: SimilarQuery = {}): Promise<SimilarResult> {
+    await sleep(350)
+    const src = target.version_id ? this.versionMap.get(target.version_id) : undefined
+    const hash = src?.blob.hash ?? target.blob
+    if (!hash) throw new ApiError('invalid', 'pass blob or version_id', 400)
+    const results = this.similarPool(q)
+      .filter((a) => a.blob.hash !== hash)
+      .map((a) => ({ ...a, score: this.mockScore(hash, a.blob.hash, a.run_id === src?.run_id), phash_distance: 10 + (parseInt(a.blob.hash.slice(6, 8), 16) % 40) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, q.k ?? 12)
+    return clone({ query: { blob: hash }, mode: 'clip', model: 'clip-vit-b32-q8', pending: 0, results })
+  }
+
+  async similarSearch(query: { file?: File; text?: string }, q: SimilarQuery = {}): Promise<SimilarResult> {
+    await sleep(500)
+    if (!query.file && !query.text?.trim()) throw new ApiError('invalid', 'pass an image file or a text query', 400)
+    const seed = (query.text ?? query.file?.name ?? '').split('').reduce((s, c) => (s * 31 + c.charCodeAt(0)) >>> 0, 7).toString(16).padStart(6, '0')
+    const results = this.similarPool(q)
+      .map((a) => ({ ...a, score: this.mockScore(seed, a.blob.hash, false) - 0.3, phash_distance: null }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, q.k ?? 12)
+    return clone({ query: query.text ? { text: query.text } : { file: query.file?.name }, mode: 'clip', model: 'clip-vit-b32-q8', pending: 0, results })
+  }
+
+  async moreLike(target: { blob?: string; version_id?: string }): Promise<MoreLikePlan> {
+    await sleep(120)
+    const v = target.version_id ? this.versionMap.get(target.version_id) : [...this.versionMap.values()].find((x) => x.blob.hash === target.blob)
+    const hash = v?.blob.hash ?? target.blob
+    if (!hash) throw new ApiError('invalid', 'pass version_id or blob', 400)
+    const run = v ? this.runs.get(v.run_id) : undefined
+    const styleOf = (id: string): string | null => {
+      const r = this.recipe(id)
+      const hit = r && Object.entries(r.info.inputs).find(([n, s]) => s.type === 'image' && (['style_ref', 'style_image', 'style_reference'].includes(n) || /style/i.test(s.label ?? '')))
+      return hit ? hit[0] : null
+    }
+    const plan = (recipe_id: string, inputs: Record<string, unknown>, style: string | null, mode: MoreLikePlan['mode']): MoreLikePlan => ({
+      recipe_id, recipe_name: this.recipe(recipe_id)?.info.name ?? recipe_id, inputs: style ? { ...inputs, [style]: hash } : inputs, style_input: style, mode,
+      source_recipe_id: run?.recipe_id ?? null, project_id: run?.project_id ?? null, title: v ? `Giống · ${v.asset_name}` : 'Giống ảnh mẫu', blob: hash
+    })
+    if (run && this.recipe(run.recipe_id)) {
+      const specs = this.recipe(run.recipe_id)!.info.inputs
+      const carried = Object.fromEntries(Object.entries(run.inputs).filter(([k, val]) => k in specs && val !== '' && val != null))
+      const style = styleOf(run.recipe_id)
+      if (style) return clone(plan(run.recipe_id, carried, style, 'style_ref'))
+      const sib = `${run.recipe_id}-style`
+      const sibStyle = this.recipe(sib) ? styleOf(sib) : null
+      if (sibStyle) {
+        const sspecs = this.recipe(sib)!.info.inputs
+        return clone(plan(sib, Object.fromEntries(Object.entries(carried).filter(([k]) => k in sspecs && k !== sibStyle)), sibStyle, 'style_recipe'))
+      }
+      return clone(plan(run.recipe_id, carried, null, 'same_recipe'))
+    }
+    if (styleOf('concept-2d-style')) return clone(plan('concept-2d-style', {}, styleOf('concept-2d-style'), 'style_recipe'))
+    throw new ApiError('no_recipe', 'no recipe can take this asset as a style reference', 409)
+  }
+
+  async projectDuplicates(projectId: string, q: { threshold?: number; only_approved?: boolean } = {}): Promise<DuplicatesReport> {
+    await sleep(400)
+    const threshold = q.threshold ?? 0.95
+    const pool = this.similarPool({ project_id: projectId, only_approved: q.only_approved })
+    const groups: DuplicateGroup[] = []
+    const used = new Set<string>()
+    for (const a of pool) {
+      if (used.has(a.version_id)) continue
+      const twins = pool.filter((b) => b !== a && !used.has(b.version_id) && b.run_id !== a.run_id && this.mockScore(a.blob.hash, b.blob.hash, false) >= threshold)
+      if (!twins.length) continue
+      for (const m of [a, ...twins]) used.add(m.version_id)
+      const pairs = twins.map((b) => {
+        const score = this.mockScore(a.blob.hash, b.blob.hash, false)
+        return { a: a.version_id, b: b.version_id, kind: (score > 0.985 ? 'near' : 'similar') as DuplicateGroup['kind'], score, phash_distance: score > 0.985 ? 4 : 18 }
+      })
+      groups.push({ kind: pairs.some((p) => p.kind === 'near') ? 'near' : 'similar', members: [a, ...twins], pairs })
+    }
+    return clone({ project_id: projectId, mode: 'clip', model: 'clip-vit-b32-q8', threshold, checked: pool.length, pending: 0, groups })
+  }
+
+  async similarStatus(): Promise<SimilarIndexStatus> {
+    const n = this.similarPool().length
+    return { model: 'clip-vit-b32-q8', mode: 'clip', indexed: n, embedded: n, pending: 0, failed: 0 }
+  }
+
+  async reindexSimilar(): Promise<SimilarIndexStatus> {
+    return { ...(await this.similarStatus()), queued: 0 }
   }
 
   private styleBibles = new Map<string, StyleBible>()

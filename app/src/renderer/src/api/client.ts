@@ -11,6 +11,11 @@ import type {
   ProjectQaReport,
   StyleBibleEdit,
   StyleBibleView,
+  DuplicatesReport,
+  MoreLikePlan,
+  SimilarIndexStatus,
+  SimilarQuery,
+  SimilarResult,
   ProjectCreateBody,
   ProjectPatchBody,
   ProjectRow,
@@ -146,6 +151,14 @@ export interface StudioApi {
   startEnginePreview(stepId: string, body: EnginePreviewBody): Promise<EnginePreviewJob>
   enginePreviewJob(jobId: string): Promise<EnginePreviewJob>
   cancelEnginePreview(jobId: string): Promise<EnginePreviewJob>
+  /** Library assets most like a blob or version (the query itself is left out). */
+  similarAssets(target: { blob?: string; version_id?: string }, q?: SimilarQuery): Promise<SimilarResult>
+  /** Same search from an image file or a text description (text needs the CLIP model). */
+  similarSearch(query: { file?: File; text?: string }, q?: SimilarQuery): Promise<SimilarResult>
+  moreLike(target: { blob?: string; version_id?: string }): Promise<MoreLikePlan>
+  projectDuplicates(projectId: string, q?: { threshold?: number; only_approved?: boolean }): Promise<DuplicatesReport>
+  similarStatus(): Promise<SimilarIndexStatus>
+  reindexSimilar(body?: { project_id?: string; force?: boolean }): Promise<SimilarIndexStatus>
 }
 
 export type RecipeBody = { yaml: string } | { doc: RecipeDoc }
@@ -287,6 +300,27 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     enginePreviewEngines: () => call('GET', '/api/engine-preview'),
     startEnginePreview: (stepId, body) => call('POST', `/api/steps/${enc(stepId)}/engine-preview`, body, SLOW_TIMEOUT_MS),
     enginePreviewJob: (jobId) => call('GET', `/api/engine-preview/jobs/${enc(jobId)}`),
-    cancelEnginePreview: (jobId) => call('POST', `/api/engine-preview/jobs/${enc(jobId)}/cancel`)
+    cancelEnginePreview: (jobId) => call('POST', `/api/engine-preview/jobs/${enc(jobId)}/cancel`),
+    similarAssets: (target, q = {}) =>
+      call(
+        'GET',
+        `/api/search/similar${query({ ...target, k: q.k, project_id: q.project_id, only_approved: q.only_approved ? 'true' : undefined })}`,
+        undefined,
+        SLOW_TIMEOUT_MS
+      ),
+    similarSearch(search, q = {}) {
+      const fd = new FormData()
+      if (search.file) fd.append('file', search.file, search.file.name)
+      if (search.text) fd.append('text', search.text)
+      if (q.k) fd.append('k', String(q.k))
+      if (q.project_id) fd.append('project_id', q.project_id)
+      if (q.only_approved) fd.append('only_approved', 'true')
+      return call('POST', '/api/search/similar', fd, SLOW_TIMEOUT_MS)
+    },
+    moreLike: (target) => call('GET', `/api/search/more-like${query(target)}`),
+    projectDuplicates: (id, q = {}) =>
+      call('GET', `/api/projects/${enc(id)}/duplicates${query({ threshold: q.threshold, only_approved: q.only_approved ? 'true' : undefined })}`, undefined, SLOW_TIMEOUT_MS),
+    similarStatus: () => call('GET', '/api/search/status'),
+    reindexSimilar: (body = {}) => call('POST', '/api/search/reindex', body)
   }
 }

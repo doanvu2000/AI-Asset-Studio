@@ -4,6 +4,8 @@ from typing import Any
 
 from ..contracts import ExecutorRegistry, Resource
 from .audio import AudioPost
+from .autotile import AUTOTILE_OPS
+from .bitmap_font import BITMAP_FONT_OPS
 from .damage import DAMAGE_OPS
 from .executors import ALL_OPS, Sheet
 from .fx import FX_OPS
@@ -15,6 +17,7 @@ from .localize import LOCALIZE_OPS
 from .lut import LUT_OPS
 from .normal2d import NORMAL2D_OPS
 from .npc import NPC_OPS
+from .paperdoll import PAPERDOLL_OPS
 from .parallax import PARALLAX_OPS
 from .rarity import RARITY_OPS
 from .rig import RIG_OPS
@@ -58,4 +61,10 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(store_cls())
     for n2d_cls in NORMAL2D_OPS:
         registry.register(n2d_cls())
+    for at_cls in AUTOTILE_OPS:
+        registry.register(at_cls())
+    for bf_cls in BITMAP_FONT_OPS:
+        registry.register(bf_cls())
+    for pd_cls in PAPERDOLL_OPS:
+        registry.register(pd_cls())
     return []

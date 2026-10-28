@@ -1,0 +1,46 @@
+id: bitmap-font-klein
+name: Bitmap font chất liệu AI (Flux.2 Klein)
+description: >-
+  Như "Bitmap font theo style game" nhưng phần ruột chữ do Klein tô chất liệu theo câu mô tả ("molten gold", "icy
+  crystal", "wooden carved"): vẽ bảng glyph từ font máy → Klein vẽ lại chất liệu → lấy màu bên trong từng glyph, dáng
+  chữ giữ nguyên alpha của TTF (không méo, không dính nét) → viền + bóng CPU cho dễ đọc → atlas power-of-two + .fnt
+  BMFont + font.json → duyệt. Godot 4 đọc thẳng .fnt; Unity nhận Custom Font + .fnt.
+inputs:
+  style: {type: text, default: "molten gold", label: Chất liệu chữ, placeholder: "icy crystal / wooden carved"}
+  charset: {type: enum, default: vietnamese, options: [digits, ascii, vietnamese, custom], label: Bộ ký tự}
+  custom: {type: text, default: "", label: "Ký tự thêm (bắt buộc khi chọn custom)"}
+  preset: {type: enum, default: gold, options: [gold, ice, wood, candy, neon, plain],
+           label: "Kiểu viền / bóng / font (ruột chữ do Klein tô)"}
+  font: {type: text, default: auto, label: "Font (auto | segoe_black, arial_bold… | đường dẫn .ttf)"}
+  size: {type: int, default: 64, min: 16, max: 256, label: Cỡ chữ (px)}
+  outline: {type: float, default: -1, min: -1, max: 32, label: "Viền (px, -1 = theo kiểu)"}
+  outline_color: {type: text, default: auto, label: Màu viền}
+  bevel: {type: float, default: 0, min: 0, max: 1, label: Vát nổi thêm trên CPU (0..1)}
+  name: {type: text, default: game_font, label: Tên font (tên file)}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: sheet
+    kind: op.font_sheet
+    params: {charset: "${inputs.charset}", custom: "${inputs.custom}", preset: "${inputs.preset}",
+             font: "${inputs.font}", size: "${inputs.size}", pixel: "off", name: "${inputs.name}"}
+  - id: paint
+    kind: comfy.edit_flux2_klein4b
+    in: {image: sheet.images}
+    params:
+      "75:74.text": "Restyle every letter, digit and symbol on this sheet as ${inputs.style} game title lettering: rich material texture, highlights and shading inside each character. Keep every character exactly the same shape, thickness, size and position, each one separate and fully readable, including the small accent marks. Plain pure white background between the characters, no frame, no extra decorations, no new characters."
+  - id: font
+    kind: op.bitmap_font
+    in: {texture: paint.images, sheet: sheet.sheet}
+    params: {charset: "${inputs.charset}", custom: "${inputs.custom}", preset: "${inputs.preset}",
+             font: "${inputs.font}", size: "${inputs.size}", outline: "${inputs.outline}",
+             outline_color: "${inputs.outline_color}", bevel: "${inputs.bevel}", glow: 0, pixel: "off",
+             name: "${inputs.name}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: font.preview, images: font.images, fnt: font.fnt, font: font.font}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  fnt: approve.fnt
+  font: approve.font

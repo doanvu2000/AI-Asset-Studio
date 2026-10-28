@@ -636,6 +636,39 @@ def build_server(link: CoreLink) -> MCPServer:
         return await tools._call("POST", f"/api/projects/{_safe_id(project_id, 'project_id')}/qa/fix", json=body)
 
     @mcp.tool(annotations=read_only)
+    async def find_similar_assets(version_id: str | None = None, blob: str | None = None, image_path: str | None = None,
+                                  text: str | None = None, k: int = 12, project_id: str | None = None,
+                                  only_approved: bool = False) -> dict[str, Any]:
+        """Top-k Library image assets most similar to one query: a version_id, a blob hash, an absolute local
+        image_path, or a text description (text needs the CLIP model). Scores are cosine similarity (mode 'clip') or
+        1 - pHash distance/64 (mode 'phash', when the model is not installed). project_id limits the search."""
+        k = max(1, min(100, k))
+        filters: dict[str, Any] = {"k": k, "only_approved": only_approved}
+        if project_id:
+            filters["project_id"] = _safe_id(project_id, "project_id")
+        if image_path:
+            p = Path(image_path)
+            if not p.is_absolute() or not p.is_file():
+                raise ToolError(f"image_path must be an absolute path to an existing file: {image_path}")
+            blob = (await tools._call_upload(p))["hash"]
+        if version_id or blob:
+            params = {**filters, **({"version_id": _safe_id(version_id, "version_id")} if version_id else {"blob": blob})}
+            if blob and not version_id and not _HASH.match(blob):
+                raise ToolError("blob must be a 64-char hex hash")
+            return await tools._call("GET", "/api/search/similar", params=params, timeout=300)
+        if text and text.strip():
+            return await tools._call("POST", "/api/search/similar", data={**filters, "text": text}, timeout=300)
+        raise ToolError("pass one of version_id, blob, image_path or text")
+
+    @mcp.tool(annotations=read_only)
+    async def find_duplicate_assets(project_id: str, threshold: float = 0.95, only_approved: bool = False
+                                    ) -> dict[str, Any]:
+        """Near-duplicate groups among a project's image assets: 'exact' (same file / identical pixels), 'near'
+        (pHash distance <= 6) and 'similar' (CLIP cosine >= threshold; frames of one run are not paired that way)."""
+        return await tools._call("GET", f"/api/projects/{_safe_id(project_id, 'project_id')}/duplicates",
+                                 params={"threshold": threshold, "only_approved": only_approved}, timeout=300)
+
+    @mcp.tool(annotations=read_only)
     async def get_style_bible(project_id: str) -> dict[str, Any]:
         """The project's style bible (null if never built): palette, outline, light direction, pixel_art flag,
         reference images, the prompt `suffix`/`negative` added to new runs of the project, `active`, `version`."""
