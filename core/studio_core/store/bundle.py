@@ -193,7 +193,39 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
     src.ui = ui_elements(step, blobs)
     src.pbr = pbr_materials(step, blobs)
     src.rarity, src.rarity_colors, src.rarity_shimmer = rarity_set(step, blobs)
+    from studio_core.export.damage import damage_set
+
+    src.damage_states, src.damage_pieces, src.damage_canvas = damage_set(step, blobs)
+    src.soundscape = soundscape_doc(step, blobs)
+    src.luts, src.lut_seamless = lut_set(step, blobs)
     return src
+
+
+def lut_set(step: StepRow, blobs: BlobStore) -> tuple[list[tuple[str, Path, Path, Path]], bool]:
+    """op.fit_lut's lut.json, also when a gate passed it through under another port name."""
+    from studio_core.ops.lut import LUT_FILE, LUT_TYPE
+
+    for refs in step.outputs.values():
+        for ref in refs:
+            if (ref.name or "") != LUT_FILE:
+                continue
+            try:
+                doc = json.loads(blobs.path(ref.hash).read_bytes())
+                if doc.get("type") != LUT_TYPE:
+                    return [], False
+                out, seen = [], set()
+                for v in doc["variants"]:
+                    name = ident(str(v["name"]), "variant")
+                    paths = (blobs.path(str(v["hash"])), blobs.path(str(v["strip"]["hash"])),
+                             blobs.path(str(v["cube"]["hash"])))
+                    if name in seen or not all(p.is_file() for p in paths):
+                        continue
+                    seen.add(name)
+                    out.append((name, *paths))
+                return out, bool(doc.get("seamless"))
+            except (OSError, ValueError, KeyError, TypeError):
+                return [], False
+    return [], False
 
 
 def pbr_materials(step: StepRow, blobs: BlobStore) -> list[tuple[str, dict[str, Path]]]:
@@ -248,6 +280,21 @@ def rarity_set(step: StepRow, blobs: BlobStore) -> tuple[list[tuple[str, Path]],
     return [], {}, []
 
 
+def soundscape_doc(step: StepRow, blobs: BlobStore) -> dict[str, Any] | None:
+    from studio_core.ops.soundscape import SOUNDSCAPE_FILE, SOUNDSCAPE_TYPE
+
+    for refs in step.outputs.values():
+        for ref in refs:
+            if (ref.name or "") != SOUNDSCAPE_FILE:
+                continue
+            try:
+                doc = json.loads(blobs.path(ref.hash).read_bytes())
+            except (OSError, ValueError):
+                return None
+            return doc if isinstance(doc, dict) and doc.get("type") == SOUNDSCAPE_TYPE else None
+    return None
+
+
 def ui_elements(step: StepRow, blobs: BlobStore) -> list[tuple[str, Path, tuple[int, int, int, int], str]]:
     """op.nine_slice's ui_slices.json, also when a gate passed it through: each element with its 9-slice border."""
     from studio_core.ops.ui import SLICES_FILE, SLICES_TYPE
@@ -294,11 +341,12 @@ def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
     src = engine_source(step, [], blobs, "x")
     return (src.sheet is not None or src.spine_json is not None or bool(src.glb) or bool(src.textures)
             or bool(src.audio) or bool(src.ui) or bool(src.pbr) or bool(src.fbx)
-            or bool(src.rarity))
+            or bool(src.rarity) or bool(src.luts) or bool(src.damage_states))
 
 
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,
-                  engine: str, ppu: float = 100.0, pixel: bool | None = None, collider: Any = None) -> dict[str, Any]:
+                  engine: str, ppu: float = 100.0, pixel: bool | None = None, collider: Any = None,
+                  shaders: list[Any] | None = None) -> dict[str, Any]:
     exporter = ENGINES.get(engine)
     if exporter is None:
         raise BundleError(f"unknown engine '{engine}' (use {', '.join(ENGINES)})")
@@ -309,7 +357,14 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
     files = exporter(src)
     if not files:
         raise BundleError("nothing to export for a game engine (needs a sprite sheet, Spine export, GLB, tileable "
-                          "texture, PBR material, sound, UI kit or rarity set)")
+                          "texture, PBR material, sound, UI kit, rarity set or time/season LUT pack)")
+    if shaders:
+        from studio_core.export.shaders import ShaderError, apply
+
+        try:
+            files = apply(files, engine, src, shaders)
+        except ShaderError as e:
+            raise BundleError(str(e)) from None
     dst = root / "bundles" / f"{step.id[:12]}-{engine}" / folder
     dst.parent.mkdir(parents=True, exist_ok=True)
     written = _write(dst, files)

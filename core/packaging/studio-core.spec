@@ -14,6 +14,7 @@ datas = [
     (str(PKG / "workflows" / "*.json"), "studio_core/workflows"),
     (str(PKG / "bootstrap" / "manifest.json"), "studio_core/bootstrap"),
     (str(PKG / "export" / "engine_scripts" / "*"), "studio_core/export/engine_scripts"),
+    (str(PKG / "export" / "shader_templates" / "*"), "studio_core/export/shader_templates"),
     (str(PKG / "adapters" / "blender" / "worker.py"), "studio_core/adapters/blender"),
     (str(PKG / "adapters" / "blender" / "cleanup_math.py"), "studio_core/adapters/blender"),
     (str(PKG / "adapters" / "blender" / "skin_math.py"), "studio_core/adapters/blender"),

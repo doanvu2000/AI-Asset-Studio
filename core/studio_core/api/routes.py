@@ -24,6 +24,8 @@ from studio_core.engine.projects import apply_style
 from studio_core.engine.recipe import Recipe, RecipeError
 from studio_core.ops.presets import ExportPreset, PresetStore
 from studio_core.export.collider import DEFAULT_TOLERANCE, ColliderOptions, default_enabled
+from studio_core.export.shaders import ShaderError, applies_to as shaders_apply, catalog as shader_catalog
+from studio_core.export.shaders import resolve as resolve_shaders
 from studio_core.store.bundle import (ENGINES, BundleError, engine_ready, engine_source, export_bundle, export_engine,
                                       sheet_meta)
 from studio_core.store.export import export_copy
@@ -492,6 +494,9 @@ class StepExport(BaseModel):
     collider_tolerance: float = Field(DEFAULT_TOLERANCE, ge=0, le=64)
     collider_mode: Literal["union", "frame"] = "union"
     occluder: bool = False
+    # Sprite shader presets (export/shaders.py), e.g. ["hit_flash"]; shader_params = {"hit_flash": {"color": "#fff"}}.
+    shaders: list[str] = Field(default_factory=list, max_length=16)
+    shader_params: dict[str, dict[str, float | str]] = Field(default_factory=dict)
 
 
 async def _collider_default(request: Request, step: Any) -> bool:
@@ -519,7 +524,8 @@ async def step_export_options(request: Request, step_id: str) -> Response:
     collider = src is not None and src.sheet is not None
     return _json({"step_id": step.id, "kind": step.kind, "files": files, "sprite_sheet": meta is not None,
                   "preset": (meta or {}).get("preset"), "engines": engines,
-                  "collider": collider, "collider_default": collider and await _collider_default(request, step)})
+                  "collider": collider, "collider_default": collider and await _collider_default(request, step),
+                  "shaders": shader_catalog() if src is not None and shaders_apply(src) else []})
 
 
 @api.post("/steps/{step_id}/export")
@@ -536,11 +542,17 @@ async def export_step(request: Request, step_id: str, body: StepExport) -> Respo
         on = body.collider if body.collider is not None else await _collider_default(request, step)
         collider = ColliderOptions(body.collider_tolerance, body.collider_mode == "frame", body.occluder) if on else None
         try:
+            shaders = resolve_shaders(body.shaders, body.shader_params)
+        except ShaderError as e:
+            raise ApiError(422, "invalid", str(e)) from e
+        try:
             out = await asyncio.to_thread(export_engine, step, siblings, _blobs(request), Path(root), body.name,
-                                          body.engine, body.ppu, body.pixel, collider)
+                                          body.engine, body.ppu, body.pixel, collider, shaders)
         except BundleError as e:
             raise ApiError(422, "not_exportable", str(e)) from e
         return _json(out)
+    if body.shaders:
+        raise ApiError(400, "invalid", "shader presets need an engine export (unity or godot)")
     preset = None
     if body.preset:
         preset = await asyncio.to_thread(_presets(request).get, body.preset)

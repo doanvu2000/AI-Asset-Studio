@@ -106,6 +106,7 @@ const RECIPE_PITCH: Record<string, string> = {
   'tileset-seamless': 'Prompt vật liệu → nhiều biến thể chung mép, lát trộn lẫn không lộ nối',
   'audio-sfx': 'Mỗi dòng 1 hiệu ứng → vài bản âm thanh OGG + WAV, đã cắt lặng và chuẩn hoá',
   'audio-music': 'Prompt + BPM → nhạc nền, có thể lặp vòng tròn ô nhịp, OGG + WAV',
+  'scene-soundscape': 'Ảnh cảnh → Claude soạn nhạc nền + bản căng thẳng cùng BPM, ambience lặp, 3–5 SFX môi trường, xuất Unity/Godot',
   'vfx-flipbook': 'Prompt → hiệu ứng VFX nền trong suốt → chuỗi frame / flipbook',
   'concept-2d-style': 'Ảnh phong cách tham chiếu + prompt → concept 2D cùng phong cách',
   'spine-skin-variant': 'Nhân vật Spine + ảnh sửa → skin mới, tô lại atlas giữ nguyên xương',
@@ -115,7 +116,9 @@ const RECIPE_PITCH: Record<string, string> = {
   'icon-pack': 'Mỗi dòng 1 icon → cả bộ icon cùng khung, nét viền, đổ bóng',
   upscale: 'Ảnh / atlas có sẵn → bản x2, x4 nét hơn, nền trong suốt vẫn sạch',
   'pbr-material': 'Texture có sẵn → bộ map PBR (normal, height, roughness, metallic, AO) + material Unity/Godot, không cần GPU',
-  'item-rarity': 'Ảnh vật phẩm → 5 bậc common → legendary: đổi màu giữ nét, Klein thêm viền vàng / đá quý, glow + shimmer'
+  'item-rarity': 'Ảnh vật phẩm → 5 bậc common → legendary: đổi màu giữ nét, Klein thêm viền vàng / đá quý, glow + shimmer',
+  'damage-states': 'Ảnh thùng / cửa / tường → nứt, vỡ, nát cùng khung + 4–8 mảnh vỡ, chớp trắng, prefab Unity / scene Godot',
+  'time-season-pack': 'Tileset / background / prop → bản hoàng hôn, đêm, đông, thu giữ nguyên bố cục + LUT .cube / strip cho Unity, Godot'
 }
 
 export function recipePitch(id: string): string | undefined {

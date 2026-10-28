@@ -962,3 +962,10 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   `export/rarity.py` (Unity Rarity/ + json, Godot .tres meta tiers). 9 test pass; live 101s, IoU 0.97. Bắt buộc 5 bậc.
 - [~] 2026-10-29 Giao #18 shader preset.
 - [x] 2026-10-29 Kiểm 581 pass / 4 skip, typecheck sạch → commit mốc #13 + #14.
+- [x] 2026-10-29 #15 Ngày/đêm/mùa + LUT xong (agent): `ops/lut.py` (`op.lut_prep`, `op.fit_lut` LUT 33³ PCG numpy, sửa mép
+  seamless), recipe `time-season-pack`, `export/lut.py` (Unity Seasons/ + LUT strip + .cube; Godot strip 3d_texture +
+  `<v>_environment.tres`). 12 test; live 210s (Klein 4 biến thể 186s), seam giữ được. Chưa kiểm trong engine: .import Godot, chiều strip Unity.
+- [x] 2026-10-29 #16 Âm thanh khớp cảnh xong (agent): `adapters/soundscape.py` (`claude.soundscape`), `ops/soundscape.py`
+  (`op.soundscape`, BPM numpy), recipe `scene-soundscape`, `export/soundscape.py`; `runner.py` map_param trải phẳng list lồng.
+  9 test; live 62.7s, $0.039. Cờ BPM: nhạc căng đo 108 vs 72 (3:2) — chủ nhân nghe `music_*_loop.ogg` quyết. README vẫn in câu crossfade khi lệch.
+- [x] 2026-10-29 Kiểm 613 pass / 4 skip, typecheck sạch → commit mốc #15 + #16 (kèm code dở #17/#18).

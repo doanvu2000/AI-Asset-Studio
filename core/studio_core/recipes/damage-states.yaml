@@ -1,0 +1,67 @@
+id: damage-states
+name: Hư hại + mảnh vỡ (Flux.2 Klein + SAM3)
+description: >-
+  Ảnh đạo cụ (PNG nền trong: thùng gỗ, cửa, thùng phuy, tường) → Klein làm hư dần từng trạng thái, mỗi bước sửa từ
+  bước trước, giữ dáng/khung/góc máy → tách nền, đặt lại đúng khung gốc → SAM3 (thiếu thì cắt theo vết nứt trên CPU)
+  chia trạng thái vỡ thành 4–8 mảnh → frame chớp trắng khi trúng đòn → dải trạng thái + mảnh + damage.json → duyệt.
+  Xuất Unity (prefab có mảnh ẩn) / Godot (scene + break_apart()).
+inputs:
+  image: {type: image, label: Ảnh đạo cụ (nền trong suốt)}
+  states: {type: text, default: "intact, cracked, broken, wrecked", label: "Tên 4 trạng thái (phẩy, nguyên → nát)"}
+  cracked: {type: text, default: "a few thin cracks and small chipped edges, scuff marks",
+            label: Lệnh trạng thái 2 (hư nhẹ)}
+  broken: {type: text, default: "large deep cracks, split and splintered parts, a few chunks missing, dents",
+           label: Lệnh trạng thái 3 (vỡ)}
+  wrecked: {type: text, default: "badly smashed, big holes, shattered and broken-off parts, barely holding together",
+            label: Lệnh trạng thái 4 (nát)}
+  debris_from: {type: enum, default: broken, options: [broken, wrecked], label: Trạng thái tách mảnh vỡ}
+  split: {type: enum, default: auto, options: [auto, sam3, cpu], label: "Cách tách mảnh (auto = SAM3, thiếu thì CPU)"}
+  pieces: {type: int, default: 6, min: 4, max: 8, label: Số mảnh tối đa}
+steps:
+  - id: prep
+    kind: op.damage_prep
+    in: {images: inputs.image}
+    params: {states: "${inputs.states}"}
+  - id: cracked
+    kind: comfy.edit_flux2_klein4b
+    in: {image: prep.ref}
+    params:
+      "75:74.text": "Show this game prop slightly damaged: ${inputs.cracked}. Keep exactly the same object, silhouette, outline, size, position, camera angle, framing, colours and flat game art style; the damage stays on the object itself, nothing added around it. Plain pure white background."
+  - id: broken
+    kind: comfy.edit_flux2_klein4b
+    in: {image: cracked.images}
+    params:
+      "75:74.text": "Damage this game prop further: ${inputs.broken}. Keep the same object, outline style, size, position, camera angle, framing, colours and flat game art style, still clearly recognisable; no debris flying around it, nothing added outside the object. Plain pure white background."
+  - id: wrecked
+    kind: comfy.edit_flux2_klein4b
+    in: {image: broken.images}
+    params:
+      "75:74.text": "Damage this game prop much further: ${inputs.wrecked}. Keep the same object, outline style, position, camera angle, framing, colours and flat game art style, it stays within its original outline; no debris flying around it, no ground, no shadow. Plain pure white background."
+  - id: rmbg
+    kind: comfy.remove_bg_birefnet
+    in: {image: [cracked.images, broken.images, wrecked.images]}
+    map: image
+  - id: align
+    kind: op.damage_states
+    in: {images: prep.images, edits: rmbg.images, raw: [cracked.images, broken.images, wrecked.images],
+         layout: prep.layout}
+    params: {debris_from: "${inputs.debris_from}"}
+  - id: segment
+    kind: comfy.segment_sam3
+    in: {image: align.debris_src}
+    params:
+      "3.text": "broken piece:8, plank:6, shard:6, chunk:6"
+      "4.threshold": 0.3
+      "4.individual_masks": true
+  - id: debris
+    kind: op.damage_debris
+    in: {images: align.images, masks: segment.images, info: align.info}
+    params: {split: "${inputs.split}", max_pieces: "${inputs.pieces}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: debris.preview, images: debris.images, pieces: debris.pieces, hit: debris.hit,
+         strip: debris.strip, damage: debris.damage}
+outputs:
+  final: approve.images
+  pieces: approve.pieces
+  damage: approve.damage

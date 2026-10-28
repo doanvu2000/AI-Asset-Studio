@@ -1,0 +1,39 @@
+id: time-season-pack
+name: Ngày/đêm/mùa + LUT (Flux.2 Klein)
+description: >-
+  Ảnh tileset / background / prop → mỗi dòng 1 biến thể (mặc định hoàng hôn, đêm, đông, thu) → Klein đổi ánh sáng,
+  tông màu giữ nguyên bố cục → fit 3D LUT 33³ gốc → biến thể (CPU, bình phương tối thiểu có làm mượt, ô màu thiếu lấp
+  từ ô bên cạnh) → ảnh gốc áp LUT + ΔE cho biết LUT bắt được bao nhiêu → ảnh liền mạch thì sửa lại mép và đo độ lệch
+  mép → lưới so sánh (gốc | biến thể | áp LUT) → duyệt. Xuất .cube + strip 1024×32: Unity (URP Color Lookup), Godot
+  (Environment color correction, Texture3D).
+inputs:
+  image: {type: image, label: "Ảnh gốc (tileset, background, prop)"}
+  variants: {type: text, multiline: true, label: "Biến thể (mỗi dòng 1; chữ trước dấu phẩy = tên file)",
+             default: "dusk, warm orange sunset light, long soft shadows\nnight, dark blue moonlight, deep shadows\nwinter, cold pale light, light snow on top surfaces\nautumn, orange and red foliage, warm low sun"}
+  seamless: {type: enum, default: auto, options: [auto, "on", "off"], label: "Liền mạch (auto = đo mép ảnh gốc)"}
+  final: {type: enum, default: edit, options: [edit, lut],
+          label: "Ảnh xuất (edit = ảnh Klein, lut = ảnh gốc áp LUT, giữ nguyên nét/pixel)"}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: prep
+    kind: op.lut_prep
+    in: {images: inputs.image}
+  - id: edit
+    kind: comfy.edit_flux2_klein4b
+    in: {image: prep.images}
+    params:
+      "75:74.text": "Turn this exact game art into its ${inputs.variants | lines} version. Change only the lighting, time of day, colour grading, sky tint and seasonal colours. Keep exactly the same layout, composition, every object, shape, outline, position, perspective, framing, tile grid and art style; do not add, remove, move or redraw anything, keep the same level of detail."
+    map_param: "75:74.text"
+  - id: fit
+    kind: op.fit_lut
+    in: {images: inputs.image, edits: edit.images}
+    params: {variants: "${inputs.variants}", seamless: "${inputs.seamless}", final: "${inputs.final}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: fit.preview, images: fit.images, applied: fit.applied, cube: fit.cube, strip: fit.strip,
+         lut: fit.lut}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  lut: approve.lut

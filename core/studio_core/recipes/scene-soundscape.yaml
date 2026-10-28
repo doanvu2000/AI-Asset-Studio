@@ -1,0 +1,70 @@
+id: scene-soundscape
+name: Âm thanh khớp cảnh (Claude + ACE-Step + Stable Audio)
+description: >-
+  Ảnh cảnh / concept (+ mood) → Claude nhìn ảnh viết 1 prompt nhạc (BPM + giọng), bản "căng thẳng" cùng BPM/giọng,
+  1 ambience lặp và 3–5 hiệu ứng môi trường → ACE-Step sinh nhạc, Stable Audio sinh ambience + SFX → nối vòng lặp,
+  chuẩn hoá → đo BPM 2 bản nhạc → soundscape.json (vai trò, volume dB gợi ý, loop) → duyệt. Xuất Unity/Godot.
+inputs:
+  image: {type: image, label: Ảnh cảnh / concept}
+  mood: {type: text, default: "", multiline: true, label: Mood / hướng âm thanh (tuỳ chọn),
+         placeholder: "quiet before the storm, melancholic, sparse"}
+  tense: {type: bool, default: true, label: Thêm bản nhạc căng thẳng (cùng BPM/giọng)}
+  sfx_count: {type: int, default: 4, min: 3, max: 5, label: Số hiệu ứng môi trường}
+  music_seconds: {type: float, default: 60, min: 15, max: 240, label: Độ dài nhạc (giây)}
+  ambience_seconds: {type: float, default: 30, min: 10, max: 47, label: Độ dài ambience (giây)}
+  sfx_seconds: {type: float, default: 3.0, min: 0.5, max: 20, label: Độ dài sinh SFX (giây)}
+  takes: {type: int, default: 2, min: 1, max: 4, label: Số bản mỗi SFX}
+steps:
+  - id: plan
+    kind: claude.soundscape
+    in: {images: inputs.image}
+    params: {mood: "${inputs.mood}", tense: "${inputs.tense}", sfx_count: "${inputs.sfx_count}", model: opus,
+             _auto_retry: 1}
+  - id: music
+    kind: comfy.music_ace_step15
+    params:
+      "94.tags": ["${steps.plan.json.music_prompts}"]
+      "94.duration": "${inputs.music_seconds}"
+      "94.bpm": "${steps.plan.json.bpm}"
+      "94.keyscale": "${steps.plan.json.keyscale}"
+      "98.seconds": "${inputs.music_seconds}"
+    map_param: "94.tags"
+  - id: ambience
+    kind: comfy.sfx_stable_audio
+    params:
+      "6.text": "${steps.plan.json.ambience_prompt}"
+      "11.seconds": "${inputs.ambience_seconds}"
+      "11.batch_size": 1
+  - id: sfx
+    kind: comfy.sfx_stable_audio
+    params:
+      "6.text": ["${steps.plan.json.sfx_prompts}"]
+      "11.seconds": "${inputs.sfx_seconds}"
+      "11.batch_size": "${inputs.takes}"
+    map_param: "6.text"
+  - id: music_post
+    kind: op.audio_post
+    in: {audio: music.audio}
+    params: {loop: true, crossfade: 2.0, bpm: "${steps.plan.json.bpm}", peak_db: -1, formats: "ogg,wav",
+             labels: "${steps.plan.json.music_labels}"}
+  - id: ambience_post
+    kind: op.audio_post
+    in: {audio: ambience.audio}
+    params: {loop: true, crossfade: 3.0, peak_db: -1, formats: "ogg,wav", labels: "${steps.plan.json.ambience_label}"}
+  - id: sfx_post
+    kind: op.audio_post
+    in: {audio: sfx.audio}
+    params: {loop: false, trim: true, fade_out: 0.05, peak_db: -1, formats: "ogg,wav",
+             labels: "${steps.plan.json.sfx_labels}", per_label: "${inputs.takes}"}
+  - id: mix
+    kind: op.soundscape
+    in: {plan: plan.json, music: music_post.audio, ambience: ambience_post.audio, sfx: sfx_post.audio,
+         waves: [music_post.images, ambience_post.images, sfx_post.images]}
+    params: {bpm_tolerance: 0.04}
+  - id: approve
+    kind: gate.approve
+    in: {preview: mix.preview, audio: [music_post.audio, ambience_post.audio, sfx_post.audio],
+         soundscape: mix.soundscape}
+outputs:
+  final: approve.audio
+  soundscape: approve.soundscape

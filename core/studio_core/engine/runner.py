@@ -656,7 +656,10 @@ class StudioEngine:
             calls = [(step_params, {**inputs, mp: [item]}) for item in inputs.get(mp, [])]
         elif mpp:
             values = step_params.get(mpp)
-            calls = [({**step_params, mpp: v}, inputs) for v in (values if isinstance(values, list) else [values])]
+            # `[ "${steps.plan.json.prompts}" ]` resolves to a nested list: map over the upstream list's items.
+            values = [x for v in (values if isinstance(values, list) else [values])
+                      for x in (v if isinstance(v, list) else [v])]
+            calls = [({**step_params, mpp: v}, inputs) for v in values]
         else:
             res, ctx.unreported = await self._call(ex, ctx, step_params, inputs)
             return res

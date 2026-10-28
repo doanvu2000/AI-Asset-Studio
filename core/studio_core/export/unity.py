@@ -656,6 +656,24 @@ def export(src: Source) -> Files:
         r_files, r_notes = rarity_files(src)
         files += r_files
         notes += r_notes
+    if src.damage_states:
+        from studio_core.export.damage import unity_files as damage_files
+
+        d_files, d_notes = damage_files(src)
+        files += d_files
+        notes += d_notes
+    if src.soundscape and src.audio:
+        from studio_core.export.soundscape import unity_files as soundscape_files
+
+        s_files, s_notes = soundscape_files(src)
+        files += s_files
+        notes += s_notes
+    if src.luts:
+        from studio_core.export.lut import unity_files as lut_files
+
+        l_files, l_notes = lut_files(src)
+        files += l_files
+        notes += l_notes
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

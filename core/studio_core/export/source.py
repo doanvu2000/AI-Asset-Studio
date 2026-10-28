@@ -39,6 +39,16 @@ class Source:
     rarity: list[tuple[str, Path]] = field(default_factory=list)
     rarity_colors: dict[str, str] = field(default_factory=dict)
     rarity_shimmer: list[Path] = field(default_factory=list)
+    # Damage states (op.damage_debris): (state, path, hit-flash path) intact → wrecked, debris pieces (name, path,
+    # damage.json piece entry: rect/offset/pivot/dir in source-canvas px), the canvas size.
+    damage_states: list[tuple[str, Path, Path | None]] = field(default_factory=list)
+    damage_pieces: list[tuple[str, Path, dict[str, Any]]] = field(default_factory=list)
+    damage_canvas: tuple[int, int] = (0, 0)
+    # Scene soundscape (op.soundscape): its soundscape.json doc; the clips themselves are in `audio`.
+    soundscape: dict[str, Any] | None = None
+    # Time/season pack (op.fit_lut): (variant, image, LUT strip 1024x32 UE/Godot orientation, .cube); tileable flag.
+    luts: list[tuple[str, Path, Path, Path]] = field(default_factory=list)
+    lut_seamless: bool = False
     # Set when the export asked for traced 2D colliders + foot pivot on the sprite sheet (export/collider.py).
     collider: Any = None
 
