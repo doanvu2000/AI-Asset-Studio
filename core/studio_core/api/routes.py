@@ -23,7 +23,9 @@ from studio_core.engine.library import RecipeLibrary, issue, merge_text, to_text
 from studio_core.engine.projects import apply_style
 from studio_core.engine.recipe import Recipe, RecipeError
 from studio_core.ops.presets import ExportPreset, PresetStore
-from studio_core.store.bundle import ENGINES, BundleError, engine_ready, export_bundle, export_engine, sheet_meta
+from studio_core.export.collider import DEFAULT_TOLERANCE, ColliderOptions, default_enabled
+from studio_core.store.bundle import (ENGINES, BundleError, engine_ready, engine_source, export_bundle, export_engine,
+                                      sheet_meta)
 from studio_core.store.export import export_copy
 from studio_core.contracts import (
     DEFAULT_PROJECT,
@@ -485,6 +487,16 @@ class StepExport(BaseModel):
     engine: Literal["unity", "godot"] | None = None
     ppu: float = Field(100.0, gt=0, le=10000)
     pixel: bool | None = None
+    # None = the recipe's default (on for sprite-8dir recipes); only sprite sheets get a collider.
+    collider: bool | None = None
+    collider_tolerance: float = Field(DEFAULT_TOLERANCE, ge=0, le=64)
+    collider_mode: Literal["union", "frame"] = "union"
+    occluder: bool = False
+
+
+async def _collider_default(request: Request, step: Any) -> bool:
+    run = await _repo(request).get_run(step.run_id)
+    return default_enabled(getattr(run, "recipe_id", None))
 
 
 async def _exportable_step(request: Request, step_id: str) -> Any:
@@ -503,8 +515,11 @@ async def step_export_options(request: Request, step_id: str) -> Response:
     meta = await asyncio.to_thread(sheet_meta, step, _blobs(request))
     files = len({r.hash for refs in step.outputs.values() for r in refs})
     engines = list(ENGINES) if await asyncio.to_thread(engine_ready, step, _blobs(request)) else []
+    src = await asyncio.to_thread(engine_source, step, [], _blobs(request), "x") if engines else None
+    collider = src is not None and src.sheet is not None
     return _json({"step_id": step.id, "kind": step.kind, "files": files, "sprite_sheet": meta is not None,
-                  "preset": (meta or {}).get("preset"), "engines": engines})
+                  "preset": (meta or {}).get("preset"), "engines": engines,
+                  "collider": collider, "collider_default": collider and await _collider_default(request, step)})
 
 
 @api.post("/steps/{step_id}/export")
@@ -518,9 +533,11 @@ async def export_step(request: Request, step_id: str, body: StepExport) -> Respo
             raise ApiError(400, "invalid", "pick either an engine or a preset, not both")
         # Siblings let a sheet pick up the normal-map sheet rendered by another step of the same run.
         siblings = await _repo(request).get_steps(step.run_id)
+        on = body.collider if body.collider is not None else await _collider_default(request, step)
+        collider = ColliderOptions(body.collider_tolerance, body.collider_mode == "frame", body.occluder) if on else None
         try:
             out = await asyncio.to_thread(export_engine, step, siblings, _blobs(request), Path(root), body.name,
-                                          body.engine, body.ppu, body.pixel)
+                                          body.engine, body.ppu, body.pixel, collider)
         except BundleError as e:
             raise ApiError(422, "not_exportable", str(e)) from e
         return _json(out)

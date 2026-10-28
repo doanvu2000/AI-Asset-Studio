@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from studio_core.export.collider import GODOT_SCRIPT, GODOT_SCRIPT_FILE, for_sheet, godot_body_scene
 from studio_core.export.sheet import Layout, layout
 from studio_core.export.source import Files, Source
 
@@ -290,6 +291,7 @@ def export(src: Source) -> Files:
     notes: list[str] = []
     if src.sheet is not None and src.meta is not None:
         lay = layout(src.meta, src.clip_hint, directional_rows=src.directional_rows)
+        col = for_sheet(src, lay)
         tex, normal = f"{a}.png", (f"{a}_normal.png" if src.normal is not None else None)
         files.append((tex, src.sheet))
         notes.append((README_SHEET if lay.facing else README_FLIPBOOK).format(asset=a))
@@ -300,6 +302,16 @@ def export(src: Source) -> Files:
                   (f"{a}.tscn", scene(a, lay, f"{a}.tres", src.is_pixel()).encode())]
         if lay.facing:
             files.append(("asset_studio_sprite.gd", helper(lay).encode()))
+        if col is not None and col.groups:
+            body = "CharacterBody2D" if lay.facing else "Area2D"
+            opts = src.collider
+            body_scene = godot_body_scene(f"{a}_body", f"{a}.tscn", col, lay.pivot, default_animation(lay), body,
+                                          opts.occluder)
+            files += [(f"{a}_body.tscn", body_scene.encode()), (GODOT_SCRIPT_FILE, GODOT_SCRIPT.encode())]
+            notes.append(f"- {a}_body.tscn: {body} bọc {a}.tscn + CollisionPolygon2D vẽ theo alpha"
+                         f"{' và LightOccluder2D' if opts.occluder else ''} (Collider_<animation>"
+                         f"{'_<khung>' if opts.per_frame else ''}); {GODOT_SCRIPT_FILE} bật đúng polygon theo "
+                         "animation/khung đang phát.")
     if src.spine_json is not None and src.spine_atlas is not None:
         stem = Path(src.spine_json[0]).stem
         files += [(f"Spine/{stem}.spine-json", src.spine_json[1]), (f"Spine/{stem}.atlas", src.spine_atlas[1])]
@@ -362,6 +374,12 @@ def export(src: Source) -> Files:
         pbr_files, pbr_notes = godot_files(src)
         files += pbr_files
         notes += pbr_notes
+    if src.rarity:
+        from studio_core.export.rarity import godot_files as rarity_files
+
+        r_files, r_notes = rarity_files(src)
+        files += r_files
+        notes += r_notes
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

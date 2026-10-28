@@ -114,7 +114,8 @@ const RECIPE_PITCH: Record<string, string> = {
   'ui-kit-style': 'Ảnh style tham chiếu + chủ đề → bộ UI 9-slice cùng phong cách',
   'icon-pack': 'Mỗi dòng 1 icon → cả bộ icon cùng khung, nét viền, đổ bóng',
   upscale: 'Ảnh / atlas có sẵn → bản x2, x4 nét hơn, nền trong suốt vẫn sạch',
-  'pbr-material': 'Texture có sẵn → bộ map PBR (normal, height, roughness, metallic, AO) + material Unity/Godot, không cần GPU'
+  'pbr-material': 'Texture có sẵn → bộ map PBR (normal, height, roughness, metallic, AO) + material Unity/Godot, không cần GPU',
+  'item-rarity': 'Ảnh vật phẩm → 5 bậc common → legendary: đổi màu giữ nét, Klein thêm viền vàng / đá quý, glow + shimmer'
 }
 
 export function recipePitch(id: string): string | undefined {

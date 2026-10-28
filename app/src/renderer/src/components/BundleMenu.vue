@@ -12,6 +12,7 @@ const file = useAssetFile()
 const presets = usePresets()
 const uid = useId()
 const opts = ref<BundleOptions | null>(null)
+const collider = ref<boolean | null>(null)
 const open = ref(false)
 const active = ref(0)
 const button = ref<HTMLButtonElement | null>(null)
@@ -22,6 +23,7 @@ watch(
   () => props.stepId,
   async (id) => {
     opts.value = null
+    collider.value = null
     if (!window.studio?.asset) return
     try {
       const o = await window.studio.asset.bundleOptions(id)
@@ -64,8 +66,16 @@ const pixelMode = ref<PixelMode>(savedPixel === 'on' || savedPixel === 'off' ? s
 const ppuValid = computed(() => Number.isFinite(ppu.value) && ppu.value > 0 && ppu.value <= 10000)
 watch(ppu, (v) => ppuValid.value && writePref(PPU_KEY, String(v)))
 watch(pixelMode, (v) => writePref(PIXEL_KEY, v))
+const TOL_KEY = 'export:collider-tol'
+const colliderOn = computed(() => collider.value ?? !!opts.value?.collider_default)
+const savedTol = Number(readPref(TOL_KEY) ?? NaN)
+const tolerance = ref(Number.isFinite(savedTol) && savedTol >= 0 && savedTol <= 64 ? savedTol : 1.5)
+const tolValid = computed(() => Number.isFinite(tolerance.value) && tolerance.value >= 0 && tolerance.value <= 64)
+watch(tolerance, (v) => tolValid.value && writePref(TOL_KEY, String(v)))
 function engineOpts(): EngineExportOptions {
-  return { ppu: ppuValid.value ? ppu.value : 100, pixel: pixelMode.value === 'auto' ? null : pixelMode.value === 'on' }
+  const base = { ppu: ppuValid.value ? ppu.value : 100, pixel: pixelMode.value === 'auto' ? null : pixelMode.value === 'on' }
+  if (!opts.value?.sprite_sheet) return base
+  return { ...base, collider: colliderOn.value, collider_tolerance: tolValid.value ? tolerance.value : 1.5 }
 }
 const PIXEL_MODES: { id: PixelMode; label: string }[] = [
   { id: 'auto', label: 'Tự động' },
@@ -228,6 +238,25 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
                 </button>
               </div>
             </div>
+            <div v-if="opts?.sprite_sheet" class="b-opt">
+              <label class="b-check" title="Vẽ polygon va chạm theo alpha từng clip (Unity Physics Shape, Godot CollisionPolygon2D) và đặt pivot ở chân">
+                <input type="checkbox" :checked="colliderOn" @change="collider = ($event.target as HTMLInputElement).checked" />
+                <span class="b-opt-label">Collider + pivot chân</span>
+              </label>
+              <input
+                v-if="colliderOn"
+                v-model.number="tolerance"
+                class="field num b-ppu"
+                :class="{ bad: !tolValid }"
+                type="number"
+                min="0"
+                max="64"
+                step="0.5"
+                title="Độ sai lệch tối đa khi rút gọn viền (pixel): lớn hơn = ít đỉnh hơn"
+                aria-label="Độ sai lệch viền collider (pixel)"
+                :aria-invalid="!tolValid"
+              />
+            </div>
             <p v-if="!ppuValid" class="b-err caption">PPU từ 1 đến 10000 — đang dùng 100</p>
           </div>
         </div>
@@ -311,6 +340,11 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
 .b-opt-label {
   font-size: var(--fs-callout);
   color: var(--text-2);
+}
+.b-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .b-ppu {
   width: 84px;

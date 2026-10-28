@@ -942,3 +942,14 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [~] 2026-10-29 Đang chạy: #10 rig 3D, #4 engine preview, art 5 recipe, #13 collider, #14 rarity. Chờ: #15–#22, đợt 3.
 - [x] 2026-10-29 Art 5 recipe mới xong (upscale, ui-kit, ui-kit-style, icon-pack, spine-character-image).
 - [x] 2026-10-29 02:30 Kiểm: pytest 560 pass / 4 skip, typecheck sạch → commit mốc. Handoff mới: `.planning/HANDOFF-2026-10-29-0230.md`
+- [x] 2026-10-29 #4 Xem trong engine xong: `export/preview.py` (+`engine_scripts/preview.gd`, `AssetStudioPreview.cs`), router `/api/engine-preview` + `/api/steps/{id}/engine-preview` (job async, hủy được), MCP `engine_preview`, tool path `godot_exe/unity_exe/unity_project`, nút "Xem trong engine" (`EnginePreview.vue`). 10 test; live Godot sprite 5s + GLB 7.6s, Unity prefab ~4-6s (project L:\AI\unity-test-batch).
+- [x] 2026-10-29 #10 rig 3D xong (agent; phần lớn đã nằm trong a521d65): recipe `character-3d-rigged` (+`-image` qua TRELLIS),
+  `blender.rig_export` (19 xương tên Humanoid, NLA mỗi anim, GLB+FBX), Unity FBX .meta Humanoid + clip Loop, Godot GLB.
+  `test_rig3d.py` 8 pass; live Blender 5.2 16s OK. Chưa mở Unity/Godot thật; dáng gốc A-pose.
+- [~] 2026-10-29 Giao #15 ngày/đêm/mùa + LUT.
+- [x] 2026-10-29 #4 Xem trong engine xong (agent): `export/preview.py` (Job Object, Godot GL capture cửa sổ -32000,
+  Unity batchmode `AssetStudioPreview.Run`), `engine_scripts/`, router `api/engine_preview.py`, MCP `engine_preview`,
+  `EnginePreview.vue` cạnh "Xuất cho engine". 10 test pass. Live: Godot 5s, Unity 4–6s OK; GLB trong Unity cần glTFast.
+  Default path cứng trong config giữ nguyên (cùng kiểu comfy/blender). Unity test project còn PreviewKnight/Chest/LiveHero.
+- [~] 2026-10-29 Giao #16 âm thanh khớp cảnh.
+- [x] 2026-10-29 Kiểm: pytest 581 pass / 4 skip, typecheck sạch → commit mốc #10 + #4 (+ dở #13/#14/#15/#16).

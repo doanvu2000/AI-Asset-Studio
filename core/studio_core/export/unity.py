@@ -48,8 +48,7 @@ def _platform(target: str, max_size: int) -> str:
 
 
 def _sprite_entry(asset: str, name: str, x: int, y: int, w: int, h: int, pivot: tuple[float, float],
-                  physics: str = "      physicsShape: []
-") -> str:
+                  physics: str = "      physicsShape: []\n") -> str:
     return f"""    - serializedVersion: 2
       name: {name}
       rect:
@@ -571,9 +570,9 @@ def export(src: Source) -> Files:
                   (f"{tex_rel}.meta", texture_meta(a, tex_guid, lay, size, src.ppu, pixel, normal_guid,
                                                    shapes=col.shapes if col else None).encode())]
         if col is not None:
+            foot = " Pivot đặt ở hàng pixel thấp nhất (chân)." if lay.facing else ""
             notes.append("- Collider: mỗi sprite có Custom Physics Shape vẽ theo alpha (Sprite Editor > Custom Physics "
-                         "Shape) — thêm PolygonCollider2D là tự lấy viền." + (" Pivot đặt ở hàng pixel thấp nhất (chân)."
-                                                                                if lay.facing else ""))
+                         f"Shape) — thêm PolygonCollider2D là tự lấy viền.{foot}")
         if src.normal is not None and normal_guid:
             files += [(normal_rel, src.normal),
                       (f"{normal_rel}.meta",
@@ -651,6 +650,12 @@ def export(src: Source) -> Files:
         pbr_files, pbr_notes = unity_files(src)
         files += pbr_files
         notes += pbr_notes
+    if src.rarity:
+        from studio_core.export.rarity import unity_files as rarity_files
+
+        r_files, r_notes = rarity_files(src)
+        files += r_files
+        notes += r_notes
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

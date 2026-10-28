@@ -192,6 +192,7 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
     src.audio = _audio(step, blobs)
     src.ui = ui_elements(step, blobs)
     src.pbr = pbr_materials(step, blobs)
+    src.rarity, src.rarity_colors, src.rarity_shimmer = rarity_set(step, blobs)
     return src
 
 
@@ -217,6 +218,34 @@ def pbr_materials(step: StepRow, blobs: BlobStore) -> list[tuple[str, dict[str, 
             except (OSError, ValueError, KeyError, TypeError):
                 return []
     return []
+
+
+def rarity_set(step: StepRow, blobs: BlobStore) -> tuple[list[tuple[str, Path]], dict[str, str], list[Path]]:
+    """op.rarity_set's rarity.json, also when a gate passed it through under another port name."""
+    from studio_core.ops.rarity import RARITY_FILE, RARITY_TYPE
+
+    for refs in step.outputs.values():
+        for ref in refs:
+            if (ref.name or "") != RARITY_FILE:
+                continue
+            try:
+                doc = json.loads(blobs.path(ref.hash).read_bytes())
+                if doc.get("type") != RARITY_TYPE:
+                    return [], {}, []
+                tiers, colors, seen = [], {}, set()
+                for t in doc["tiers"]:
+                    name = ident(str(t["tier"]), "tier")
+                    path = blobs.path(str(t["hash"]))
+                    if name in seen or not path.is_file():
+                        continue
+                    seen.add(name)
+                    tiers.append((name, path))
+                    colors[name] = str(t.get("color") or "")
+                shim = [blobs.path(str(f["hash"])) for f in (doc["tiers"][-1].get("shimmer") or [])]
+                return tiers, colors, [p for p in shim if p.is_file()]
+            except (OSError, ValueError, KeyError, TypeError, IndexError):
+                return [], {}, []
+    return [], {}, []
 
 
 def ui_elements(step: StepRow, blobs: BlobStore) -> list[tuple[str, Path, tuple[int, int, int, int], str]]:
@@ -264,21 +293,23 @@ def _audio(step: StepRow, blobs: BlobStore) -> list[tuple[str, Path]]:
 def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
     src = engine_source(step, [], blobs, "x")
     return (src.sheet is not None or src.spine_json is not None or bool(src.glb) or bool(src.textures)
-            or bool(src.audio) or bool(src.ui) or bool(src.pbr) or bool(src.fbx))
+            or bool(src.audio) or bool(src.ui) or bool(src.pbr) or bool(src.fbx)
+            or bool(src.rarity))
 
 
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,
-                  engine: str, ppu: float = 100.0, pixel: bool | None = None) -> dict[str, Any]:
+                  engine: str, ppu: float = 100.0, pixel: bool | None = None, collider: Any = None) -> dict[str, Any]:
     exporter = ENGINES.get(engine)
     if exporter is None:
         raise BundleError(f"unknown engine '{engine}' (use {', '.join(ENGINES)})")
     base = name or str(step.params.get("asset") or "") or str(step.params.get("name") or "") or step.key
     folder = safe_component(base, step.key)
     src = engine_source(step, siblings, blobs, ident(folder, "asset"), ppu, pixel)
+    src.collider = collider
     files = exporter(src)
     if not files:
         raise BundleError("nothing to export for a game engine (needs a sprite sheet, Spine export, GLB, tileable "
-                          "texture, PBR material, sound or UI kit)")
+                          "texture, PBR material, sound, UI kit or rarity set)")
     dst = root / "bundles" / f"{step.id[:12]}-{engine}" / folder
     dst.parent.mkdir(parents=True, exist_ok=True)
     written = _write(dst, files)

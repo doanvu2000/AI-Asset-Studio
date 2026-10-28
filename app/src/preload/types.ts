@@ -114,6 +114,10 @@ export interface AssetBridge {
 export interface EngineExportOptions {
   ppu?: number
   pixel?: boolean | null
+  /** Traced 2D collider + foot pivot on sprite sheets; null/absent = the recipe's default. */
+  collider?: boolean | null
+  /** Douglas–Peucker tolerance in pixels. */
+  collider_tolerance?: number
 }
 
 /** Drop-in folder for a game engine: sliced sheet + clips + controller/scene, Spine and GLB copied by convention. */
@@ -127,6 +131,7 @@ export interface BundleOptions {
   /** Preset the recipe already packed the sheet with, if any. */
   preset: string | null
   engines?: BundleEngine[]
+  collider_default?: boolean
 }
 
 export interface ExportedBundle {

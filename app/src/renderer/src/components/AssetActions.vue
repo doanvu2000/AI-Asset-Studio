@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ArrowUpRight, Check, Download, FolderOpen, GripVertical, Link2, LoaderCircle } from '@lucide/vue'
 import { useAssetFile } from '@/composables/assetFile'
 import BundleMenu from './BundleMenu.vue'
+import EnginePreview from './EnginePreview.vue'
 import FollowUpMenu from './FollowUpMenu.vue'
 import type { BlobRef } from '@/api/types'
 import { exportName, useVersions } from '@/stores/versions'
@@ -52,6 +53,7 @@ const offTitle = 'Chỉ dùng được trong app desktop'
       <span v-if="!compact">Xuất…</span>
     </button>
     <BundleMenu v-if="bundleStep && file.available" :step-id="bundleStep" :name="version?.asset_name.trim() || undefined" :compact="compact" />
+    <EnginePreview v-if="bundleStep && file.available" :step-id="bundleStep" :name="version?.asset_name.trim() || undefined" :compact="compact" />
     <FollowUpMenu :hash="hash" :blob="blob ?? version?.blob" :run-id="sourceRun" :step-id="bundleStep" :compact="compact" />
     <button
       type="button"

@@ -27,7 +27,7 @@ export function checkEngine(v: unknown): BundleEngine | undefined {
 export function checkEngineOptions(v: unknown): EngineExportOptions {
   if (v === undefined || v === null) return {}
   if (typeof v !== 'object') throw new Error('invalid export options')
-  const { ppu, pixel } = v as Record<string, unknown>
+  const { ppu, pixel, collider, collider_tolerance: tol } = v as Record<string, unknown>
   const out: EngineExportOptions = {}
   if (ppu !== undefined && ppu !== null) {
     if (typeof ppu !== 'number' || !Number.isFinite(ppu) || ppu <= 0 || ppu > 10000) throw new Error('invalid ppu')
@@ -36,6 +36,14 @@ export function checkEngineOptions(v: unknown): EngineExportOptions {
   if (pixel !== undefined && pixel !== null) {
     if (typeof pixel !== 'boolean') throw new Error('invalid pixel flag')
     out.pixel = pixel
+  }
+  if (collider !== undefined && collider !== null) {
+    if (typeof collider !== 'boolean') throw new Error('invalid collider flag')
+    out.collider = collider
+  }
+  if (tol !== undefined && tol !== null) {
+    if (typeof tol !== 'number' || !Number.isFinite(tol) || tol < 0 || tol > 64) throw new Error('invalid collider tolerance')
+    out.collider_tolerance = tol
   }
   return out
 }

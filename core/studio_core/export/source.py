@@ -35,6 +35,10 @@ class Source:
     rig: dict[str, Any] | None = None
     # PBR materials (op.pbr): (material name, {role: path}) with roles albedo, normal, height, roughness, metallic, ao.
     pbr: list[tuple[str, dict[str, Path]]] = field(default_factory=list)
+    # Item rarity set (op.rarity_set): (tier, path) low to high, tier colours, legendary shimmer frames.
+    rarity: list[tuple[str, Path]] = field(default_factory=list)
+    rarity_colors: dict[str, str] = field(default_factory=dict)
+    rarity_shimmer: list[Path] = field(default_factory=list)
     # Set when the export asked for traced 2D colliders + foot pivot on the sprite sheet (export/collider.py).
     collider: Any = None
 
