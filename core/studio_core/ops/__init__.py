@@ -7,6 +7,7 @@ from .audio import AudioPost
 from .damage import DAMAGE_OPS
 from .executors import ALL_OPS, Sheet
 from .fx import FX_OPS
+from .keyart import KEYART_OPS, KeyartVideo
 from .pbr import PBR_OPS
 from .pixel import PIXEL_OPS
 from .presets import PresetStore
@@ -40,6 +41,9 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
     registry.register(VideoFrames(settings))
     registry.register(AudioPost(settings))
     registry.register(VfxFrames())
+    registry.register(KeyartVideo(settings))
+    for ka_cls in KEYART_OPS:
+        registry.register(ka_cls())
     for dmg_cls in DAMAGE_OPS:
         registry.register(dmg_cls())
     for sc_cls in SOUNDSCAPE_OPS:

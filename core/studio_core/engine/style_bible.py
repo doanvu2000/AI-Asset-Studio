@@ -19,6 +19,7 @@ PALETTE_K = 8
 MAX_REFS = 3
 MAX_SOURCES = 60
 PIXEL_SIDE = 768
+PIXEL_MAX_COLORS = 32
 OPT_OUT_KEY = "use_style_bible"
 RECORD_KEY = "style_bible"
 PROMPT_INPUTS = ("prompt", "idea")
@@ -54,8 +55,8 @@ class StyleBible(BaseModel):
 
 
 def pixel_score(img: Image.Image) -> float:
-    """Share of opaque horizontal+vertical neighbours with the exact same color: pixel art scaled up by an integer
-    factor sits near 1, painted or photographic textures near 0 (gradients and noise break exact equality)."""
+    """~1 for pixel art, low for painted art. Upscaled pixel art repeats each color in both directions (painted
+    shading breaks exact equality along at least one axis); native-size pixel art is caught by its tiny color count."""
     im = img.convert("RGBA")
     if max(im.size) > PIXEL_SIDE:
         f = math.ceil(max(im.size) / PIXEL_SIDE)
@@ -65,12 +66,11 @@ def pixel_score(img: Image.Image) -> float:
     rgb = (a[..., 0] << 16) | (a[..., 1] << 8) | a[..., 2]
     h = (rgb[:, 1:] == rgb[:, :-1])[opaque[:, 1:] & opaque[:, :-1]]
     v = (rgb[1:] == rgb[:-1])[opaque[1:] & opaque[:-1]]
-    n = h.size + v.size
-    if n < 64:
+    if min(h.size, v.size) < 32:
         return 0.0
-    eq = float(h.sum() + v.sum()) / n
-    colors = len(np.unique(rgb[opaque]))
-    return eq if colors <= 256 else eq * 0.5
+    if len(np.unique(rgb[opaque])) <= PIXEL_MAX_COLORS:
+        return 1.0
+    return float(min(h.mean(), v.mean()))
 
 
 def aggregate(measures: Sequence[Measure], pixel_scores: Sequence[float]) -> dict[str, Any]:

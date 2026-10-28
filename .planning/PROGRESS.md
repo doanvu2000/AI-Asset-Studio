@@ -994,3 +994,8 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   Không raqm → Ả Rập/Devanagari/Thái có thể sai. Agent lỡ xoá `.gpu-lock` người khác 1 lần (đã tạo lại).
 - [x] 2026-10-29 Kiểm 677 pass / 4 skip, typecheck sạch → commit mốc #19 + #21.
 - [~] 2026-10-29 Giao #23 autotile, #22 key art động (kiểm license/VRAM Wan2.2-5B trước).
+- [x] 2026-10-29 #24 Normal map 2D xong (agent): `export/normal2d.py` (bevel theo khoảng cách viền + chi tiết độ sáng, tính
+  từng ô), gán `src.normal` (đường export normal sẵn có), StepExport `normal2d*`, BundleMenu checkbox; `op.normal2d` + recipe
+  `sprite-normal-map`. 10 test; Godot PointLight2D OK (G lên), Unity batchmode `_NormalMap` OK. Chỉ sprite sheet.
+- [x] 2026-10-29 Kiểm 681 pass / 4 skip, typecheck sạch → commit mốc #24.
+- [~] 2026-10-29 Giao #25 bitmap font.

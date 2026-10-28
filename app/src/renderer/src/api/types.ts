@@ -352,6 +352,7 @@ export interface BatchCreateBody {
   inputs?: Record<string, unknown>
   title?: string
   project_id?: string
+  params?: Record<string, Record<string, unknown>>
 }
 
 export interface RunMeta {
@@ -664,4 +665,45 @@ export interface ProjectQaFixResult {
   recipe_id: string
   inputs: Record<string, unknown>
   title: string
+}
+
+/** Project style bible (core engine/style_bible.py): measured from approved assets, injected into new runs. */
+export interface StyleBibleRef {
+  hash: string
+  version_id: string
+  asset_name: string
+}
+
+export interface StyleBible {
+  version: number
+  active: boolean
+  palette: string[]
+  outlined: boolean | null
+  outline_weight: number | null
+  light_angle: number | null
+  light_label: string | null
+  pixel_art: boolean
+  refs: StyleBibleRef[]
+  suffix: string
+  negative: string
+  summary: string
+  source_count: number
+  built_at: number | null
+  updated_at: number | null
+  edited: boolean
+  cost_usd: number | null
+  model: string | null
+  vision_error: string | null
+}
+
+export interface StyleBibleView {
+  project_id: string
+  bible: StyleBible | null
+}
+
+export interface StyleBibleEdit {
+  suffix?: string
+  negative?: string
+  active?: boolean
+  refs?: string[]
 }

@@ -2,7 +2,7 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, ArrowRight, BookOpen, FolderKanban, Languages, Layers, LoaderCircle, Play, RotateCcw, RotateCw, Timer } from '@lucide/vue'
-import type { BlobRef, RecipeInfo, RecipeInputSpec } from '@/api/types'
+import type { BlobRef, RecipeInfo, RecipeInputSpec, StyleBible } from '@/api/types'
 import { NO_PROJECT } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import LaneTag from '@/components/LaneTag.vue'
@@ -207,6 +207,41 @@ const overriddenFills = computed(() => fills.value.filter((f) => !f.wraps && tou
 const presetName = (id: string): string | undefined => presets.list.find((p) => p.id === id)?.name
 const fillText = computed(() => fillSummary(appliedFills.value, presetName))
 
+// Mirrors core engine/style_bible.apply_bible: which inputs of the recipe the bible can reach.
+const bible = ref<StyleBible | null>(null)
+const useBible = ref(true)
+watch(
+  () => project.value?.id,
+  async (id) => {
+    bible.value = null
+    useBible.value = true
+    if (!id) return
+    try {
+      const view = await api().getStyleBible(id)
+      if (project.value?.id === id) bible.value = view.bible
+    } catch {
+      bible.value = null
+    }
+  },
+  { immediate: true }
+)
+const bibleTargets = computed<string[]>(() => {
+  const b = bible.value
+  const r = selected.value
+  if (!b?.active || !r) return []
+  const out: string[] = []
+  const text = (n: string): boolean => (r.inputs[n]?.type ?? '') === 'text'
+  if (b.suffix && (text('style') || text('prompt') || text('idea'))) out.push('hậu tố prompt')
+  if (b.negative && text('negative')) out.push('negative')
+  const styleRef = Object.entries(r.inputs).some(
+    ([n, sp]) => sp.type === 'image' && (['style_ref', 'style_image', 'style_reference'].includes(n) || /style/i.test(sp.label ?? ''))
+  )
+  if (b.refs.length && styleRef) out.push('ảnh style mẫu')
+  return out
+})
+const bibleParams = (): Record<string, Record<string, unknown>> | undefined =>
+  bibleTargets.value.length && !useBible.value ? { $meta: { use_style_bible: false } } : undefined
+
 function defaultOf(spec: RecipeInputSpec): FieldValue {
   return (spec.default as FieldValue | undefined) ?? (spec.type === 'bool' ? false : isNum(spec.type) ? (spec.min ?? 0) : '')
 }
@@ -359,14 +394,15 @@ async function submit(): Promise<void> {
         items: itemsEn,
         inputs,
         title: title.value.trim() || `${r.name} × ${batchItems.value.length}`,
-        project_id: runProjectId.value
+        project_id: runProjectId.value,
+        params: bibleParams()
       })
       toasts.push(`Đã tạo ${res.run_ids.length} lượt chạy`, 'success', 2600)
       batchLines.value = ''
       batchFiles.value = []
       await router.push(`/batch/${res.batch_id}`)
     } else {
-      const { run_id } = await api().startRun({ recipe_id: r.id, inputs, title: title.value.trim() || title0, project_id: runProjectId.value })
+      const { run_id } = await api().startRun({ recipe_id: r.id, inputs, title: title.value.trim() || title0, project_id: runProjectId.value, params: bibleParams() })
       toasts.push('Đã bắt đầu chạy', 'success', 2500)
       await router.push(`/runs/${run_id}`)
     }
@@ -562,6 +598,9 @@ ${r.description}`" @click="pick(r.id)">
               <p v-if="overriddenFills.length" class="caption">
                 Giữ giá trị bạn đã chỉnh: {{ [...new Set(overriddenFills.map((f) => f.label))].join(', ') }}
               </p>
+              <label v-if="bibleTargets.length" class="pc-bible caption" :title="bible?.suffix">
+                <input v-model="useBible" type="checkbox" /> Áp style dự án <span class="pc-bible-v">(bản {{ bible?.version }}: {{ bibleTargets.join(', ') }})</span>
+              </label>
             </div>
             <RouterLink :to="`/projects/${project.id}`" class="pc-link">Sửa phong cách</RouterLink>
           </div>
@@ -1061,6 +1100,16 @@ ${r.description}`" @click="pick(r.id)">
   min-width: 0;
   display: grid;
   gap: 2px;
+}
+.pc-bible {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  cursor: pointer;
+}
+.pc-bible-v {
+  color: var(--text-3);
 }
 .pc-link {
   flex: none;

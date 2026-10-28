@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
-import { Archive, ArchiveRestore, ArrowLeft, Check, ClipboardList, FolderKanban, Images, Languages, ListChecks, LoaderCircle, Plus, RotateCw, Save, ScanSearch, X } from '@lucide/vue'
+import { Archive, ArchiveRestore, ArrowLeft, BookMarked, Check, ClipboardList, FolderKanban, Images, Languages, ListChecks, LoaderCircle, Plus, RotateCw, Save, ScanSearch, X } from '@lucide/vue'
 import type { BlobRef, PixelStyle, ProjectStyle } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -11,6 +11,7 @@ import PresetSelect from '@/components/PresetSelect.vue'
 import RunRowItem from '@/components/RunRowItem.vue'
 import ManifestPanel from '@/components/ManifestPanel.vue'
 import QaPanel from '@/components/QaPanel.vue'
+import StyleBiblePanel from '@/components/StyleBiblePanel.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import RelTime from '@/components/RelTime.vue'
 import { useProjects } from '@/stores/projects'
@@ -228,7 +229,7 @@ function removeDefault(i: number): void {
   draft.value?.defaults.splice(i, 1)
 }
 
-type Tab = 'style' | 'assets' | 'qa' | 'runs' | 'gallery'
+type Tab = 'style' | 'assets' | 'qa' | 'bible' | 'runs' | 'gallery'
 const tab = ref<Tab>('style')
 const projectRuns = computed(() => runs.runList.filter((r) => r.project_id === props.id))
 const projectVersions = computed(() => versions.list.filter((v) => v.project_id === props.id && v.status !== 'rejected'))
@@ -322,6 +323,9 @@ function newAsset(): void {
           </button>
           <button role="tab" :aria-selected="tab === 'qa'" :class="{ on: tab === 'qa' }" @click="tab = 'qa'">
             <ScanSearch :size="13" /> Kiểm tra đồng bộ
+          </button>
+          <button role="tab" :aria-selected="tab === 'bible'" :class="{ on: tab === 'bible' }" @click="tab = 'bible'">
+            <BookMarked :size="13" /> Style bible
           </button>
           <button role="tab" :aria-selected="tab === 'runs'" :class="{ on: tab === 'runs' }" @click="tab = 'runs'">
             <ListChecks :size="13" /> Lượt chạy <span class="num c">{{ projectRuns.length }}</span>
@@ -476,6 +480,8 @@ function newAsset(): void {
         <ManifestPanel v-else-if="tab === 'assets'" :project-id="id" :project-name="project.name" />
 
         <QaPanel v-else-if="tab === 'qa'" :project-id="id" />
+
+        <StyleBiblePanel v-else-if="tab === 'bible'" :project-id="id" />
 
         <section v-else-if="tab === 'runs'" class="list card">
           <EmptyState v-if="!projectRuns.length" :icon="ListChecks" title="Dự án chưa có lượt chạy" text="Lượt chạy tạo trong dự án sẽ tự mang phong cách đã khoá.">

@@ -42,6 +42,7 @@ import type { QaPart, QaRecomputeResult, QaResult } from '../types'
 import type { GddProposal, ManifestFormat, ManifestRow, ManifestStatus, ManifestView } from '../types'
 import type { SetupJob, SetupPlan, SetupStartBody } from '../types'
 import type { ProjectQaAsset, ProjectQaFixResult, ProjectQaReport } from '../types'
+import type { StyleBible, StyleBibleEdit, StyleBibleView } from '../types'
 import { MOCK_KINDS, MOCK_PRESETS, MOCK_TOOLS, mockValidate, stepDeps } from './catalog'
 import { normalizeStyle, styleFills } from '@/composables/projectStyle'
 import sampleGlbUrl from './assets/sample-prop.glb?url'
@@ -1131,7 +1132,7 @@ export class MockCore implements StudioApi, EventStream {
     const batch_id = uid('batch')
     const run_ids: string[] = []
     for (const [i, it] of body.items.entries()) {
-      const meta = { source: 'app', batch_id, batch_index: i, batch_total: body.items.length, batch_title: body.title ?? '' }
+      const meta = { source: 'app', ...body.params?.$meta, batch_id, batch_index: i, batch_total: body.items.length, batch_title: body.title ?? '' }
       const { run_id } = await this.startRun({ recipe_id: body.recipe_id, inputs: { ...body.inputs, ...it.inputs }, title: it.title, params: { $meta: meta }, project_id: body.project_id })
       run_ids.push(run_id)
     }
@@ -1285,6 +1286,11 @@ export class MockCore implements StudioApi, EventStream {
     const { inputs, applied, projectId } = this.applyProject(body.project_id, recipe, body.inputs)
     let params = body.params ?? {}
     if (projectId !== 'default') params = { ...params, $meta: { ...((params.$meta as object | undefined) ?? {}), project_id: projectId, project_applied: applied } }
+    const bible = this.styleBibles.get(projectId)
+    if (projectId !== 'default' && bible?.active && params.$meta?.use_style_bible !== false && bible.suffix && typeof inputs.prompt === 'string' && inputs.prompt.trim() && !inputs.prompt.includes(bible.suffix)) {
+      inputs.prompt = `${inputs.prompt.trim()}, ${bible.suffix}`
+      params = { ...params, $meta: { ...params.$meta, style_bible: { version: bible.version, applied: ['prompt'] } } }
+    }
     const run = this.newRun(recipe, inputs, title, now(), params)
     run.project_id = projectId
     const steps = this.createSteps(run, recipe)
@@ -1581,6 +1587,46 @@ export class MockCore implements StudioApi, EventStream {
     const inputs = { image: v.blob.hash, instructions: text }
     const { run_id } = await this.startRun({ recipe_id, inputs, title, params: { $meta: { source: 'project_qa', qa_version: versionId } }, project_id: projectId })
     return { run_id, recipe_id, inputs, title }
+  }
+
+  private styleBibles = new Map<string, StyleBible>()
+
+  async getStyleBible(projectId: string): Promise<StyleBibleView> {
+    await this.ready
+    return clone({ project_id: projectId, bible: this.styleBibles.get(projectId) ?? null })
+  }
+
+  async buildStyleBible(projectId: string, body: { vision?: boolean } = {}): Promise<StyleBibleView> {
+    const vision = body.vision ?? true
+    await sleep(vision ? 1500 : 500)
+    const approved = [...this.versionMap.values()].filter((v) => v.project_id === projectId && v.status === 'approved' && v.blob.mime.startsWith('image/'))
+    if (!approved.length) throw new ApiError('no_approved', 'the project has no approved image assets yet', 400)
+    const prev = this.styleBibles.get(projectId)
+    const bible: StyleBible = {
+      version: (prev?.version ?? 0) + 1, active: prev?.active ?? true, palette: ['#2d3a4a', '#6aa84f', '#e0c068', '#c2c3c7', '#8a5a3c', '#f4efe2'],
+      outlined: true, outline_weight: 3.4, light_angle: 135, light_label: 'top left', pixel_art: false,
+      refs: approved.slice(0, 3).map((v) => ({ hash: v.blob.hash, version_id: v.id, asset_name: v.asset_name })),
+      suffix: vision ? 'hand-painted fantasy game art, soft cel shading, clean dark outline, muted forest greens and warm ochre, light from the top left' : 'painterly game art, clean dark outline, lit from the top left',
+      negative: 'photorealistic, 3d render, pixel art, harsh neon colors, text, watermark',
+      summary: vision ? 'Phong cách vẽ tay, tô bóng mềm, viền tối gọn; tông xanh rừng và vàng đất, sáng từ trên-trái.' : '',
+      source_count: approved.length, built_at: now(), updated_at: now(), edited: false,
+      cost_usd: vision ? 0.05 : null, model: vision ? 'claude-opus-5-5' : null, vision_error: null
+    }
+    this.styleBibles.set(projectId, bible)
+    return clone({ project_id: projectId, bible })
+  }
+
+  async editStyleBible(projectId: string, body: StyleBibleEdit): Promise<StyleBibleView> {
+    const bible = this.styleBibles.get(projectId)
+    if (!bible) throw new ApiError('not_found', 'no style bible yet; build it first', 404)
+    let changed = false
+    if (body.suffix !== undefined && body.suffix.trim() !== bible.suffix) { bible.suffix = body.suffix.trim(); changed = true }
+    if (body.negative !== undefined && body.negative.trim() !== bible.negative) { bible.negative = body.negative.trim(); changed = true }
+    if (body.refs) { bible.refs = bible.refs.filter((r) => body.refs!.includes(r.hash)); changed = true }
+    if (changed) Object.assign(bible, { version: bible.version + 1, edited: true })
+    if (body.active !== undefined) bible.active = body.active
+    bible.updated_at = now()
+    return clone({ project_id: projectId, bible })
   }
 
   async statsOverview(q: StatsQuery = {}): Promise<StatsOverview> {

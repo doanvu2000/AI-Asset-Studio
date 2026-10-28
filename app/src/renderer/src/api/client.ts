@@ -9,6 +9,8 @@ import type {
   ManifestView,
   ProjectQaFixResult,
   ProjectQaReport,
+  StyleBibleEdit,
+  StyleBibleView,
   ProjectCreateBody,
   ProjectPatchBody,
   ProjectRow,
@@ -124,6 +126,10 @@ export interface StudioApi {
   runProjectQa(projectId: string, body?: { only_approved?: boolean; vision?: boolean; model?: string }): Promise<ProjectQaReport>
   /** Starts the fix recipe (Klein edit) on one asset; instructions default to the report's suggestion. */
   fixProjectQa(projectId: string, versionId: string, instructions?: string): Promise<ProjectQaFixResult>
+  getStyleBible(projectId: string): Promise<StyleBibleView>
+  /** Measures the approved assets; vision (default true) lets Claude write the prompt suffix/negative. */
+  buildStyleBible(projectId: string, body?: { vision?: boolean; model?: string }): Promise<StyleBibleView>
+  editStyleBible(projectId: string, body: StyleBibleEdit): Promise<StyleBibleView>
   /** Cost/time per recipe + per-day totals + most expensive step kinds for one period. */
   statsOverview(q?: StatsQuery): Promise<StatsOverview>
   /** Scores Library versions that have no QA yet (or all of them with `missing_only: false`). */
@@ -271,6 +277,9 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     getProjectQa: (id) => call('GET', `/api/projects/${enc(id)}/qa`),
     runProjectQa: (id, body = {}) => call('POST', `/api/projects/${enc(id)}/qa`, body, GDD_TIMEOUT_MS),
     fixProjectQa: (id, versionId, instructions) => call('POST', `/api/projects/${enc(id)}/qa/fix`, { version_id: versionId, instructions }),
+    getStyleBible: (id) => call('GET', `/api/projects/${enc(id)}/style`),
+    buildStyleBible: (id, body = {}) => call('POST', `/api/projects/${enc(id)}/style/build`, body, GDD_TIMEOUT_MS),
+    editStyleBible: (id, body) => call('POST', `/api/projects/${enc(id)}/style`, body),
     statsOverview: (q = {}) =>
       call('GET', `/api/stats/overview${query({ since: q.since, until: q.until, project_id: q.project_id, days: q.days, tz_offset_s: q.tz_offset_s })}`),
     recomputeQa: (body = {}) => call('POST', '/api/qa/recompute', body, SLOW_TIMEOUT_MS),

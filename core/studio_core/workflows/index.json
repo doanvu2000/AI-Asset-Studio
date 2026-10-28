@@ -442,5 +442,33 @@
         "class": "SaveImage"
       }
     ]
+  },
+  "keyart_wan22_ti2v": {
+    "file": "keyart_wan22_ti2v.api.json",
+    "template": "video_wan2_2_5B_ti2v",
+    "images": [
+      {
+        "key": "56.image",
+        "title": "Start image",
+        "default": "example.png"
+      }
+    ],
+    "texts": [
+      {
+        "key": "6.text",
+        "node": "CLIPTextEncode",
+        "title": "Motion prompt",
+        "default": "The scene stays still while the character's hair and cloth sway gently in the wind, soft particles drift through the air, the camera slowly pushes in."
+      }
+    ],
+    "seeds": [
+      "3.seed"
+    ],
+    "outputs": [
+      {
+        "node": "90",
+        "class": "SaveImage"
+      }
+    ]
   }
 }
