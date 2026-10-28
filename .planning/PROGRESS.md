@@ -645,3 +645,25 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   khuỷu tổng gập max 10.9° (L −10.9…−2.4, R 2.8…10.9); critique cả 4 vòng nhắc giới hạn khớp; spine-core load OK,
   đầu/cuối = setup.
 - Chưa commit, chưa build Portable.
+
+## R7 — khớp được che, nhún hông, kiểm gối đè (yêu cầu spine-test, góp ý run 9aabb037)
+- [x] `spine_anim`: `joint_covers` (auto: skin render có attachment trên chi đó, vẽ trên mọi attachment skin khác của
+  2 bone, phủ đĩa bán kính 10% bone con quanh khớp ở setup; `none`; danh sách bone) → hard seam được che 40°
+  (spec chỉ siết); `leg_chains`/`hip_bone` (tổ tiên chung 2 chuỗi IK chân); `bounce` → `translatey` riêng cho hip
+  (+15% giữa beat, về 0 sau beat cuối 0.5s, bỏ mốc depth 0), `translatex` tách; `knee_gap` (mẫu 0.02s, <35% hoặc
+  chéo = overlap); rig summary ghi khớp được che + dòng "Hip for bounce".
+- [x] Op/recipe: input `joint_cover` (auto); rig_summary/add_anim/review nhận `skin` + `joint_cover`; prompt spec dặn
+  cong khuỷu khi được che, đếm số lần nhún cả clip, shift_x vừa phải.
+- [x] Review loop: zoom 2 gối lúc gần nhất, rubric tay chân không đè, gợi ý giảm shift_x/bounce; round có overlap
+  không được chọn/accept; review.json `cover`, `warning`, `knee_overlap`, mỗi vòng `knee`, `knee_zoom`, `bounce`;
+  critique gate có dòng "Lưu ý" phải mặc trang phục che. MCP pending gate có `warning`, `knee_overlap`.
+- [x] App ReviewDialog: banner cảnh báo che khớp, ảnh zoom gối + khoảng cách, dòng nhún hông.
+- [x] Test +2 (19 trong file). pytest 455 pass / 4 skip; typecheck sạch.
+- [x] Nghiệm thu (scratchpad `608ff0e6…/r7`, input 9aabb037 + outerwear_7 + 3 góp ý):
+  auto run 47484af7: 6 → 7.5 → 8.2; khuỷu tổng max 38.4/38.8°, cổ tay offset −10…+11; hông hạ 9px đúng 2 lần
+  0.9/1.86s trùng biên translatex 0.9/1.84; gối gần nhất 52% (không overlap).
+  none run 8376bd34: 5.5 → … → 8.0; khuỷu ≤10.8° (giữ 20°); 2 lần hạ 0.9/1.9; gối 63%.
+  Cả 2: spine-core load OK, đầu/cuối = setup, bỏ entry sway = nguyên byte gốc.
+- Lần chạy đầu fail vì Claude ghi bounce kèm mốc [0,0]/[3.2,0] → generator bỏ mốc depth 0; Claude từng hiểu "2 lần"
+  là mỗi chu kỳ (5 lần) → prompt ghi rõ tổng cả clip.
+- Chưa commit, chưa build Portable.

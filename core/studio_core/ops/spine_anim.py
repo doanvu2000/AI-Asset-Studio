@@ -8,6 +8,7 @@ at setup pose.
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Any
 
@@ -27,9 +28,15 @@ MOTION_SPEC_SEMANTICS = (
     "Every key list starts at time 0 with value 0 and ends at or before duration-0.3 with value 0. "
     "arm_lag = {bone: seconds} delays that bone's arm_keys (follow-through). Joints marked 'hard seam' in the rig "
     "(separate images or single-bone meshes, e.g. elbow, wrist) are clamped to their max bend (default 20 deg, see "
-    "joint_limits / elbow_max): bending further only shows a sharp seam, so stay within it.")
+    "joint_limits / elbow_max): bending further only shows a sharp seam, so stay within it; a hard seam covered by "
+    "clothing (sleeve, bangle) may bend to 40 deg. bounce = [[time, depth_px], ...] lists only the dips (no 0 anchors) and lowers the hip at each "
+    "beat "
+    "(own translatey track, separate from the sway's translatex; leg IK bends the knees), rebounds 15% between "
+    "beats and settles 0.5s after the last one; with bounce, hip.dip_y is ignored.")
 
 HARD_SEAM_LIMIT = 20.0
+COVERED_LIMIT = 40.0
+KNEE_OVERLAP = 0.35
 HYPEREXTEND = 3.0
 
 _PAIRS = {"type": "array", "items": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2}}
@@ -56,6 +63,7 @@ MOTION_SPEC_SCHEMA: dict[str, Any] = {
         "arm_lag": {"type": "object", "additionalProperties": {"type": "number"}},
         "elbow_max": {"type": "number"},
         "joint_limits": {"type": "object", "additionalProperties": {"type": "number"}},
+        "bounce": _PAIRS,
     },
     "required": ["duration", "ease", "sway_signal", "hip", "upper_body", "arm_keys", "secondary", "blinks",
                  "blink_closed_scale"],
@@ -123,6 +131,17 @@ def _blink_track(blinks: list[float], closed: float) -> list[dict[str, Any]]:
     return keys
 
 
+def _bounce(beats: list[tuple[float, float]], end: float) -> list[tuple[float, float]]:
+    """Hip y keys: down `depth` at each beat, up 15% halfway between beats, back to 0 about 0.5s after the last."""
+    ys = [(0.0, 0.0)]
+    for i, (t, depth) in enumerate(beats):
+        ys.append((t, -abs(depth)))
+        if i + 1 < len(beats):
+            ys.append(((t + beats[i + 1][0]) / 2, abs(depth) * 0.15))
+    ys.append((min(beats[-1][0] + 0.5, end), 0.0))
+    return ys
+
+
 def _pairs(raw: Any, what: str) -> list[tuple[float, float]]:
     try:
         out = [(float(a), float(b)) for a, b in raw]
@@ -145,6 +164,19 @@ def bend_range(setup: float, limit: float) -> tuple[float, float]:
     return min(lo, 0.0), max(hi, 0.0)
 
 
+def _att_bones(att: dict[str, Any], bone: str, names: list[str]) -> set[str]:
+    """Bones that move an attachment: the weights of a weighted mesh, else its slot's bone."""
+    v, n = att.get("vertices") or [], len(att.get("uvs") or []) // 2
+    if att.get("type") != "mesh" or len(v) == 2 * n:
+        return {bone}
+    bones, k = set(), 0
+    for _ in range(n):
+        c = int(v[k])
+        bones.update(names[int(v[k + 1 + 4 * j])] for j in range(c))
+        k += 1 + 4 * c
+    return bones
+
+
 def _tip_joints(doc: dict[str, Any]) -> list[dict[str, Any]]:
     """Child bones starting at their parent's tip (elbow, wrist, knee...), each with whether a weighted mesh spans
     the joint in any skin; parent and child must both carry attachments."""
@@ -155,21 +187,14 @@ def _tip_joints(doc: dict[str, Any]) -> list[dict[str, Any]]:
     spans: set[str] = set()
     for skin in doc.get("skins") or []:
         for slot, atts in (skin.get("attachments") or {}).items():
+            if slot not in slot_bone:
+                continue
             for a in atts.values():
-                kind = a.get("type", "region")
-                if kind not in ("region", "mesh"):
+                if a.get("type", "region") not in ("region", "mesh"):
                     continue
-                v, n = a.get("vertices") or [], len(a.get("uvs") or []) // 2
-                if kind == "mesh" and len(v) != 2 * n:
-                    bones, k = set(), 0
-                    for _ in range(n):
-                        c = int(v[k])
-                        bones.update(names[int(v[k + 1 + 4 * j])] for j in range(c))
-                        k += 1 + 4 * c
-                    owners |= bones
-                    spans |= {b for b in bones if by[b].get("parent") in bones}
-                elif slot in slot_bone:
-                    owners.add(slot_bone[slot])
+                bones = _att_bones(a, slot_bone[slot], names)
+                owners |= bones
+                spans |= {b for b in bones if by[b].get("parent") in bones}
     out = []
     for b in doc["bones"]:
         p = by.get(b.get("parent", ""))
@@ -185,15 +210,93 @@ def _tip_joints(doc: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def joint_limits(doc: dict[str, Any], spec: dict[str, Any] | None = None) -> dict[str, dict[str, Any]]:
-    """bone -> {limit, setup, lo, hi, hard}: hard-seam joints get 20 deg, which a spec (elbow_max for arm_lower_* /
-    *elbow*, joint_limits) may only tighten; other joints take the spec value as is."""
+def _inside(pt: np.ndarray, tri: np.ndarray) -> bool:
+    d = [float((tri[(i + 1) % 3][0] - tri[i][0]) * (pt[1] - tri[i][1])
+               - (tri[(i + 1) % 3][1] - tri[i][1]) * (pt[0] - tri[i][0])) for i in range(3)]
+    return min(d) >= 0 or max(d) <= 0
+
+
+def _triangles(att: dict[str, Any], pose: Pose, bone: str) -> list[np.ndarray]:
+    from .spine_runtime import _region_corners, mesh_world
+
+    if att.get("type") == "mesh":
+        pts = mesh_world(att, pose, bone)
+        t = att.get("triangles") or []
+        return [pts[[t[i], t[i + 1], t[i + 2]]] for i in range(0, len(t) - 2, 3)]
+    c = _region_corners(att, pose, bone)
+    return [c[[0, 1, 2]], c[[0, 2, 3]]]
+
+
+def _subtree(doc: dict[str, Any], root: str) -> set[str]:
+    out = {root}
+    for b in doc["bones"]:
+        if b.get("parent") in out:
+            out.add(b["name"])
+    return out
+
+
+def joint_covers(doc: dict[str, Any], parts: list[str], mode: str = "auto") -> dict[str, str]:
+    """Hard-seam joint bone -> skin hiding its seam. mode 'none', a bone list, or 'auto': a rendered skin whose
+    attachments on that limb are drawn above everything else on the joint's two bones and cover a disc around the
+    pivot (radius 10% of the child bone) at setup pose."""
+    from .spine_runtime import resolve_skins
+
+    mode = (mode or "auto").strip()
+    hard = [j for j in _tip_joints(doc) if j["hard"]]
+    if mode.lower() == "none" or not hard:
+        return {}
+    if mode.lower() != "auto":
+        want = {b for b in re.split(r"[,\s]+", mode) if b}
+        return {j["bone"]: "joint_cover" for j in hard if j["bone"] in want}
+    skins, _ = resolve_skins(doc, parts)
+    by_skin = {s["name"]: s.get("attachments") or {} for s in doc.get("skins") or []}
+    names = [b["name"] for b in doc["bones"]]
+    by = {b["name"]: b for b in doc["bones"]}
+    order = {s["name"]: i for i, s in enumerate(doc.get("slots") or [])}
+    slot_bone = {s["name"]: s["bone"] for s in doc.get("slots") or []}
+    shown: dict[str, tuple[str, dict[str, Any]]] = {}
+    for skin in ["default", *skins]:
+        for s in doc.get("slots") or []:
+            att = (by_skin.get(skin, {}).get(s["name"]) or {}).get(s.get("attachment") or "")
+            if att and att.get("type", "region") in ("region", "mesh"):
+                shown[s["name"]] = (skin, att)
+    moved_by = {sl: _att_bones(att, slot_bone[sl], names) for sl, (_, att) in shown.items()}
+    pose = Pose(doc)
+    out: dict[str, str] = {}
+    for j in hard:
+        pair, limb = {j["parent"], j["bone"]}, _subtree(doc, j["parent"])
+        pivot = pose.world[j["bone"]][1]
+        r = 0.1 * float(by[j["bone"]].get("length", 0.0))
+        ring = [pivot, *(pivot + r * np.array([math.cos(a), math.sin(a)]) for a in np.linspace(0, 2 * math.pi, 16,
+                                                                                                endpoint=False))]
+        for skin in skins:
+            under = [sl for sl, (sk, _) in shown.items() if sk != skin and moved_by[sl] & pair]
+            # Both bones must already be drawn by other skins, else this skin is the limb itself, not a cover.
+            if not all(any(b in moved_by[sl] for sl in under) for b in pair):
+                continue
+            top = max(order[sl] for sl in under)
+            tris = [t for sl, (sk, att) in shown.items() if sk == skin and order[sl] > top and moved_by[sl] & limb
+                    for t in _triangles(att, pose, slot_bone[sl])]
+            if tris and all(any(_inside(p, t) for t in tris) for p in ring):
+                out[j["bone"]] = skin
+                break
+    return out
+
+
+def joint_limits(doc: dict[str, Any], spec: dict[str, Any] | None = None,
+                 covers: dict[str, str] | None = None) -> dict[str, dict[str, Any]]:
+    """bone -> {limit, setup, lo, hi, hard, cover?}: hard-seam joints get 20 deg (40 when `covers` hides the seam),
+    which a spec (elbow_max for arm_lower_* / *elbow*, joint_limits) may only tighten; other joints take the spec
+    value as is."""
     spec = spec or {}
+    covers = covers or {}
     setup = {b["name"]: float(b.get("rotation", 0.0)) for b in doc["bones"]}
     out: dict[str, dict[str, Any]] = {}
     for j in _tip_joints(doc):
         if j["hard"]:
-            out[j["bone"]] = {"limit": HARD_SEAM_LIMIT, "hard": True}
+            cover = covers.get(j["bone"])
+            out[j["bone"]] = {"limit": COVERED_LIMIT if cover else HARD_SEAM_LIMIT, "hard": True,
+                              **({"cover": cover} if cover else {})}
     def put(b: str, lim: float) -> None:
         cur = out.get(b, {"hard": False})
         out[b] = {**cur, "limit": min(cur["limit"], lim) if cur["hard"] else lim}
@@ -223,11 +326,21 @@ def build_animation(spec: dict[str, Any], bone_map: dict[str, Any] | None = None
         bones.setdefault(name, {})["rotate"] = _rotate_track(keys, k)
 
     hip = spec.get("hip") or {}
-    if hip:
+    # Zero-depth entries are anchors a key-list habit adds ([0, 0], [end, 0]); only real dips are beats.
+    beats = sorted(b for b in _pairs(spec["bounce"], "bounce") if abs(b[1]) > 1e-6) if spec.get("bounce") else []
+    if beats and not (beats[0][0] > 0 and beats[-1][0] < end):
+        raise SpecError(f"bounce: beat times must lie inside (0, {end:g})")
+    if beats:
+        hip_tl = bones.setdefault(names["hip"], {})
+        hip_tl["translatey"] = _rotate_track(_bounce(beats, end), k)
+        if hip:
+            hip_tl["translatex"] = _rotate_track(_scaled(sway, float(hip.get("shift_x", 0))), k)
+    elif hip:
         last = len(sway) - 1
         hip_xy = [(t, v * float(hip.get("shift_x", 0)) if i not in (0, last) else 0.0,
                    0.0 if i in (0, last) else -float(hip.get("dip_y", 0)) * abs(v)) for i, (t, v) in enumerate(sway)]
         bones.setdefault(names["hip"], {})["translate"] = _xy_track(hip_xy, k)
+    if hip:
         rot(names["hip"], _scaled(sway, float(hip.get("tilt", 0))))
     lean = spec.get("upper_body") or {}
     if lean:
@@ -359,7 +472,63 @@ def _chains(doc: dict[str, Any]) -> list[list[str]]:
     return chains
 
 
-def rig_summary(doc: dict[str, Any], limit: int = 3000) -> str:
+def leg_chains(doc: dict[str, Any]) -> list[dict[str, Any]]:
+    """The two 2-bone IK chains with the lowest targets (legs), ordered by knee x at setup pose."""
+    pose = Pose(doc)
+    by = {b["name"]: b for b in doc["bones"]}
+    two = [c for c in doc.get("ik") or [] if len(c.get("bones") or []) == 2 and c.get("target") in pose.world]
+    if len(two) < 2:
+        return []
+    two.sort(key=lambda c: pose.world[c["target"]][1][1])
+    legs = [{"ik": c["name"], "bones": list(c["bones"]), "knee": c["bones"][1],
+             "length": float(by[c["bones"][0]].get("length", 0.0)) + float(by[c["bones"][1]].get("length", 0.0)),
+             "x": float(pose.world[c["bones"][1]][1][0])} for c in two[:2]]
+    return sorted(legs, key=lambda c: c["x"])
+
+
+def hip_bone(doc: dict[str, Any]) -> str | None:
+    """Nearest common ancestor of the two leg chains: lowering it makes the leg IK bend both knees."""
+    legs = leg_chains(doc)
+    if not legs:
+        return None
+    parent = {b["name"]: b.get("parent") for b in doc["bones"]}
+
+    def up(n: str | None) -> list[str]:
+        out = []
+        while n:
+            out.append(n)
+            n = parent.get(n)
+        return out
+
+    right = set(up(parent.get(legs[1]["bones"][0])))
+    return next((n for n in up(parent.get(legs[0]["bones"][0])) if n in right), None)
+
+
+def knee_gap(doc: dict[str, Any], anim: str, step: float = 0.02) -> dict[str, Any] | None:
+    """Closest horizontal knee distance over the clip vs setup; under 35% of it, or crossed, is an overlap."""
+    legs = leg_chains(doc)
+    a = (doc.get("animations") or {}).get(anim)
+    if not legs or a is None:
+        return None
+    ka, kb = legs[0]["knee"], legs[1]["knee"]
+    setup = legs[1]["x"] - legs[0]["x"]
+    if setup <= 1e-6:
+        return None
+    end = max((float(k.get("time", 0)) for tl in a.get("bones", {}).values() for tr in tl.values() for k in tr),
+              default=0.0)
+    gap, at = setup, 0.0
+    for i in range(int(end / step + 1e-6) + 1):
+        t = round(i * step, 4)
+        p = Pose(doc, anim, t)
+        g = float(p.world[kb][1][0] - p.world[ka][1][0])
+        if g < gap:
+            gap, at = g, t
+    ratio = gap / setup
+    return {"knees": [ka, kb], "setup_gap": round(setup, 2), "min_gap": round(gap, 2), "time": at,
+            "ratio": round(ratio, 3), "overlap": ratio < KNEE_OVERLAP}
+
+
+def rig_summary(doc: dict[str, Any], limit: int = 3000, covers: dict[str, str] | None = None) -> str:
     angles = _world_angles(doc)
     chains = _chains(doc)
     in_chain = {n for c in chains for n in c[1:]}
@@ -373,13 +542,15 @@ def rig_summary(doc: dict[str, Any], limit: int = 3000) -> str:
             ln += f" L{b['length']:.0f}"
         lines.append(ln)
     joints = _tip_joints(doc)
-    limits = joint_limits(doc)
+    limits = joint_limits(doc, covers=covers)
     for j in joints:
         if j["hard"]:
             lim = limits[j["bone"]]
             how = (f"max bend {lim['limit']:.0f}° total" if abs(j["setup"]) < lim["limit"]
                    else f"±{lim['limit']:.0f}° from setup")
-            lines.append(f"joint {j['bone']}: hard seam (region/single-bone mesh), setup {j['setup']:.1f}°, {how}, "
+            seam = (f"hard seam covered by {lim['cover']} (seam hidden, bend it)" if lim.get("cover")
+                    else "hard seam (region/single-bone mesh)")
+            lines.append(f"joint {j['bone']}: {seam}, setup {j['setup']:.1f}°, {how}, "
                          f"offset range [{lim['lo']:.1f}, {lim['hi']:.1f}]°, no hyperextension")
     soft = [j["bone"] for j in joints if not j["hard"] and j["bone"] not in in_chain and j["bone"] not in
             {c[0] for c in chains}]
@@ -390,6 +561,12 @@ def rig_summary(doc: dict[str, Any], limit: int = 3000) -> str:
             f"{c['name']} {'>'.join(c['bones'])} -> {c['target']}"
             f"{' bend+' if c.get('bendPositive', True) else ' bend-'}{' stretch' if c.get('stretch') else ''}"
             for c in doc["ik"]))
+    legs = leg_chains(doc)
+    hip = hip_bone(doc)
+    if hip:
+        lines.append(f"Hip for bounce: {hip} (common parent of legs "
+                     + ", ".join(f"{c['ik']} {'>'.join(c['bones'])} L{c['length']:.0f}" for c in legs)
+                     + f"); knee gap at setup {legs[1]['x'] - legs[0]['x']:.0f}px")
     if chains:
         lines.append("Chains (secondary candidates): " + "; ".join(">".join(c) for c in chains))
     for aname, anim in (doc.get("animations") or {}).items():

@@ -20,7 +20,19 @@ export interface ReviewRound {
   strip: string | null
   zoom?: string | null
   bend?: { bone: string; time: number; total: number; limit: number } | null
+  knee?: KneeGap | null
+  kneeZoom?: string | null
+  bounce?: Array<[number, number]> | null
   error?: string
+}
+
+export interface KneeGap {
+  knees: [string, string]
+  setup_gap: number
+  min_gap: number
+  time: number
+  ratio: number
+  overlap: boolean
 }
 
 export interface SpecChange {
@@ -81,6 +93,9 @@ export async function loadRounds(review: StepReview, oldSpec: unknown): Promise<
       strip: typeof r.strip === 'string' ? r.strip : null,
       zoom: typeof r.zoom === 'string' ? r.zoom : null,
       bend: (r.deepest_bend as ReviewRound['bend']) ?? null,
+      knee: (r.knee as KneeGap | undefined) ?? null,
+      kneeZoom: typeof r.knee_zoom === 'string' ? r.knee_zoom : null,
+      bounce: Array.isArray(r.bounce) ? (r.bounce as Array<[number, number]>) : null,
       error: typeof r.error === 'string' ? r.error : undefined
     }))
   }

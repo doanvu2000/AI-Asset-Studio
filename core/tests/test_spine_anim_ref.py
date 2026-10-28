@@ -333,3 +333,63 @@ def test_joint_zoom_render(tmp_path: Path) -> None:
     img = render_joint_zoom(limb(False), rt.RegionImages.from_files(atlas, [page]), "idle", 0.5, "lower", ["top_0"],
                             size=200)
     assert img.size == (200, 200) and (np.asarray(img)[..., 0] > 200).any()
+
+
+def covered_limb(order_above: bool = True) -> dict[str, Any]:
+    doc = limb(False)
+    sleeve = {"name": "sleeve", "bone": "upper", "attachment": "box"}
+    if order_above:
+        doc["slots"].append(sleeve)
+    else:
+        doc["slots"].insert(0, sleeve)
+    doc["skins"].append({"name": "outerwear/coat_0",
+                         "attachments": {"sleeve": {"box": {"x": 40, "width": 30, "height": 12}}}})
+    return doc
+
+
+def test_joint_covers_and_limits() -> None:
+    doc = covered_limb()
+    assert sa.joint_covers(doc, ["top_0", "coat_0"]) == {"lower": "outerwear/coat_0"}
+    assert sa.joint_covers(doc, ["top_0"]) == {}
+    assert sa.joint_covers(doc, ["top_0", "coat_0"], "none") == {}
+    assert sa.joint_covers(doc, [], "hand, nope") == {"hand": "joint_cover"}
+    assert sa.joint_covers(covered_limb(order_above=False), ["top_0", "coat_0"]) == {}
+    covers = {"lower": "outerwear/coat_0"}
+    lims = sa.joint_limits(doc, None, covers)
+    assert lims["lower"]["limit"] == 40 and lims["lower"]["cover"] == "outerwear/coat_0"
+    assert lims["hand"]["limit"] == 20
+    assert sa.joint_limits(doc, {"joint_limits": {"lower": 60}}, covers)["lower"]["limit"] == 40
+    assert sa.joint_limits(doc, {"joint_limits": {"lower": 25}}, covers)["lower"]["limit"] == 25
+    assert "joint lower: hard seam covered by outerwear/coat_0" in sa.rig_summary(doc, covers=covers)
+
+
+def two_legs() -> dict[str, Any]:
+    doc = skeleton()
+    doc["bones"] += [{"name": "thigh2", "parent": "hip", "x": 30, "rotation": -90, "length": 50},
+                     {"name": "shin2", "parent": "thigh2", "x": 50, "length": 50},
+                     {"name": "foot_ik2", "parent": "root", "x": 40, "y": 5}]
+    doc["ik"].append({"name": "leg2", "bones": ["thigh2", "shin2"], "target": "foot_ik2", "bendPositive": False})
+    return doc
+
+
+def test_bounce_hip_and_knee_gap() -> None:
+    doc = two_legs()
+    assert [c["knee"] for c in sa.leg_chains(doc)] == ["shin", "shin2"] and sa.hip_bone(doc) == "hip"
+    assert "Hip for bounce: hip" in sa.rig_summary(doc)
+    assert sa.hip_bone(skeleton()) is None
+
+    spec = {**SPEC, "hip": {**SPEC["hip"], "shift_x": 4}, "bounce": [[0, 0], [1.0, 6], [0.5, 6], [1.8, 0]]}
+    anim = sa.build_animation(spec)
+    hip = anim["bones"]["hip"]
+    assert "translate" not in hip and {"translatex", "translatey", "rotate"} <= set(hip)
+    ys = [(k["time"], k["value"]) for k in hip["translatey"]]
+    assert ys[:5] == [(0, 0), (0.5, -6), (0.75, 0.9), (1.0, -6), (1.5, 0)] and ys[-1] == (2.0, 0)
+    with pytest.raises(sa.SpecError):
+        sa.build_animation({**spec, "bounce": [[2.5, 6]]})
+
+    doc["animations"]["sway"] = anim
+    gap = sa.knee_gap(doc, "sway")
+    assert gap is not None and not gap["overlap"] and gap["knees"] == ["shin", "shin2"]
+    doc["animations"]["cross"] = {"bones": {"foot_ik2": {"translate": [{"x": 0}, {"time": 1, "x": -80}]}}}
+    cross = sa.knee_gap(doc, "cross")
+    assert cross is not None and cross["overlap"] and cross["time"] == pytest.approx(1.0)

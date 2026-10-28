@@ -120,21 +120,37 @@ def render_strip(doc: dict[str, Any], images: rt.RegionImages, anim: str | None,
                    "anim": anim}
 
 
-def render_joint_zoom(doc: dict[str, Any], images: rt.RegionImages, anim: str, t: float, bone: str,
-                      parts: list[str], size: int = 420) -> Image.Image:
-    """Close-up around a joint pivot (radius ≈ the parent bone's length) at time t, labelled."""
+def render_zoom(doc: dict[str, Any], images: rt.RegionImages, anim: str | None, t: float,
+                center: tuple[float, float], r: float, parts: list[str], label: str, size: int = 420) -> Image.Image:
     skins, _ = rt.resolve_skins(doc, parts)
     atts = rt.skin_attachments(doc, skins)
     pose = rt.Pose(doc, anim, t)
+    x, y = center
+    cell = Image.new("RGBA", (size, size), STRIP_BG)
+    cell.alpha_composite(rt.render(pose, atts, images, (x - r, y - r, x + r, y + r), size / (2 * r)))
+    _label(cell, label)
+    return cell
+
+
+def render_joint_zoom(doc: dict[str, Any], images: rt.RegionImages, anim: str | None, t: float, bone: str,
+                      parts: list[str], size: int = 420) -> Image.Image:
+    """Close-up around a joint pivot (radius ≈ the parent bone's length) at time t, labelled."""
     by = {b["name"]: b for b in doc["bones"]}
     parent = by[bone].get("parent")
     r = 0.75 * max(by.get(parent, {}).get("length", 0.0), by[bone].get("length", 0.0), 40.0)
-    x, y = pose.world[bone][1]
-    box = (x - r, y - r, x + r, y + r)
-    cell = Image.new("RGBA", (size, size), STRIP_BG)
-    cell.alpha_composite(rt.render(pose, atts, images, box, size / (2 * r)))
-    _label(cell, f"zoom {bone} t={t:g}s")
-    return cell
+    x, y = rt.Pose(doc, anim, t).world[bone][1]
+    return render_zoom(doc, images, anim, t, (x, y), r, parts, f"zoom {bone} t={t:g}s", size)
+
+
+def render_knee_zoom(doc: dict[str, Any], images: rt.RegionImages, anim: str, t: float, knees: list[str],
+                     parts: list[str], size: int = 420) -> Image.Image:
+    """Both knees at time t, framed to show the thighs and shins around them."""
+    pose = rt.Pose(doc, anim, t)
+    a, b = (pose.world[k][1] for k in knees)
+    by = {x["name"]: x for x in doc["bones"]}
+    r = max(0.6 * abs(float(a[0] - b[0])) + 0.5 * max(by[k].get("length", 0.0) for k in knees), 60.0)
+    return render_zoom(doc, images, anim, t, ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2), r, parts,
+                       f"knees t={t:g}s", size)
 
 
 class SpineRigSummary(OpExecutor):
@@ -143,9 +159,15 @@ class SpineRigSummary(OpExecutor):
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         _, doc = await read_skeleton(ctx, inputs)
-        text = await asyncio.to_thread(sa.rig_summary, doc, int(params.get("limit", 3000)))
+        covers = sa.joint_covers(doc, skin_parts(params), str(params.get("joint_cover") or "auto"))
+        text = await asyncio.to_thread(sa.rig_summary, doc, int(params.get("limit", 3000)), covers)
         ref = await ctx.blobs.put_bytes(text.encode("utf-8"), name="rig_summary.txt", mime="text/plain")
-        return StepResult(outputs={"summary": [ref]}, meta={"chars": len(text), "bones": len(doc["bones"])})
+        return StepResult(outputs={"summary": [ref]}, meta={"chars": len(text), "bones": len(doc["bones"]),
+                                                            "cover": covers, "hip": sa.hip_bone(doc)})
+
+
+def skin_parts(params: dict[str, Any]) -> list[str]:
+    return [p for p in re.split(r"[,\s]+", str(params.get("skin") or "")) if p]
 
 
 class SpineAddAnim(OpExecutor):
@@ -158,7 +180,8 @@ class SpineAddAnim(OpExecutor):
         if isinstance(spec, dict) and isinstance(spec.get("spec"), dict):
             spec = spec["spec"]  # a review result {score, critique, spec}
         name = str(params.get("name") or "anim").strip()
-        res = await asyncio.to_thread(add_anim, text, spec, name)
+        covers = sa.joint_covers(json.loads(text), skin_parts(params), str(params.get("joint_cover") or "auto"))
+        res = await asyncio.to_thread(add_anim, text, spec, name, covers)
         stem = Path(_one(inputs, "skeleton").name or "skeleton.json").stem
         out: Outputs = {
             "skeleton": [await ctx.blobs.put_bytes(res["text"].encode("utf-8"), name=f"{stem}.json",
@@ -168,11 +191,14 @@ class SpineAddAnim(OpExecutor):
         return StepResult(outputs=out, meta={"name": name, "bones": len(res["anim"]["bones"])})
 
 
-def add_anim(text: str, spec: Any, name: str) -> dict[str, Any]:
+def add_anim(text: str, spec: Any, name: str, covers: dict[str, str] | None = None) -> dict[str, Any]:
     if not isinstance(spec, dict) or "duration" not in spec:
         raise StepError("spec_invalid", "motion spec must be an object with at least 'duration'")
+    doc = json.loads(text)
+    hip = sa.hip_bone(doc)
+    bone_map = {"hip": hip} if hip and not (spec.get("bones") or {}).get("hip") else None
     try:
-        anim = sa.build_animation(spec, limits=sa.joint_limits(json.loads(text), spec))
+        anim = sa.build_animation(spec, bone_map, sa.joint_limits(doc, spec, covers))
     except (sa.SpecError, KeyError, TypeError, ValueError) as e:
         raise StepError("spec_invalid", f"motion spec: {e}") from e
     new_text = sa.add_animation(text, name, anim)
@@ -192,7 +218,7 @@ class SpineRenderStrip(OpExecutor):
         anim = params.get("anim") or None
         dur = animation_duration(doc, anim) if anim else 0.0
         times = _times(params.get("times", "auto"), dur, int(params.get("count", 8))) if anim else [0.0]
-        parts = [p for p in re.split(r"[,\s]+", str(params.get("skin") or "")) if p]
+        parts = skin_parts(params)
         strip, meta = await asyncio.to_thread(render_strip, doc, images, anim, times, parts,
                                               int(params.get("height", 560)))
         if meta["missing_skins"]:

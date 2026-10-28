@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { onKeyStroke } from '@vueuse/core'
-import { Download, LoaderCircle, X } from '@lucide/vue'
+import { Download, LoaderCircle, TriangleAlert, X } from '@lucide/vue'
 import BlobImage from '@/components/BlobImage.vue'
 import ScoreBadge from '@/components/ScoreBadge.vue'
 import { loadRounds, miniMarkdown, reviewImages, type ReviewRound, type StepReview } from '@/composables/review'
@@ -40,6 +40,11 @@ watch(
 const round = computed(() => rounds.value[sel.value] ?? null)
 const images = computed(() => (props.review ? reviewImages(props.review) : { refs: [], inputs: [] }))
 const critiqueHtml = computed(() => miniMarkdown(round.value?.critique ?? props.review?.critique ?? ''))
+const warning = computed(() => {
+  const w = props.review?.step.meta?.warning
+  return typeof w === 'string' ? w : ''
+})
+const pct = (v: number): string => `${Math.round(v * 100)}%`
 const fmt = (v: unknown): string => (v === null || v === undefined ? '—' : typeof v === 'string' ? v : JSON.stringify(v))
 
 function download(): void {
@@ -91,6 +96,8 @@ onKeyStroke('Escape', (e) => {
             </button>
           </nav>
 
+          <p v-if="warning" class="warn" role="note"><TriangleAlert :size="14" /> {{ warning }}</p>
+
           <div v-if="loading" class="state"><LoaderCircle class="spin" :size="18" /> Đang tải…</div>
           <p v-else-if="error" class="err" role="alert">{{ error }}</p>
           <div v-else class="body">
@@ -105,6 +112,12 @@ onKeyStroke('Escape', (e) => {
                 </figcaption>
                 <BlobImage :hash="round.zoom" full class="img zoom" />
               </figure>
+              <figure v-if="round?.kneeZoom">
+                <figcaption class="caption" :class="{ bad: round.knee?.overlap }">
+                  Hai gối gần nhất<template v-if="round.knee"> · t={{ round.knee.time }}s · cách {{ round.knee.min_gap }}px = {{ pct(round.knee.ratio) }} so với setup{{ round.knee.overlap ? ' · đè nhau' : '' }}</template>
+                </figcaption>
+                <BlobImage :hash="round.kneeZoom" full class="img zoom" />
+              </figure>
               <figure v-for="b in images.refs" :key="b.hash">
                 <figcaption class="caption">Tham chiếu{{ b.name ? ` · ${b.name}` : '' }}</figcaption>
                 <BlobImage :hash="b.hash" full class="img" />
@@ -118,6 +131,10 @@ onKeyStroke('Escape', (e) => {
               <h3>Nhận xét</h3>
               <!-- eslint-disable-next-line vue/no-v-html -- miniMarkdown escapes the input before adding tags -->
               <div class="md selectable" v-html="critiqueHtml" />
+              <template v-if="round?.bounce?.length">
+                <h3>Nhún hông</h3>
+                <p class="caption">{{ round.bounce.length }} lần: {{ round.bounce.map(([t, d]) => `${t}s · ${d}px`).join(', ') }}</p>
+              </template>
               <h3>Spec thay đổi <span class="caption">({{ round?.diff.length ?? 0 }})</span></h3>
               <p v-if="!round?.diff.length" class="caption">Không có thay đổi{{ round?.spec ? '' : ' (không có spec cũ để so)' }}.</p>
               <div v-else class="diff-wrap">
@@ -310,6 +327,24 @@ onKeyStroke('Escape', (e) => {
 }
 .err {
   padding: 18px;
+  color: var(--st-fail);
+}
+.warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 10px 18px 0;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--st-waiting-soft);
+  color: var(--st-waiting);
+  font-size: var(--fs-callout);
+}
+.warn svg {
+  flex: none;
+  margin-top: 2px;
+}
+.caption.bad {
   color: var(--st-fail);
 }
 .spin {

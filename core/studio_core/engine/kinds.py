@@ -37,6 +37,7 @@ def _enum(options: list[Any], default: Any, **kw: Any) -> P:
 
 RESAMPLE = ["lanczos", "bicubic", "bilinear", "box", "nearest"]
 TIMEOUT = {"_timeout_s": _int(label="Giới hạn thời gian (giây)", advanced=True)}
+JOINT_COVER_LABEL = "Khớp được trang phục che (auto | none | bone,bone)"
 CLAUDE_TIMEOUT = {"_timeout_s": _int(300, min=10, label="Giới hạn thời gian (giây)", advanced=True)}
 COMFY_OPTIONS: dict[str, P] = {
     "_free_before": _bool(False, label="Giải phóng VRAM trước khi chạy", advanced=True),
@@ -230,11 +231,15 @@ CATALOG: dict[str, P] = {
                                    "crop": _enum(["auto", "none"], "auto", label="Cắt sát nhân vật"),
                                    "cell": _int(360, min=120, max=1024, label="Chiều cao ô", advanced=True)}},
     "op.spine_rig_summary": {"label": "Tóm tắt rig Spine", "in": {"skeleton": "json"}, "out": {"summary": "text"},
-                             "params": {"limit": _int(3000, min=500, max=20000, label="Số ký tự tối đa",
+                             "params": {"skin": _text("", label="Skin ghép (phẩy)"),
+                                        "joint_cover": _text("auto", label=JOINT_COVER_LABEL),
+                                        "limit": _int(3000, min=500, max=20000, label="Số ký tự tối đa",
                                                       advanced=True)}},
     "op.spine_add_anim": {"label": "Thêm anim Spine từ spec", "in": {"skeleton": "json", "spec": "json"},
                           "out": {"skeleton": "json", "anim": "json"},
-                          "params": {"name": _text("sway", label="Tên anim")}},
+                          "params": {"name": _text("sway", label="Tên anim"),
+                                     "skin": _text("", label="Skin ghép (phẩy)"),
+                                     "joint_cover": _text("auto", label=JOINT_COVER_LABEL)}},
     "op.spine_render_strip": {"label": "Render strip Spine", "in": {"skeleton": "json", "atlas": "file[]"},
                               "out": {"strip": "image"},
                               "params": {"anim": _text("", label="Anim (trống = setup pose)"),
@@ -251,6 +256,7 @@ CATALOG: dict[str, P] = {
                    "rounds": _int(3, min=1, max=8, label="Số vòng tối đa"),
                    "accept_score": _float(8, min=0, max=10, label="Điểm chấp nhận"),
                    "skin": _text("", label="Skin ghép (phẩy)"),
+                   "joint_cover": _text("auto", label=JOINT_COVER_LABEL),
                    "model": _enum(MODEL_CHOICES, DEFAULT_MODEL, label="Model"), **CLAUDE_TIMEOUT}},
     "codex.image": {"label": "Sinh ảnh (Codex)", "in": {"refs": "image[]"}, "out": {"images": "image[]"},
                     "params": {"prompt": _text(label="Prompt", multiline=True),

@@ -12,6 +12,7 @@ inputs:
   brief: {type: text, multiline: true, label: Mô tả + trigger, placeholder: "Nhấc một tay, lắc hông nhẹ, chớp mắt..."}
   ref_window: {type: text, default: auto, label: "Đoạn video (vd 1.6-5.6 hoặc auto)"}
   skin_parts: {type: text, default: "skincolor_0,eyes_0,lip_0,hair_0,top_0,bottom_0,shoes_0", label: Skin ghép để render}
+  joint_cover: {type: text, default: auto, label: "Khớp được trang phục che (auto | none | bone,bone)"}
   rounds: {type: int, default: 3, min: 1, max: 6, label: Số vòng chấm tối đa}
   accept_score: {type: float, default: 8, min: 0, max: 10, label: Điểm chấp nhận}
 steps:
@@ -22,6 +23,7 @@ steps:
   - id: rig
     kind: op.spine_rig_summary
     in: {skeleton: inputs.skeleton}
+    params: {skin: "${inputs.skin_parts}", joint_cover: "${inputs.joint_cover}"}
   - id: spec
     kind: claude.task
     in: {images: frames.sheets}
@@ -52,8 +54,17 @@ steps:
         unless the rig angles say otherwise.
         Joints listed as "hard seam" in the rig (separate images, e.g. elbows and wrists) show a sharp corner when
         bent far: keep their arm_keys inside the listed offset range (the generator clamps anything outside it), and
-        express a bigger gesture through the shoulder/upper arm instead. arm_lag = {bone: seconds} lets forearm and
-        hand trail the upper arm. Write the full spec.
+        express a bigger gesture through the shoulder/upper arm instead. A hard seam "covered by" clothing hides the
+        seam, so bend it: elbows slightly bent at rest, the forearm lifts further when the arm rises, the wrist
+        flicks (within about ±25° of setup); avoid stick-straight arms. arm_lag = {bone: seconds} lets forearm and
+        hand trail the upper arm.
+        bounce = [[time, depth_px], ...] lists only the dips (no [0, 0] or end anchors; the generator returns to
+        setup by itself) and lowers the rig's "Hip for bounce" bone at each one (the leg IK bends the knees). Count
+        the dips in the reference over the WHOLE clip and follow any count in the brief exactly. Each dip lands on
+        a hip extreme (time = that sway_signal extreme), but not every extreme gets one: a sway with several hip
+        swings may still dip only twice. Never dip continuously. Use a depth of about 1% of the leg length;
+        with bounce set, keep hip.dip_y 0. Keep hip.shift_x modest so the knees never touch or cross.
+        Write the full spec.
   - id: review
     kind: claude.spine_review_loop
     in: {skeleton: inputs.skeleton, atlas: inputs.atlas, ref: frames.sheets, spec: spec.json, rig: rig.summary,
@@ -64,6 +75,7 @@ steps:
       rounds: "${inputs.rounds}"
       accept_score: "${inputs.accept_score}"
       skin: "${inputs.skin_parts}"
+      joint_cover: "${inputs.joint_cover}"
       model: opus
       _timeout_s: 600
   - id: approve

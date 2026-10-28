@@ -117,8 +117,9 @@ def _review(steps: list[dict[str, Any]], gate: dict[str, Any]) -> dict[str, Any]
         m = s.get("meta") or {}
         if isinstance(m.get("score"), (int, float)) and not isinstance(m.get("score"), bool):
             found = {"step": s["key"], "score": m["score"], "critique": m.get("critique", "")}
-            if m.get("score_history"):
-                found["score_history"] = m["score_history"]
+            for k in ("score_history", "warning", "knee_overlap"):
+                if m.get(k):
+                    found[k] = m[k]
     return found
 
 

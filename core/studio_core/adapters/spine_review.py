@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 from typing import Any
 
 from ..config import Settings
@@ -18,7 +17,9 @@ from ..ops.spine_ref import (
     read_text,
     region_images,
     render_joint_zoom,
+    render_knee_zoom,
     render_strip,
+    skin_parts,
 )
 from .claude import QueryFn, ask, load_images, put_json, sdk_query
 
@@ -34,12 +35,19 @@ Rig:
 
 Current spec (round {round} of at most {rounds}):
 {spec}
-{limits}{history}
-Compare the draft with the reference: arm height, elbow and wrist, hip amplitude, lean, head tilt, timing, blink
-spacing. Also judge the joints: does any elbow/wrist show a visible seam or sharp corner (see the zoom image)? If so,
-lower the score and fix it within the joint limits rather than bending further; mention the joint limits in the
-critique. Return a 0-10 match score for the CURRENT draft, a short critique (Markdown, cite tile numbers), and a
-corrected full spec. Keep the same bone names; only bones listed in the rig exist."""
+{limits}{legs}{history}
+Compare the draft with the reference: arm height, elbow and wrist, hip amplitude, hip bounce (count the dips over the
+whole reference clip; a count in the brief wins and is the total for the clip, not per sway), lean, head tilt, timing, blink spacing. Also judge:
+- joints: does any elbow/wrist show a visible seam or sharp corner (see the joint zoom)? If so, lower the score and
+  fix it within the joint limits rather than bending further; mention the joint limits in the critique. A joint
+  covered by clothing should bend: a stick-straight arm there is a fault.
+- limbs must not overlap or cross (see the knee zoom): if the knees overlap, lower hip.shift_x or the bounce depth
+  first; do not rotate the legs directly.
+Return a 0-10 match score for the CURRENT draft, a short critique (Markdown, cite tile numbers), and a corrected
+full spec. Keep the same bone names; only bones listed in the rig exist."""
+
+COVER_WARNING = ("Khớp {bones} được nới tới 40° vì có {skins} che: dùng anim này phải mặc kèm trang phục đó, bỏ ra "
+                 "thì lộ mối nối.")
 
 HISTORY_NOTE = """
 Earlier rounds (score, critique). Do not reverse an earlier judgement unless the reference tiles prove it wrong; if
@@ -83,7 +91,10 @@ class SpineReviewLoopExecutor:
         name = str(params.get("name") or "anim").strip()
         rounds = max(1, min(int(params.get("rounds", 3)), 8))
         accept = float(params.get("accept_score", 8))
-        parts = [p for p in re.split(r"[,\s]+", str(params.get("skin") or "")) if p]
+        parts = skin_parts(params)
+        covers = sa.joint_covers(json.loads(text), parts, str(params.get("joint_cover") or "auto"))
+        if covers:
+            ctx.log("joints covered by clothing: " + ", ".join(f"{b} ({s})" for b, s in covers.items()))
         count = int(params.get("count", 8))
         if params.get("second_opinion"):
             ctx.log("second_opinion is not supported yet; Claude scores alone", "warning")
@@ -95,7 +106,7 @@ class SpineReviewLoopExecutor:
         for r in range(rounds):
             ctx.progress(r, rounds, f"vòng {r + 1}: render")
             try:
-                res = await asyncio.to_thread(add_anim, text, spec, name)
+                res = await asyncio.to_thread(add_anim, text, spec, name, covers)
             except StepError as e:
                 if best is None:
                     raise
@@ -109,30 +120,41 @@ class SpineReviewLoopExecutor:
                                                             int(params.get("height", 520)))
             strip_ref = await ctx.blobs.put_bytes(_png(strip_img), name=f"{name}_round{r + 1}.png", mime="image/png")
             strips.append(strip_ref)
-            limits = sa.joint_limits(doc, spec)
+            limits = sa.joint_limits(doc, spec, covers)
             deep = sa.deepest_bend(doc, name, limits)
             zoom_png, zoom_ref = None, None
             if deep:
                 zoom_img = await asyncio.to_thread(render_joint_zoom, doc, images, name, deep[1], deep[0], parts)
                 zoom_png = _png(zoom_img)
                 zoom_ref = await ctx.blobs.put_bytes(zoom_png, name=f"{name}_round{r + 1}_zoom.png", mime="image/png")
+            knee = await asyncio.to_thread(sa.knee_gap, doc, name)
+            knee_png, knee_ref = None, None
+            if knee:
+                knee_img = await asyncio.to_thread(render_knee_zoom, doc, images, name, knee["time"], knee["knees"],
+                                                   parts)
+                knee_png = _png(knee_img)
+                knee_ref = await ctx.blobs.put_bytes(knee_png, name=f"{name}_round{r + 1}_knees.png",
+                                                     mime="image/png")
+            extra = [(zoom_png, f"close-up of joint {deep[0]} at t={deep[1]:g}s, its deepest bend relative to its "
+                                "limit") if deep else None,
+                     (knee_png, f"both knees at t={knee['time']:g}s, where they come closest") if knee else None]
+            extra = [e for e in extra if e and e[0]]
             ctx.progress(r + 0.5, rounds, f"vòng {r + 1}: Claude chấm")
             prompt = PROMPT.format(
                 images_note=(f"Images 1-{len(refs)}: reference video frames (contact sheets, row-major tiles labelled "
                              f"#index time). Image {len(refs) + 1}: render of the current draft at the times "
                              "labelled on each cell."
-                             + (f" Image {len(refs) + 2}: close-up of joint {deep[0]} at t={deep[1]:g}s, its deepest "
-                                "bend relative to its limit." if deep else "")),
+                             + "".join(f" Image {len(refs) + 2 + i}: {what}." for i, (_, what) in enumerate(extra))),
                 brief=params.get("brief") or "(none)", name=name, duration=dur,
                 ref_note=_ref_note(ref_meta), rig=rig or "(not given)", round=r + 1, rounds=rounds,
-                spec=json.dumps(spec, separators=(",", ":")), limits=_limits_note(limits),
+                spec=json.dumps(spec, separators=(",", ":")), limits=_limits_note(limits), legs=_knee_note(knee),
                 history=HISTORY_NOTE.format(rows="\n".join(
                     f"- round {h['round']}: score {h.get('score')}: {h.get('critique', h.get('error', ''))}"
                     for h in history)) if history else "")
             reply = await ask(self.query, {**params, "schema": sa.REVIEW_SCHEMA, "system": SYSTEM,
                                            "max_turns": params.get("max_turns", 2)},
                               prompt, str(ctx.job_dir),
-                              [*refs, (_png(strip_img), "image/png"), *([(zoom_png, "image/png")] if zoom_png else [])],
+                              [*refs, (_png(strip_img), "image/png"), *((png, "image/png") for png, _ in extra)],
                               ctx=ctx)
             out = reply.structured if isinstance(reply.structured, dict) else {}
             score = float(out.get("score", 0) or 0)
@@ -143,17 +165,24 @@ class SpineReviewLoopExecutor:
                      "zoom": zoom_ref.hash if zoom_ref else None,
                      "deepest_bend": {"bone": deep[0], "time": deep[1], "offset": round(deep[2], 2),
                                       "total": round(limits[deep[0]]["setup"] + deep[2], 2),
-                                      "limit": limits[deep[0]]["limit"]} if deep else None}
+                                      "limit": limits[deep[0]]["limit"]} if deep else None,
+                     "knee": knee, "knee_zoom": knee_ref.hash if knee_ref else None,
+                     "bounce": spec.get("bounce")}
             history.append(entry)
-            if best is None or score > best["score"]:
-                best = {**entry, "res": res, "strip_ref": strip_ref}
-            if score >= accept:
+            overlap = bool(knee and knee["overlap"])
+            if best is None or (not overlap, score) > (not best["overlap"], best["score"]):
+                best = {**entry, "res": res, "strip_ref": strip_ref, "overlap": overlap}
+            if score >= accept and not overlap:
                 break
             spec = new_spec
 
         assert best is not None
-        review = {"score": best["score"], "critique": best["critique"], "best_round": best["round"],
-                  "accepted": best["score"] >= accept, "accept_score": accept,
+        warning = COVER_WARNING.format(bones=", ".join(covers), skins=", ".join(sorted(set(covers.values())))) \
+            if covers else ""
+        critique = best["critique"] + (f"\n\n**Lưu ý:** {warning}" if warning else "")
+        review = {"score": best["score"], "critique": critique, "best_round": best["round"],
+                  "accepted": best["score"] >= accept and not best["overlap"], "accept_score": accept,
+                  "cover": covers, "warning": warning or None, "knee_overlap": best["overlap"],
                   "rounds": [{k: v for k, v in h.items()} for h in history]}
         stem = (inputs["skeleton"][0].name or "skeleton.json").rsplit(".", 1)[0]
         outputs: Outputs = {
@@ -167,18 +196,34 @@ class SpineReviewLoopExecutor:
         }
         ctx.progress(1, 1, "xong")
         return StepResult(outputs=outputs, meta={
-            "score": best["score"], "critique": best["critique"], "best_round": best["round"],
-            "accepted": review["accepted"],
+            "score": best["score"], "critique": critique, "best_round": best["round"],
+            "accepted": review["accepted"], "warning": warning or None, "knee_overlap": best["overlap"],
             "score_history": [h.get("score") for h in history if "score" in h]})
 
 
 def _limits_note(limits: dict[str, dict[str, Any]]) -> str:
     if not limits:
         return ""
-    rows = [f"- {b}: setup {j['setup']:.1f} deg, allowed rotate offset [{j['lo']:.1f}, {j['hi']:.1f}]"
-            f"{' (hard seam)' if j.get('hard') else ''}" for b, j in limits.items()]
-    return ("Joint limits (keys outside are clamped by the generator; hard-seam joints show a sharp corner when "
-            "bent further):\n" + "\n".join(rows) + "\n")
+
+    def tag(j: dict[str, Any]) -> str:
+        if j.get("cover"):
+            return f" (hard seam covered by {j['cover']}: seam hidden, bend it within the range)"
+        return " (hard seam)" if j.get("hard") else ""
+
+    rows = [f"- {b}: setup {j['setup']:.1f} deg, allowed rotate offset [{j['lo']:.1f}, {j['hi']:.1f}]{tag(j)}"
+            for b, j in limits.items()]
+    return ("Joint limits (keys outside are clamped by the generator; uncovered hard-seam joints show a sharp corner "
+            "when bent further):\n" + "\n".join(rows) + "\n")
+
+
+def _knee_note(knee: dict[str, Any] | None) -> str:
+    if not knee:
+        return ""
+    state = ("OVERLAP: the knees come too close or cross; lower hip.shift_x or the bounce depth"
+             if knee["overlap"] else "ok")
+    return (f"Knee check ({' / '.join(knee['knees'])}): closest horizontal gap {knee['min_gap']:g}px at "
+            f"t={knee['time']:g}s = {knee['ratio'] * 100:.0f}% of setup {knee['setup_gap']:g}px (overlap below "
+            f"{sa.KNEE_OVERLAP * 100:.0f}%): {state}.\n")
 
 
 def _ref_note(meta: Any) -> str:
