@@ -42,6 +42,14 @@ steps:
   - {id: ok, kind: gate.approve, params: {k: 0}}
 """
 
+SFX = """
+id: sfx
+inputs:
+  prompt: {type: text}
+steps:
+  - {id: gen, kind: comfy.sfx_stable_audio}
+"""
+
 BIBLE = sb.StyleBible(version=3, suffix="flat cel shading, thick dark outline", negative="photorealistic",
                       refs=[sb.BibleRef(hash="a" * 64)])
 
@@ -89,15 +97,19 @@ def test_apply_bible_inputs_and_overrides() -> None:
     out, used = sb.apply_bible(brief, {"idea": "a knight", "style": "mine"}, {"style": "mine"}, BIBLE)
     assert out["style"] == "mine" and used == []
 
+    sfx = parse_recipe(SFX.encode())
+    assert sb.apply_bible(sfx, {"prompt": "sword clash"}, {"prompt": "sword clash"}, BIBLE) == ({"prompt": "sword clash"}, [])
+
 
 async def test_writer_parses_reply(tmp_path: Path) -> None:
     async def query(content: list[dict[str, Any]], opts: Any) -> ClaudeReply:
         assert content[0]["type"] == "image" and "pixel art" in content[-1]["text"]
-        return ClaudeReply({"suffix": " soft pastel ", "negative": "noise", "summary": "Pastel."}, "",
+        return ClaudeReply({"suffix": " soft pastel ", "negative": "noise", "summary": "Pastel.",
+                            "pixel_art": True}, "",
                            {"cost_usd": 0.02, "model": opts.model})
 
     res = await StyleBibleWriter(tmp_path, query).write(png(sprite((1, 2, 3))), {"pixel_art": True}, 1)
-    assert res["suffix"] == "soft pastel" and res["cost_usd"] == 0.02 and res["model"] == "claude-opus-5-5"
+    assert res["suffix"] == "soft pastel" and res["pixel_art"] is True and res["cost_usd"] == 0.02 and res["model"] == "claude-opus-5-5"
 
 
 @pytest.fixture
@@ -141,7 +153,7 @@ async def test_api_build_edit_and_apply(app_client: tuple[Any, httpx.AsyncClient
     async def query(content: list[dict[str, Any]], opts: Any) -> ClaudeReply:
         calls.append(content)
         return ClaudeReply({"suffix": "soft painted shading, dark outline", "negative": "pixel art, text",
-                            "summary": "Tông xanh lá."}, "", {"cost_usd": 0.03, "model": opts.model})
+                            "summary": "Tông xanh lá.", "pixel_art": True}, "", {"cost_usd": 0.03, "model": opts.model})
 
     app.state.style_bible_writer = StyleBibleWriter(tmp_path / "w", query)
     r = await c.post(f"{url}/build", json={}, headers=AUTH)
@@ -150,6 +162,7 @@ async def test_api_build_edit_and_apply(app_client: tuple[Any, httpx.AsyncClient
     assert bible["version"] == 1 and bible["active"] and bible["source_count"] == 3
     assert bible["suffix"] == "soft painted shading, dark outline" and bible["cost_usd"] == 0.03
     assert bible["palette"] and bible["outlined"] is True and 1 <= len(bible["refs"]) <= 3
+    assert bible["pixel_art"] is True, "Claude's look at the sheet overrides the pixel heuristic"
     assert {x["version_id"] for x in bible["refs"]} <= {"v0", "v1", "v2"} and len(calls) == 1
     assert (await c.get(url, headers=AUTH)).json()["bible"]["version"] == 1
 
@@ -178,4 +191,5 @@ async def test_api_build_edit_and_apply(app_client: tuple[Any, httpx.AsyncClient
     r = await c.post(f"{url}/build", json={"vision": False}, headers=AUTH)
     rebuilt = r.json()["bible"]
     assert rebuilt["version"] == 3 and rebuilt["active"] is False and "outline" in rebuilt["suffix"]
+    assert rebuilt["pixel_art"] is False
     assert len(calls) == 1

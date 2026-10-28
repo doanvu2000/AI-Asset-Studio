@@ -999,3 +999,14 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   `sprite-normal-map`. 10 test; Godot PointLight2D OK (G lên), Unity batchmode `_NormalMap` OK. Chỉ sprite sheet.
 - [x] 2026-10-29 Kiểm 681 pass / 4 skip, typecheck sạch → commit mốc #24.
 - [~] 2026-10-29 Giao #25 bitmap font.
+- [x] 2026-10-29 #8+#12 Gói NPC xong (agent): recipe `npc-pack`, `npc-pack-prompt`, `npc-voice-csv`; `adapters/npc.py`
+  (`claude.npc_dialogue`), `adapters/tts.py` (`tts.npc_voice`, sherpa-onnx CPU), `adapters/tts_text.py` (G2P tiếng Việt tự viết),
+  `ops/npc.py`, `export/npc.py` (Unity NpcData.cs + .asset, Godot npc_data.gd + .tres). Dep mới `sherpa-onnx>=2.0.1` (Apache).
+  Model TTS `F:\work\AI\comfyUI_models\tts\` (Piper vi vais1000 CC-BY, Kokoro int8 Apache). 11 test; live 311s, $0.072; Godot .tres OK.
+  Cần chủ nhân nghe `vi_*.ogg` (G2P gần đúng); chỉ 1 giọng nữ tiếng Việt; license lessac gốc mập mờ. Packaging spec có thể cần thêm sherpa-onnx.
+- [~] 2026-10-29 Giao #28 tìm asset giống + chống trùng. Đang chạy: #27, #23, #22, #25, #28.
+- [x] 2026-10-29 #27 Style bible xong (agent): `engine/style_bible.py`, bảng `style_bibles`, `adapters/style_bible.py`, `api/style_bible.py`
+  (GET/POST /api/projects/{id}/style, /style/build), runner `_apply_style_bible` (suffix prompt/style, ref nếu trống,
+  `$meta.use_style_bible:false` để tắt), MCP get/build_style_bible, `StyleBiblePanel.vue` + ô trong NewRunView. 4 test; live Claude ~9s ~$0.02.
+- [x] 2026-10-29 Kiểm 689 pass / 4 skip, typecheck sạch → commit mốc #27 (+ NPC hoàn thiện, code dở #22/#23/#25/#28).
+- [~] 2026-10-29 Giao #26 paper-doll trang bị.

@@ -1,0 +1,50 @@
+id: key-art-motion
+name: Key art động / teaser 5s (Wan 2.2)
+description: >-
+  Key art (+ chuyển động mong muốn) → Claude nhìn ảnh viết prompt chuyển động nhẹ (tóc, vải, hạt bay, ánh sáng,
+  camera) → Wan 2.2 TI2V 5B sinh video ~5 giây 24 fps giữ nguyên khung đầu → nối vòng lặp liền (crossfade đuôi vào
+  đầu hoặc ping-pong) → MP4 H.264 + WebM + GIF xem trước + ảnh poster → duyệt.
+inputs:
+  image: {type: image, label: Key art}
+  motion: {type: text, default: "", multiline: true, label: "Chuyển động mong muốn (trống = Claude tự gợi ý)",
+           placeholder: "hair and cape sway in the wind, embers drift upward, slow camera push-in"}
+  suggest: {type: bool, default: true, label: Claude gợi ý / chuốt prompt chuyển động}
+  loop: {type: enum, default: crossfade, options: [crossfade, pingpong, none],
+         label: "Lặp (crossfade = đuôi tan vào đầu, camera đứng yên; pingpong = tới rồi lui; none = không lặp)"}
+  seconds: {type: int, default: 5, options: [3, 4, 5], label: Độ dài (giây)}
+  resolution: {type: enum, default: 720p, options: [720p, 540p, 480p],
+               label: "Độ phân giải (720p đẹp nhất, 480p nhanh gấp ~3)"}
+  sampler_steps: {type: int, default: 20, min: 8, max: 40, label: Số bước khử nhiễu}
+steps:
+  - id: prep
+    kind: op.keyart_prep
+    in: {images: inputs.image}
+    params: {resolution: "${inputs.resolution}", seconds: "${inputs.seconds}"}
+  - id: motion
+    kind: claude.keyart_motion
+    in: {images: prep.image}
+    params: {motion: "${inputs.motion}", suggest: "${inputs.suggest}", loop: "${inputs.loop}", model: opus,
+             _auto_retry: 1}
+  - id: gen
+    kind: comfy.keyart_wan22_ti2v
+    in: {image: prep.image}
+    params:
+      "6.text": "${steps.motion.json.prompt}"
+      "55.width": "${steps.prep.json.width}"
+      "55.height": "${steps.prep.json.height}"
+      "55.length": "${steps.prep.json.length}"
+      "3.steps": "${inputs.sampler_steps}"
+      _free_before: true
+      _timeout_s: 3600
+  - id: post
+    kind: op.keyart_video
+    in: {frames: gen.images}
+    params: {loop: "${inputs.loop}", crossfade: 0.75, fps: 24, formats: "mp4,webm,gif"}
+  - id: approve
+    kind: gate.approve
+    in: {video: post.video, gif: post.gif, poster: post.poster, meta: post.json}
+outputs:
+  final: approve.video
+  gif: approve.gif
+  poster: approve.poster
+  meta: approve.meta

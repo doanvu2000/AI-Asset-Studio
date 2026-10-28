@@ -20,6 +20,7 @@ dependencies = [
     "mcp>=2.3.0",
     "ruamel-yaml>=0.18",
     "sherpa-onnx>=2.0.1",
+    "onnxruntime>=1.31.1",
 ]
 
 [dependency-groups]

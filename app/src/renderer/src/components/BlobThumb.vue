@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, type Component } from 'vue'
-import { AudioLines, Box, File, FileBraces, FileCode, FileText, Layers } from '@lucide/vue'
+import { AudioLines, Box, File, FileBraces, FileCode, FileText, Film, Layers } from '@lucide/vue'
 import type { BlobRef } from '@/api/types'
 import { fileBadge, isImage, type FileBadge } from './viewers/detect'
 import BlobImage from './BlobImage.vue'
@@ -15,6 +15,7 @@ const GLYPH: Record<FileBadge, { icon: Component; label: string }> = {
   html: { icon: FileCode, label: 'HTML' },
   text: { icon: FileText, label: 'Văn bản' },
   audio: { icon: AudioLines, label: 'Âm thanh' },
+  video: { icon: Film, label: 'Video' },
   file: { icon: File, label: 'Tệp' }
 }
 const glyph = computed(() => GLYPH[fileBadge(props.blob)])
@@ -50,7 +51,8 @@ const glyph = computed(() => GLYPH[fileBadge(props.blob)])
 .g-spine {
   color: var(--lane-gpu);
 }
-.g-audio {
+.g-audio,
+.g-video {
   color: var(--lane-gpu);
 }
 .g-json {

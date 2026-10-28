@@ -24,19 +24,21 @@ Measured from the pixels:
 - palette (dominant colors): {palette}
 - outline: {outline}
 - main light from: {light}
-- rendering: {render}
+- rendering, rough pixel-based guess (check it on the sheet): {render}
 
 Write:
 - `suffix`: one comma-separated English prompt fragment (12-40 words) that makes a text-to-image model draw new
   assets in exactly this style. Style words only, no subject. Mention the palette in words (e.g. "muted earthy
   greens and warm browns"), not hex codes.
 - `negative`: comma-separated English things to avoid that would break this style (5-15 short items).
+- `pixel_art`: true if the assets are pixel art (visible pixel grid, hard pixel edges), false otherwise.
 - `summary`: 1-3 sentences in Vietnamese describing the style for the team."""
 
 SCHEMA: dict[str, Any] = {
     "type": "object",
-    "properties": {"suffix": {"type": "string"}, "negative": {"type": "string"}, "summary": {"type": "string"}},
-    "required": ["suffix", "negative", "summary"],
+    "properties": {"suffix": {"type": "string"}, "negative": {"type": "string"}, "pixel_art": {"type": "boolean"},
+                   "summary": {"type": "string"}},
+    "required": ["suffix", "negative", "pixel_art", "summary"],
 }
 
 
@@ -63,4 +65,5 @@ class StyleBibleWriter:
         data = reply.structured if isinstance(reply.structured, dict) else {}
         return {"suffix": str(data.get("suffix") or "").strip(), "negative": str(data.get("negative") or "").strip(),
                 "summary": str(data.get("summary") or "").strip(),
+                "pixel_art": data.get("pixel_art") if isinstance(data.get("pixel_art"), bool) else None,
                 "cost_usd": reply.meta.get("cost_usd"), "model": reply.meta.get("model")}

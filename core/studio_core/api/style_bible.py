@@ -105,6 +105,8 @@ async def build_bible(request: Request, project_id: str, body: BuildBody) -> Res
                     suffix = res["suffix"] or suffix
                     negative = res["negative"] or negative
                     summary = res["summary"]
+                    if res["pixel_art"] is not None:
+                        stats["pixel_art"] = res["pixel_art"]
                     extra.update(cost_usd=res["cost_usd"], model=res["model"])
         bible = sb.new_bible(await load_bible(repo, project_id), stats, refs, suffix, negative, summary,
                              len(versions), **extra)

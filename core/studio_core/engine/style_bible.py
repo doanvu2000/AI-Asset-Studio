@@ -24,6 +24,8 @@ OPT_OUT_KEY = "use_style_bible"
 RECORD_KEY = "style_bible"
 PROMPT_INPUTS = ("prompt", "idea")
 STYLE_REF_NAMES = ("style_ref", "style_image", "style_reference")
+VISUAL_KINDS = ("comfy.t2i", "comfy.edit", "comfy.inpaint", "codex.", "claude.brief", "blender.", "op.npc_portraits")
+AUDIO_MARKERS = ("audio", "sfx", "music", "tts.", "soundscape")
 
 
 class BibleRef(BaseModel):
@@ -55,8 +57,8 @@ class StyleBible(BaseModel):
 
 
 def pixel_score(img: Image.Image) -> float:
-    """~1 for pixel art, low for painted art. Upscaled pixel art repeats each color in both directions (painted
-    shading breaks exact equality along at least one axis); native-size pixel art is caught by its tiny color count."""
+    """~1 for clean pixel art (native size: few colors; integer upscale: each color repeats along both axes), low
+    for painted art. Resampled or lossy pixel art slips through; Claude vision has the last word on the flag."""
     im = img.convert("RGBA")
     if max(im.size) > PIXEL_SIDE:
         f = math.ceil(max(im.size) / PIXEL_SIDE)
@@ -68,9 +70,12 @@ def pixel_score(img: Image.Image) -> float:
     v = (rgb[1:] == rgb[:-1])[opaque[1:] & opaque[:-1]]
     if min(h.size, v.size) < 32:
         return 0.0
-    if len(np.unique(rgb[opaque])) <= PIXEL_MAX_COLORS:
+    colors = len(np.unique(rgb[opaque]))
+    if colors <= PIXEL_MAX_COLORS:
         return 1.0
-    return float(min(h.mean(), v.mean()))
+    eq = float(min(h.mean(), v.mean()))
+    # Flat vector art also repeats colors; its anti-aliased edges (and lossy encoding) blow up the color count.
+    return eq if colors <= 256 else eq * 0.5
 
 
 def aggregate(measures: Sequence[Measure], pixel_scores: Sequence[float]) -> dict[str, Any]:
@@ -189,12 +194,22 @@ def style_ref_input(recipe: Recipe) -> str | None:
     return None
 
 
+def is_visual(recipe: Recipe) -> bool:
+    """A visual look must not leak into sound prompts (SFX, music, voice), whose `prompt` input means something else."""
+    kinds = [st.kind for st in recipe.steps]
+    if any(k.startswith(VISUAL_KINDS) for k in kinds):
+        return True
+    return not any(m in k for k in kinds for m in AUDIO_MARKERS)
+
+
 def apply_bible(recipe: Recipe, inputs: dict[str, Any], user_inputs: dict[str, Any],
                 bible: StyleBible) -> tuple[dict[str, Any], list[str]]:
     """Adds the bible to inputs that already carry the project style; `user_inputs` are what the user typed, so a
     style/negative/style-ref the user set is left alone. Returns (inputs, changed keys)."""
     out = dict(inputs)
     applied: list[str] = []
+    if not is_visual(recipe):
+        return out, applied
     specs = recipe.inputs
     user = user_inputs or {}
 

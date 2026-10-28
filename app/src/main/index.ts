@@ -89,6 +89,8 @@ function csp(): string {
     // Vue/motion write inline style attributes; no inline <script> is ever allowed.
     "style-src 'self' 'unsafe-inline'",
     `img-src 'self' data: blob: http://127.0.0.1:*`,
+    // <audio>/<video> previews stream blobs from the local core; default-src 'none' would block them.
+    `media-src 'self' blob: http://127.0.0.1:*`,
     "font-src 'self' data:",
     // three.js GLTFLoader fetches embedded textures through blob: URLs.
     `connect-src 'self' blob: data: ${local}${devExtra}`,

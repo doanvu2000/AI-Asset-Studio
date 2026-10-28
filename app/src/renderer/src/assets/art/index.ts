@@ -126,7 +126,8 @@ const RECIPE_PITCH: Record<string, string> = {
   'store-kit': 'Tên game + mô tả → icon app đủ cỡ iOS / Android adaptive / Play / favicon / .ico + capsule, hero, logo Steam có tên game, zip sẵn nộp store',
   'store-kit-image': 'Ảnh nhân vật + tên game → icon app + key art giữ đúng nhân vật → đủ cỡ iOS / Android / Steam / web, zip sẵn nộp store',
   'image-localize': 'Nút / logo / banner có chữ → bản Việt, Nhật, Trung, Hàn, Đức…: xoá chữ gốc, vẽ chữ dịch đúng font, màu, viền, vừa khung',
-  'parallax-layers': 'Prompt cảnh → nền cuộn ngang 4–5 lớp (trời, xa, giữa, gần, tiền cảnh) lặp liền mạch, prefab Unity / Parallax2D Godot'
+  'parallax-layers': 'Prompt cảnh → nền cuộn ngang 4–5 lớp (trời, xa, giữa, gần, tiền cảnh) lặp liền mạch, prefab Unity / Parallax2D Godot',
+  'key-art-motion': 'Key art → teaser 5 giây chuyển động nhẹ (tóc, vải, hạt bay), lặp liền, MP4 + WebM + GIF + poster'
 }
 
 export function recipePitch(id: string): string | undefined {

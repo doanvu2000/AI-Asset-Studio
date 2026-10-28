@@ -229,6 +229,9 @@ const bibleTargets = computed<string[]>(() => {
   const b = bible.value
   const r = selected.value
   if (!b?.active || !r) return []
+  const kinds = r.steps.map((st) => st.kind)
+  const visual = kinds.some((k) => /^(comfy\.(t2i|edit|inpaint)|codex\.|claude\.brief|blender\.|op\.npc_portraits)/.test(k))
+  if (!visual && kinds.some((k) => /audio|sfx|music|tts\.|soundscape/.test(k))) return []
   const out: string[] = []
   const text = (n: string): boolean => (r.inputs[n]?.type ?? '') === 'text'
   if (b.suffix && (text('style') || text('prompt') || text('idea'))) out.push('hậu tố prompt')

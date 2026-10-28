@@ -1,6 +1,6 @@
 import type { BlobRef } from '@/api/types'
 
-export type ViewKind = 'glb' | 'sprite' | 'spine' | 'tile' | 'image' | 'audio' | 'text' | 'file'
+export type ViewKind = 'glb' | 'sprite' | 'spine' | 'tile' | 'image' | 'audio' | 'video' | 'text' | 'file'
 
 export interface SpineSet {
   skeleton: BlobRef
@@ -28,6 +28,8 @@ export interface AssetView {
   wang?: boolean
   /** op.audio_post's waveform image `<clip>_wave.png`. */
   wave?: BlobRef
+  /** op.keyart_video's first frame `<stem>_poster.png`. */
+  poster?: BlobRef
 }
 
 export const VIEW_LABEL: Record<ViewKind, string> = {
@@ -37,6 +39,7 @@ export const VIEW_LABEL: Record<ViewKind, string> = {
   tile: 'Lát',
   image: 'Ảnh',
   audio: 'Âm thanh',
+  video: 'Video',
   text: 'Nội dung',
   file: 'Tệp'
 }
@@ -51,6 +54,7 @@ const stem = (b: BlobRef): string => (b.name ?? '').replace(/\.[^.]+$/, '').toLo
 export const isGlb = (b: BlobRef): boolean => b.mime === 'model/gltf-binary' || ext(b) === 'glb'
 export const isImage = (b: BlobRef): boolean => b.mime.startsWith('image/')
 export const isAudio = (b: BlobRef): boolean => b.mime.startsWith('audio/') || ['ogg', 'wav', 'mp3', 'flac', 'opus'].includes(ext(b))
+export const isVideo = (b: BlobRef): boolean => b.mime.startsWith('video/') || ['mp4', 'webm', 'mov', 'mkv'].includes(ext(b))
 export const isJson = (b: BlobRef): boolean => b.mime === 'application/json' || ext(b) === 'json'
 export const isAtlas = (b: BlobRef): boolean => ext(b) === 'atlas'
 const isTextual = (b: BlobRef): boolean =>
@@ -175,6 +179,11 @@ function spritePair(blob: BlobRef, all: BlobRef[]): { sheet: BlobRef; meta: Blob
   return meta && sheet ? { sheet, meta, ...(normal ? { normal } : {}) } : null
 }
 
+function videoView(blob: BlobRef, all: BlobRef[]): AssetView {
+  const poster = all.find((b) => isImage(b) && /(^|_)poster$/.test(stem(b)))
+  return { kind: 'video', blob, ...(poster ? { poster } : {}) }
+}
+
 /** Views that make sense for `blob`, best first; `siblings` are blobs produced alongside it (same step or run). */
 export function viewsFor(blob: BlobRef, siblings: BlobRef[] = []): AssetView[] {
   const all = uniq([blob, ...siblings])
@@ -194,6 +203,7 @@ export function viewsFor(blob: BlobRef, siblings: BlobRef[] = []): AssetView[] {
     const wave = all.find((b) => isImage(b) && stem(b) === `${stem(blob)}_wave`)
     out.push({ kind: 'audio', blob, ...(wave ? { wave } : {}) })
   }
+  if (isVideo(blob)) out.push(videoView(blob, all))
   if (isTextual(blob)) out.push({ kind: 'text', blob })
   if (!out.length) out.push({ kind: 'file', blob })
   return out
@@ -217,10 +227,13 @@ export function featuredAsset(blobs: BlobRef[]): AssetView | null {
   if (normal && nmeta) return { kind: 'sprite', blob: normal, sheet: normal, meta: nmeta }
   const tile = wangSet(null, all)?.[0] ?? all.find(isTileMain)
   if (tile && all.some(isTileReport)) return tileView(tile, all)
+  // MP4 first: H.264 plays everywhere, WebM is the alternate encode of the same clip.
+  const video = all.find((b) => isVideo(b) && ext(b) === 'mp4') ?? all.find(isVideo)
+  if (video) return videoView(video, all)
   return null
 }
 
-const FEATURE_RANK: Partial<Record<ViewKind, number>> = { glb: 0, spine: 1, sprite: 2, tile: 4 }
+const FEATURE_RANK: Partial<Record<ViewKind, number>> = { glb: 0, spine: 1, sprite: 2, tile: 4, video: 5 }
 const rank = (f: AssetView): number => (f.kind === 'sprite' && f.sheet && isNormalBlob(f.sheet) ? 3 : FEATURE_RANK[f.kind]!)
 
 /** `featuredAsset` over several steps' outputs: a sheet only pairs with the meta of its own step, while the
@@ -239,7 +252,7 @@ export function featuredAcross(groups: BlobRef[][]): AssetView | null {
   return best
 }
 
-export type FileBadge = 'glb' | 'spine' | 'json' | 'atlas' | 'html' | 'text' | 'audio' | 'file'
+export type FileBadge = 'glb' | 'spine' | 'json' | 'atlas' | 'html' | 'text' | 'audio' | 'video' | 'file'
 
 export function fileBadge(b: BlobRef): FileBadge {
   if (isGlb(b)) return 'glb'
@@ -247,6 +260,7 @@ export function fileBadge(b: BlobRef): FileBadge {
   if (b.mime === 'text/html' || ext(b) === 'html') return 'html'
   if (isJson(b)) return 'json'
   if (b.mime.startsWith('audio/') || /^(ogg|wav|mp3|flac)$/.test(ext(b))) return 'audio'
+  if (isVideo(b)) return 'video'
   if (isTextual(b)) return 'text'
   return 'file'
 }

@@ -12,6 +12,7 @@ from .claude import ClaudeBriefExecutor, ClaudeResource, ClaudeTaskExecutor
 from .codex import CodexImageExecutor, CodexResource
 from .localize import ClaudeLocalizeExecutor
 from .soundscape import ClaudeSoundscapeExecutor
+from .keyart_motion import ClaudeKeyartMotionExecutor
 from .npc import ClaudeNpcDialogueExecutor
 from .tts import NpcVoiceExecutor
 from .store_layout import ClaudeStoreLayoutExecutor
@@ -36,6 +37,7 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     registry.register(BlenderRigExportExecutor(settings, blender, comfy))
     registry.register(ClaudeBriefExecutor(settings))
     registry.register(ClaudeSoundscapeExecutor(settings))
+    registry.register(ClaudeKeyartMotionExecutor(settings))
     registry.register(ClaudeNpcDialogueExecutor(settings))
     registry.register(NpcVoiceExecutor(settings))
     registry.register(ClaudeLocalizeExecutor(settings))
