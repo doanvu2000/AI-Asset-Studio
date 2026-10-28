@@ -49,10 +49,13 @@ def foot_drivers(doc: dict[str, Any]) -> list[dict[str, Any]]:
     hip = hip_bone(doc)
     above_hip = set(_ancestors(parent, hip))
     target = {c["name"]: c["target"] for c in doc.get("ik") or []}
+    legs = leg_chains(doc)
     out = []
-    for leg in leg_chains(doc):
+    for leg in legs:
         d = target[leg["ik"]]
-        while parent.get(d) and parent.get(parent[d]) and parent[d] not in above_hip:
+        # A bone shared with another leg's target (root > ik-group > both targets) would move both feet together.
+        shared = {a for o in legs if o is not leg for a in _ancestors(parent, target[o["ik"]])}
+        while parent.get(d) and parent.get(parent[d]) and parent[d] not in above_hip and parent[d] not in shared:
             d = parent[d]
         if hip and hip in _ancestors(parent, d):
             continue

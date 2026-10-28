@@ -35,6 +35,8 @@ class AtlasPage:
 class Atlas:
     pages: list[AtlasPage]
     regions: dict[str, AtlasRegion]
+    # Every region, indexed frames included; `regions` keeps the first per name, as attachments look them up.
+    every: list[AtlasRegion] = field(default_factory=list)
 
 
 def _ints(v: str) -> list[int]:
@@ -44,6 +46,7 @@ def _ints(v: str) -> list[int]:
 def parse_atlas(text: str) -> Atlas:
     pages: list[AtlasPage] = []
     regions: dict[str, AtlasRegion] = {}
+    every: list[AtlasRegion] = []
     region: AtlasRegion | None = None
     fresh = True
     for raw in text.splitlines():
@@ -59,6 +62,7 @@ def parse_atlas(text: str) -> Atlas:
         if not sep:
             region = AtlasRegion(line, len(pages) - 1, 0, 0, 0, 0)
             regions.setdefault(line, region)
+            every.append(region)
             continue
         key, val = key.strip(), val.strip()
         if region is None:
@@ -81,10 +85,10 @@ def parse_atlas(text: str) -> Atlas:
                 region.degrees = 90 if val == "true" else (0 if val == "false" else int(val))
             case "index":
                 region.index = int(val)
-    for r in regions.values():
+    for r in every:
         r.orig_w = r.orig_w or r.width
         r.orig_h = r.orig_h or r.height
-    return Atlas(pages, regions)
+    return Atlas(pages, regions, every)
 
 
 def atlas_page_files(atlas_path: Path) -> list[Path]:

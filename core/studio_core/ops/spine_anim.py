@@ -47,8 +47,8 @@ MOTION_SPEC_SEMANTICS = (
     "hip_sway (leg lengths), contact (planted share of the period), arm_swing deg, forearm (share of arm_swing), "
     "lean deg} generates an in-place locomotion loop: feet planted through the leg IK targets, hip bob, arms "
     "against the legs, trunk lean; it implies loop and needs duration = whole periods. Unset fields take "
-    "measured defaults (walk: period 1, stride 1.15, lift 0.3, contact 0.55, bob 0.06, arm_swing 30, forearm "
-    "0.35, lean 2; run: 0.66, 1.5, 0.6, 0.35, 0.1, 50, 0.5, 8). jump = {takeoff s, land s, height, crouch, tuck "
+    "measured defaults (walk: period 1, stride 0.8, lift 0.3, contact 0.55, bob 0.06, arm_swing 30, forearm "
+    "0.35, lean 2; run: 0.66, 1.2, 0.6, 0.35, 0.1, 50, 0.5, 8). jump = {takeoff s, land s, height, crouch, tuck "
     "(leg lengths), facing, direction, arm_swing deg, forearm, lean deg} generates a one-shot in-place jump: "
     "crouch with the feet planted, launch, ballistic arc with the knees tucked, landing absorbed by a second "
     "crouch, back to setup (defaults: takeoff 0.35*duration, land takeoff+0.3*duration, height 0.6, crouch "
@@ -227,6 +227,8 @@ def _closed(pts: list[tuple[float, ...]], end: float, loop: bool, rest: tuple[fl
             pts.append((pts[-1][0] + 0.3, *rest))
         return pts
     pts = [p for p in pts if p[0] <= end + 1e-6]
+    if not pts:
+        raise SpecError(f"loop: every key is after the clip end ({end:g}s)")
     if pts[0][0] > 0:
         pts.insert(0, (0.0, *pts[0][1:]))
     if pts[-1][0] < end - 1e-6:

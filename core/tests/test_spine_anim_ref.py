@@ -92,6 +92,8 @@ def test_atlas_parse_and_region_unrotate(tmp_path: Path) -> None:
     r = a.regions["rot"]
     assert (r.degrees, r.width, r.height, r.offset_x, r.orig_w, r.orig_h) == (90, 8, 16, 1, 10, 18)
     assert atlas_page_files(atlas) == [page]
+    frames = parse_atlas("p.png\nsize: 8,8\nrun\n  bounds: 0,0,4,4\n  index: 0\nrun\n  bounds: 4,0,4,4\n  index: 1\n")
+    assert len(frames.regions) == 1 and [(r.index, r.x) for r in frames.every] == [(0, 0), (1, 4)]
     img = rt.RegionImages.from_files(atlas, [page]).get("rot")
     assert img.size == (10, 18)
     px = np.asarray(img.convert("RGBA"))
@@ -855,3 +857,37 @@ def test_skin_variant_recolors_atlas(tmp_path: Path) -> None:
     assert (after[..., 3] == before[..., 3]).all() and red.any()
     assert np.abs(after[red, :3] - (255 - before[red, :3])).mean() < 25
     assert out.meta["variants"][0]["regions_fitted"] >= 1
+
+
+def test_skin_variant_divides_slot_tint() -> None:
+    from studio_core.ops import spine_variant as sv
+
+    texel = np.array([200, 100, 50]) / 255
+    owner = np.full((48, 48), -1, np.int32)
+    owner[4:44, 4:44] = 0
+    tint = np.ones((48, 48, 3))
+    tint[owner == 0] = 0.5
+
+    def flat(rgb: np.ndarray) -> Image.Image:
+        a = np.zeros((48, 48, 4), np.uint8)
+        a[owner == 0] = (*np.round(rgb * 255).astype(np.uint8), 255)
+        return Image.fromarray(a, "RGBA")
+
+    render = flat(texel * 0.5)
+    want = np.array([50, 50, 100]) / 255
+    edited = sv.on_background(flat(want))
+    maps, _, _ = sv.colour_maps(render, edited, owner, ["a"], tint)
+    # The runtime multiplies the recoloured texel by the tint again: that product must be the edit's colour.
+    got = sv._apply(texel[None], maps["a"])[0] * 0.5
+    assert np.abs(got - want).max() < 0.02
+
+
+def test_foot_drivers_stop_below_a_shared_group() -> None:
+    from studio_core.ops import spine_cycle as sc
+
+    doc = two_legs()
+    doc["bones"].insert(1, {"name": "ik_group", "parent": "root"})
+    for b in doc["bones"]:
+        if b["name"] in ("foot_ik", "foot_ik2"):
+            b["parent"] = "ik_group"
+    assert [f["driver"] for f in sc.foot_drivers(doc)] == ["foot_ik", "foot_ik2"]

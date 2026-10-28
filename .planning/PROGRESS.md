@@ -854,3 +854,24 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [x] Skin variant lệch màu balo/giày: tâm thống kê mean → median (viền/nền lọt vào vùng do ảnh sửa căn không khớp).
   Đo trên edit Klein thật (scratchpad var_eval.py): sai số màu trung vị theo region 28.1 → 9.0; IQR thử bị hỏng ở
   vùng phẳng (hair-patch ra xanh ngọc) nên giữ std. op v3. pytest 483/4. Chưa commit.
+- [x] Commit 728354a (skin variant median).
+- [x] Nhịp nhạc: cách đo cũ sai. Đo comb autocorrelation (scratchpad bpm2.py): yêu cầu 80→80, 140→140 (70 nửa nhịp),
+  clip 96 cũ→95. ACE-Step theo đúng bpm.
+- [x] Loop nhạc tròn ô nhịp: `make_loop(a, xfade, bar_s)` cắt đuôi để (độ dài − crossfade) = số nguyên ô 4/4 → phách
+  đầu/đuôi cùng pha khi trộn. `op.audio_post` param `bpm` (v2), recipe audio-music truyền bpm. Live 140 BPM 30s →
+  27.429s = 16 ô, seam 0.0042. pytest 483/4. Chưa commit.
+- [x] VFX loop live (vòng năng lượng xanh): đoạn 7..28 (21 frame), seam 0.045, crop gọn [20,22,495,497] — đẹp.
+  Prompt "small, middle half, margins" làm model vẽ thêm khối vật cháy → bỏ, giữ prompt cũ. `square_crop` theo 99.5%
+  khối alpha (tia lửa lạc không kéo crop ra hết khung), op v3; lửa nổ vẫn gần cả khung vì quầng sáng thật trải rộng.
+- [x] Docs (subagent): README bảng "Làm được gì" + đoạn game-ready/âm thanh/VFX + dung lượng pack audio ~15.8GB,
+  vfx ~22.5GB; COMFYUI-WORKFLOWS mục 8–10. Chưa commit.
+- [~] Subagent review code đợt này (chỉ báo lỗi).
+- [x] Review subagent: 12 phát hiện, sửa hết (pytest 485/4, typecheck sạch):
+  1 `foot_drivers` hai chân chung driver khi target cùng nhóm → dừng leo ở bone tổ tiên của chân kia (test fail trước sửa);
+  2 skin variant tint slot bị áp 2 lần → `rt.layers` yield thêm màu tint, `colour_maps` chia tint cả src/dst (op v4, test);
+  3 retopo hỏng làm hỏng mesh cho fallback → retopo trên bản sao; 4 slot vật liệu rỗng xen kẽ → gán blank; bỏ
+  `principled` trùng (bản sau đã tự tạo BSDF); 10 tên LOD cắt stem 50 byte. Blender live: remesh 3988 / decimate 3995 mặt OK;
+  5 text default stride 1.15/1.5 → 0.8/1.2 theo CYCLE_DEFAULTS; 6 loop keys sau end → SpecError;
+  7 audio rỗng → StepError (test); 8 VFX loop ≤8 frame → StepError; 9 atlas region index trùng tên → `Atlas.every`
+  (test); 11 audio loop thêm hậu tố `_loop` (op v3) để player bật lặp; 12 nhãn attack/hit/death trong ReviewDialog.
+  Chưa commit.

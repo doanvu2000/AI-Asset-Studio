@@ -45,7 +45,14 @@ const warning = computed(() => {
   return typeof w === 'string' ? w : ''
 })
 const pct = (v: number): string => `${Math.round(v * 100)}%`
-const CYCLE_LABEL: Record<string, string> = { walk: 'Đi bộ (lặp)', run: 'Chạy (lặp)', jump: 'Nhảy tại chỗ (một lần, về setup)' }
+const CYCLE_LABEL: Record<string, string> = {
+  walk: 'Đi bộ (lặp)',
+  run: 'Chạy (lặp)',
+  jump: 'Nhảy tại chỗ (một lần, về setup)',
+  attack: 'Tấn công (một lần, về setup)',
+  hit: 'Dính đòn (một lần, về setup)',
+  death: 'Gục ngã (một lần, giữ tư thế cuối)',
+}
 const motionLabel = (r: ReviewRound): string => (r.cycle ? (CYCLE_LABEL[r.cycle] ?? r.cycle) : 'Clip lặp: frame cuối = frame đầu')
 const fmt = (v: unknown): string => (v === null || v === undefined ? '—' : typeof v === 'string' ? v : JSON.stringify(v))
 

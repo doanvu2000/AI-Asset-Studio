@@ -467,10 +467,6 @@ def bake_into(scene, high, low, img, bake_type, extrusion, emit_label, emit):
     emit({"event": "progress", "label": emit_label})
 
 
-def principled(mat):
-    return next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-
-
 def gltf_occlusion_group():
     # The glTF exporter reads ambient occlusion from a node group with this exact name and an "Occlusion" input.
     g = bpy.data.node_groups.get("glTF Material Output")
@@ -517,10 +513,17 @@ def game_ready(p, emit):
             low.material_slots[i].material = slot.material.copy()
     fallback, remesh = None, None
     if p["mode"] == "remesh":
+        # On a copy: a failed remesh leaves its mesh voxelized or empty, and the fallback needs the original.
+        trial = duplicate(low, "lod0_remesh")
         try:
-            remesh = retopo(low, p["target_faces"], diag)
+            remesh = retopo(trial, p["target_faces"], diag)
         except RuntimeError as e:
             fallback = str(e)
+            bpy.data.objects.remove(trial, do_unlink=True)
+        else:
+            bpy.data.objects.remove(low, do_unlink=True)
+            low = trial
+            low.name = "lod0"
     if p["mode"] == "decimate" or fallback:
         ratio = cm.decimate_ratio(len(low.data.polygons), p["target_faces"])
         if ratio is not None:
@@ -538,11 +541,17 @@ def game_ready(p, emit):
     size = p["texture_size"]
     out_dir = os.path.dirname(p["out_prefix"])
     images = {}
-    if not any(s.material for s in low.material_slots) and not (p["mode"] == "remesh" and not fallback):
-        low.data.materials.clear()
-        blank = bpy.data.materials.new("lod0")
-        blank.use_nodes = True
-        low.data.materials.append(blank)
+    if not (p["mode"] == "remesh" and not fallback):
+        if not any(s.material for s in low.material_slots):
+            low.data.materials.clear()
+        if not low.material_slots or any(s.material is None for s in low.material_slots):
+            blank = bpy.data.materials.new("lod0")
+            blank.use_nodes = True
+            if not low.material_slots:
+                low.data.materials.append(blank)
+            for slot in low.material_slots:
+                if slot.material is None:
+                    slot.material = blank
     if p["mode"] == "remesh" and not fallback:
         mat = bpy.data.materials.new("lod0")
         mat.use_nodes = True
@@ -595,7 +604,8 @@ def game_ready(p, emit):
                     "dims": [round(float(x), 4) for x in hi_i - lo_i]})
     # One file with every LOD sharing one texture set; nodes keep the usual _LODn naming (the exported Unity
     # bundle's editor script builds the LODGroup from it, since glTF importers do not).
-    stem = p.get("name") or os.path.basename(p["out_prefix"])
+    # Blender caps object names at 63 bytes; a cut "_LODn" tail would break the Unity script's LOD lookup.
+    stem = (p.get("name") or os.path.basename(p["out_prefix"])).encode()[:50].decode(errors="ignore")
     for i, o in enumerate(lods):
         o.name = f"{stem}_LOD{i}"
     combined = f"{p['out_prefix']}_lods.glb"

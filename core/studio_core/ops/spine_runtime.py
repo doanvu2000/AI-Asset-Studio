@@ -132,7 +132,7 @@ def render(pose: Pose, atts: dict[str, dict[str, dict[str, Any]]], images: Regio
     """Draw the posed skeleton; box = world (x0, y0, x1, y1) y-up mapped to an image at `scale` px per unit."""
     size = _canvas_size(box, scale)
     canvas = Image.new("RGBa", size, (0, 0, 0, 0))
-    for slot, _, layer in layers(pose, atts, images, box, scale):
+    for slot, _, layer, _ in layers(pose, atts, images, box, scale):
         canvas = _add(canvas, layer) if slot.get("blend") == "additive" else _over(canvas, layer)
     return canvas.convert("RGBA")
 
@@ -143,7 +143,7 @@ def _canvas_size(box: tuple[float, float, float, float], scale: float) -> tuple[
 
 def layers(pose: Pose, atts: dict[str, dict[str, dict[str, Any]]], images: RegionImages,
            box: tuple[float, float, float, float], scale: float):
-    """(slot, region path, tinted premultiplied canvas-size layer) in draw order."""
+    """(slot, region path, tinted premultiplied canvas-size layer, RGBA tint) in draw order."""
     x0, y0, x1, y1 = box
     size = _canvas_size(box, scale)
     to_px = np.array([[scale, 0.0], [0.0, -scale]])
@@ -165,11 +165,12 @@ def layers(pose: Pose, atts: dict[str, dict[str, dict[str, Any]]], images: Regio
             inv = np.linalg.inv(fwd)
             layer = img.transform(size, Image.Transform.AFFINE, tuple(inv[:2].reshape(-1)),
                                   resample=Image.Resampling.BILINEAR)
-        tint = _rgba(slot.get("color")) * _rgba(att.get("color"))
+        color = _rgba(slot.get("color")) * _rgba(att.get("color"))
+        tint = color.copy()
         tint[:3] *= tint[3]  # layers are premultiplied
         if (tint != 1).any():
             layer = Image.fromarray((np.asarray(layer, np.float32) * tint).astype(np.uint8), "RGBa")
-        yield slot, path, layer
+        yield slot, path, layer, color
 
 
 def _rgba(hex_color: str | None) -> np.ndarray:
