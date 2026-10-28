@@ -985,3 +985,12 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   `ops/store_capsules.py`, `ops/store_kit.py`, `adapters/store_layout.py` (`claude.store_layout`). Zip iOS appiconset/Android
   adaptive+mipmap/Steam capsule/web favicon/Windows ico. 18 test; live 65.5s, $0.043. Sửa "icon trong icon" (`tile_box`) chỉ kiểm offline.
 - [x] 2026-10-29 Kiểm 656 pass / 4 skip, typecheck sạch → commit mốc #20 (kèm code dở #19/#21/#8+#12/#24).
+- [~] 2026-10-29 Giao #27 style bible. Handoff 0230 cập nhật (mốc 2e7c7a4). Chủ nhân: tự làm + tự test, máy để mở.
+- [x] 2026-10-29 #19 Parallax xong (agent): `ops/parallax.py` (`op.parallax_layers`: BiRefNet cutout, ground_fill, haze, seamless X
+  cắt đường ít lệch), recipe `parallax-layers` (Z-Image từng lớp), `export/parallax.py` (Unity prefab Tiled + `AssetStudioParallax.cs`,
+  Godot Parallax2D). 9 test; live 4 lần ~80s; Godot load OK, Unity chưa import. Z-Image cfg1 không nghe phủ định.
+- [x] 2026-10-29 #21 Bản địa hoá chữ xong (agent): `adapters/localize.py`, `ops/localize.py` (mask CPU/Klein inpaint chỉ trong mask,
+  font theo hệ chữ, fit), recipe `image-localize`, `export/localize.py` (Localized/ + README remap). 10 test; live 28–31s, ~$0.04.
+  Không raqm → Ả Rập/Devanagari/Thái có thể sai. Agent lỡ xoá `.gpu-lock` người khác 1 lần (đã tạo lại).
+- [x] 2026-10-29 Kiểm 677 pass / 4 skip, typecheck sạch → commit mốc #19 + #21.
+- [~] 2026-10-29 Giao #23 autotile, #22 key art động (kiểm license/VRAM Wan2.2-5B trước).

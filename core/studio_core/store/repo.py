@@ -271,6 +271,15 @@ class SqliteRepo:
                             (project_id, orjson.dumps(rows, default=to_jsonable_python).decode(), now))
         return now
 
+    async def get_style_bible(self, project_id: str) -> dict[str, Any] | None:
+        row = await self.db.fetchone("SELECT data FROM style_bibles WHERE project_id = ?", (project_id,))
+        return orjson.loads(row["data"]) if row else None
+
+    async def save_style_bible(self, project_id: str, data: dict[str, Any]) -> None:
+        await self.db.write("INSERT INTO style_bibles (project_id, data, updated_at) VALUES (?, ?, ?) "
+                            "ON CONFLICT(project_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+                            (project_id, orjson.dumps(data, default=to_jsonable_python).decode(), time.time()))
+
     async def run_states(self, run_ids: list[str]) -> dict[str, dict[str, Any]]:
         """run id -> {status, approved (count of approved versions)}; unknown ids are left out."""
         out: dict[str, dict[str, Any]] = {}

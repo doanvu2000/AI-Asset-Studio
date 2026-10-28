@@ -65,6 +65,15 @@ export function checkEngineOptions(v: unknown): EngineExportOptions {
     }
     out.shader_params = clean
   }
+  const { normal2d, normal2d_strength: nStrength } = v as Record<string, unknown>
+  if (normal2d !== undefined && normal2d !== null) {
+    if (typeof normal2d !== 'boolean') throw new Error('invalid normal2d flag')
+    out.normal2d = normal2d
+  }
+  if (nStrength !== undefined && nStrength !== null) {
+    if (typeof nStrength !== 'number' || !Number.isFinite(nStrength) || nStrength <= 0 || nStrength > 10) throw new Error('invalid normal2d strength')
+    out.normal2d_strength = nStrength
+  }
   return out
 }
 const NAME_MAX = 200

@@ -72,6 +72,14 @@ const savedTol = Number(readPref(TOL_KEY) ?? NaN)
 const tolerance = ref(Number.isFinite(savedTol) && savedTol >= 0 && savedTol <= 64 ? savedTol : 1.5)
 const tolValid = computed(() => Number.isFinite(tolerance.value) && tolerance.value >= 0 && tolerance.value <= 64)
 watch(tolerance, (v) => tolValid.value && writePref(TOL_KEY, String(v)))
+const NORMAL_KEY = 'export:normal2d'
+const NSTRENGTH_KEY = 'export:normal2d-strength'
+const normal2d = ref(readPref(NORMAL_KEY) === 'on')
+const savedStrength = Number(readPref(NSTRENGTH_KEY) ?? NaN)
+const normalStrength = ref(Number.isFinite(savedStrength) && savedStrength > 0 && savedStrength <= 10 ? savedStrength : 1)
+const strengthValid = computed(() => Number.isFinite(normalStrength.value) && normalStrength.value > 0 && normalStrength.value <= 10)
+watch(normal2d, (v) => writePref(NORMAL_KEY, v ? 'on' : 'off'))
+watch(normalStrength, (v) => strengthValid.value && writePref(NSTRENGTH_KEY, String(v)))
 const SHADERS_KEY = 'export:shaders'
 const shaderList = computed<ShaderPresetInfo[]>(() => opts.value?.shaders ?? [])
 const picked = ref<string[]>(readJson<string[]>(SHADERS_KEY, []).filter((s) => typeof s === 'string'))
@@ -108,8 +116,9 @@ function shaderOpts(): Pick<EngineExportOptions, 'shaders' | 'shader_params'> {
 }
 function engineOpts(): EngineExportOptions {
   const base = { ppu: ppuValid.value ? ppu.value : 100, pixel: pixelMode.value === 'auto' ? null : pixelMode.value === 'on', ...shaderOpts() }
-  if (!opts.value?.sprite_sheet) return base
-  return { ...base, collider: colliderOn.value, collider_tolerance: tolValid.value ? tolerance.value : 1.5 }
+  const normal = opts.value?.normal2d && normal2d.value ? { normal2d: true, normal2d_strength: strengthValid.value ? normalStrength.value : 1 } : {}
+  if (!opts.value?.sprite_sheet) return { ...base, ...normal }
+  return { ...base, ...normal, collider: colliderOn.value, collider_tolerance: tolValid.value ? tolerance.value : 1.5 }
 }
 const PIXEL_MODES: { id: PixelMode; label: string }[] = [
   { id: 'auto', label: 'Tự động' },
@@ -289,6 +298,25 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
                 title="Độ sai lệch tối đa khi rút gọn viền (pixel): lớn hơn = ít đỉnh hơn"
                 aria-label="Độ sai lệch viền collider (pixel)"
                 :aria-invalid="!tolValid"
+              />
+            </div>
+            <div v-if="opts?.normal2d" class="b-opt">
+              <label class="b-check" title="Sinh normal map trên CPU từ alpha (vát tròn viền) + độ sáng, từng khung riêng — sprite nhận Light2D (Godot CanvasTexture, Unity URP 2D _NormalMap)">
+                <input v-model="normal2d" type="checkbox" />
+                <span class="b-opt-label">Normal map 2D</span>
+              </label>
+              <input
+                v-if="normal2d"
+                v-model.number="normalStrength"
+                class="field num b-ppu"
+                :class="{ bad: !strengthValid }"
+                type="number"
+                min="0.1"
+                max="10"
+                step="0.1"
+                title="Độ nổi: lớn hơn = viền và chi tiết dốc hơn dưới đèn"
+                aria-label="Độ nổi normal map 2D"
+                :aria-invalid="!strengthValid"
               />
             </div>
             <div v-if="shaderList.length" class="b-shaders">

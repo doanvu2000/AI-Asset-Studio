@@ -93,6 +93,12 @@ CREATE TABLE IF NOT EXISTS manifests (
     rows TEXT NOT NULL DEFAULT '[]',
     updated_at REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS style_bibles (
+    project_id TEXT PRIMARY KEY,
+    data TEXT NOT NULL DEFAULT '{}',
+    updated_at REAL NOT NULL
+);
 """
 
 

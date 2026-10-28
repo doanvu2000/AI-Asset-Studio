@@ -124,15 +124,21 @@ def parse_lines_csv(data: bytes, *, name: str = "npc", persona: str = "") -> dic
         dialect = csv.Sniffer().sniff(text[:2048], delimiters=",;\t")
     except csv.Error:
         dialect = csv.excel
-    rows = list(csv.DictReader(io.StringIO(text), dialect=dialect))
-    if not rows or not {"id", "lang", "text"} <= {(k or "").strip().lower() for k in rows[0]}:
+    table = [r for r in csv.reader(io.StringIO(text), dialect=dialect) if any(c.strip() for c in r)]
+    header = [h.strip().lower() for h in table[0]] if table else []
+    if not {"id", "lang", "text"} <= set(header):
         raise StepError("op_bad_input", "lines CSV needs a header with id, lang, text (and optionally expression, "
                                         "category)")
+    ti, after = header.index("text"), len(header) - header.index("text") - 1
     by_id: dict[str, dict[str, Any]] = {}
     langs: list[str] = []
     exprs = ["neutral"]
-    for r in rows:
-        r = {(k or "").strip().lower(): (v or "").strip() for k, v in r.items()}
+    for cells in table[1:]:
+        if len(cells) > len(header):
+            # Unquoted commas inside the line text: the extra cells belong to the text column.
+            sep = dialect.delimiter
+            cells = [*cells[:ti], sep.join(cells[ti:len(cells) - after]), *cells[len(cells) - after:]]
+        r = {h: (cells[i] if i < len(cells) else "").strip() for i, h in enumerate(header)}
         lid, lang, body = slug(r.get("id"), ""), r.get("lang", "").lower(), " ".join(r.get("text", "").split())
         if not lid or not lang or not body:
             continue

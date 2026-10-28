@@ -1,0 +1,28 @@
+id: sprite-normal-map
+name: Normal map 2D cho sprite
+description: >-
+  Ảnh sprite (nền trong) hoặc sprite sheet → height từ khoảng cách tới viền alpha (vát tròn silhouette) + chi tiết độ
+  sáng → normal map Sobel, kênh G hướng lên (OpenGL) — Godot CanvasTexture và Unity URP 2D Light đọc thẳng. Sheet tính
+  từng khung riêng (đặt số cột/hàng) nên viền không lem sang khung bên cạnh. Ảnh xem trước: gốc | normal | chiếu sáng
+  thử. Chạy CPU, không cần GPU. Xuất engine từ bước sprite sheet có sẵn tuỳ chọn "Normal map 2D".
+inputs:
+  image: {type: image, label: Sprite hoặc sprite sheet (nền trong suốt)}
+  strength: {type: float, default: 1.0, min: 0.1, max: 10, label: Độ nổi}
+  bevel: {type: float, default: 0, min: 0, max: 64, label: "Độ vát viền (px, 0 = tự động)"}
+  detail: {type: float, default: 0.5, min: 0, max: 4, label: Chi tiết từ độ sáng}
+  cols: {type: int, default: 1, min: 1, max: 64, label: Số cột khung (sheet)}
+  rows: {type: int, default: 1, min: 1, max: 64, label: Số hàng khung (sheet)}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: normal
+    kind: op.normal2d
+    in: {images: inputs.image}
+    params: {strength: "${inputs.strength}", bevel: "${inputs.bevel}", detail: "${inputs.detail}",
+             cols: "${inputs.cols}", rows: "${inputs.rows}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: normal.preview, images: normal.images}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview

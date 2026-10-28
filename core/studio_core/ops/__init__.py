@@ -12,6 +12,7 @@ from .pixel import PIXEL_OPS
 from .presets import PresetStore
 from .localize import LOCALIZE_OPS
 from .lut import LUT_OPS
+from .normal2d import NORMAL2D_OPS
 from .npc import NPC_OPS
 from .parallax import PARALLAX_OPS
 from .rarity import RARITY_OPS
@@ -51,4 +52,6 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(tile_cls())
     for store_cls in STORE_OPS:
         registry.register(store_cls())
+    for n2d_cls in NORMAL2D_OPS:
+        registry.register(n2d_cls())
     return []

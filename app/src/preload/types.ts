@@ -121,6 +121,9 @@ export interface EngineExportOptions {
   /** Sprite shader preset ids (hit_flash, dissolve…) shipped with a material each; one = assigned to the sprite. */
   shaders?: string[]
   shader_params?: Record<string, Record<string, number | string>>
+  /** CPU normal map for 2D lights (per frame); a normal sheet rendered from 3D is kept instead. */
+  normal2d?: boolean
+  normal2d_strength?: number
 }
 
 export interface ShaderPresetInfo {
@@ -145,6 +148,8 @@ export interface BundleOptions {
   engines?: BundleEngine[]
   collider_default?: boolean
   shaders?: ShaderPresetInfo[]
+  /** Sprite sheet present, so the "Normal map 2D" export option applies. */
+  normal2d?: boolean
 }
 
 export interface ExportedBundle {

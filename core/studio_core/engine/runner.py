@@ -38,6 +38,7 @@ from .chain import CHAIN_ERROR, CHAIN_KEY, CHAIN_PARENT, CHAIN_RUNS, map_inputs,
 from .gates import GATES, gate_enabled
 from .library import RecipeLibrary
 from .projects import apply_style
+from . import style_bible as sb
 from .qa import version_qa
 from .recipe import BLOB_TYPES, Recipe, RecipeError, find_step_refs, ref_value, substitute_refs
 from .scheduler import LaneScheduler
@@ -284,8 +285,10 @@ class StudioEngine:
             project = await self.repo.get_project(project_id)
             if project is None:
                 raise NotFoundError(f"unknown project: {project_id}")
+            user_inputs = inputs or {}
             inputs, applied = apply_style(recipe, inputs, project.style)
             meta = {**(overrides.get(META_KEY) or {}), "project_id": project_id, "project_applied": applied}
+            inputs = await self._apply_style_bible(recipe, inputs, user_inputs, project_id, meta)
             overrides = {**overrides, META_KEY: meta}
         values = await self.check_inputs(recipe, inputs)
         chain = parse_chain((overrides.get(META_KEY) or {}).get(CHAIN_KEY), self.get_recipe)
@@ -324,6 +327,22 @@ class StudioEngine:
         st = _RunState(run=run, steps={s.key: s for s in steps})
         self._start_driver(st)
         return run.id
+
+    async def _apply_style_bible(self, recipe: Recipe, inputs: dict[str, Any], user_inputs: dict[str, Any],
+                                 project_id: str, meta: dict[str, Any]) -> dict[str, Any]:
+        """Writes the applied bible version into `meta`; `$meta.use_style_bible: false` opts the run out."""
+        get = getattr(self.repo, "get_style_bible", None)
+        if get is None or meta.get(sb.OPT_OUT_KEY) is False:
+            return inputs
+        raw = await get(project_id)
+        if not raw:
+            return inputs
+        bible = sb.StyleBible.model_validate(raw)
+        if not bible.active:
+            return inputs
+        inputs, used = sb.apply_bible(recipe, inputs, user_inputs, bible)
+        meta[sb.RECORD_KEY] = {"version": bible.version, "applied": used}
+        return inputs
 
     def _start_driver(self, st: _RunState) -> None:
         self._runs[st.run.id] = st

@@ -197,6 +197,9 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
 
     src.damage_states, src.damage_pieces, src.damage_canvas = damage_set(step, blobs)
     src.soundscape = soundscape_doc(step, blobs)
+    from studio_core.export.npc import npc_set
+
+    src.npc, src.npc_portraits = npc_set(step, blobs)
     src.luts, src.lut_seamless = lut_set(step, blobs)
     from studio_core.export.parallax import parallax_set
 
@@ -348,12 +351,12 @@ def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
     return (src.sheet is not None or src.spine_json is not None or bool(src.glb) or bool(src.textures)
             or bool(src.audio) or bool(src.ui) or bool(src.pbr) or bool(src.fbx)
             or bool(src.rarity) or bool(src.luts) or bool(src.damage_states)
-            or bool(src.parallax) or bool(src.localized))
+            or bool(src.parallax) or bool(src.localized) or bool(src.npc))
 
 
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,
                   engine: str, ppu: float = 100.0, pixel: bool | None = None, collider: Any = None,
-                  shaders: list[Any] | None = None) -> dict[str, Any]:
+                  shaders: list[Any] | None = None, normal2d: Any = None) -> dict[str, Any]:
     exporter = ENGINES.get(engine)
     if exporter is None:
         raise BundleError(f"unknown engine '{engine}' (use {', '.join(ENGINES)})")
@@ -361,7 +364,12 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
     folder = safe_component(base, step.key)
     src = engine_source(step, siblings, blobs, ident(folder, "asset"), ppu, pixel)
     src.collider = collider
+    from studio_core.export.normal2d import apply as apply_normal2d, append_readme
+
+    normal_note = apply_normal2d(src, normal2d)
     files = exporter(src)
+    if normal_note:
+        files = append_readme(files, normal_note)
     if not files:
         raise BundleError("nothing to export for a game engine (needs a sprite sheet, Spine export, GLB, tileable "
                           "texture, PBR material, sound, UI kit, rarity set, LUT pack or parallax layers)")

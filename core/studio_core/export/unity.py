@@ -668,6 +668,12 @@ def export(src: Source) -> Files:
         s_files, s_notes = soundscape_files(src)
         files += s_files
         notes += s_notes
+    if src.npc:
+        from studio_core.export.npc import unity_files as npc_files
+
+        n_files, n_notes = npc_files(src)
+        files += n_files
+        notes += n_notes
     if src.luts:
         from studio_core.export.lut import unity_files as lut_files
 

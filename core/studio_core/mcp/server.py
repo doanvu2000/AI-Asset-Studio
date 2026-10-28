@@ -209,7 +209,8 @@ class StudioTools:
             raise ToolError(f"upload {p}: {e.code}: {e.message}") from e
 
     async def start_run(self, recipe: str, inputs: dict[str, Any], title: str | None,
-                        gate_policy: GatePolicy, project_id: str | None = None) -> dict[str, Any]:
+                        gate_policy: GatePolicy, project_id: str | None = None,
+                        use_style_bible: bool = True) -> dict[str, Any]:
         r = await self._recipe(recipe)
         specs = r.get("inputs", {})
         unknown = sorted(set(inputs) - set(specs))
@@ -219,10 +220,12 @@ class StudioTools:
         for name, spec in specs.items():
             if spec.get("type") in BLOB_TYPES and values.get(name) not in (None, ""):
                 values[name] = await self._blob_input(name, _with_siblings(name, spec, values[name]))
-        body = {"recipe_id": recipe, "inputs": values, "title": title or "",
-                "params": {META_KEY: {"source": "mcp", "gate_policy": gate_policy}}}
+        body: dict[str, Any] = {"recipe_id": recipe, "inputs": values, "title": title or "",
+                                "params": {META_KEY: {"source": "mcp", "gate_policy": gate_policy}}}
         if project_id:
             body["project_id"] = _safe_id(project_id, "project_id")
+        if not use_style_bible:
+            body["params"][META_KEY]["use_style_bible"] = False
         res = await self._call("POST", "/api/runs", json=body)
         out = {"run_id": res["run_id"], "recipe": recipe, "gate_policy": gate_policy,
                "next": "call wait_run(run_id)"}
@@ -508,7 +511,8 @@ def build_server(link: CoreLink) -> MCPServer:
 
     @mcp.tool(annotations=acts)
     async def start_run(recipe: str, inputs: dict[str, Any], title: str | None = None,
-                        gate_policy: GatePolicy = "human", project_id: str | None = None) -> dict[str, Any]:
+                        gate_policy: GatePolicy = "human", project_id: str | None = None,
+                        use_style_bible: bool = True) -> dict[str, Any]:
         """Start a recipe run and return its run_id immediately (use wait_run to follow it).
 
         inputs: {input_name: value}; image/mesh/file/video inputs take absolute file paths (uploaded for
@@ -517,8 +521,9 @@ def build_server(link: CoreLink) -> MCPServer:
         'agent' = you look at candidates (get_run/wait_run) and call resolve_gate;
         'auto_first' = wait_run auto-picks the first candidate(s) and approves every approve gate.
         project_id (from list_projects): the project's locked style (prompt prefix/suffix, preset, palette,
-        reference image, default inputs) fills the inputs you leave out; inputs you pass always win."""
-        return await tools.start_run(recipe, inputs, title, gate_policy, project_id)
+        reference image, default inputs) fills the inputs you leave out; inputs you pass always win.
+        use_style_bible=False skips the project's active style bible (get_style_bible) for this run."""
+        return await tools.start_run(recipe, inputs, title, gate_policy, project_id, use_style_bible)
 
     @mcp.tool(annotations=read_only)
     async def list_projects(include_archived: bool = False) -> dict[str, Any]:
@@ -629,6 +634,21 @@ def build_server(link: CoreLink) -> MCPServer:
         if instructions:
             body["instructions"] = instructions
         return await tools._call("POST", f"/api/projects/{_safe_id(project_id, 'project_id')}/qa/fix", json=body)
+
+    @mcp.tool(annotations=read_only)
+    async def get_style_bible(project_id: str) -> dict[str, Any]:
+        """The project's style bible (null if never built): palette, outline, light direction, pixel_art flag,
+        reference images, the prompt `suffix`/`negative` added to new runs of the project, `active`, `version`."""
+        return await tools._call("GET", f"/api/projects/{_safe_id(project_id, 'project_id')}/style")
+
+    @mcp.tool(annotations=acts)
+    async def build_style_bible(project_id: str, vision: bool = True) -> dict[str, Any]:
+        """(Re)build the project's style bible from its approved image assets. vision=True lets Claude write the
+        prompt suffix/negative from a contact sheet (costs API credits); False uses measured stats only. While
+        active, new runs in the project get the suffix, negative and default style reference (start_run
+        use_style_bible=False opts one run out)."""
+        return await tools._call("POST", f"/api/projects/{_safe_id(project_id, 'project_id')}/style/build",
+                                 json={"vision": vision}, timeout=300)
 
     @mcp.tool(annotations=read_only)
     async def recipe_stats(days: int | None = 30, project_id: str | None = None) -> dict[str, Any]:

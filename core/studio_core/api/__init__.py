@@ -8,6 +8,7 @@ from studio_core.api import setup
 from studio_core.api import manifest
 from studio_core.api import engine_preview
 from studio_core.api import project_qa
+from studio_core.api import style_bible
 from studio_core.api.auth import OriginCheckMiddleware
 from studio_core.api.errors import ApiError, OrjsonResponse, install_error_handlers
 
@@ -22,6 +23,7 @@ def mount_api(app: FastAPI, allowed_origins: list[str]) -> None:
     app.include_router(manifest.router)
     app.include_router(engine_preview.router)
     app.include_router(project_qa.router)
+    app.include_router(style_bible.router)
     app.include_router(diagnostics.router)
     app.include_router(stats.router)
     app.include_router(qa.router)

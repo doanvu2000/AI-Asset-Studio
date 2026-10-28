@@ -455,7 +455,8 @@ def _stem(name: str | None) -> str:
 
 def prep(src: Image.Image, plan: dict[str, Any], removal: str = "auto", flat_tau: float = FLAT_RESIDUAL
          ) -> tuple[Image.Image, list[Image.Image], np.ndarray, list[dict[str, Any]]]:
-    rgba = np.asarray(src.convert("RGBA")).copy()
+    orig = np.asarray(src.convert("RGBA"))
+    rgba = orig.copy()
     H, W = rgba.shape[:2]
     regions = [r for r in plan.get("regions") or [] if r.get("translate", True)]
     def box_of(r: dict[str, Any]) -> np.ndarray:
@@ -483,7 +484,8 @@ def prep(src: Image.Image, plan: dict[str, Any], removal: str = "auto", flat_tau
         entry = {"id": r["id"], "bbox": r["bbox"], "container": r["container"], "ink": a["ink"], "box": R,
                  "flat": a["flat"], "residual": a["residual"], "removal": method, "label": i + 1}
         if method == "klein":
-            hole, C, size = klein_crop(rgba, R, full)
+            # Klein sees the text it must remove: a blurred CPU prefill as reference gets copied back verbatim.
+            hole, C, size = klein_crop(orig, R, full)
             entry.update({"crop": C, "crop_size": size, "hole": len(holes)})
             holes.append(hole)
         info.append(entry)

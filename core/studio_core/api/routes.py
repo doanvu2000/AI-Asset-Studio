@@ -26,6 +26,7 @@ from studio_core.ops.presets import ExportPreset, PresetStore
 from studio_core.export.collider import DEFAULT_TOLERANCE, ColliderOptions, default_enabled
 from studio_core.export.shaders import ShaderError, applies_to as shaders_apply, catalog as shader_catalog
 from studio_core.export.shaders import resolve as resolve_shaders
+from studio_core.export.normal2d import Normal2DOptions
 from studio_core.store.bundle import (ENGINES, BundleError, engine_ready, engine_source, export_bundle, export_engine,
                                       sheet_meta)
 from studio_core.store.export import export_copy
@@ -497,6 +498,10 @@ class StepExport(BaseModel):
     # Sprite shader presets (export/shaders.py), e.g. ["hit_flash"]; shader_params = {"hit_flash": {"color": "#fff"}}.
     shaders: list[str] = Field(default_factory=list, max_length=16)
     shader_params: dict[str, dict[str, float | str]] = Field(default_factory=dict)
+    # CPU normal map for the sprite sheet (export/normal2d.py); bevel None = auto from the frame size.
+    normal2d: bool = False
+    normal2d_strength: float = Field(1.0, gt=0, le=10)
+    normal2d_bevel: float | None = Field(None, gt=0, le=64)
 
 
 async def _collider_default(request: Request, step: Any) -> bool:
@@ -525,6 +530,7 @@ async def step_export_options(request: Request, step_id: str) -> Response:
     return _json({"step_id": step.id, "kind": step.kind, "files": files, "sprite_sheet": meta is not None,
                   "preset": (meta or {}).get("preset"), "engines": engines,
                   "collider": collider, "collider_default": collider and await _collider_default(request, step),
+                  "normal2d": collider,
                   "shaders": shader_catalog() if src is not None and shaders_apply(src) else []})
 
 
@@ -545,9 +551,10 @@ async def export_step(request: Request, step_id: str, body: StepExport) -> Respo
             shaders = resolve_shaders(body.shaders, body.shader_params)
         except ShaderError as e:
             raise ApiError(422, "invalid", str(e)) from e
+        normal2d = (Normal2DOptions(body.normal2d_strength, body.normal2d_bevel) if body.normal2d else None)
         try:
             out = await asyncio.to_thread(export_engine, step, siblings, _blobs(request), Path(root), body.name,
-                                          body.engine, body.ppu, body.pixel, collider, shaders)
+                                          body.engine, body.ppu, body.pixel, collider, shaders, normal2d)
         except BundleError as e:
             raise ApiError(422, "not_exportable", str(e)) from e
         return _json(out)

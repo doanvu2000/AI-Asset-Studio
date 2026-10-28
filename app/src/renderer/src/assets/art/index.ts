@@ -107,6 +107,9 @@ const RECIPE_PITCH: Record<string, string> = {
   'audio-sfx': 'Mỗi dòng 1 hiệu ứng → vài bản âm thanh OGG + WAV, đã cắt lặng và chuẩn hoá',
   'audio-music': 'Prompt + BPM → nhạc nền, có thể lặp vòng tròn ô nhịp, OGG + WAV',
   'scene-soundscape': 'Ảnh cảnh → Claude soạn nhạc nền + bản căng thẳng cùng BPM, ambience lặp, 3–5 SFX môi trường, xuất Unity/Godot',
+  'npc-pack': 'Ảnh chân dung NPC → 8 biểu cảm cùng khung + thoại đúng giọng (vi/en) + giọng đọc + phụ đề, xuất NpcData Unity/Godot',
+  'npc-pack-prompt': 'Prompt → chân dung NPC → 8 biểu cảm + thoại đúng giọng (vi/en) + giọng đọc + phụ đề, xuất Unity/Godot',
+  'npc-voice-csv': 'CSV thoại (id,lang,text,expression) → giọng đọc OGG + phụ đề có mốc thời gian, không cần GPU',
   'vfx-flipbook': 'Prompt → hiệu ứng VFX nền trong suốt → chuỗi frame / flipbook',
   'concept-2d-style': 'Ảnh phong cách tham chiếu + prompt → concept 2D cùng phong cách',
   'spine-skin-variant': 'Nhân vật Spine + ảnh sửa → skin mới, tô lại atlas giữ nguyên xương',
@@ -116,6 +119,7 @@ const RECIPE_PITCH: Record<string, string> = {
   'icon-pack': 'Mỗi dòng 1 icon → cả bộ icon cùng khung, nét viền, đổ bóng',
   upscale: 'Ảnh / atlas có sẵn → bản x2, x4 nét hơn, nền trong suốt vẫn sạch',
   'pbr-material': 'Texture có sẵn → bộ map PBR (normal, height, roughness, metallic, AO) + material Unity/Godot, không cần GPU',
+  'sprite-normal-map': 'Sprite / sheet → normal map 2D (viền vát tròn theo alpha, từng khung) để nhận Light2D, chạy CPU',
   'item-rarity': 'Ảnh vật phẩm → 5 bậc common → legendary: đổi màu giữ nét, Klein thêm viền vàng / đá quý, glow + shimmer',
   'damage-states': 'Ảnh thùng / cửa / tường → nứt, vỡ, nát cùng khung + 4–8 mảnh vỡ, chớp trắng, prefab Unity / scene Godot',
   'time-season-pack': 'Tileset / background / prop → bản hoàng hôn, đêm, đông, thu giữ nguyên bố cục + LUT .cube / strip cho Unity, Godot',
@@ -143,7 +147,7 @@ export const RECIPE_GROUP_LABEL: Record<RecipeGroup, string> = {
 // Sprites and rigs are characters to the user regardless of whether they pass through a 3D mesh.
 export function recipeGroup(id: string): RecipeGroup {
   if (id.startsWith('audio-')) return 'audio'
-  if (id.startsWith('sprite-') || id.startsWith('spine-') || id.includes('character')) return 'character'
+  if (id.startsWith('sprite-') || id.startsWith('spine-') || id.startsWith('npc-') || id.includes('character')) return 'character'
   if (id.includes('3d') || id.includes('glb') || id.includes('mesh')) return '3d'
   return '2d'
 }

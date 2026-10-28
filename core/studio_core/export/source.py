@@ -14,7 +14,7 @@ class Source:
     uid: str = ""
     sheet: Path | None = None
     meta: dict[str, Any] | None = None
-    normal: Path | None = None
+    normal: Path | bytes | None = None
     clip_hint: str = "anim"
     directional_rows: bool = False
     glb: list[tuple[str, Path]] = field(default_factory=list)
@@ -55,6 +55,9 @@ class Source:
     # Localized image text (op.localize_render): (language code or "notext", path), source language.
     localized: list[tuple[str, Path]] = field(default_factory=list)
     localized_source_lang: str = ""
+    # NPC pack (op.npc_pack): its npc.json doc and (expression, portrait path); voiced clips are in `audio`.
+    npc: dict[str, Any] | None = None
+    npc_portraits: list[tuple[str, Path]] = field(default_factory=list)
     # Set when the export asked for traced 2D colliders + foot pivot on the sprite sheet (export/collider.py).
     collider: Any = None
 
