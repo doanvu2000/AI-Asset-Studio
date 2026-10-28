@@ -847,3 +847,10 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   ReferenceLatent, mỗi dòng 1 vật thể → pick → rmbg → fit → sheet. Live: 3 vật thể 141s (~43s/ảnh), ra 1024²,
   không chép nhân vật/mũ của ảnh mẫu; khớp viền nâu, cel shading, bảng màu; chất nét tay riêng khớp vừa phải.
   Ảnh: scratchpad style_check2.png. Script `e2e_text.py` nhận input "@file" (upload) + gate pick chọn hết. pytest 483/4.
+- [x] Commit (chủ nhân duyệt): 82cabb2 spine, 03359f9 3D game-ready, d0ddfea audio/VFX/style, 71608c2 planning.
+  Gộp 4 nhóm vì test/kinds/ops __init__ dùng chung. Chưa push.
+- [x] Xoá Klein bf16 F:/work/AI/comfyUI_models/diffusion_models/flux-2-klein-base-4b.safetensors: auto mode chặn
+  (xoá không hoàn tác) → chủ nhân tự chạy, đã xoá.
+- [x] Skin variant lệch màu balo/giày: tâm thống kê mean → median (viền/nền lọt vào vùng do ảnh sửa căn không khớp).
+  Đo trên edit Klein thật (scratchpad var_eval.py): sai số màu trung vị theo region 28.1 → 9.0; IQR thử bị hỏng ở
+  vùng phẳng (hair-patch ra xanh ngọc) nên giữ std. op v3. pytest 483/4. Chưa commit.
