@@ -21,6 +21,15 @@ import spineCharacterMv from './recipe-spine-character-mv.webp'
 import spriteWalk from './recipe-sprite-8dir-walk.webp'
 import textureSeamless from './recipe-texture-seamless.webp'
 import tilesetSeamless from './recipe-tileset-seamless.webp'
+import concept2dStyle from './recipe-concept-2d-style.webp'
+import spriteAnim from './recipe-sprite-8dir-anim.webp'
+import spritePixel from './recipe-sprite-8dir-pixel.webp'
+import sprite3dPixel from './recipe-sprite-8dir-3d-pixel.webp'
+import spineSkinVariant from './recipe-spine-skin-variant.webp'
+import spineAnimRef from './recipe-spine-anim-ref.webp'
+import audioSfx from './recipe-audio-sfx.webp'
+import audioMusic from './recipe-audio-music.webp'
+import vfxFlipbook from './recipe-vfx-flipbook.webp'
 
 export const ART = { appIcon, emptyRuns, emptyGates, emptyGallery, coreDisconnected, gettingStarted } as const
 
@@ -28,7 +37,7 @@ const RECIPE_ART: Record<string, string> = {
   'concept-2d': concept2d,
   'concept-2d-codex': concept2dCodex,
   'concept-2d-brief': concept2dBrief,
-  'concept-2d-style': concept2d,
+  'concept-2d-style': concept2dStyle,
   'variants-2d': variants2d,
   'sprite-8dir-2d': sprite2d,
   'sprite-8dir-2d-prompt': sprite2dPrompt,
@@ -38,16 +47,20 @@ const RECIPE_ART: Record<string, string> = {
   'sprite-8dir-3d-mv': sprite3dMv,
   'sprite-8dir-glb': spriteGlb,
   'sprite-8dir-walk': spriteWalk,
-  'sprite-8dir-anim': spriteWalk,
-  'sprite-8dir-pixel': spriteGlb,
-  'sprite-8dir-3d-pixel': sprite3d,
+  'sprite-8dir-anim': spriteAnim,
+  'sprite-8dir-pixel': spritePixel,
+  'sprite-8dir-3d-pixel': sprite3dPixel,
   'prop-3d': prop3d,
   'procedural-3d': procedural3d,
   'spine-character': spineCharacter,
   'spine-character-mv': spineCharacterMv,
-  'spine-skin-variant': spineCharacter,
+  'spine-skin-variant': spineSkinVariant,
+  'spine-anim-ref': spineAnimRef,
   'texture-seamless': textureSeamless,
-  'tileset-seamless': tilesetSeamless
+  'tileset-seamless': tilesetSeamless,
+  'audio-sfx': audioSfx,
+  'audio-music': audioMusic,
+  'vfx-flipbook': vfxFlipbook
 }
 
 export function recipeArt(id: string): string | undefined {
@@ -80,7 +93,8 @@ const RECIPE_PITCH: Record<string, string> = {
   'audio-music': 'Prompt + BPM → nhạc nền, có thể lặp vòng tròn ô nhịp, OGG + WAV',
   'vfx-flipbook': 'Prompt → hiệu ứng VFX nền trong suốt → chuỗi frame / flipbook',
   'concept-2d-style': 'Ảnh phong cách tham chiếu + prompt → concept 2D cùng phong cách',
-  'spine-skin-variant': 'Nhân vật Spine + ảnh sửa → skin mới, tô lại atlas giữ nguyên xương'
+  'spine-skin-variant': 'Nhân vật Spine + ảnh sửa → skin mới, tô lại atlas giữ nguyên xương',
+  'spine-anim-ref': 'Nhân vật Spine + video tham chiếu → anim mới cho bộ xương sẵn có'
 }
 
 export function recipePitch(id: string): string | undefined {

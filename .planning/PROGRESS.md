@@ -907,5 +907,6 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [x] Godot LOD: `*_lods.glb` → `<stem>.tscn` (Node3D + instance GLB) + `asset_studio_lods.gd` (@tool, visibility range
   cho node `*_LODn`, LOD n bắt đầu ở `lod_distance`×2^(n-1), mặc định 10m) + README nhắc tắt Generate LODs. Kiểm Godot
   4.7.2 headless (`L:\AI\godot-test\LodLive`, `lod_check.gd`): 3 LOD 0–10/10–20/20–∞, fails=0. pytest 490 pass / 4 skip.
-- [ ] Art recipe audio/VFX: subagent đang làm. 2 subagent nghiên cứu ≥5 chức năng mới (thực dụng, dùng Claude/Codex
-  CLI, ComfyUI, Unity/Blender/Figma/GitHub/GitLab MCP).
+- [x] Art recipe: 9 webp mới (audio-sfx/music, vfx-flipbook, spine-anim-ref, concept-2d-style, spine-skin-variant,
+  sprite-8dir-anim/pixel/3d-pixel) qua `app/scripts/gen-art.py` (Codex), `art/index.ts` + pitch spine-anim-ref; typecheck sạch.
+- [x] Nghiên cứu: `.planning/PLAN-2026-10-29-feature-ideas.md` (12 đề xuất, chờ chủ nhân duyệt).
