@@ -20,7 +20,8 @@ steps:
   - id: post
     kind: op.audio_post
     in: {audio: gen.audio}
-    params: {loop: true, crossfade: 2.0, peak_db: -1, formats: "ogg,wav", labels: "${inputs.prompt}"}
+    params: {loop: true, crossfade: 2.0, bpm: "${inputs.bpm}", peak_db: -1, formats: "ogg,wav",
+             labels: "${inputs.prompt}"}
   - id: approve
     kind: gate.approve
     in: {audio: post.audio, preview: post.images}

@@ -51,15 +51,24 @@ def active_span(frames: list[Image.Image]) -> tuple[int, int]:
     return (on[0], on[-1] + 1) if on else (0, len(frames))
 
 
-def square_crop(frames: list[Image.Image], pad: float = 0.04) -> tuple[int, int, int, int]:
-    box = None
-    for f in frames:
-        b = f.convert("RGBA").getchannel("A").point(lambda v: 255 if v > VISIBLE else 0).getbbox()
-        if b:
-            box = b if box is None else (min(box[0], b[0]), min(box[1], b[1]), max(box[2], b[2]), max(box[3], b[3]))
+def _mass_span(profile: np.ndarray, keep: float) -> tuple[int, int]:
+    c = np.cumsum(profile)
+    cut = (1 - keep) / 2 * c[-1]
+    return int(np.searchsorted(c, cut)), int(np.searchsorted(c, c[-1] - cut)) + 1
+
+
+def square_crop(frames: list[Image.Image], pad: float = 0.04, keep: float = 0.995) -> tuple[int, int, int, int]:
+    """Square around the box holding `keep` of all frames' alpha: a few stray sparks flying to the frame edge would
+    otherwise stretch every cell to the full frame and shrink the effect itself."""
     w, h = frames[0].size
-    if box is None:
+    mass = np.zeros((h, w), np.float64)
+    for f in frames:
+        a = np.asarray(f.convert("RGBA"))[..., 3].astype(np.float64)
+        mass += np.where(a > VISIBLE, a, 0)
+    if mass.sum() <= 0:
         return 0, 0, w, h
+    (x0, x1), (y0, y1) = _mass_span(mass.sum(0), keep), _mass_span(mass.sum(1), keep)
+    box = (x0, y0, x1, y1)
     cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
     side = max(box[2] - box[0], box[3] - box[1]) * (1 + 2 * pad)
     return (round(cx - side / 2), round(cy - side / 2), round(cx + side / 2), round(cy + side / 2))
@@ -82,6 +91,8 @@ def flipbook(frames: list[Image.Image], mode: str, size: int, fade: int = 3) -> 
     meta: dict[str, Any] = {"source_frames": len(frames), "mode": mode}
     frames = [clear_border(f) for f in frames]
     if mode == "loop":
+        if len(frames) <= MIN_LOOP:
+            raise StepError("op_bad_input", f"a loop needs more than {MIN_LOOP} frames, got {len(frames)}")
         s, e, seam = best_loop(frames)
         frames = frames[s:e]
         meta |= {"loop_start": s, "loop_end": e, "loop_seam": seam}
@@ -97,7 +108,7 @@ def flipbook(frames: list[Image.Image], mode: str, size: int, fade: int = 3) -> 
 
 class VfxFrames(OpExecutor):
     kind = "op.vfx_frames"
-    version = "2"
+    version = "3"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = _images_in(inputs)

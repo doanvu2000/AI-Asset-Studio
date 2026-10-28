@@ -1,6 +1,6 @@
 # Danh mục workflow ComfyUI (API)
 
-7 workflow dạng API ở `L:\AI\setup\workflows\`, đều đã chạy thử thành công ngày 2026-10-18.
+10 workflow dạng API ở `L:\AI\setup\workflows\`, đều đã chạy thử thành công ngày 2026-10-18.
 Cách gửi job / đọc kết quả: [COMFYUI-INTEGRATION.md](COMFYUI-INTEGRATION.md).
 Điểm cắm dạng máy đọc: `L:\AI\setup\workflows\index.json` (`images`, `texts`, `seeds`, `outputs` cho từng workflow).
 
@@ -15,6 +15,9 @@ Cách gửi job / đọc kết quả: [COMFYUI-INTEGRATION.md](COMFYUI-INTEGRATI
 | `img2mesh_trellis2_textured` | ảnh → mesh có texture PBR | ảnh | GLB + UV + texture 4K | ~6 phút | TRELLIS.2 + Pixal3D int8, MoGe-2, BiRefNet |
 | `edit_flux2_klein4b` | sửa ảnh theo lời | ảnh + prompt | PNG ~1MP | 102s | Flux.2 Klein base 4B fp8 |
 | `multi_angles_qwen2511` | 1 ảnh nhân vật → 8 góc máy | ảnh (+8 prompt) | 8 PNG | 461s | Qwen-Image-Edit-2511 int8 + Lightning + LoRA multi-angle |
+| `sfx_stable_audio` | text → tiếng động ngắn | prompt | audio (SaveAudio) | chưa đo | Stable Audio Open 1.0 + T5-base |
+| `music_ace_step15` | text → nhạc không lời | tags + BPM + giọng | audio (SaveAudio) | chưa đo | ACE-Step 1.5 turbo + Qwen 0.6B/1.7B |
+| `vfx_wan_alpha` | text → video có alpha (frame PNG RGBA) | prompt | chuỗi PNG RGBA | chưa đo | Wan 2.1 T2V 14B fp8 + lightx2v + Wan Alpha |
 
 \* Z-Image đo lại trên NVMe (`F:\work\AI\comfyUI_models`): lạnh 27s so với 174s khi còn ở HDD. Các workflow khác đo khi
 model còn trên HDD → thực tế nạp nhanh hơn số trong bảng. "Nóng" = model đã trong VRAM/RAM; đổi sang workflow dùng model
@@ -130,6 +133,50 @@ Output: node `9`. Giữ bố cục/nhân vật, đổi chi tiết theo prompt. D
 - `427:<nhánh>:168.value` (mặc định `true`) = dùng LoRA Lightning (4 steps, cfg 1). `false` → 40 steps, cfg 4,
   gấp 10 lần số step (mỗi nhánh có switch riêng; `<nhánh>` = 221, 246, 271, 296, 321, 346, 371, 423).
 - Chỉ cần ít góc: xoá output node của nhánh không dùng khỏi prompt trước khi gửi → server bỏ cả nhánh đó.
+
+## 8. `sfx_stable_audio` — text → tiếng động (SFX)
+
+| Key | Mặc định | Ghi chú |
+|---|---|---|
+| `6.text` | `sword slash whoosh, single hit, game sound effect` | **prompt** (tiếng Anh); recipe nối thêm "single isolated game sound effect, clean…" |
+| `7.text` | `music, speech, noise floor, reverb tail` | negative |
+| `11.seconds` | 3.0 | độ dài sinh (recipe cho 0.5–20s) |
+| `11.batch_size` | 1 | số bản mỗi prompt |
+| `3.seed` | 0 | random mỗi lần |
+| `3.steps` / `3.cfg` | 50 / 4.98 | sampler `dpmpp_3m_sde_gpu` |
+
+Model: `stable-audio-open-1.0` (checkpoint), `t5-base` (CLIP type `stable_audio`). Output: node `20` (`SaveAudio`) → `output\audio\sfx*`.
+Recipe `audio-sfx` ghép nhiều dòng thành 1 job, rồi `op.audio_post` cắt lặng, fade, chuẩn hoá, xuất OGG + WAV + dạng sóng.
+
+## 9. `music_ace_step15` — text → nhạc nền không lời
+
+| Key | Mặc định | Ghi chú |
+|---|---|---|
+| `94.tags` | `calm fantasy village theme, … loopable game background music` | **phong cách / nhạc cụ** |
+| `94.lyrics` | `[Instrumental]` | giữ nguyên để ra nhạc không lời |
+| `94.duration` | 60.0 | giây; **phải bằng `98.seconds`** |
+| `98.seconds` | 60.0 | độ dài latent, đặt cùng giá trị với `94.duration` |
+| `94.bpm` / `94.keyscale` | 100 / `C major` | tempo, giọng |
+| `3.seed`, `94.seed` | 0 | random mỗi lần |
+| `3.steps` | 8 | bản turbo, cfg 1 |
+
+Model: `acestep_v1.5_turbo` (UNET), `qwen_0.6b_ace15` + `qwen_1.7b_ace15` (DualCLIP type `ace`), `ace_1.5_vae`. Output: node `107`
+(`SaveAudio`) → `output\audio\music*`. Recipe `audio-music` đưa kết quả qua `op.audio_post` (nối đuôi vào đầu, crossfade 2s, cắt tròn ô nhịp theo BPM).
+
+## 10. `vfx_wan_alpha` — text → video có alpha (VFX)
+
+| Key | Mặc định | Ghi chú |
+|---|---|---|
+| `6.text` | (prompt lửa phép) | **prompt**; phải có câu "The background of this video is transparent." |
+| `40.length` | 33 | số frame (recipe: 17 / 33 / 49) |
+| `40.width` / `40.height` | 512 / 512 | |
+| `3.seed` | 0 | random mỗi lần |
+| `3.steps` | 6 | nhờ LoRA lightx2v (cfg 1, `uni_pc`) |
+
+Model: `wan2.1_t2v_14B_fp8_scaled`, LoRA `lightx2v_T2V_14B_cfg_step_distill_v2` + `wan_alpha_2.1_rgba_lora`, `umt5_xxl_fp8_e4m3fn_scaled`,
+2 VAE `wan_alpha_2.1_vae_rgb_channel` / `_alpha_channel`. Output: node `90` (`SaveImage`, PNG RGBA → `output\vfx\frame*`).
+Chạy được trên 12 GB VRAM nhưng cần nhiều RAM hệ thống (máy test 64 GB); recipe đặt `_free_before` và timeout 1800s. `op.vfx_frames` cắt đoạn
+(oneshot / loop) rồi `op.sheet` ghép sprite sheet.
 
 ---
 

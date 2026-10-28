@@ -28,12 +28,18 @@ Tải xong → mở app → bấm **Cài tự động** (xem [Cài đặt](#cài
 |------|-----------|-----------|
 | Ảnh vật phẩm / nhân vật nền trong | **Concept 2D** (Z-Image, Codex, hoặc *ý tưởng → brief* để Claude viết prompt giúp) | PNG nền trong suốt |
 | Nhiều biến thể từ ảnh có sẵn | **Biến thể 2D (Flux.2 Klein)** | Biến thể + sprite sheet |
+| Vẽ vật thể mới đúng style của 1 ảnh mẫu | **Concept 2D theo style tham chiếu (Flux.2 Klein)**: mỗi dòng 1 vật thể, Dự án tự điền ảnh tham chiếu, không cần train LoRA | PNG nền trong suốt + sprite sheet |
 | Texture lát liền mạch | **Texture liền mạch** | Texture + điểm mối nối, normal map, bản pixel art |
 | Bộ ô nền (cỏ / đất…) | **Tileset liền mạch** | Ô chung mép, hoặc bộ Wang 16 ô từ 2 vật liệu |
 | Nhân vật nhìn 8 hướng | **Sprite 8 hướng** (2D nhanh từ ảnh, hoặc 3D qua mesh: đều hơn) | Sprite sheet 8 hướng + JSON, tuỳ chọn normal map / pixel art |
 | Nhân vật biết đứng / đi / chạy / đánh | **Sprite 8 hướng hoạt ảnh** | Clip 8 hướng, kèm normal |
 | Nhân vật Spine có xương | **Nhân vật Spine** (hoặc *trước + sau*) | Spine 4.2: JSON + atlas + PNG, 6 animation |
-| Vật thể 3D | **Prop 3D (TRELLIS)** hoặc **Procedural 3D** (Claude viết code Blender) | GLB đã dọn + ảnh xoay vòng |
+| Thêm đi / chạy / nhảy / đánh cho Spine | **Hoạt ảnh Spine** (`spine-anim-ref`) chọn preset chuyển động | Animation đi, chạy (lặp), nhảy, tấn công / dính đòn / chết (giữ tư thế cuối); bước duyệt có kiểm tra chạm đất của chân |
+| Skin đổi màu cho nhân vật Spine | **Biến thể skin Spine**: render tư thế setup → Klein đổi màu → tô lại atlas, giữ mắt / miệng | Atlas biến thể `_vN` thay thẳng atlas gốc + ảnh so sánh |
+| Vật thể 3D | **Prop 3D (TRELLIS)** hoặc **Procedural 3D** (Claude viết code Blender) | GLB đã dọn + ảnh xoay vòng; Prop 3D có bước game-ready (xem dưới) |
+| Tiếng động (SFX) | **Hiệu ứng âm thanh (Stable Audio Open)**: mỗi dòng 1 tiếng động | Cắt lặng, fade, chuẩn hoá → OGG + WAV + ảnh dạng sóng |
+| Nhạc nền lặp | **Nhạc nền lặp (ACE-Step 1.5)**: phong cách, BPM, giọng | OGG + WAV lặp liền, cắt tròn ô nhịp theo BPM |
+| Hiệu ứng VFX (nổ, chém, lửa, phép) | **VFX flipbook (Wan 2.1 Alpha)**: oneshot hoặc loop | Sprite sheet có alpha |
 
 Mẹo prompt: viết tiếng Anh, mô tả vật thể trước, phong cách sau. Chip gợi ý dưới ô prompt thêm sẵn chất liệu / phong
 cách. Muốn cả loạt asset cùng phong cách → tạo **Dự án**, khoá style + palette pixel ở đó.
@@ -46,6 +52,14 @@ Sprite hiệp sĩ 8 hướng (đánh 45°, đi 0°) dựng qua mesh 3D:
 Nhân vật Spine tự tách part + gắn xương; vũ khí cầm tay đi theo bàn tay:
 
 ![Khung hình Spine: viking và cung thủ](docs/screenshots/spine-frames.png)
+
+**Prop 3D game-ready:** bước tuỳ chọn trong Prop 3D, giảm mặt bằng remesh (QuadriFlow / voxel) hoặc decimate, bake normal + AO, ra LOD0..2 và
+`_lods.glb` gộp. Xuất Unity kèm Editor script **Asset Studio > Make LOD Group** để dựng LOD Group sẵn.
+
+**Âm thanh:** app phát thẳng OGG / WAV trong kết quả, có dạng sóng và nút bật / tắt lặp để nghe thử vòng nhạc.
+
+**VFX flipbook** chạy được trên GPU 12 GB VRAM nhưng cần nhiều RAM hệ thống (máy test 64 GB); mỗi lượt khoảng 1 phút trên RTX 5070 12 GB.
+
 ### Một lượt chạy
 
 Mỗi lượt chạy là một chuỗi bước, mỗi bước ghi rõ chạy ở đâu (GPU / Blender / CPU / Cloud / Thủ công) và mất bao lâu.
@@ -75,7 +89,7 @@ Màn khác: **Hàng loạt** (nhiều prompt một lần), **Quy trình** (xem +
 ### 1. Máy cần có
 
 - Windows 10/11 x64, GPU NVIDIA ≥ 12 GB VRAM, driver NVIDIA ≥ 580. Máy chuẩn: RTX 5070 12 GB, 64 GB RAM.
-- Ổ trống khoảng 100 GB (model AI ~77 GB nếu lấy đủ các gói, công cụ ~13 GB; nên để ổ SSD).
+- Ổ trống khoảng 140 GB (model AI ~115 GB nếu lấy đủ các gói, công cụ ~13 GB; nên để ổ SSD).
 - Mạng internet cho lần cài đầu. Tài khoản Claude nếu muốn dùng các bước Claude viết brief / soát khớp xương.
 
 ### 2. Mở app
@@ -105,8 +119,10 @@ Lần đầu mở app, thẻ **Bắt đầu** ở Tổng quan có nút **Cài t�
 | Biến thể + Spine | 5.7 GB | Biến thể 2D, nhân vật Spine |
 | Nhiều góc nhìn | 29.1 GB | Sprite 8 hướng 2D, sprite 3D multi-view, hoạt ảnh, Spine trước + sau |
 | 3D | 19 GB | Prop 3D, sprite 8 hướng qua mesh, hoạt ảnh |
+| Âm thanh | ~15.8 GB | Hiệu ứng âm thanh (Stable Audio Open), nhạc nền lặp (ACE-Step 1.5) |
+| Hiệu ứng VFX | ~22.5 GB | VFX flipbook (Wan 2.1 Alpha 14B fp8 + lightx2v), cần ~64 GB RAM |
 
-Mạng 100 Mbps tải đủ các gói mất khoảng 2 giờ. Đứt mạng / tắt máy giữa chừng thì mở lại và bấm **Cài tiếp**, phần đã
+Mạng 100 Mbps tải đủ các gói mất khoảng 3 giờ. Đứt mạng / tắt máy giữa chừng thì mở lại và bấm **Cài tiếp**, phần đã
 tải được giữ nguyên. Mỗi file tải xong đều được kiểm mã sha256.
 
 Codex CLI không cài tự động (chỉ dùng cho `Concept 2D (Codex)`, tuỳ chọn).

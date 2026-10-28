@@ -9,6 +9,7 @@ import pytest
 from studio_core.config import _default_ffmpeg_exe
 from studio_core.engine.recipe import load_recipes
 from studio_core.config import Settings
+from studio_core.contracts import StepError
 from studio_core.ops import audio as au
 
 
@@ -35,6 +36,9 @@ def test_loop_crossfade_is_seamless() -> None:
     # The loop's last sample hands over to its first one like consecutive source samples do.
     step = np.abs(np.diff(a[:, 0])).max()
     assert abs(loop[-1, 0] - loop[0, 0]) <= 2 * step
+    # 120 BPM: a bar is 2 s, so 30.7 s with a 2 s crossfade loops 14 whole bars (28 s).
+    music = np.zeros((int(30.7 * au.RATE), 2), np.float32)
+    assert len(au.make_loop(music, 2.0, 240 / 120)) == 28 * au.RATE
 
 
 @pytest.mark.skipif(shutil.which(_default_ffmpeg_exe()) is None and not Path(_default_ffmpeg_exe()).exists(),
@@ -90,6 +94,14 @@ def test_vfx_flipbook_loop_and_oneshot() -> None:
         lined.append(Image.fromarray(a, "RGBA"))
     _, meta2 = vfx.flipbook(lined, "oneshot", 32, fade=3)
     assert (meta2["start"], meta2["end"]) == (3, 13) and meta2["crop"] == meta["crop"]
+    # One stray spark in a corner must not stretch the shared crop to the whole frame.
+    sparked = []
+    for f in burst:
+        a = np.asarray(f.convert("RGBA")).copy()
+        a[90, 120] = (255, 255, 255, 255)
+        sparked.append(Image.fromarray(a, "RGBA"))
+    _, meta3 = vfx.flipbook(sparked, "oneshot", 32, fade=3)
+    assert max(abs(a - b) for a, b in zip(meta3["crop"], meta["crop"])) <= 2
 
 
 def test_audio_post_names_clips_by_label(tmp_path: Path) -> None:
@@ -110,3 +122,11 @@ def test_audio_post_names_clips_by_label(tmp_path: Path) -> None:
                                          {"audio": refs}))
     assert [r.name for r in res.outputs["audio"]] == ["sword_slash_1.ogg", "sword_slash_2.ogg", "coin_pickup_1.ogg",
                                                       "coin_pickup_2.ogg"]
+    looped = asyncio.run(au.AudioPost().run(ctx, {"labels": "village theme", "loop": True, "crossfade": 0.05,
+                                                  "formats": "ogg"}, {"audio": refs[:1]}))
+    assert [r.name for r in looped.outputs["audio"]] == ["village_theme_1_loop.ogg"]
+    empty = tmp_path / "empty.wav"
+    au.encode(exe, np.zeros((0, 2), np.float32), empty)
+    bad = asyncio.run(ctx.blobs.put_bytes(empty.read_bytes(), name="empty.wav"))
+    with pytest.raises(StepError):
+        asyncio.run(au.AudioPost().run(ctx, {"formats": "ogg"}, {"audio": [bad]}))

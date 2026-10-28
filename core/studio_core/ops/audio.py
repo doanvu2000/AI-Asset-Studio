@@ -47,6 +47,8 @@ def encode(exe: str, audio: np.ndarray, path: Path) -> None:
 
 
 def trim_silence(a: np.ndarray, pad_s: float = 0.01) -> np.ndarray:
+    if not len(a):
+        return a
     level = np.abs(a).max(1)
     # Generated clips carry a low noise floor after the sound; measure silence against this clip's own peak.
     floor = max(10 ** (SILENCE_DB / 20), float(level.max()) * 10 ** (RELATIVE_DB / 20))
@@ -67,9 +69,15 @@ def fade(a: np.ndarray, in_s: float, out_s: float) -> np.ndarray:
     return a
 
 
-def make_loop(a: np.ndarray, xfade_s: float) -> np.ndarray:
-    """Drop the first `xfade` and blend it under the tail, so the last sample flows into the first one."""
+def make_loop(a: np.ndarray, xfade_s: float, bar_s: float = 0.0) -> np.ndarray:
+    """Drop the first `xfade` and blend it under the tail, so the last sample flows into the first one. With `bar_s`
+    the tail is cut so the loop is a whole number of bars: the blended head and tail then share beat phase."""
     n = min(int(xfade_s * RATE), len(a) // 4)
+    if bar_s > 0:
+        bar = bar_s * RATE
+        bars = int((len(a) - n) // bar)
+        if bars >= 1:
+            a = a[:n + round(bars * bar)]
     if n <= 0:
         return a
     # Equal-power curves keep the loudness steady through the blend.
@@ -104,8 +112,10 @@ def process(exe: str, src: Path, out_dir: Path, stem: str, p: dict[str, Any]) ->
         a = trim_silence(a)
     if p["max_s"] > 0:
         a = a[:int(p["max_s"] * RATE)]
+    if not len(a):
+        raise StepError("op_bad_input", f"{src.name}: no audio left after decoding and trimming")
     if p["loop"]:
-        a = make_loop(a, p["crossfade"])
+        a = make_loop(a, p["crossfade"], 240 / p["bpm"] if p["bpm"] > 0 else 0.0)
     else:
         a = fade(a, p["fade_in"], p["fade_out"])
     a = normalize(a, p["peak_db"])
@@ -123,7 +133,7 @@ def process(exe: str, src: Path, out_dir: Path, stem: str, p: dict[str, Any]) ->
 
 class AudioPost(OpExecutor):
     kind = "op.audio_post"
-    version = "1"
+    version = "3"
 
     def __init__(self, settings: Any = None):
         self.settings = settings
@@ -139,7 +149,7 @@ class AudioPost(OpExecutor):
         p = {"loop": loop, "trim": bool(params.get("trim", not loop)), "max_s": float(params.get("max_s", 0)),
              "crossfade": float(params.get("crossfade", 1.5)), "fade_in": float(params.get("fade_in", 0.005)),
              "fade_out": float(params.get("fade_out", 0.05)), "peak_db": float(params.get("peak_db", -1.0)),
-             "formats": formats}
+             "bpm": float(params.get("bpm", 0)), "formats": formats}
         exe = str(getattr(self.settings, "ffmpeg_exe", None) or _default_ffmpeg_exe())
         out_dir = Path(ctx.job_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -151,6 +161,9 @@ class AudioPost(OpExecutor):
                 stem = f"{labels[min((i - 1) // per, len(labels) - 1)]}_{(i - 1) % per + 1}"
             else:
                 stem = (ref.name or "audio").rsplit(".", 1)[0] + (f"_{i:02d}" if len(refs) > 1 else "")
+            if loop:
+                # Engines and the app's player key off the name to play these looping.
+                stem += "_loop"
             res = await asyncio.to_thread(process, exe, ctx.blobs.path(ref.hash), out_dir, stem, p)
             for f in res.pop("files"):
                 mime = "audio/ogg" if f.suffix == ".ogg" else "audio/wav"
