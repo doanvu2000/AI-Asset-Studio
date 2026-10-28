@@ -69,6 +69,25 @@
     "img2mesh_trellis2_textured",
     "img2mesh_trellis2_mv_textured"
    ]
+  },
+  {
+   "id": "audio",
+   "label": "Âm thanh",
+   "detail": "Hiệu ứng âm thanh (Stable Audio Open) và nhạc nền lặp (ACE-Step 1.5).",
+   "required": false,
+   "workflows": [
+    "sfx_stable_audio",
+    "music_ace_step15"
+   ]
+  },
+  {
+   "id": "vfx",
+   "label": "Hiệu ứng VFX",
+   "detail": "Flipbook nổ, chém, khói, phép có kênh alpha (Wan 2.1 Alpha 14B, cần ~64GB RAM khi VRAM 12GB).",
+   "required": false,
+   "workflows": [
+    "vfx_wan_alpha"
+   ]
   }
  ],
  "models": [
@@ -211,6 +230,90 @@
    "url": "https://huggingface.co/Comfy-Org/Pixal3D/resolve/main/diffusion_models/pixal3d_multiview_int8_convrot.safetensors",
    "size": 5584555824,
    "sha256": "6b1eb3328930d921d3b57508d9c46cceec1c174dcedeebc14f176ab67d49f477"
+  },
+  {
+   "name": "stable-audio-open-1.0.safetensors",
+   "dir": "checkpoints",
+   "url": "https://huggingface.co/Comfy-Org/stable-audio-open-1.0_repackaged/resolve/main/stable-audio-open-1.0.safetensors",
+   "size": 4853889016,
+   "sha256": "7b20458a071231aaf32613b6fbc7945f28f34dbba4f295bb49bad56f5f66b57e"
+  },
+  {
+   "name": "t5-base.safetensors",
+   "dir": "text_encoders",
+   "url": "https://huggingface.co/ComfyUI-Wiki/t5-base/resolve/main/t5-base.safetensors",
+   "size": 891646390,
+   "sha256": "a90903540cc02cbeb7ff9f823f1a80eb778c7e22426a0e620b01c77a5ec8f5b4"
+  },
+  {
+   "name": "acestep_v1.5_turbo.safetensors",
+   "dir": "diffusion_models",
+   "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/diffusion_models/acestep_v1.5_turbo.safetensors",
+   "size": 4787825604,
+   "sha256": "3f6e0797fad420a39bd33979eb6e840e30989e34a3794e843d23b60ec6e422d7"
+  },
+  {
+   "name": "qwen_0.6b_ace15.safetensors",
+   "dir": "text_encoders",
+   "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_0.6b_ace15.safetensors",
+   "size": 1191588248,
+   "sha256": "fd4590c82153b8ddb67e15a2e7aaa8afa8b83a858c8a9b82a4831063156aa7a7"
+  },
+  {
+   "name": "qwen_1.7b_ace15.safetensors",
+   "dir": "text_encoders",
+   "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/text_encoders/qwen_1.7b_ace15.safetensors",
+   "size": 3708523360,
+   "sha256": "ed63e9247d1f55f3ace04fa11e95b085fc82d459c82c5626f0b2e37b91ebd710"
+  },
+  {
+   "name": "ace_1.5_vae.safetensors",
+   "dir": "vae",
+   "url": "https://huggingface.co/Comfy-Org/ace_step_1.5_ComfyUI_files/resolve/main/split_files/vae/ace_1.5_vae.safetensors",
+   "size": 337431732,
+   "sha256": "6de92e3a862acd287e08b024ac90f0783a8635451b728721a33ff03565bcb2bb"
+  },
+  {
+   "name": "wan2.1_t2v_14B_fp8_scaled.safetensors",
+   "dir": "diffusion_models",
+   "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/wan2.1_t2v_14B_fp8_scaled.safetensors",
+   "size": 14293896178,
+   "sha256": "2e39adde59c5e0e90edbb35873126b0d67928b5c11c501e384e976d6dc597cce"
+  },
+  {
+   "name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+   "dir": "text_encoders",
+   "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+   "size": 6735906897,
+   "sha256": "c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68"
+  },
+  {
+   "name": "wan_alpha_2.1_rgba_lora.safetensors",
+   "dir": "loras",
+   "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/loras/wan_alpha_2.1_rgba_lora.safetensors",
+   "size": 311648408,
+   "sha256": "45d6347c4ff6ea975a43ef447eeb1e73d313224601350899369cc3fec1709931"
+  },
+  {
+   "name": "wan_alpha_2.1_vae_rgb_channel.safetensors",
+   "dir": "vae",
+   "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_alpha_2.1_vae_rgb_channel.safetensors",
+   "size": 253806246,
+   "sha256": "a61795bd0cd2ef02074cda8f4898d5efd34d804b7ac6974d8b2975c5678de371"
+  },
+  {
+   "name": "wan_alpha_2.1_vae_alpha_channel.safetensors",
+   "dir": "vae",
+   "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_alpha_2.1_vae_alpha_channel.safetensors",
+   "size": 253806246,
+   "sha256": "5695e8d8abbc5680fe3eefbf6c1885c989df40d1d3c83c29e87ae5b363f0c0a7"
+  },
+  {
+   "name": "lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
+   "dir": "loras",
+   "url": "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Lightx2v/lightx2v_T2V_14B_cfg_step_distill_v2_lora_rank64_bf16.safetensors",
+   "size": 630697104,
+   "sha256": "37d49218544b9e0bfb8e831d1399f451fbc5068aff6474f42a90c928363c3573"
   }
  ]
 }

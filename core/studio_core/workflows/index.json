@@ -344,5 +344,84 @@
         "class": "Save3DAdvanced"
       }
     ]
+  },
+  "sfx_stable_audio": {
+    "file": "sfx_stable_audio.api.json",
+    "template": "audio_stable_audio_example",
+    "images": [],
+    "texts": [
+      {
+        "key": "6.text",
+        "node": "CLIPTextEncode",
+        "title": "Prompt",
+        "default": "sword slash whoosh, single hit, game sound effect"
+      },
+      {
+        "key": "7.text",
+        "node": "CLIPTextEncode",
+        "title": "Negative",
+        "default": "music, speech, noise floor, reverb tail"
+      }
+    ],
+    "seeds": [
+      "3.seed"
+    ],
+    "outputs": [
+      {
+        "node": "20",
+        "class": "SaveAudio"
+      }
+    ]
+  },
+  "music_ace_step15": {
+    "file": "music_ace_step15.api.json",
+    "template": "audio_ace_step_1_5_split",
+    "images": [],
+    "texts": [
+      {
+        "key": "94.tags",
+        "node": "TextEncodeAceStepAudio1.5",
+        "title": "Tags",
+        "default": "calm fantasy village theme, acoustic guitar, flute, soft strings, loopable game background music"
+      },
+      {
+        "key": "94.lyrics",
+        "node": "TextEncodeAceStepAudio1.5",
+        "title": "Lyrics",
+        "default": "[Instrumental]"
+      }
+    ],
+    "seeds": [
+      "3.seed",
+      "94.seed"
+    ],
+    "outputs": [
+      {
+        "node": "107",
+        "class": "SaveAudio"
+      }
+    ]
+  },
+  "vfx_wan_alpha": {
+    "file": "vfx_wan_alpha.api.json",
+    "template": "video_wan2.1_alpha_t2v_14B",
+    "images": [],
+    "texts": [
+      {
+        "key": "6.text",
+        "node": "CLIPTextEncode",
+        "title": "Prompt",
+        "default": "A burst of orange magic fire explodes outward and fades into sparks, game visual effect, centered. The background of this video is transparent."
+      }
+    ],
+    "seeds": [
+      "3.seed"
+    ],
+    "outputs": [
+      {
+        "node": "90",
+        "class": "SaveImage"
+      }
+    ]
   }
 }

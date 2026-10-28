@@ -15,7 +15,7 @@ import blake3
 
 from ...config import Settings
 from ...contracts import BlobRef, Lane, Outputs, StepContext, StepError, StepResult
-from .._util import IMAGE_EXT, MESH_EXT
+from .._util import AUDIO_EXT, IMAGE_EXT, MESH_EXT
 from .client import history_files
 from .server import ComfyResource
 
@@ -158,13 +158,15 @@ class ComfyExecutor:
         ctx.progress(1.0, 1.0, "done")
 
         files = history_files(entry, client.output_dir, [o["node"] for o in self.entry.get("outputs", [])])
-        outputs: Outputs = {"images": [], "meshes": []}
+        outputs: Outputs = {"images": [], "meshes": [], "audio": []}
         for f in files:
             ext = f.suffix.lower()
             if ext in IMAGE_EXT:
                 outputs["images"].append(await ctx.blobs.put_file(f, name=f.name, mime=IMAGE_EXT[ext]))
             elif ext in MESH_EXT:
                 outputs["meshes"].append(await ctx.blobs.put_file(f, name=f.name, mime=MESH_EXT[ext]))
+            elif ext in AUDIO_EXT:
+                outputs["audio"].append(await ctx.blobs.put_file(f, name=f.name, mime=AUDIO_EXT[ext]))
         outputs = {k: v for k, v in outputs.items() if v}
         if not outputs:
             raise StepError("comfy_no_output", "workflow finished without output files", retryable=True,

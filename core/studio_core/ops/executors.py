@@ -126,7 +126,19 @@ class TrimPadResize(PerImageOp):
         pad = float(params.get("pad", 0.06))
         square = bool(params.get("square", True))
         resample = str(params.get("resample", "lanczos"))
-        return lambda img: im.trim_pad_resize(img, size, pad=pad, square=square, resample=resample)  # type: ignore[arg-type]
+        bg = params.get("background")
+
+        def fn(img: Image.Image) -> Image.Image:
+            out = im.trim_pad_resize(img, size, pad=pad, square=square, resample=resample)  # type: ignore[arg-type]
+            if not bg:
+                return out
+            try:
+                flat = Image.new("RGBA", out.size, str(bg))
+            except ValueError as e:
+                raise ValueError(f"background: {e}") from e
+            flat.alpha_composite(out)
+            return flat
+        return fn
 
 
 class Downscale(PerImageOp):

@@ -1,0 +1,28 @@
+id: audio-music
+name: Nhạc nền lặp (ACE-Step 1.5)
+description: Mô tả phong cách → ACE-Step 1.5 sinh nhạc không lời → nối đuôi vào đầu thành vòng lặp liền → OGG + WAV → duyệt
+inputs:
+  prompt: {type: text, multiline: true, label: Phong cách nhạc,
+           placeholder: "calm fantasy village theme, acoustic guitar, flute, soft strings"}
+  seconds: {type: float, default: 60, min: 10, max: 240, label: Độ dài (giây)}
+  bpm: {type: int, default: 100, min: 50, max: 200, label: BPM}
+  keyscale: {type: enum, default: C major, options: [C major, A minor, G major, E minor, D major, B minor, F major, D minor],
+             label: Giọng}
+steps:
+  - id: gen
+    kind: comfy.music_ace_step15
+    params:
+      "94.tags": "${inputs.prompt}, instrumental, loopable game background music"
+      "94.duration": "${inputs.seconds}"
+      "94.bpm": "${inputs.bpm}"
+      "94.keyscale": "${inputs.keyscale}"
+      "98.seconds": "${inputs.seconds}"
+  - id: post
+    kind: op.audio_post
+    in: {audio: gen.audio}
+    params: {loop: true, crossfade: 2.0, peak_db: -1, formats: "ogg,wav", labels: "${inputs.prompt}"}
+  - id: approve
+    kind: gate.approve
+    in: {audio: post.audio, preview: post.images}
+outputs:
+  final: approve.audio

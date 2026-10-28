@@ -5,6 +5,7 @@ import { blobUrl } from '@/stores/connection'
 import { bytes } from '@/composables/format'
 import type { AssetView } from './detect'
 import SpriteSheetViewer from './SpriteSheetViewer.vue'
+import AudioViewer from './AudioViewer.vue'
 import TextViewer from './TextViewer.vue'
 import TileViewer from './TileViewer.vue'
 import ViewerLoading from './ViewerLoading.vue'
@@ -34,6 +35,7 @@ withDefaults(defineProps<{ view: AssetView; compact?: boolean }>(), { compact: f
     :wang="view.wang"
     :compact="compact"
   />
+  <AudioViewer v-else-if="view.kind === 'audio'" :key="view.blob.hash" :blob="view.blob" :wave="view.wave" />
   <TextViewer v-else-if="view.kind === 'text'" :blob="view.blob" />
   <div v-else-if="view.kind === 'image'" class="vw checker img">
     <img

@@ -50,7 +50,7 @@ def history_files(entry: dict[str, Any], output_dir: Path, node_order: list[str]
         nodes.sort(key=lambda n: rank.get(n, len(rank)))
     files: list[Path] = []
     for node in nodes:
-        for kind in ("images", "3d"):
+        for kind in ("images", "3d", "audio"):
             for f in outputs[node].get(kind) or []:
                 if isinstance(f, dict) and f.get("type") == "output" and f.get("filename"):
                     files.append(output_dir / (f.get("subfolder") or "") / f["filename"])

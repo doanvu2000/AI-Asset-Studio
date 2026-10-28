@@ -96,6 +96,9 @@ async def test_trim_pad_resize_executor(ctx: FakeCtx, reg: ExecutorRegistry):
     assert len(out) == 2 and out[0].mime == "image/png" and out[0].name == "a0_fit.png"
     assert load(ctx, out[0]).size == (64, 64)
     assert ctx.progress_calls[-1] == (2, 2)
+    flat = await reg.resolve("op.trim_pad_resize").run(ctx, {"size": 64, "background": "white"}, {"images": refs})
+    a = np.asarray(load(ctx, flat.outputs["images"][0]).convert("RGBA"))
+    assert (a[..., 3] == 255).all() and (a[0, 0, :3] == 255).all()
 
 
 async def test_normalize_executor_meta_pivot(ctx: FakeCtx, reg: ExecutorRegistry):

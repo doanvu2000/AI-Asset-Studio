@@ -1,0 +1,26 @@
+id: audio-sfx
+name: Hiệu ứng âm thanh (Stable Audio Open)
+description: Mỗi dòng 1 hiệu ứng → Stable Audio Open sinh vài bản → cắt lặng, fade, chuẩn hoá → OGG + WAV + dạng sóng → duyệt
+inputs:
+  prompt: {type: text, multiline: true, label: Hiệu ứng (mỗi dòng 1 loại),
+           placeholder: "sword slash whoosh\nwooden chest opening creak\ncoin pickup chime"}
+  seconds: {type: float, default: 2.0, min: 0.5, max: 20, label: Độ dài sinh (giây)}
+  count: {type: int, default: 3, min: 1, max: 6, label: Số bản mỗi dòng}
+steps:
+  - id: gen
+    kind: comfy.sfx_stable_audio
+    params:
+      "6.text": "${inputs.prompt | lines}, single isolated game sound effect, clean, high quality"
+      "11.seconds": "${inputs.seconds}"
+      "11.batch_size": "${inputs.count}"
+    map_param: "6.text"
+  - id: post
+    kind: op.audio_post
+    in: {audio: gen.audio}
+    params: {loop: false, trim: true, fade_out: 0.05, peak_db: -1, formats: "ogg,wav", labels: "${inputs.prompt}",
+             per_label: "${inputs.count}"}
+  - id: approve
+    kind: gate.approve
+    in: {audio: post.audio, preview: post.images}
+outputs:
+  final: approve.audio

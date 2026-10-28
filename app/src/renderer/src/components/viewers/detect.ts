@@ -1,6 +1,6 @@
 import type { BlobRef } from '@/api/types'
 
-export type ViewKind = 'glb' | 'sprite' | 'spine' | 'tile' | 'image' | 'text' | 'file'
+export type ViewKind = 'glb' | 'sprite' | 'spine' | 'tile' | 'image' | 'audio' | 'text' | 'file'
 
 export interface SpineSet {
   skeleton: BlobRef
@@ -26,6 +26,8 @@ export interface AssetView {
   pixels?: (BlobRef | undefined)[]
   /** `tiles` are a 16-tile corner Wang set (`wang_<nn>_<NW NE SW SE>`), previewed as a random valid arrangement. */
   wang?: boolean
+  /** op.audio_post's waveform image `<clip>_wave.png`. */
+  wave?: BlobRef
 }
 
 export const VIEW_LABEL: Record<ViewKind, string> = {
@@ -34,6 +36,7 @@ export const VIEW_LABEL: Record<ViewKind, string> = {
   spine: 'Spine',
   tile: 'Lát',
   image: 'Ảnh',
+  audio: 'Âm thanh',
   text: 'Nội dung',
   file: 'Tệp'
 }
@@ -47,6 +50,7 @@ const stem = (b: BlobRef): string => (b.name ?? '').replace(/\.[^.]+$/, '').toLo
 
 export const isGlb = (b: BlobRef): boolean => b.mime === 'model/gltf-binary' || ext(b) === 'glb'
 export const isImage = (b: BlobRef): boolean => b.mime.startsWith('image/')
+export const isAudio = (b: BlobRef): boolean => b.mime.startsWith('audio/') || ['ogg', 'wav', 'mp3', 'flac', 'opus'].includes(ext(b))
 export const isJson = (b: BlobRef): boolean => b.mime === 'application/json' || ext(b) === 'json'
 export const isAtlas = (b: BlobRef): boolean => ext(b) === 'atlas'
 const isTextual = (b: BlobRef): boolean =>
@@ -186,6 +190,10 @@ export function viewsFor(blob: BlobRef, siblings: BlobRef[] = []): AssetView[] {
   if (pair && inSprite) out.push({ kind: 'sprite', blob, ...pair })
   if (isTileImage(blob) || isWangTile(blob)) out.push(tileView(blob, all))
   if (isImage(blob)) out.push({ kind: 'image', blob })
+  if (isAudio(blob)) {
+    const wave = all.find((b) => isImage(b) && stem(b) === `${stem(blob)}_wave`)
+    out.push({ kind: 'audio', blob, ...(wave ? { wave } : {}) })
+  }
   if (isTextual(blob)) out.push({ kind: 'text', blob })
   if (!out.length) out.push({ kind: 'file', blob })
   return out

@@ -1,0 +1,31 @@
+id: vfx-flipbook
+name: Hiệu ứng VFX flipbook (Wan Alpha)
+description: >-
+  Mô tả hiệu ứng → Wan 2.1 Alpha sinh video có kênh alpha → cắt đoạn (một lần: bỏ frame rỗng, mờ dần
+  cuối; lặp: chọn đoạn nối liền nhất) → crop chung, ô vuông → sprite sheet → duyệt
+inputs:
+  prompt: {type: text, label: Hiệu ứng, placeholder: "a burst of orange magic fire exploding into sparks"}
+  mode: {type: enum, default: oneshot, options: [oneshot, loop], label: "Kiểu (oneshot = nổ/chém, loop = lửa/hào quang)"}
+  frames: {type: int, default: 33, options: [17, 33, 49], label: Số frame sinh}
+  size: {type: int, default: 256, options: [128, 256, 512], label: Cỡ ô}
+steps:
+  - id: gen
+    kind: comfy.vfx_wan_alpha
+    params:
+      "6.text": "${inputs.prompt}, a single game visual effect floating in empty space, centered in frame, vivid colors, no ground, no objects, no logs, no characters. The background of this video is transparent."
+      "40.length": "${inputs.frames}"
+      _free_before: true
+      _timeout_s: 1800
+  - id: frames
+    kind: op.vfx_frames
+    in: {images: gen.images}
+    params: {mode: "${inputs.mode}", size: "${inputs.size}"}
+  - id: sheet
+    kind: op.sheet
+    in: {images: frames.images}
+    params: {cols: 8}
+  - id: approve
+    kind: gate.approve
+    in: {sheet: sheet.sheet, frames: frames.images}
+outputs:
+  final: approve.sheet
