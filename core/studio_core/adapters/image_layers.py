@@ -8,7 +8,7 @@ import json
 from typing import Any
 
 from ..config import Settings
-from ..contracts import Lane, Outputs, StepContext, StepError, StepResult
+from ..contracts import Lane, Outputs, StepContext, StepError, StepResult, cache_enabled
 from .claude import DEFAULT_MODEL, QueryFn, ask, load_images, put_json, sdk_query
 
 DEFAULT_CAPTION = "A 2D game art illustration on a plain white background."
@@ -54,7 +54,7 @@ class ClaudeLayersCaptionExecutor:
         self.query = query
 
     def cacheable(self, params: dict[str, Any]) -> bool:
-        return bool(params.get("cache")) or bool(_clean(params.get("prompt")))
+        return cache_enabled(params) or bool(_clean(params.get("prompt")))
 
     def cache_material(self, params: dict[str, Any]) -> str:
         return CAPTION_SYSTEM + CAPTION_PROMPT + DEFAULT_CAPTION
@@ -96,7 +96,7 @@ class ClaudeLayersNamesExecutor:
         self.query = query
 
     def cacheable(self, params: dict[str, Any]) -> bool:
-        return bool(params.get("cache")) or not _flag(params.get("enabled"))
+        return cache_enabled(params) or not _flag(params.get("enabled"))
 
     def cache_material(self, params: dict[str, Any]) -> str:
         return NAMES_SYSTEM + NAMES_PROMPT

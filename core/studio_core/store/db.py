@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS cache (
     "key" TEXT PRIMARY KEY,
     outputs TEXT NOT NULL,
+    meta TEXT,
     created_at REAL NOT NULL
 );
 
@@ -136,6 +137,9 @@ class Database:
         async with self.conn.execute("PRAGMA table_info(versions)") as cur:
             if "qa" not in {r["name"] for r in await cur.fetchall()}:
                 await self.conn.execute("ALTER TABLE versions ADD COLUMN qa TEXT")
+        async with self.conn.execute("PRAGMA table_info(cache)") as cur:
+            if "meta" not in {r["name"] for r in await cur.fetchall()}:
+                await self.conn.execute("ALTER TABLE cache ADD COLUMN meta TEXT")
         # After the ALTER: a DB from before projects has no column for these indexes to name.
         await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_project ON runs(project_id, created_at)")
         await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_versions_project ON versions(project_id, created_at)")

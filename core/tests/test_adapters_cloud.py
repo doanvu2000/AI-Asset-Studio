@@ -67,7 +67,8 @@ def test_claude_options_and_content():
     assert content[0]["type"] == "image" and content[0]["source"]["media_type"] == "image/png"
     assert content[-1] == {"type": "text", "text": "describe"}
     ex = ClaudeTaskExecutor(Settings())
-    assert ex.cacheable({"cache": True}) and not ex.cacheable({})
+    assert ex.cacheable({"cache": True}) and ex.cacheable({})
+    assert not ex.cacheable({"cache": False}) and not ex.cacheable({"cache": "false"})
 
 
 def test_claude_content_reencodes_unsupported_images():

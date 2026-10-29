@@ -8,7 +8,7 @@ import json
 from typing import Any
 
 from ..config import Settings
-from ..contracts import Lane, Outputs, StepContext, StepError, StepResult
+from ..contracts import Lane, Outputs, StepContext, StepError, StepResult, cache_enabled
 from ..ops.anim_video import ACTIONS, FACINGS, resolve_loop
 from .claude import DEFAULT_MODEL, QueryFn, ask, load_images, put_json, sdk_query
 
@@ -93,7 +93,7 @@ class ClaudeAnimMotionExecutor:
         self.query = query
 
     def cacheable(self, params: dict[str, Any]) -> bool:
-        return bool(params.get("cache"))
+        return cache_enabled(params)
 
     def cache_material(self, params: dict[str, Any]) -> str:
         return SYSTEM + PROMPT + SUFFIX + json.dumps(SCHEMA, sort_keys=True)

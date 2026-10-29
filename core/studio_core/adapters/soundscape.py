@@ -8,7 +8,7 @@ import re
 from typing import Any
 
 from ..config import Settings
-from ..contracts import Lane, Outputs, StepContext, StepError, StepResult
+from ..contracts import Lane, Outputs, StepContext, StepError, StepResult, cache_enabled
 from .claude import DEFAULT_MODEL, QueryFn, ask, load_images, put_json, sdk_query
 
 PLAN_TYPE = "soundscape_plan"
@@ -133,7 +133,7 @@ class ClaudeSoundscapeExecutor:
         self.query = query
 
     def cacheable(self, params: dict[str, Any]) -> bool:
-        return bool(params.get("cache"))
+        return cache_enabled(params)
 
     def cache_material(self, params: dict[str, Any]) -> str:
         return SYSTEM + PROMPT + json.dumps(SCHEMA, sort_keys=True)

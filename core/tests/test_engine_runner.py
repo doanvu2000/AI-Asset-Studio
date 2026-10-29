@@ -35,6 +35,7 @@ class FakeRepo:
         self.runs: dict[str, RunRow] = {}
         self.steps: dict[str, StepRow] = {}
         self.cache: dict[str, Outputs] = {}
+        self.cache_meta: dict[str, dict[str, Any]] = {}
         self.versions: dict[str, VersionRow] = {}
         self.blobs: dict[str, BlobRow] = {}
 
@@ -74,8 +75,12 @@ class FakeRepo:
     async def cache_get(self, key: str) -> Outputs | None:
         return self.cache.get(key)
 
-    async def cache_put(self, key: str, outputs: Outputs) -> None:
+    async def cache_get_meta(self, key: str) -> dict[str, Any]:
+        return dict(self.cache_meta.get(key) or {})
+
+    async def cache_put(self, key: str, outputs: Outputs, meta: dict[str, Any] | None = None) -> None:
         self.cache[key] = outputs
+        self.cache_meta[key] = meta or {}
 
     async def add_version(self, v: VersionRow) -> None:
         self.versions[v.id] = v

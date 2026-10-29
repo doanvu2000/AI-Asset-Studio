@@ -177,9 +177,17 @@ class SqliteRepo:
             return None
         return _OUTPUTS.validate_json(row["outputs"])
 
-    async def cache_put(self, key: str, outputs: Outputs) -> None:
-        await self.db.write('INSERT OR REPLACE INTO cache ("key", outputs, created_at) VALUES (?, ?, ?)',
-                            (key, orjson.dumps(to_jsonable_python(outputs)).decode(), time.time()))
+    async def cache_get_meta(self, key: str) -> dict[str, Any]:
+        row = await self.db.fetchone('SELECT meta FROM cache WHERE "key" = ?', (key,))
+        if row is None or not row["meta"]:
+            return {}
+        meta = orjson.loads(row["meta"])
+        return meta if isinstance(meta, dict) else {}
+
+    async def cache_put(self, key: str, outputs: Outputs, meta: dict[str, Any] | None = None) -> None:
+        await self.db.write('INSERT OR REPLACE INTO cache ("key", outputs, meta, created_at) VALUES (?, ?, ?, ?)',
+                            (key, orjson.dumps(to_jsonable_python(outputs)).decode(),
+                             orjson.dumps(to_jsonable_python(meta)).decode() if meta else None, time.time()))
 
     async def add_version(self, v: VersionRow) -> None:
         await self.db.write(_VERSIONS.insert_sql(), _VERSIONS.to_params(v))

@@ -13,7 +13,7 @@ from typing import Any, Callable
 from PIL import Image
 
 from ..config import Settings
-from ..contracts import BlobRef, Executor, Lane, Outputs, StepContext, StepError, StepResult
+from ..contracts import BlobRef, Executor, Lane, Outputs, StepContext, StepError, StepResult, cache_enabled
 from ..ops.animatic import ASPECTS, CAMERAS, FRAMINGS, gen_size, shot_index
 from ..ops.executors import _put_png
 from ..ops.keyart import fit_cover
@@ -253,7 +253,7 @@ class ClaudeStoryboardExecutor:
         self.query = query
 
     def cacheable(self, params: dict[str, Any]) -> bool:
-        return bool(params.get("cache"))
+        return cache_enabled(params)
 
     def cache_material(self, params: dict[str, Any]) -> str:
         return SYSTEM + PROMPT + json.dumps(SCHEMA, sort_keys=True)

@@ -33,7 +33,7 @@ from ..contracts import (
     StepStatus,
     VersionRow,
 )
-from .cache import executor_cache_key
+from .cache import cacheable_meta, executor_cache_key
 from .chain import CHAIN_ERROR, CHAIN_KEY, CHAIN_PARENT, CHAIN_RUNS, map_inputs, parse_chain, published_outputs
 from .gates import GATES, gate_enabled
 from .library import RecipeLibrary
@@ -48,6 +48,7 @@ log = logging.getLogger(__name__)
 
 INTERRUPTED = "interrupted"
 META_KEY = "$meta"
+NO_CACHE = "no_cache"  # run-level: execute every step, then refresh the cache with the new results
 _RUN_TERMINAL = {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}
 _ACTIVE = {StepStatus.READY, StepStatus.WAITING_RESOURCE, StepStatus.RUNNING}
 _RETRYABLE = (StepStatus.FAILED, StepStatus.CANCELLED)
@@ -72,6 +73,18 @@ def _now() -> float:
 
 def _new_id() -> str:
     return uuid.uuid4().hex
+
+
+# One ComfyUI owns the GPU, and one Blender worker process serves every blender-lane step (its call lock
+# serializes calls): a higher setting would only show queued steps as running. cloud/cpu stay as configured.
+HARD_LANE_CAPS = {"gpu": 1, "blender": 1}
+
+
+def lane_limits(configured: dict[str, int]) -> dict[str, int]:
+    out = dict(configured)
+    for lane, cap in HARD_LANE_CAPS.items():
+        out[lane] = max(1, min(int(out.get(lane, cap)), cap))
+    return out
 
 
 def model_group(ex: Executor, kind: str) -> str:
@@ -191,7 +204,7 @@ class StudioEngine:
         self.bus = bus
         self.registry = registry
         self.resources = resources
-        self.scheduler = LaneScheduler(settings.lane_limits)
+        self.scheduler = LaneScheduler(lane_limits(settings.lane_limits))
         self.library = RecipeLibrary(settings.recipes_dir, settings.user_recipes_dir)
         self._runs: dict[str, _RunState] = {}
         self._control: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
@@ -435,7 +448,7 @@ class StudioEngine:
         for entry in meta.get(CHAIN_KEY) or []:
             try:
                 inputs = {**(entry.get("inputs") or {}), **map_inputs(entry["map"], outputs, run.inputs)}
-                child_meta = {k: meta[k] for k in ("source",) if k in meta}
+                child_meta = {k: meta[k] for k in ("source", NO_CACHE) if k in meta}
                 child_meta[CHAIN_PARENT] = run.id
                 if entry.get(CHAIN_KEY):
                     child_meta[CHAIN_KEY] = entry[CHAIN_KEY]
@@ -566,12 +579,13 @@ class StudioEngine:
             fresh = bool(step.meta.get("fresh"))
             if fresh:
                 await self._set_step(step, meta={k: v for k, v in step.meta.items() if k != "fresh"})
-            if key is not None and not fresh:
+            if key is not None and not fresh and not (st.run.params.get(META_KEY) or {}).get(NO_CACHE):
                 hit = await self.repo.cache_get(key)
-                if hit is not None:
+                if hit is not None and await self._blobs_present(hit):
                     now = _now()
+                    cached_meta = await self.repo.cache_get_meta(key)
                     await self._set_step(step, status=StepStatus.CACHED, outputs=hit, progress=1.0,
-                                         started_at=now, ended_at=now)
+                                         started_at=now, ended_at=now, meta={**cached_meta, **step.meta})
                     return
             lane = step.lane
 
@@ -596,7 +610,7 @@ class StudioEngine:
             await self._set_step(step, status=StepStatus.SUCCEEDED, outputs=result.outputs, progress=1.0,
                                  meta={**kept, **result.meta}, ended_at=_now())
             if key is not None:
-                await self.repo.cache_put(key, result.outputs)
+                await self.repo.cache_put(key, result.outputs, cacheable_meta(result.meta))
         except asyncio.CancelledError:
             raise
         except StepError as e:
@@ -608,6 +622,11 @@ class StudioEngine:
             log.exception("step %s (%s) crashed", step.key, step.kind)
             await self._set_step(step, status=StepStatus.FAILED, ended_at=_now(),
                                  error=_err("internal", f"{type(e).__name__}: {e}"))
+
+    async def _blobs_present(self, outputs: Outputs) -> bool:
+        # Blob files deleted by hand would turn a hit into a downstream blob_missing failure.
+        paths = [self.blobs.path(b.hash) for refs in outputs.values() for b in refs]
+        return await asyncio.to_thread(lambda: all(p.is_file() for p in paths))
 
     async def _ensure_resource(self, ex: Executor, step: StepRow) -> None:
         # Booting ComfyUI/Blender takes 3–30s; showing that as "running" would misreport the step.

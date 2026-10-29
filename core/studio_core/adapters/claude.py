@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Awaitable, Callable
 
 from ..config import Settings
-from ..contracts import BlobRef, Lane, Outputs, ResourceHealth, StepContext, StepError, StepResult
+from ..contracts import BlobRef, Lane, Outputs, ResourceHealth, StepContext, StepError, StepResult, cache_enabled
 from ..contracts import report_cost
 
 MAX_IMAGE_BYTES = 3_500_000
@@ -229,7 +229,7 @@ class ClaudeTaskExecutor:
         self.query = query
 
     def cacheable(self, params: dict[str, Any]) -> bool:
-        return bool(params.get("cache"))
+        return cache_enabled(params)
 
     def cache_material(self, params: dict[str, Any]) -> str:
         return ""
@@ -307,7 +307,7 @@ class ClaudeBriefExecutor:
         self.query = query
 
     def cacheable(self, params: dict[str, Any]) -> bool:
-        return bool(params.get("cache"))
+        return cache_enabled(params)
 
     def cache_material(self, params: dict[str, Any]) -> str:
         return BRIEF_SYSTEM + json.dumps(BRIEF_SCHEMA, sort_keys=True)

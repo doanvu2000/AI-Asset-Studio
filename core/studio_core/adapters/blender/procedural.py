@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ...config import Settings
-from ...contracts import Lane, Outputs, StepContext, StepError, StepResult
+from ...contracts import Lane, Outputs, StepContext, StepError, StepResult, cache_enabled
 from ..claude import DEFAULT_MODEL, QueryFn, ask, put_json, sdk_query
 from .client import BlenderResource
 from .executor import SCRIPT_ERRORS, call_script, put_frames, worker_hash
@@ -150,7 +150,7 @@ class Procedural3DExecutor:
         self.query = query
 
     def cacheable(self, params: dict[str, Any]) -> bool:
-        return bool(params.get("cache"))
+        return cache_enabled(params)
 
     def cache_material(self, params: dict[str, Any]) -> str:
         return worker_hash() + CODE_SYSTEM + QA_SYSTEM

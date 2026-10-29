@@ -64,6 +64,7 @@ class RunCreate(BaseModel):
     params: dict[str, Any] | None = None
     title: str = ""
     project_id: str = "default"
+    no_cache: bool = False
 
 
 def _json(content: Any, status: int = 200) -> OrjsonResponse:
@@ -347,8 +348,11 @@ async def delete_preset(request: Request, pid: str) -> Response:
 
 @api.post("/runs")
 async def create_run(request: Request, body: RunCreate) -> Response:
+    params = body.params
+    if body.no_cache:
+        params = {**(params or {}), META_KEY: {**((params or {}).get(META_KEY) or {}), "no_cache": True}}
     run_id = await _engine_call(_engine(request).start_run(
-        body.recipe_id, body.inputs, body.params, project_id=body.project_id, title=body.title))
+        body.recipe_id, body.inputs, params, project_id=body.project_id, title=body.title))
     return _json({"run_id": run_id}, 201)
 
 
