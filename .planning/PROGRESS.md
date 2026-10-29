@@ -1086,3 +1086,5 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   14 test; live 640 417s (err 1.47), 1024 794s (err 1.01, VRAM 11.7GB) — chậm do ComfyUI 8188 cũ (spike bật) lỗi /system_stats 500,
   chiếm ~7GB; agent chạy server riêng 8189. CẦN chủ nhân khởi động lại ComfyUI 8188.
 - [x] Kiểm 766 pass / 4 skip, typecheck sạch → commit mốc #11. 8189 đã tắt; 8188 (PID 39144) vẫn lỗi, chờ chủ nhân restart.
+- [x] 2026-10-29 Chủ nhân cho push → push master tới 00b37d2 OK.
+- [x] Chủ nhân tắt ComfyUI 8188 lỗi (PID 39144).
