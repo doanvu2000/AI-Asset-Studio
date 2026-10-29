@@ -163,7 +163,8 @@ function createWindow(): void {
     show: false,
     title: 'AI Asset Studio',
     icon: process.platform === 'win32' ? winIconPath : appIconPath,
-    backgroundColor: vibrancy ? '#00000000' : dark ? '#1c1c1e' : '#f2f2f5',
+    // Matches the launch splash so the first frame does not flash a different shade.
+    backgroundColor: vibrancy ? '#00000000' : dark ? '#000000' : '#ffffff',
     backgroundMaterial: vibrancy ? 'mica' : undefined,
     titleBarStyle: 'hidden',
     titleBarOverlay: overlayColors(),

@@ -4,6 +4,7 @@ import { useEventListener } from '@vueuse/core'
 import { ChevronRight, Sparkles, X } from '@lucide/vue'
 import { APP_VERSION, CHANGELOG, markSeen, seenVersion, shouldShowWhatsNew, whatsNewOpen } from '@/composables/changelog'
 import { useFocusTrap } from '@/composables/focusTrap'
+import { splashVisible } from '@/composables/splash'
 import { useConnection } from '@/stores/connection'
 
 const conn = useConnection()
@@ -63,14 +64,14 @@ let timer = 0
 function offer(): void {
   window.clearTimeout(timer)
   if (offered || !shouldShowWhatsNew(seenVersion(), APP_VERSION)) return
-  if (!conn.core.mock && !conn.transport) return
+  if (splashVisible.value || (!conn.core.mock && !conn.transport)) return
   timer = window.setTimeout(() => {
     if (offered || whatsNewOpen.value || document.querySelector('[role=dialog],[role=alertdialog]')) return
     offered = true
     whatsNewOpen.value = true
   }, 1200)
 }
-watch(() => [conn.transport, conn.core.mock], offer, { immediate: true })
+watch(() => [conn.transport, conn.core.mock, splashVisible.value], offer, { immediate: true })
 onBeforeUnmount(() => window.clearTimeout(timer))
 </script>
 

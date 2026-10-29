@@ -19,6 +19,7 @@ export const CHANGELOG: Release[] = [
     version: '1.1.0',
     date: '2026-10-29',
     items: [
+      'Màn khởi động có logo động, hiện trạng thái core rồi mờ dần vào app',
       'Hộp “Có gì mới”, mở lại được trong Cài đặt và Ctrl K',
       'Hoạt ảnh sprite từ 1 ảnh: Wan2.2 tạo chuyển động, tự tìm đoạn lặp, khoá pivot, ra sprite sheet',
       'Skybox 360: panorama liền mép (Qwen-Image + LoRA 360), xem xoay 360 trong app, xuất skybox Unity / Godot',

@@ -9,10 +9,12 @@ import CoreOffline from './components/CoreOffline.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import ToastHost from './components/ToastHost.vue'
 import WhatsNewDialog from './components/WhatsNewDialog.vue'
+import SplashScreen from './components/SplashScreen.vue'
 import ResizeHandle from './components/ResizeHandle.vue'
 import { usePaneWidth } from './composables/paneSize'
 import { useShellIntegration } from './composables/shellIntegration'
 import { useConnection } from './stores/connection'
+import { splashVisible } from './composables/splash'
 
 const conn = useConnection()
 const router = useRouter()
@@ -47,7 +49,7 @@ onKeyStroke(
 
 <template>
   <MotionConfig reduced-motion="user">
-    <div class="shell">
+    <div class="shell" :class="{ veiled: splashVisible }" :inert="splashVisible">
       <AppSidebar :style="{ '--pane-w': `${sidebarW}px` }" :compact="sidebarW <= SIDEBAR.rail" />
       <ResizeHandle
         v-model="sidebarW"
@@ -71,6 +73,9 @@ onKeyStroke(
     <ToastHost />
     <CommandPalette />
     <WhatsNewDialog />
+    <Transition name="splash">
+      <SplashScreen v-if="splashVisible" />
+    </Transition>
   </MotionConfig>
 </template>
 
@@ -78,6 +83,26 @@ onKeyStroke(
 .shell {
   display: flex;
   height: 100%;
+  transition:
+    opacity 700ms var(--ease-out) 120ms,
+    filter 700ms var(--ease-out) 120ms,
+    transform 800ms var(--ease-spring) 120ms;
+}
+.shell.veiled {
+  opacity: 0;
+  filter: blur(12px);
+  transform: scale(0.985);
+}
+.splash-leave-active {
+  transition:
+    opacity 650ms var(--ease-out),
+    filter 650ms var(--ease-out),
+    transform 650ms var(--ease-out);
+}
+.splash-leave-to {
+  opacity: 0;
+  filter: blur(10px);
+  transform: scale(1.04);
 }
 .content {
   position: relative;

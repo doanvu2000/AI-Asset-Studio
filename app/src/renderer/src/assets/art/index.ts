@@ -1,4 +1,5 @@
 import appIcon from './app-icon.webp'
+import appLogo from './app-logo.webp'
 import emptyRuns from './empty-runs.webp'
 import emptyGates from './empty-gates.webp'
 import emptyGallery from './empty-gallery.webp'
@@ -42,7 +43,7 @@ import propDestructible from './recipe-prop-destructible.webp'
 import meshRetexture from './recipe-mesh-retexture.webp'
 import skybox360 from './recipe-skybox-360.webp'
 
-export const ART = { appIcon, emptyRuns, emptyGates, emptyGallery, coreDisconnected, gettingStarted } as const
+export const ART = { appIcon, appLogo, emptyRuns, emptyGates, emptyGallery, coreDisconnected, gettingStarted } as const
 
 const RECIPE_ART: Record<string, string> = {
   'concept-2d': concept2d,
