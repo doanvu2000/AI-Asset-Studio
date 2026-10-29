@@ -5,6 +5,7 @@ from typing import Any
 from ..contracts import ExecutorRegistry, Resource
 from .audio import AudioPost
 from .animatic import Animatic
+from .anim_video import ANIM_VIDEO_OPS
 from .aseprite import ASEPRITE_OPS
 from .autotile import AUTOTILE_OPS
 from .bitmap_font import BITMAP_FONT_OPS
@@ -15,15 +16,18 @@ from .fx import FX_OPS
 from .image_layers import IMAGE_LAYERS_OPS
 from .keyart import KEYART_OPS, KeyartVideo
 from .pbr import PBR_OPS
+from .retexture import RETEX_OPS
 from .pixel import PIXEL_OPS
 from .presets import PresetStore
 from .localize import LOCALIZE_OPS
 from .lut import LUT_OPS
 from .normal2d import NORMAL2D_OPS
 from .npc import NPC_OPS
+from .pano import PANO_OPS
 from .paperdoll import PAPERDOLL_OPS
 from .parallax import PARALLAX_OPS
 from .rarity import RARITY_OPS
+from .restyle import register_restyle
 from .rig import RIG_OPS
 from .soundscape import SOUNDSCAPE_OPS
 from .spine_ref import SPINE_REF_OPS, VideoFrames
@@ -78,4 +82,11 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(il_cls())
     for ev_cls in ENEMY_OPS:
         registry.register(ev_cls())
+    for pano_cls in PANO_OPS:
+        registry.register(pano_cls())
+    register_restyle(registry, settings)
+    for av_cls in ANIM_VIDEO_OPS:
+        registry.register(av_cls())
+    for rt_cls in RETEX_OPS:
+        registry.register(rt_cls())
     return []

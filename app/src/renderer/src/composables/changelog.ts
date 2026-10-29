@@ -20,6 +20,12 @@ export const CHANGELOG: Release[] = [
     date: '2026-10-29',
     items: [
       'Hộp “Có gì mới”, mở lại được trong Cài đặt và Ctrl K',
+      'Hoạt ảnh sprite từ 1 ảnh: Wan2.2 tạo chuyển động, tự tìm đoạn lặp, khoá pivot, ra sprite sheet',
+      'Skybox 360: panorama liền mép (Qwen-Image + LoRA 360), xem xoay 360 trong app, xuất skybox Unity / Godot',
+      'Đổi style hàng loạt ngay trong project Unity / Godot, giữ GUID và .meta; có chạy thử, backup và hoàn tác',
+      'Prop 3D phá huỷ được: chia mảnh Voronoi, texture mặt cắt, prefab nguyên / vỡ có vật lý',
+      'Tô lại texture cho mesh có sẵn (.glb / .fbx / .obj) từ nhiều góc nhìn, giữ hình và UV',
+      'Điểm trúng đòn tự dò không còn rơi vào đầu nhân vật chibi',
       'Gộp atlas cho mobile từ nhiều asset (Unity, Godot) và ngân sách mobile: nén ASTC / ETC2, bảng RAM GPU trước / sau',
       'Xuất và nhập Aseprite (.aseprite + JSON sheet, tag theo clip và hướng)',
       'Biến thể kẻ địch: đổi palette cả bộ anim 8 hướng, thêm phụ kiện bằng Klein',

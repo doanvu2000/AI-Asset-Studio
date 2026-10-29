@@ -8,18 +8,22 @@ from ..contracts import ExecutorRegistry, Resource
 from .blender import (BlenderAgentExecutor, BlenderAnimateDirsExecutor, BlenderCleanupExecutor, BlenderGameReadyExecutor,
                       BlenderPaperdollExecutor, BlenderRenderDirsExecutor, BlenderResource,
                       BlenderRigExportExecutor, BlenderScriptExecutor, Procedural3DExecutor)
+from .blender.fracture import BlenderFractureExecutor
+from .blender.retexture import BlenderRetexApplyExecutor, BlenderViewsRenderExecutor
 from .claude import ClaudeBriefExecutor, ClaudeResource, ClaudeTaskExecutor
 from .codex import CodexImageExecutor, CodexResource
 from .image_layers import ClaudeLayersCaptionExecutor, ClaudeLayersNamesExecutor
 from .localize import ClaudeLocalizeExecutor
 from .soundscape import ClaudeSoundscapeExecutor
 from .keyart_motion import ClaudeKeyartMotionExecutor
+from .anim_motion import ClaudeAnimMotionExecutor
 from .npc import ClaudeNpcDialogueExecutor
 from .storyboard import ClaudeStoryboardExecutor, StoryboardFramesExecutor, StoryboardScoreExecutor
 from .tts import NpcVoiceExecutor
 from .store_layout import ClaudeStoreLayoutExecutor
 from .spine_review import SpineReviewLoopExecutor
 from .comfy import CheckedMeshExecutor, CheckedViewsExecutor, ComfyExecutor, ComfyResource
+from .comfy.retexture import RetexPaintExecutor
 
 
 def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: Any = None) -> list[Resource]:
@@ -38,9 +42,14 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     registry.register(BlenderAnimateDirsExecutor(settings, blender, comfy))
     registry.register(BlenderRigExportExecutor(settings, blender, comfy))
     registry.register(BlenderPaperdollExecutor(settings, blender, comfy))
+    registry.register(BlenderFractureExecutor(settings, blender))
+    registry.register(BlenderViewsRenderExecutor(settings, blender))
+    registry.register(BlenderRetexApplyExecutor(settings, blender))
+    registry.register(RetexPaintExecutor(registry.resolve, comfy))
     registry.register(ClaudeBriefExecutor(settings))
     registry.register(ClaudeSoundscapeExecutor(settings))
     registry.register(ClaudeKeyartMotionExecutor(settings))
+    registry.register(ClaudeAnimMotionExecutor(settings))
     registry.register(ClaudeNpcDialogueExecutor(settings))
     registry.register(NpcVoiceExecutor(settings))
     registry.register(ClaudeStoryboardExecutor(settings))

@@ -74,6 +74,13 @@ class Source:
     # Enemy variants (op.enemy_variants): (variant slug, sheet path), all cut on the same cells as `enemy_meta`.
     enemy_variants: list[tuple[str, Path]] = field(default_factory=list)
     enemy_meta: dict[str, Any] | None = None
+    # Skybox (op.pano_cubemap): its skybox.json doc and paths by role (pano, irradiance, each cube face name).
+    skybox: dict[str, Any] | None = None
+    skybox_files: dict[str, Path] = field(default_factory=dict)
+    # Destructible prop (blender.fracture): its destructible.json doc; the models themselves are in `glb` / `fbx`.
+    destructible: dict[str, Any] | None = None
+    # Retextured mesh (op.project_bake): its retexture.json report; GLBs are in `glb`, maps in `pbr`.
+    retexture: dict[str, Any] | None = None
     # Set when the export asked for traced 2D colliders + foot pivot on the sprite sheet (export/collider.py).
     collider: Any = None
 

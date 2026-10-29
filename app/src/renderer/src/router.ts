@@ -18,6 +18,7 @@ export const router = createRouter({
     { path: '/projects', name: 'projects', component: () => import('./views/ProjectsView.vue') },
     { path: '/projects/:id', name: 'project', component: () => import('./views/ProjectDetailView.vue'), props: true },
     { path: '/settings', name: 'settings', component: () => import('./views/SettingsView.vue') },
+    { path: '/restyle', name: 'restyle', component: () => import('./views/RestyleView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' }
   ]
 })

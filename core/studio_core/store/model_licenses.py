@@ -17,6 +17,8 @@ MODELS: dict[str, tuple[str, str, str]] = {
     "z_image_turbo_bf16.safetensors": ("Apache-2.0", "yes", "Tongyi-MAI/Z-Image-Turbo"),
     "qwen_3_4b.safetensors": ("Apache-2.0", "yes", "Qwen/Qwen3-4B"),
     "Z-Image-Turbo-Fun-Controlnet-Union.safetensors": ("Apache-2.0", "yes", "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union"),
+    "Z-Image-Turbo-Fun-Controlnet-Union-2.0.safetensors": ("Apache-2.0", "yes",
+                                                            "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1"),
     "moge_2_vitl_normal_fp16.safetensors": ("MIT", "unknown", "microsoft/MoGe (MoGe-2 weights: verify)"),
     "trellis_2_int8_convrot.safetensors": ("MIT", "yes", "microsoft/TRELLIS.2"),
     "trellis_2_shape_vae_bf16.safetensors": ("MIT", "yes", "microsoft/TRELLIS.2"),
@@ -49,6 +51,9 @@ MODELS: dict[str, tuple[str, str, str]] = {
     "wan2.2_vae.safetensors": ("Apache-2.0", "yes", "Wan-AI/Wan2.2-TI2V-5B"),
     "vits-piper-vi_VN-vais1000-medium": ("unverified (VAIS-1000 dataset terms)", "unknown", "rhasspy/piper-voices"),
     "kokoro-int8-multi-lang-v1_0": ("Apache-2.0", "yes", "hexgrad/Kokoro-82M"),
+    # Community int8 ConvRot repack (Winnougan/Qwen-Image-INT8) of the Apache-2.0 base; the LoRA card lists MIT.
+    "qwen_image_2512_int8_convrot.safetensors": ("Apache-2.0", "yes", "Qwen/Qwen-Image-2512"),
+    "qwen-360-diffusion-2512-int8-bf16-v2.safetensors": ("MIT", "yes", "ProGamerGov/qwen-360-diffusion"),
 }
 
 # Hosted generators: their output terms, not a weights license.

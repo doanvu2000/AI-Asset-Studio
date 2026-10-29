@@ -182,6 +182,9 @@ def unity_files(src: Source, guid: Callable[[str], str]) -> tuple[Files, list[st
                 continue
             files += [(irel, data), (f"{irel}.meta", texture_meta(src.asset, guid(irel), None, size, src.ppu, False,
                                                                  is_normal=is_normal, repeat=True).encode())]
+        if src.rig is None:
+            notes.append(f"- Models/{n}: mô hình tĩnh (texture nhúng tách ra Models/{Path(n).stem}.fbm/).")
+            continue
         notes.append(UNITY_README.format(fbx=n, rig="Humanoid" if human else "Generic", clips=clips,
                                          avatar=" (Avatar tự tạo từ tên xương)" if human else ""))
     return files, notes

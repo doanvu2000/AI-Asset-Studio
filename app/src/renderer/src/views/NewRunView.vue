@@ -58,6 +58,8 @@ type Mode = 'single' | 'batch'
 const mode = computed<Mode>(() => (route.query.mode === 'batch' ? 'batch' : 'single'))
 
 function pick(id: string): void {
+  // Restyle works on a whole project folder with its own scan / review / apply screen.
+  if (id === 'restyle-folder') return void router.push({ path: '/restyle', query: { project: route.query.project } })
   void router.push({ query: { ...route.query, recipe: id } })
 }
 function setMode(m: Mode): void {

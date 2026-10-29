@@ -671,13 +671,21 @@ class StudioEngine:
         spec = step.meta.get("spec", {})
         mp, mpp = spec.get("map"), spec.get("map_param")
         calls: list[tuple[dict[str, Any], Outputs]]
-        if mp:
-            calls = [(step_params, {**inputs, mp: [item]}) for item in inputs.get(mp, [])]
-        elif mpp:
-            values = step_params.get(mpp)
+        values: list[Any] = []
+        if mpp:
+            values = step_params.get(mpp)  # type: ignore[assignment]
             # `[ "${steps.plan.json.prompts}" ]` resolves to a nested list: map over the upstream list's items.
             values = [x for v in (values if isinstance(values, list) else [values])
                       for x in (v if isinstance(v, list) else [v])]
+        if mp and mpp:
+            # Both: item i of the mapped input runs with value i of the mapped param (one prompt per image).
+            items = inputs.get(mp, [])
+            if len(items) != len(values):
+                raise StepError("map_mismatch", f"{len(items)} '{mp}' items but {len(values)} '{mpp}' values")
+            calls = [({**step_params, mpp: v}, {**inputs, mp: [item]}) for item, v in zip(items, values)]
+        elif mp:
+            calls = [(step_params, {**inputs, mp: [item]}) for item in inputs.get(mp, [])]
+        elif mpp:
             calls = [({**step_params, mpp: v}, inputs) for v in values]
         else:
             res, ctx.unreported = await self._call(ex, ctx, step_params, inputs)

@@ -22,8 +22,9 @@ const withPng = computed(() => atlasPages.value || aseSheet.value)
 const multiple = computed(() => props.kind === 'images' || withPng.value)
 const extOf = (name: string): string => name.toLowerCase().split('.').pop() ?? ''
 const fileExts = computed(() => (props.kind === 'video' ? VIDEO_EXT : (props.ext ?? [])))
+const meshExts = computed(() => (props.kind === 'mesh' && props.ext?.length ? props.ext : ['glb']))
 const accept = computed(() => {
-  if (props.kind === 'mesh') return '.glb,model/gltf-binary'
+  if (props.kind === 'mesh') return [...meshExts.value.map((e) => `.${e}`), 'model/gltf-binary'].join(',')
   if (props.kind === 'file' || props.kind === 'video') {
     const list = fileExts.value.map((e) => `.${e}`)
     return (withPng.value ? [...list, '.png'] : list).join(',')
@@ -31,14 +32,14 @@ const accept = computed(() => {
   return 'image/png,image/jpeg,image/webp'
 })
 const kindLabel = computed(() => {
-  if (props.kind === 'mesh') return 'file .glb'
+  if (props.kind === 'mesh') return `file .${meshExts.value.join(' / .')}`
   if (props.kind === 'video') return 'video'
   if (props.kind === 'file') return fileExts.value.length ? `file .${fileExts.value.join(' / .')}` : 'file'
   return 'ảnh'
 })
 
 function accepts(f: File): boolean {
-  if (props.kind === 'mesh') return f.name.toLowerCase().endsWith('.glb')
+  if (props.kind === 'mesh') return meshExts.value.includes(extOf(f.name))
   if (props.kind === 'video') return f.type.startsWith('video/') || VIDEO_EXT.includes(extOf(f.name))
   if (props.kind === 'file') return !fileExts.value.length || fileExts.value.includes(extOf(f.name)) || (withPng.value && extOf(f.name) === 'png')
   return f.type.startsWith('image/')

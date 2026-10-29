@@ -46,6 +46,7 @@ import type { ProjectQaAsset, ProjectQaFixResult, ProjectQaReport } from '../typ
 import type { StyleBible, StyleBibleEdit, StyleBibleView } from '../types'
 import type { DuplicateGroup, DuplicatesReport, MoreLikePlan, SimilarAsset, SimilarIndexStatus, SimilarQuery, SimilarResult } from '../types'
 import type { AtlasBody, AtlasResult, PackBody, PackListing, PackRecord, PackResult } from '../types'
+import type { RestyleApplyResult, RestyleBackup, RestyleScan, RestyleUndoResult } from '../restyleTypes'
 import { MOCK_KINDS, MOCK_PRESETS, MOCK_TOOLS, mockValidate, stepDeps } from './catalog'
 import { normalizeStyle, styleFills } from '@/composables/projectStyle'
 import sampleGlbUrl from './assets/sample-prop.glb?url'
@@ -1764,6 +1765,43 @@ export class MockCore implements StudioApi, EventStream {
       stats: { sprites, unique: sprites - 1, pages: 1, page_sizes: [[1024, 1024]], fill: 0.81, before, after }, files: [],
       mobile: rows.length && body.engine ? { engine: body.engine, rows, totals: { files: 1, file_bytes: rows[0]!.file_bytes, gpu_before: rows[0]!.gpu_before, gpu_after: rows[0]!.gpu_after } } : null,
       skipped: [] })
+  }
+
+  private restyleBackupList: RestyleBackup[] = []
+
+  async restyleScan(body: { folder: string }): Promise<RestyleScan> {
+    await sleep(500)
+    if (!/^([a-z]:[\\/]|\/)/i.test(body.folder)) throw new ApiError('bad_folder', 'folder must be an absolute path', 422)
+    const items = ['Sprites/hero.png', 'Sprites/slime.png', 'UI/panel.png', 'UI/button.png', 'Tiles/grass_tile.png', 'Props/crate.png', 'Props/barrel.png']
+      .map((rel, i) => ({ rel, kind: (rel.startsWith('UI') ? 'ui' : rel.includes('tile') ? 'tile' : i === 0 ? 'sheet' : 'sprite') as RestyleScan['items'][number]['kind'],
+        width: i === 0 ? 384 : 128, height: i === 0 ? 256 : 128, sprites: i === 0 ? 24 : 1,
+        border: (rel.startsWith('UI') ? [12, 12, 12, 12] : [0, 0, 0, 0]) as [number, number, number, number], importer: `${rel.split('/').pop()}.meta`, guid: `g${i}`, units: 1 }))
+    const counts = { sprite: 0, sheet: 0, ui: 0, tile: 0, texture: 0 }
+    for (const it of items) counts[it.kind]++
+    return clone({ root: body.folder, engine: 'unity', project: body.folder.replace(/[\\/]Assets.*$/, ''), counts, units: items.length, items,
+      skipped: [{ rel: 'Sprites/hero_n.png', why: 'data map (normal/mask/lightmap)' }], skipped_total: 1,
+      estimate: { edit_s: 28, measured: 0, trial_s: 45 + 6 * 28, trial_units: 6, full_s: 45 + items.length * 28 }, mirror: `${body.folder.replace(/[\\/]Assets.*$/, '')}_restyled` })
+  }
+
+  async restyleApply(runId: string): Promise<RestyleApplyResult> {
+    await sleep(700)
+    const run = this.runs.get(runId)
+    if (!run || run.status !== 'succeeded') throw new ApiError('not_approved', 'the restyle is not finished and approved yet', 409)
+    const id = `mock-${Date.now()}`
+    this.restyleBackupList.unshift({ backup_id: id, root: String(run.inputs.folder ?? ''), at: now(), written: 6, undone_at: null, source: { run_id: runId } })
+    return { mode: 'apply', root: String(run.inputs.folder ?? ''), written: 6, skipped: 0, backup_id: id, importers_unchanged: true, files: [] }
+  }
+
+  async restyleUndo(backupId: string): Promise<RestyleUndoResult> {
+    await sleep(500)
+    const b = this.restyleBackupList.find((x) => x.backup_id === backupId)
+    if (!b || b.undone_at) throw new ApiError('undo_failed', 'unknown or already undone backup', 409)
+    b.undone_at = now()
+    return { backup_id: backupId, restored: ['Sprites/hero.png'], conflicts: [] }
+  }
+
+  async restyleBackups(runId?: string): Promise<{ backups: RestyleBackup[] }> {
+    return clone({ backups: this.restyleBackupList.filter((b) => !runId || b.source.run_id === runId) })
   }
 
   private styleBibles = new Map<string, StyleBible>()

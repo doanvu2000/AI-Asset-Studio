@@ -1,6 +1,6 @@
 import type { BlobRef } from '@/api/types'
 
-export type ViewKind = 'glb' | 'sprite' | 'spine' | 'tile' | 'image' | 'audio' | 'video' | 'text' | 'file'
+export type ViewKind = 'glb' | 'sprite' | 'spine' | 'tile' | 'pano' | 'image' | 'audio' | 'video' | 'text' | 'file'
 
 export interface SpineSet {
   skeleton: BlobRef
@@ -37,6 +37,7 @@ export const VIEW_LABEL: Record<ViewKind, string> = {
   sprite: 'Hoạt ảnh',
   spine: 'Spine',
   tile: 'Lát',
+  pano: '360°',
   image: 'Ảnh',
   audio: 'Âm thanh',
   video: 'Video',
@@ -84,6 +85,12 @@ const isSheetMeta = (b: BlobRef): boolean => isJson(b) && stem(b) === 'sheet' &&
 const isSheetImage = (b: BlobRef): boolean => isImage(b) && /(^|_)sheet$/.test(stem(b)) && !isNormalBlob(b)
 const isNormalSheet = (b: BlobRef): boolean => isImage(b) && isNormalBlob(b) && (normalHashes.has(b.hash) || /sheet/.test(stem(b)))
 const isNormalMeta = (b: BlobRef): boolean => isJson(b) && isNormalBlob(b) && /sheet/.test(stem(b))
+
+// op.pano_fix / op.pano_cubemap name the panorama `<asset>_pano`; skybox candidates come straight from ComfyUI, so an
+// exact 2:1 image of panorama size opens in 360 too (no other recipe makes 2:1 images).
+const isPanoNamed = (b: BlobRef): boolean => isImage(b) && /(^|_)pano$/.test(stem(b))
+const isPanoShaped = (b: BlobRef): boolean => isImage(b) && !!b.width && b.width >= 1024 && b.width === (b.height ?? 0) * 2
+const isSkyboxDoc = (b: BlobRef): boolean => isJson(b) && stem(b) === 'skybox'
 
 export const isTileImage = (b: BlobRef): boolean => isImage(b) && /(^|_)seamless(_|$)/.test(stem(b))
 const isTileReport = (b: BlobRef): boolean => isJson(b) && stem(b) === 'tile_check'
@@ -198,6 +205,7 @@ export function viewsFor(blob: BlobRef, siblings: BlobRef[] = []): AssetView[] {
   if (spine && (inSpine || blob.mime === 'text/html')) out.push({ kind: 'spine', blob, spine })
   if (pair && inSprite) out.push({ kind: 'sprite', blob, ...pair })
   if (isTileImage(blob) || isWangTile(blob)) out.push(tileView(blob, all))
+  if (isPanoNamed(blob) || (isPanoShaped(blob) && !isTileImage(blob))) out.push({ kind: 'pano', blob })
   if (isImage(blob)) out.push({ kind: 'image', blob })
   if (isAudio(blob)) {
     const wave = all.find((b) => isImage(b) && stem(b) === `${stem(blob)}_wave`)
@@ -225,6 +233,8 @@ export function featuredAsset(blobs: BlobRef[]): AssetView | null {
   const normal = all.find(isNormalSheet)
   const nmeta = all.find(isNormalMeta)
   if (normal && nmeta) return { kind: 'sprite', blob: normal, sheet: normal, meta: nmeta }
+  const pano = all.some(isSkyboxDoc) || all.some((b) => isImage(b) && /(^|_)seam_check$/.test(stem(b))) ? all.find(isPanoNamed) : undefined
+  if (pano) return { kind: 'pano', blob: pano }
   const tile = wangSet(null, all)?.[0] ?? all.find(isTileMain)
   if (tile && all.some(isTileReport)) return tileView(tile, all)
   // MP4 first: H.264 plays everywhere, WebM is the alternate encode of the same clip.
@@ -233,7 +243,7 @@ export function featuredAsset(blobs: BlobRef[]): AssetView | null {
   return null
 }
 
-const FEATURE_RANK: Partial<Record<ViewKind, number>> = { glb: 0, spine: 1, sprite: 2, tile: 4, video: 5 }
+const FEATURE_RANK: Partial<Record<ViewKind, number>> = { glb: 0, spine: 1, sprite: 2, tile: 4, pano: 4, video: 5 }
 const rank = (f: AssetView): number => (f.kind === 'sprite' && f.sheet && isNormalBlob(f.sheet) ? 3 : FEATURE_RANK[f.kind]!)
 
 /** `featuredAsset` over several steps' outputs: a sheet only pairs with the meta of its own step, while the

@@ -14,7 +14,7 @@ export function fits(spec: RecipeInputSpec, b: BlobRef): boolean {
     case 'images':
       return b.mime.startsWith('image/')
     case 'mesh':
-      return ext === 'glb' || b.mime === 'model/gltf-binary'
+      return (spec.ext?.length ? spec.ext : ['glb']).includes(ext) || b.mime === 'model/gltf-binary'
     case 'video':
       return b.mime.startsWith('video/') || VIDEO_EXT.includes(ext)
     case 'file':

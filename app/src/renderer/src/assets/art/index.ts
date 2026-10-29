@@ -36,6 +36,11 @@ import uiKitStyle from './recipe-ui-kit-style.webp'
 import iconPack from './recipe-icon-pack.webp'
 import spineCharacterImage from './recipe-spine-character-image.webp'
 import enemyVariants from './recipe-enemy-variants.webp'
+import restyleFolder from './recipe-restyle-folder.webp'
+import spriteAnimVideo from './recipe-sprite-anim-video.webp'
+import propDestructible from './recipe-prop-destructible.webp'
+import meshRetexture from './recipe-mesh-retexture.webp'
+import skybox360 from './recipe-skybox-360.webp'
 
 export const ART = { appIcon, emptyRuns, emptyGates, emptyGallery, coreDisconnected, gettingStarted } as const
 
@@ -75,7 +80,12 @@ const RECIPE_ART: Record<string, string> = {
   'ui-kit-style': uiKitStyle,
   'icon-pack': iconPack,
   'vfx-flipbook': vfxFlipbook,
-  'enemy-variants': enemyVariants
+  'prop-destructible': propDestructible,
+  'mesh-retexture': meshRetexture,
+  'enemy-variants': enemyVariants,
+  'restyle-folder': restyleFolder,
+  'sprite-anim-video': spriteAnimVideo,
+  'skybox-360': skybox360
 }
 
 export function recipeArt(id: string): string | undefined {
@@ -138,7 +148,12 @@ const RECIPE_PITCH: Record<string, string> = {
   'autotile-terrain-prompt': 'Texture cỏ + prompt nền (đất, nước, cát) → Z-Image vẽ nền → bộ autotile 47 ô khớp mép, TileSet terrain Godot / RuleTile Unity',
   'key-art-motion': 'Key art → teaser 5 giây chuyển động nhẹ (tóc, vải, hạt bay), lặp liền, MP4 + WebM + GIF + poster',
   'storyboard-animatic': 'Kịch bản cutscene + ảnh nhân vật → 4–12 shot giữ đúng nhân vật, thoại TTS mỗi người một giọng, Ken Burns + phụ đề → animatic MP4 + storyboard PDF',
-  'enemy-variants': 'Sheet 8 hướng / anim có sẵn → biến thể lửa, băng, độc, elite đổi màu theo vùng, thêm sừng / mũ bám đúng từng khung, giữ nguyên ô + clip'
+  'restyle-folder': 'Thư mục Assets Unity / Godot đầy placeholder → vẽ lại cả lô theo style dự án ngay tại chỗ, giữ kích thước, alpha, rect, 9-slice và GUID; backup zip + hoàn tác',
+  'mesh-retexture': 'Mesh .glb / .fbx / .obj có sẵn → tô texture mới theo prompt + style, giữ nguyên hình học và UV, 4/6/8 góc + góc bổ sung tự chọn → GLB + bộ map PBR, material Unity / Godot',
+  'prop-destructible': 'Prop 3D có sẵn → bản vỡ 8–40 mảnh kín (đều / quanh điểm va chạm / thanh gỗ), mặt cắt có texture, khối lượng theo thể tích → prefab Unity + scene Godot vật lý',
+  'enemy-variants': 'Sheet 8 hướng / anim có sẵn → biến thể lửa, băng, độc, elite đổi màu theo vùng, thêm sừng / mũ bám đúng từng khung, giữ nguyên ô + clip',
+  'sprite-anim-video': '1 ảnh nhân vật + động tác (thở, đi, chạy, chém, nhảy, bị đánh) → video AI → 8/12/16 frame lặp liền, chân đứng yên, sheet có clip cho Unity / Godot / Aseprite',
+  'skybox-360': 'Mô tả bầu trời / phông cảnh → panorama 360° liền mép, xem kéo xoay → 6 mặt cube + hướng nắng, skybox Unity / Godot gắn sẵn'
 }
 
 export function recipePitch(id: string): string | undefined {
@@ -160,6 +175,6 @@ export const RECIPE_GROUP_LABEL: Record<RecipeGroup, string> = {
 export function recipeGroup(id: string): RecipeGroup {
   if (id.startsWith('audio-')) return 'audio'
   if (id.startsWith('sprite-') || id.startsWith('spine-') || id.startsWith('npc-') || id.startsWith('enemy-') || id.includes('character')) return 'character'
-  if (id.includes('3d') || id.includes('glb') || id.includes('mesh')) return '3d'
+  if (id.includes('3d') || id.includes('glb') || id.includes('mesh') || id.startsWith('skybox') || id.startsWith('prop-')) return '3d'
   return '2d'
 }

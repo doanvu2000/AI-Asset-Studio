@@ -1,0 +1,86 @@
+id: sprite-anim-video
+name: Hoạt ảnh sprite từ 1 ảnh (video AI)
+description: >-
+  1 ảnh nhân vật (side-view / top-down) + động tác (idle, đi, chạy, chém, nhảy, bị đánh, phép, ngã hoặc tự mô tả) →
+  đặt lên nền xám phẳng → Claude viết prompt động tác tại chỗ, camera tĩnh → Wan 2.2 TI2V 5B sinh vài video (mỗi
+  ứng viên một seed) → chọn 1 → BiRefNet tách nền từng frame → tìm chu kỳ lặp (SSIM) hoặc đoạn ra đòn, crossfade mối
+  nối, khoá pivot dưới chân, chống rung → 8/12/16 ô cùng cỡ + sprite sheet có clip + GIF xem trước + ảnh QA → duyệt.
+  Xuất Unity AnimationClip, Godot SpriteFrames, Aseprite JSON như sheet anim thường.
+inputs:
+  image: {type: image, label: Ảnh nhân vật (nền trong suốt càng tốt)}
+  action: {type: enum, default: slash, options: [idle, walk, run, slash, jump, hit, cast, death, custom],
+           label: "Động tác (idle = thở, walk/run = đi/chạy tại chỗ, slash = chém, hit = bị đánh, cast = phép)"}
+  motion: {type: text, default: "", multiline: true, label: "Mô tả động tác (trống = theo preset; custom bắt buộc)",
+           placeholder: "swings a big axe overhead and slams it down, then lifts it back"}
+  frames: {type: int, default: 12, options: [8, 12, 16], label: Số frame}
+  loop: {type: enum, default: auto, options: [auto, loop, oneshot],
+         label: "Lặp (auto = idle/đi/chạy lặp, còn lại chạy 1 lần)"}
+  facing: {type: enum, default: right, options: [right, left, front, back], label: Nhân vật nhìn về}
+  view: {type: enum, default: side, options: [side, topdown], label: "Góc nhìn (side = platformer, topdown = RPG)"}
+  candidates: {type: int, default: 3, min: 1, max: 4, label: Số ứng viên video (mỗi cái một seed)}
+  seconds: {type: int, default: 2, options: [2, 3, 4], label: Độ dài video sinh (giây)}
+  size: {type: int, default: 256, options: [128, 192, 256, 384, 512], label: Cỡ ô (px)}
+  shadow: {type: enum, default: none, options: [none, blob, drop], label: Bóng đổ}
+  suggest: {type: bool, default: true, label: Claude nhìn ảnh viết prompt động tác}
+  sampler_steps: {type: int, default: 20, min: 8, max: 40, label: Số bước khử nhiễu}
+  review: {type: bool, default: true, label: Tự chọn ứng viên + duyệt trước khi xong}
+steps:
+  - id: prep
+    kind: op.anim_prep
+    in: {images: inputs.image}
+    params: {resolution: 480p, seconds: "${inputs.seconds}", candidates: "${inputs.candidates}"}
+  - id: motion
+    kind: claude.anim_motion
+    in: {images: prep.image}
+    params: {action: "${inputs.action}", motion: "${inputs.motion}", loop: "${inputs.loop}", view: "${inputs.view}",
+             facing: "${inputs.facing}", suggest: "${inputs.suggest}", model: opus, _auto_retry: 1}
+  # One Wan run per candidate (same start image, fresh seed each); frames come back concatenated in candidate order.
+  - id: gen
+    kind: comfy.keyart_wan22_ti2v
+    in: {image: prep.starts}
+    map: image
+    params:
+      "6.text": "${steps.motion.json.prompt}"
+      "55.width": "${steps.prep.json.width}"
+      "55.height": "${steps.prep.json.height}"
+      "55.length": "${steps.prep.json.length}"
+      "3.steps": "${inputs.sampler_steps}"
+      _free_before: true
+      _timeout_s: 3600
+  - id: candidates
+    kind: op.anim_candidates
+    in: {frames: gen.images, json: prep.json}
+  - id: pick
+    kind: gate.pick
+    in: {images: candidates.previews}
+    params: {k: 1, enabled: "${inputs.review}"}
+  - id: take
+    kind: op.anim_pick
+    in: {picked: pick.images, candidates: candidates.json}
+  - id: matte
+    kind: comfy.remove_bg_birefnet
+    in: {image: take.frames}
+    map: image
+  - id: loop
+    kind: op.anim_loop
+    in: {images: matte.images, json: prep.json}
+    params: {action: "${inputs.action}", loop: "${inputs.loop}", frames: "${inputs.frames}", size: "${inputs.size}",
+             facing: "${inputs.facing}"}
+  - id: fx
+    kind: op.sprite_fx
+    in: {images: loop.images, pivot: loop.pivot}
+    params: {shadow: "${inputs.shadow}"}
+  - id: sheet
+    kind: op.sheet
+    in: {images: fx.images, pivot: loop.pivot}
+  - id: approve
+    kind: gate.approve
+    in: {sheet: sheet.sheet, meta: sheet.meta, preview: loop.gif, qa: loop.qa, frames: fx.images, report: loop.json}
+    params: {enabled: "${inputs.review}"}
+# Engine export (Unity/Godot/Aseprite) reads op.sheet steps, so the outputs point at the sheet itself.
+outputs:
+  final: sheet.sheet
+  meta: sheet.meta
+  preview: loop.gif
+  qa: loop.qa
+  frames: fx.images

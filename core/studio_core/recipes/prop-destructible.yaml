@@ -1,0 +1,49 @@
+id: prop-destructible
+name: Phá huỷ prop 3D (vỡ mảnh + prefab vật lý)
+description: >-
+  Prop 3D GLB (thùng, bình, tường, tượng — vd kết quả Prop 3D) → Z-Image vẽ texture mặt cắt liền mạch theo vật liệu →
+  Blender vỡ Voronoi thành 8–40 mảnh kín (kiểu đều / tập trung quanh điểm va chạm / thanh gỗ dọc thớ; mesh hở thì voxel
+  remesh trước), mặt cắt dùng material riêng, giảm lưới theo ngân sách tam giác, khối lượng mỗi mảnh = thể tích ×
+  khối lượng riêng → ảnh nổ tung (exploded view) xoay 8 hướng → duyệt. Xuất Unity: FBX bản nguyên + bản vỡ, Editor script
+  tạo prefab Intact (Rigidbody + MeshCollider convex + SwapOnHit) và Fractured (mỗi mảnh *_chunkNN có Rigidbody theo
+  khối lượng); Godot: scene RigidBody3D + CollisionShape3D convex cho từng mảnh và bản nguyên tự vỡ khi va mạnh.
+inputs:
+  mesh: {type: mesh, label: Prop 3D (GLB kín)}
+  asset: {type: text, default: crate, label: Tên asset (mảnh đặt tên asset_chunkNN)}
+  pieces: {type: int, default: 16, min: 8, max: 40, label: Số mảnh}
+  pattern: {type: enum, default: uniform, options: [uniform, impact, planks],
+            label: "Kiểu vỡ (uniform = đều · impact = vụn quanh điểm va chạm · planks = thanh dọc thớ gỗ)"}
+  impact: {type: enum, default: top, options: [top, front, corner, side, center], label: Điểm va chạm (kiểu impact)}
+  material: {type: enum, default: wood, options: [wood, stone, ceramic, metal, glass, concrete, ice, plastic],
+             label: Vật liệu mặt cắt (quyết định khối lượng riêng)}
+  cut_prompt: {type: text, default: "", label: "Mô tả mặt cắt thêm (tiếng Anh, tuỳ chọn)", placeholder: "dark oak with knots"}
+  max_tris: {type: int, default: 20000, min: 1000, max: 200000, label: Ngân sách tam giác cả bộ mảnh (mobile ~10000)}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: cut_tex
+    kind: comfy.t2i_zimage_turbo
+    params: {"57:27.text": "seamless tileable texture of the broken inner cross-section of solid ${inputs.material}, ${inputs.cut_prompt}, raw fractured interior surface, photographed straight down, orthographic, flat even diffuse lighting, no shadows, no vignette, fills the whole frame, game texture",
+             "57:13.batch_size": 1, "57:13.width": 1024, "57:13.height": 1024}
+  - id: cut_seam
+    kind: op.seamless
+    in: {images: cut_tex.images}
+    params: {name: cut, flatten: 0.5}
+  - id: fracture
+    kind: blender.fracture
+    in: {mesh: inputs.mesh, texture: cut_seam.images}
+    params: {pieces: "${inputs.pieces}", pattern: "${inputs.pattern}", impact: "${inputs.impact}",
+             material: "${inputs.material}", max_tris: "${inputs.max_tris}", asset: "${inputs.asset}"}
+  - id: exploded
+    kind: blender.render_dirs
+    in: {mesh: fracture.exploded}
+    params: {count: 8, res: 384, elevation: 25, supersample: 2}
+  - id: approve
+    kind: gate.approve
+    in: {preview: exploded.images, meshes: fracture.meshes, fbx: fracture.fbx, report: fracture.report,
+         cut: cut_seam.images}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.meshes
+  preview: approve.preview
+  fbx: approve.fbx
+  report: approve.report

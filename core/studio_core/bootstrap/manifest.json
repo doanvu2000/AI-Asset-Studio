@@ -67,7 +67,8 @@
    "required": false,
    "workflows": [
     "img2mesh_trellis2_textured",
-    "img2mesh_trellis2_mv_textured"
+    "img2mesh_trellis2_mv_textured",
+    "retex_zimage_union2"
    ]
   },
   {
@@ -114,6 +115,15 @@
    "required": false,
    "workflows": [
     "qwen_image_layered"
+   ]
+  },
+  {
+   "id": "skybox",
+   "label": "Skybox 360",
+   "detail": "Bầu trời / phông 360° liền mép cho game 3D: Qwen-Image 2512 int8 (Apache-2.0) + LoRA qwen-360-diffusion (MIT), ≈21 GB; cần ~64GB RAM khi VRAM 12GB.",
+   "required": false,
+   "workflows": [
+    "t2i_qwen_image_360"
    ]
   },
   {
@@ -247,6 +257,15 @@
    "url": "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union.safetensors",
    "size": 3101572408,
    "sha256": "86c085c0d7853f12ce5183499934b54d08371c60f549c5a6b20615cd23989388",
+   "license": "Apache-2.0",
+   "commercial": "yes"
+  },
+  {
+   "name": "Z-Image-Turbo-Fun-Controlnet-Union-2.0.safetensors",
+   "dir": "model_patches",
+   "url": "https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1/resolve/main/Z-Image-Turbo-Fun-Controlnet-Union-2.0.safetensors",
+   "size": 6712485600,
+   "sha256": "07e5bf88a2e5aeea4b7dfc1f4897bdd4064ae29e50ccd3278d93aff8a070147a",
    "license": "Apache-2.0",
    "commercial": "yes"
   },
@@ -502,6 +521,24 @@
    "size": 253816616,
    "sha256": "c5320595fc61859ccdd0282184208f7b781c983b8ce4c6bc3e7723a807d3d28d",
    "license": "Apache-2.0",
+   "commercial": "yes"
+  },
+  {
+   "name": "qwen_image_2512_int8_convrot.safetensors",
+   "dir": "diffusion_models",
+   "url": "https://huggingface.co/Winnougan/Qwen-Image-INT8/resolve/main/qwen_image_2512_int8_convrot.safetensors",
+   "size": 20533609455,
+   "sha256": "af5ff38ca2b59ade4c13aa046dc39acae78ac0fe8cb85d8f424a30150b954260",
+   "license": "Apache-2.0",
+   "commercial": "yes"
+  },
+  {
+   "name": "qwen-360-diffusion-2512-int8-bf16-v2.safetensors",
+   "dir": "loras",
+   "url": "https://huggingface.co/ProGamerGov/qwen-360-diffusion/resolve/main/qwen-360-diffusion-2512-int8-bf16-v2.safetensors",
+   "size": 755039336,
+   "sha256": "11065421c2a4c8f503ee1be5d6dc0320a9ffb5bfaded2490813046fd2312578d",
+   "license": "MIT",
    "commercial": "yes"
   }
  ]

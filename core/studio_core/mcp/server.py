@@ -41,7 +41,17 @@ paths; an atlas file input uploads its page images too)
 -> wait_run -> if status is awaiting_human, look at the gate candidates and call resolve_gate (only when
 gate_policy is 'agent' or the user asked you to choose) -> wait_run again -> get_outputs (returns absolute
 paths of exported copies). Runs started here also appear in the desktop app. GPU recipes can take minutes;
-wait_run returns on timeout so call it again."""
+wait_run returns on timeout so call it again.
+skybox-360: gate candidates are 2:1 equirectangular panoramas (left edge wraps to right, top/bottom rows are the
+poles); prefer a level horizon and no objects cut by the edges. Outputs: <asset>_pano.png, six cube faces
+(front/right/back/left/up/down), irradiance and skybox.json (sun direction, seam score).
+prop-destructible: mesh = a closed prop GLB (e.g. prop-3d's final). The approve gate shows 8 exploded-view renders;
+destructible.json lists every <asset>_chunkNN with volume, mass, triangles and closed flag (volume_error should stay
+under 0.03). Outputs: <asset>_intact/_fractured GLB + FBX; engine export adds Unity prefab builder / Godot scenes.
+mesh-retexture: mesh = an existing .glb/.fbx/.obj path (geometry and UVs are kept; uv=new re-unwraps). Gate `check`
+shows the painted views (reject to repaint with another seed); gate `approve` shows a turntable next to the original.
+retexture.json gives unpainted_pct (% of the visible surface no view painted, aim < 2) and UV overlap. Outputs:
+<stem>_retextured.glb + <stem>_original.glb, PBR maps (albedo/normal/roughness/metallic/AO) and pbr_material.json."""
 
 
 def _ext(blob: dict[str, Any]) -> str:
@@ -195,6 +205,9 @@ class StudioTools:
             spec.setdefault("required", "default" not in spec and spec.get("required", True))
             if spec.get("type") in BLOB_TYPES:
                 spec["pass_as"] = "absolute local file path (or a list of paths)"
+            elif spec.get("path") == "dir":
+                spec["pass_as"] = ("absolute local folder path (read in place, not uploaded; restyle-folder writes "
+                                   "into it only with output=apply, after a zip backup)")
             inputs[name] = spec
         gates = [s["id"] for s in r.get("steps", []) if str(s.get("kind", "")).startswith("gate.")]
         return {"id": r["id"], "name": r["name"], "description": r.get("description", ""), "inputs": inputs,

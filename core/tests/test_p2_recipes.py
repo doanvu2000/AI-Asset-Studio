@@ -44,7 +44,6 @@ outputs:
 @pytest.mark.parametrize("bad, msg", [
     ("map_param: nope", "not one of its params"),
     ("map_param: steps", "must be a list"),
-    ("map: image", "both map and map_param"),
 ])
 def test_map_param_validation(bad: str, msg: str) -> None:
     text = MAP_PARAM.replace("map_param: prompt", bad if bad.startswith("map_param") else f"map_param: prompt\n    {bad}")
@@ -109,6 +108,34 @@ async def test_map_param_rejects_empty_lines(tmp_path: Path) -> None:
     img = await env.blobs.put_bytes(b"src")
     with pytest.raises(RecipeError, match="no items"):
         await env.engine.start_run("mp", {"img": img.hash, "lines": " \n \n"})
+
+
+MAP_ZIP = """
+id: mz
+steps:
+  - {id: gen, kind: t.gen, params: {count: 3}}
+  - id: edit
+    kind: t.edit
+    in: {image: gen.images}
+    map: image
+    params: {prompt: [a, b, c]}
+    map_param: prompt
+"""
+
+
+async def test_map_and_map_param_zip(tmp_path: Path) -> None:
+    edit = ParamExec("t.edit")
+    env = Env(tmp_path, [FakeExec("t.gen"), edit], {"mz": MAP_ZIP, "bad": MAP_ZIP.replace("[a, b, c]", "[a, b]")
+                                                    .replace("id: mz", "id: bad")})
+    run_id = await env.engine.start_run("mz", {})
+    await until(lambda: env.status(run_id) in (RunStatus.SUCCEEDED, RunStatus.FAILED))
+    assert env.status(run_id) == RunStatus.SUCCEEDED
+    gen = env.steps(run_id)["gen"].outputs["images"]
+    assert [p["prompt"] for p in edit.params] == ["a", "b", "c"]
+    assert [c["image"][0].hash for c in edit.calls] == [b.hash for b in gen]
+    bad = await env.engine.start_run("bad", {})
+    await until(lambda: env.status(bad) in (RunStatus.SUCCEEDED, RunStatus.FAILED))
+    assert env.status(bad) == RunStatus.FAILED
 
 
 MAP_ITEMS = """

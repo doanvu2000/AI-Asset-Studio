@@ -1,3 +1,4 @@
+import type { RestyleApplyResult, RestyleBackup, RestyleScan, RestyleUndoResult } from './restyleTypes'
 import type {
   ApiErrorBody,
   BatchCreateBody,
@@ -174,6 +175,12 @@ export interface StudioApi {
   buildPack(projectId: string, body: PackBody): Promise<PackResult>
   /** Trimmed texture atlas of the given steps' sprites, written under the app's export folder. */
   buildAtlas(body: AtlasBody): Promise<AtlasResult>
+  /** Read-only scan of a game project folder for the restyle-folder recipe (kinds, edit units, time estimate). */
+  restyleScan(body: { folder: string; include?: string; exclude?: string }): Promise<RestyleScan>
+  /** Overwrites the folder's PNGs with an approved restyle run (zip backup first; .meta/.import untouched). */
+  restyleApply(runId: string): Promise<RestyleApplyResult>
+  restyleUndo(backupId: string, force?: boolean): Promise<RestyleUndoResult>
+  restyleBackups(runId?: string): Promise<{ backups: RestyleBackup[] }>
   similarStatus(): Promise<SimilarIndexStatus>
   reindexSimilar(body?: { project_id?: string; force?: boolean }): Promise<SimilarIndexStatus>
 }
@@ -342,6 +349,10 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     projectPacks: (id) => call('GET', `/api/projects/${enc(id)}/packs`),
     buildPack: (id, body) => call('POST', `/api/projects/${enc(id)}/pack`, body, SLOW_TIMEOUT_MS),
     buildAtlas: (body) => call('POST', '/api/atlas', body, SLOW_TIMEOUT_MS),
+    restyleScan: (body) => call('POST', '/api/restyle/scan', body, SLOW_TIMEOUT_MS),
+    restyleApply: (runId) => call('POST', '/api/restyle/apply', { run_id: runId }, SLOW_TIMEOUT_MS),
+    restyleUndo: (backupId, force = false) => call('POST', '/api/restyle/undo', { backup_id: backupId, force }, SLOW_TIMEOUT_MS),
+    restyleBackups: (runId) => call('GET', `/api/restyle/backups${query({ run_id: runId })}`),
     similarStatus: () => call('GET', '/api/search/status'),
     reindexSimilar: (body = {}) => call('POST', '/api/search/reindex', body)
   }

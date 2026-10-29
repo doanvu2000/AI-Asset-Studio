@@ -498,5 +498,71 @@
         "class": "SaveImage"
       }
     ]
+  },
+  "t2i_qwen_image_360": {
+    "file": "t2i_qwen_image_360.api.json",
+    "template": "image_qwen_image (2512 int8 convrot + LoRA qwen-360-diffusion v2)",
+    "images": [],
+    "texts": [
+      {
+        "key": "6.text",
+        "node": "CLIPTextEncode",
+        "title": "Prompt (keep the 360 equirectangular trigger)",
+        "default": "360 degree panorama with equirectangular projection, a calm desert at sunset, dunes to the horizon, warm orange sky with soft clouds, digital painting"
+      },
+      {
+        "key": "7.text",
+        "node": "CLIPTextEncode",
+        "title": "Negative",
+        "default": "seam, border, frame, text, watermark, blurry, distorted horizon, tilted horizon"
+      }
+    ],
+    "seeds": [
+      "3.seed"
+    ],
+    "outputs": [
+      {
+        "node": "9",
+        "class": "SaveImage"
+      }
+    ]
+  },
+  "retex_zimage_union2": {
+    "file": "retex_zimage_union2.api.json",
+    "template": "z_image_turbo_fun_union2_depth_inpaint",
+    "images": [
+      {
+        "key": "5.image",
+        "title": "Depth",
+        "default": "retex_depth.png"
+      },
+      {
+        "key": "6.image",
+        "title": "Known render (inpaint image)",
+        "default": "retex_inpaint.png"
+      },
+      {
+        "key": "7.image",
+        "title": "Repaint mask (red = repaint)",
+        "default": "retex_mask.png"
+      }
+    ],
+    "texts": [
+      {
+        "key": "10.text",
+        "node": "CLIPTextEncode",
+        "title": "Prompt",
+        "default": "a wooden crate"
+      }
+    ],
+    "seeds": [
+      "14.seed"
+    ],
+    "outputs": [
+      {
+        "node": "16",
+        "class": "SaveImage"
+      }
+    ]
   }
 }

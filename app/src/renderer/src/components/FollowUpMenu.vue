@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, useId } from 'vue'
 import { useRouter } from 'vue-router'
 import { onClickOutside, useEventListener } from '@vueuse/core'
-import { ChevronDown, Forward, LoaderCircle, PersonStanding } from '@lucide/vue'
+import { ChevronDown, Clapperboard, Forward, LoaderCircle, PersonStanding } from '@lucide/vue'
 import type { BlobRef, Outputs, RunRow } from '@/api/types'
 import { api } from '@/stores/connection'
 import { useRecipes } from '@/stores/recipes'
@@ -36,12 +36,29 @@ const kitOk = computed(
     !!recipes.byId(KIT.then)
 )
 
-type Item = { id: string; label: string; hint?: string; kit?: boolean; follow?: FollowUp }
+// A still character image goes straight to a sprite animation with the action already chosen.
+const ANIM = 'sprite-anim-video'
+const ANIM_ACTIONS = [
+  { id: 'idle', label: 'Đứng thở' },
+  { id: 'walk', label: 'Đi' },
+  { id: 'run', label: 'Chạy' },
+  { id: 'slash', label: 'Chém' },
+  { id: 'jump', label: 'Nhảy' },
+  { id: 'hit', label: 'Bị đánh' },
+  { id: 'cast', label: 'Phép' }
+] as const
+
+type Item = { id: string; label: string; hint?: string; kit?: boolean; anim?: boolean; follow?: FollowUp }
 const items = computed<Item[]>(() => {
   const list: Item[] = kitOk.value ? [{ id: 'kit', label: 'Bộ nhân vật', hint: '8 hướng → Spine', kit: true }] : []
-  if (clicked.value)
-    for (const f of followUps(recipes.list, clicked.value, siblings.value))
-      list.push({ id: f.recipe.id, label: f.recipe.name, hint: f.missing.length ? `thiếu ${f.missing.join(', ')}` : undefined, follow: f })
+  if (clicked.value) {
+    const all = followUps(recipes.list, clicked.value, siblings.value)
+    const anim = all.find((f) => f.recipe.id === ANIM && !f.missing.length)
+    if (anim) list.push({ id: ANIM, label: 'Hoạt ảnh sprite', hint: 'video AI → sheet', anim: true, follow: anim })
+    for (const f of all)
+      if (f !== anim)
+        list.push({ id: f.recipe.id, label: f.recipe.name, hint: f.missing.length ? `thiếu ${f.missing.join(', ')}` : undefined, follow: f })
+  }
   return list
 })
 const itemId = (i: number): string => `${uid}-fu-${i}`
@@ -109,12 +126,15 @@ async function startKit(): Promise<void> {
   }
 }
 
-function choose(i: number): void {
+function choose(i: number, action?: string): void {
   const it = items.value[i]
   if (!it) return
   close(false)
   if (it.kit) return void startKit()
-  if (it.follow) void router.push({ path: '/new', query: prefillQuery(it.follow.recipe.id, it.follow.prefill, run.value?.project_id) })
+  if (!it.follow) return
+  const query = prefillQuery(it.follow.recipe.id, it.follow.prefill, run.value?.project_id)
+  if (action) query['input.action'] = action
+  void router.push({ path: '/new', query })
 }
 
 function onKey(e: KeyboardEvent): void {
@@ -176,11 +196,15 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
         <p v-if="loading" class="f-empty caption"><LoaderCircle :size="13" class="spin" /> Đang tìm quy trình phù hợp…</p>
         <p v-else-if="!items.length" class="f-empty caption">Chưa có quy trình nào nhận loại tệp này</p>
         <template v-for="(it, i) in items" :key="it.id">
-          <hr v-if="i === 1 && items[0]?.kit" class="f-sep" />
-          <div :id="itemId(i)" role="menuitem" class="f-item" :class="{ active: i === active, kit: it.kit }" @mousemove="active = i" @click="choose(i)">
+          <hr v-if="i > 0 && (items[i - 1]?.kit || items[i - 1]?.anim)" class="f-sep" />
+          <div :id="itemId(i)" role="menuitem" class="f-item" :class="{ active: i === active, kit: it.kit || it.anim, anim: it.anim }" @mousemove="active = i" @click="choose(i)">
             <PersonStanding v-if="it.kit" :size="14" aria-hidden="true" />
+            <Clapperboard v-else-if="it.anim" :size="14" aria-hidden="true" />
             <span class="f-label">{{ it.label }}</span>
             <span v-if="it.hint" class="f-hint">{{ it.hint }}</span>
+            <span v-if="it.anim" class="f-chips">
+              <button v-for="a in ANIM_ACTIONS" :key="a.id" type="button" class="f-chip" tabindex="-1" @click.stop="choose(i, a.id)">{{ a.label }}</button>
+            </span>
           </div>
         </template>
       </div>
@@ -244,6 +268,41 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
   background: var(--accent);
   color: var(--text-on-accent);
 }
+.f-item.anim {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  padding-bottom: 6px;
+}
+.f-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex-basis: 100%;
+  padding-left: 22px;
+}
+.f-chip {
+  padding: 1px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg-active);
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  cursor: default;
+  transition:
+    background var(--t-fast) var(--ease-out),
+    scale var(--t-fast) var(--ease-out);
+}
+.f-item.active .f-chip {
+  background: rgba(255, 255, 255, 0.2);
+}
+.f-item.active .f-chip:hover {
+  background: rgba(255, 255, 255, 0.34);
+}
+.f-chip:active {
+  scale: 0.95;
+}
 .f-label {
   flex: 1;
   min-width: 0;
@@ -283,6 +342,7 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
 }
 @media (prefers-reduced-motion: reduce) {
   .chev,
+  .f-chip,
   .menu-enter-active,
   .menu-leave-active {
     transition: none;

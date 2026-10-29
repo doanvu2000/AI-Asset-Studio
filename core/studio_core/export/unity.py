@@ -729,6 +729,24 @@ def export(src: Source) -> Files:
         ev_files, ev_notes = enemy_files(src)
         files += ev_files
         notes += ev_notes
+    if src.skybox and src.skybox_files:
+        from studio_core.export.skybox import unity_files as skybox_files
+
+        sk_files, sk_notes = skybox_files(src)
+        files += sk_files
+        notes += sk_notes
+    if src.destructible:
+        from studio_core.export.destructible import unity_files as destructible_files
+
+        de_files, de_notes = destructible_files(src)
+        files += de_files
+        notes += de_notes
+    if src.retexture:
+        from studio_core.export.mesh_retexture import unity_files as retexture_files
+
+        rt_files, rt_notes = retexture_files(src)
+        files += rt_files
+        notes += rt_notes
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

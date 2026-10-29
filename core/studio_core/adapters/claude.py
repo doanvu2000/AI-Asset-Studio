@@ -271,6 +271,12 @@ BRIEF_TARGETS = {
                     "so avoid motion blur, cropped limbs, props detached from the body and busy backgrounds",
     "prop-3d": "a single game prop in three-quarter view, whole object visible, plain white background; the image "
                "feeds image-to-3D reconstruction, so keep a clean readable silhouette",
+    # Here the scenery IS the subject: the general "never extra scenery" rule would leave an empty sky.
+    "skybox-360": "a full 360 degree environment panorama for a 3D game skybox, seen from one standing point at eye "
+                  "level with a level horizon across the middle; describe the sky (time of day, clouds, sun or moon, "
+                  "stars) and the distant surroundings all around; scenery is the subject, no characters, no "
+                  "foreground objects close to the camera, no text; the prompt must start with '360 degree panorama "
+                  "with equirectangular projection'",
     "generic": "a single game asset image",
 }
 

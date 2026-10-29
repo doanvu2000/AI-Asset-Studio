@@ -1,0 +1,57 @@
+id: skybox-360
+name: Skybox 360 (Qwen-Image + LoRA 360)
+description: >-
+  Mô tả bầu trời / phông cảnh → Claude (Opus) viết prompt panorama → Qwen-Image 2512 + LoRA qwen-360-diffusion vẽ
+  ảnh equirectangular 2048×1024 (xem ứng viên bằng viewer 360 kéo xoay) → chọn → nối liền mép trái/phải (cắt theo
+  đường ít lệch nhất như texture liền mạch), làm mịn 2 cực, chấm điểm mối nối → tuỳ chọn phóng to 4K/8K (Real-ESRGAN,
+  đệm vòng nên mép vẫn liền) → cắt 6 mặt cube + irradiance mờ + hướng nắng → duyệt. Xuất Unity (Skybox/Panoramic,
+  Skybox/6 Sided, script gắn RenderSettings + đèn nắng) và Godot (Sky + PanoramaSkyMaterial, Environment, scene
+  WorldEnvironment mẫu).
+inputs:
+  idea: {type: text, multiline: true, label: Mô tả bầu trời / phông cảnh,
+         placeholder: "hoàng hôn trên sa mạc, mây cam tím, núi đá xa"}
+  style: {type: text, required: false, default: "", label: Phong cách (tuỳ chọn)}
+  count: {type: int, default: 3, min: 1, max: 4, label: Số ứng viên}
+  steps: {type: int, default: 30, min: 12, max: 50, label: Số bước lấy mẫu (nhiều = kỹ hơn, chậm hơn)}
+  upscale: {type: int, default: 0, options: [0, 4096, 8192], label: "Phóng to (px rộng, 0 = giữ 2048)"}
+  yaw: {type: float, default: 0, min: -180, max: 180, label: "Xoay hướng nhìn trước (độ, + = sang phải)"}
+  asset: {type: text, default: sky, label: Tên asset}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: brief
+    kind: claude.brief
+    params: {idea: "${inputs.idea}", style: "${inputs.style}", target: skybox-360, model: opus}
+  # The LoRA was trained on 2048x1024 only; other 2:1 sizes lose the horizon (model card).
+  - id: gen
+    kind: comfy.t2i_qwen_image_360
+    params: {"6.text": "${steps.brief.text}, equirectangular 360 panorama, seamless wrap-around",
+             "7.text": "${steps.brief.json.negative}, seam, frame, border, text, watermark, tilted horizon",
+             "8.batch_size": "${inputs.count}", "3.steps": "${inputs.steps}", _free_before: true}
+  - id: pick
+    kind: gate.pick
+    in: {images: gen.images}
+    params: {k: 1}
+  - id: fix
+    kind: op.pano_fix
+    in: {images: pick.images}
+    params: {asset: "${inputs.asset}", yaw: "${inputs.yaw}", upscale: "${inputs.upscale}"}
+  # Runs only when fix emitted a wrap-padded strip (upscale on); otherwise no ComfyUI call.
+  - id: up
+    kind: comfy.upscale_esrgan
+    in: {image: fix.upscale_in}
+    map: image
+  - id: cube
+    kind: op.pano_cubemap
+    in: {images: fix.images, upscaled: up.images, info: fix.info}
+    params: {asset: "${inputs.asset}"}
+  - id: approve
+    kind: gate.approve
+    in: {images: cube.images, preview: cube.preview, seam: fix.preview, faces: cube.faces,
+         irradiance: cube.irradiance, skybox: cube.skybox}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  faces: approve.faces
+  irradiance: approve.irradiance
+  skybox: approve.skybox

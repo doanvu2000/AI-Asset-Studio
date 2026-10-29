@@ -1,0 +1,90 @@
+id: restyle-folder
+name: Thay style hàng loạt tại chỗ (giữ GUID)
+description: >-
+  Thư mục project Unity (Assets/…) hoặc Godot → quét PNG + .meta / .import (sprite rect, 9-slice, pivot), nhóm sprite /
+  sheet / UI / tile → Claude mô tả từng ảnh → Flux.2 Klein vẽ lại theo style (Dự án điền style + ảnh tham chiếu; sheet
+  sửa nguyên khối nên các frame đồng nhất) → ép về đúng kích thước, alpha gốc (BiRefNet khi silhouette đổi), viền
+  9-slice, tile liền mạch → QA đồng bộ → duyệt → mặc định chỉ báo cáo (dry-run). Ghi đè vào project bằng nút "Áp vào
+  project" (backup zip + hoàn tác); không bao giờ đụng .meta / .import nên GUID và mọi tham chiếu giữ nguyên.
+inputs:
+  folder: {type: text, path: dir, label: "Thư mục project (Assets/… Unity hoặc thư mục Godot, đường dẫn tuyệt đối)"}
+  style: {type: text, default: "", multiline: true, label: Style đích (Dự án tự điền),
+          placeholder: "cozy hand-painted fantasy, soft cel shading, warm palette, thin dark outline"}
+  style_ref: {type: image, required: false, label: Ảnh style tham chiếu (tuỳ chọn)}
+  sample: {type: int, default: 6, min: 0, max: 2000, label: "Chạy thử N ảnh (0 = cả thư mục)"}
+  include: {type: text, default: "", label: "Chỉ lấy (glob, phẩy; vd Sprites/**)"}
+  exclude: {type: text, default: "", label: "Bỏ qua (glob, phẩy)"}
+  matte: {type: enum, options: [auto, original, birefnet], default: auto,
+          label: "Alpha (auto = giữ alpha gốc, BiRefNet khi silhouette đổi)"}
+  pixel: {type: enum, options: [auto, "on", "off"], default: auto,
+          label: "Pixel art (auto = khi style có chữ pixel, hoặc giữ style mà ảnh gốc là pixel art)"}
+  output: {type: enum, options: [dry_run, mirror, apply], default: dry_run,
+           label: "Ghi (dry_run = chỉ báo cáo; mirror = thư mục song song; apply = ghi đè có backup)"}
+  review: {type: bool, default: true, label: Duyệt trước khi ghi}
+steps:
+  - id: scan
+    kind: op.scan_project
+    params: {folder: "${inputs.folder}", include: "${inputs.include}", exclude: "${inputs.exclude}",
+             sample: "${inputs.sample}"}
+  - id: describe
+    kind: claude.task
+    in: {images: scan.thumbs}
+    params:
+      max_turns: 2
+      _auto_retry: 1
+      cache: true
+      system: You label game art for a restyle pipeline. Be literal and short; describe the subject, never the style.
+      prompt: |
+        Each tile shows one image from a game project, labelled "#id file name" above it (grey background = transparent).
+        For every id return: what = the subject in 2-8 plain English words (e.g. "green slime enemy", "wooden crate",
+        "rounded button frame", "grass ground tile"); if the image is a placeholder shape or blank, infer the subject
+        from the file name. group = a short name shared by images of the same character / object family / UI set, so
+        they are restyled consistently.
+      schema:
+        type: object
+        properties:
+          items:
+            type: array
+            items:
+              type: object
+              properties:
+                id: {type: integer}
+                what: {type: string}
+                group: {type: string}
+              required: [id, what, group]
+        required: [items]
+  - id: plan
+    kind: op.restyle_plan
+    in: {sources: scan.sources, scan: scan.scan, describe: describe.json, style_ref: inputs.style_ref}
+    params: {style: "${inputs.style}", pixel: "${inputs.pixel}"}
+  # One Klein edit per image (or block of sprite rows), each with its own prompt; the workflow's fixed seed keeps
+  # every edit of the set on the same noise.
+  - id: edit
+    kind: comfy.edit_flux2_klein4b
+    in: {image: plan.images}
+    map: image
+    params:
+      "75:74.text": ["${steps.plan.layout.prompts}"]
+    map_param: "75:74.text"
+  - id: matte
+    kind: comfy.remove_bg_birefnet
+    in: {image: edit.images}
+    map: image
+  - id: fit
+    kind: op.restyle_fit
+    in: {edits: edit.images, mattes: matte.images, sources: scan.sources, scan: scan.scan, layout: plan.layout,
+         style_ref: inputs.style_ref}
+    params: {matte: "${inputs.matte}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: fit.preview, images: fit.images, restyle: fit.restyle}
+    params: {enabled: "${inputs.review}"}
+  - id: apply
+    kind: op.apply_restyle
+    in: {images: approve.images, restyle: approve.restyle}
+    params: {output: "${inputs.output}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  restyle: approve.restyle
+  apply: apply.apply

@@ -15,6 +15,7 @@ import './viewer.css'
 // three.js and spine-player are large; they load only when such an asset is actually opened.
 const GlbViewer = defineAsyncComponent({ loader: () => import('./GlbViewer.vue'), loadingComponent: ViewerLoading, delay: 120 })
 const SpineViewer = defineAsyncComponent({ loader: () => import('./SpineViewer.vue'), loadingComponent: ViewerLoading, delay: 120 })
+const PanoViewer = defineAsyncComponent({ loader: () => import('./PanoViewer.vue'), loadingComponent: ViewerLoading, delay: 120 })
 
 withDefaults(defineProps<{ view: AssetView; compact?: boolean }>(), { compact: false })
 </script>
@@ -36,6 +37,7 @@ withDefaults(defineProps<{ view: AssetView; compact?: boolean }>(), { compact: f
     :wang="view.wang"
     :compact="compact"
   />
+  <PanoViewer v-else-if="view.kind === 'pano'" :key="view.blob.hash" :blob="view.blob" :compact="compact" />
   <AudioViewer v-else-if="view.kind === 'audio'" :key="view.blob.hash" :blob="view.blob" :wave="view.wave" />
   <VideoViewer v-else-if="view.kind === 'video'" :key="view.blob.hash" :blob="view.blob" :poster="view.poster" :compact="compact" />
   <TextViewer v-else-if="view.kind === 'text'" :blob="view.blob" />

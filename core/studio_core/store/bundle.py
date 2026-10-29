@@ -228,6 +228,15 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
     if enemy_source is not None and src.enemy_meta and src.sheet is None:
         src.sheet, src.meta = enemy_source, src.enemy_meta
         src.directional_rows = True
+    from studio_core.export.skybox import skybox_set
+
+    src.skybox, src.skybox_files = skybox_set(step, blobs)
+    from studio_core.export.destructible import destructible_doc
+
+    src.destructible = destructible_doc(step, blobs)
+    from studio_core.export.mesh_retexture import retexture_doc
+
+    src.retexture = retexture_doc(step, blobs)
     return src
 
 
@@ -373,7 +382,7 @@ def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
             or bool(src.audio) or bool(src.ui) or bool(src.pbr) or bool(src.fbx)
             or bool(src.rarity) or bool(src.luts) or bool(src.damage_states)
             or bool(src.parallax) or bool(src.image_layers) or bool(src.localized) or bool(src.npc)
-            or bool(src.autotile) or bool(src.font))
+            or bool(src.autotile) or bool(src.font) or bool(src.skybox))
 
 
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,

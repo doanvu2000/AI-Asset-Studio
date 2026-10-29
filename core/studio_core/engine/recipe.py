@@ -394,7 +394,7 @@ def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
             raise RecipeError(f"{where}: enum input '{name}' needs options")
         if "ext" in spec:
             ext = spec["ext"] if isinstance(spec["ext"], list) else [spec["ext"]]
-            if spec["type"] != "file" or not all(isinstance(e, str) and e for e in ext):
+            if spec["type"] not in ("file", "mesh") or not all(isinstance(e, str) and e for e in ext):
                 raise RecipeError(f"{where}: input '{name}': ext needs a file input and a list of extensions")
             spec["ext"] = [e.lower().lstrip(".") for e in ext]
         if "default" in spec and spec["default"] is not None:
@@ -459,8 +459,6 @@ def _parse_step(where: str, sid: str, kind: Any, rs: dict[str, Any], inputs: dic
         raise RecipeError(f"{where}: step {sid} map '{mp}' is not one of its inputs")
     mpp = rs.get("map_param")
     _check_list_params(where, sid, params, mpp, inputs)
-    if mp is not None and mpp is not None:
-        raise RecipeError(f"{where}: step {sid} cannot use both map and map_param")
     refs = tuple(dict.fromkeys(r[1] for r in find_step_refs(params)))
     return StepSpec(sid, kind, params, bindings, mp, mpp, refs)
 

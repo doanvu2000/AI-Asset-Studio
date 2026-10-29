@@ -1,0 +1,85 @@
+id: mesh-retexture
+name: Tô lại texture cho mesh (Retexture 3D)
+description: >-
+  Mesh có sẵn (.glb / .fbx / .obj: greybox, asset store, TRELLIS) + mô tả + ảnh style → giữ nguyên hình học và UV
+  (unwrap mới khi thiếu UV hoặc UV chồng lấp, hoặc khi chọn) → render depth quanh vật (4/6/8 góc, 6/8 có góc trên +
+  dưới) → Claude viết prompt theo hình + style → Z-Image tô góc trước theo depth, các góc sau tô nối tiếp: chiếu phần
+  đã tô sang góc mới, chỉ vẽ vùng còn trống bằng ControlNet Union 2.0 (depth + inpaint) → xem các góc → chiếu lên UV
+  (trộn theo cos θ, lấp lỗ) → normal / roughness / AO → GLB có texture + turntable so với bản gốc → duyệt. Xuất GLB,
+  material URP Lit + Built-in Standard (Unity), StandardMaterial3D (Godot), kèm bản gốc.
+inputs:
+  mesh: {type: mesh, ext: [glb, fbx, obj], label: "Mesh (.glb / .fbx / .obj)"}
+  prompt: {type: text, multiline: true, label: Mô tả texture, placeholder: "old wooden crate, dark oak planks, rusty iron corner brackets"}
+  image: {type: image, required: false, label: Ảnh style tham chiếu (tuỳ chọn)}
+  style: {type: text, required: false, default: "", label: Phong cách (tuỳ chọn)}
+  views: {type: int, default: 6, options: [4, 6, 8], label: "Số góc tô (6/8 có thêm góc trên + dưới)"}
+  uv: {type: enum, default: auto, options: [auto, keep, new], label: "UV (auto = giữ UV gốc, unwrap mới khi thiếu / chồng lấp · keep · new)"}
+  texture: {type: int, default: 2048, options: [1024, 2048, 4096], label: Cỡ texture}
+  seed: {type: int, default: -1, label: "Seed (-1 = ngẫu nhiên)"}
+  review_views: {type: bool, default: true, label: Xem các góc tô thử trước khi bake}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: views
+    kind: blender.views_render
+    in: {mesh: inputs.mesh}
+    params: {views: "${inputs.views}", uv: "${inputs.uv}", res: 1024}
+  - id: brief
+    kind: claude.task
+    in: {images: [views.preview, inputs.image]}
+    params:
+      max_turns: 2
+      _auto_retry: 1
+      system: You write prompts for Z-Image Turbo, a fast text-to-image model that paints a texture onto an existing 3D model through a depth ControlNet. It has no negative prompt, so describe only what should be visible.
+      prompt: |
+        Image 1 shows the untextured 3D model (clay renders of up to four sides). If there is an image 2, it is a style reference: match its art style, rendering technique, colour palette and level of detail, but not its subject.
+        The user wants this texture: ${inputs.prompt}
+        Extra style notes (may be empty): ${inputs.style}
+        Write one English prompt, 30-70 words, comma-separated phrases: what the object is (as the model shape suggests), its materials and colours part by part, surface detail and wear, and the art style. Do not mention camera angle, lighting, background or the word "texture map".
+      schema:
+        type: object
+        properties:
+          prompt: {type: string}
+        required: [prompt]
+  - id: paint
+    kind: retex.paint
+    in: {views: views.views}
+    params: {prompt: "${steps.brief.json.prompt}", seed: "${inputs.seed}", workflow: retex_zimage_union2,
+             _free_before: true}
+  - id: check
+    kind: gate.approve
+    in: {preview: paint.preview, images: paint.images, masks: paint.masks, views: paint.views,
+         shape: views.preview}
+    params: {enabled: "${inputs.review_views}"}
+  - id: bake
+    kind: op.project_bake
+    in: {views: check.views, images: check.images}
+    params: {texture: "${inputs.texture}"}
+  - id: pbr
+    kind: op.pbr
+    in: {images: bake.texture}
+    params: {seamless: false, normal_strength: 2.0, roughness: 0.7}
+  - id: apply
+    kind: blender.retex_apply
+    in: {mesh: views.mesh, maps: pbr.maps}
+  - id: validate
+    kind: op.glb_validate
+    in: {mesh: apply.meshes}
+    params: {require_textures: true}
+  - id: turntable
+    kind: blender.render_dirs
+    in: {mesh: validate.meshes}
+    params: {count: 8, res: 384, elevation: 20}
+  - id: before
+    kind: blender.render_dirs
+    in: {mesh: views.original}
+    params: {count: 4, res: 384, elevation: 20}
+  - id: approve
+    kind: gate.approve
+    in: {meshes: [validate.meshes, views.original], preview: turntable.images, before: before.images,
+         painted: check.preview, coverage: bake.coverage, maps: pbr.maps, material: pbr.material, report: bake.report}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.meshes
+  preview: approve.preview
+  material: approve.material
+  report: approve.report
