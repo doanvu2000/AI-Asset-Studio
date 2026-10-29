@@ -26,6 +26,9 @@ ALPHA_ON = 16
 # The legs move little in a swing; leaving them in lets a planted foot win "farthest along the facing".
 LEG_SHARE = 0.35
 REACH = 0.03
+HEAD_MIN = 0.1
+NECK = 0.8
+SHOULDER = 0.35
 
 
 @dataclass(frozen=True)
@@ -140,15 +143,60 @@ def _erode(m: np.ndarray, steps: int) -> np.ndarray:
     return m
 
 
+def _head_mask(m: np.ndarray, pivot_y: float) -> tuple[np.ndarray, int | None]:
+    """The head: rows from the top down to the neck (where the run through the head's centre column narrows), within
+    the head's columns, and the neck row. Left out, a big chibi head otherwise reaches farthest when facing W/NW/N."""
+    head = np.zeros_like(m)
+    rows = np.flatnonzero(m.any(1))
+    if not len(rows):
+        return head, None
+    top = int(rows[0])
+    span = max(1.0, pivot_y - top)
+    cx = int(np.median(np.nonzero(m[top:top + max(2, int(0.08 * span))])[1]))
+    y0 = top
+    while y0 < m.shape[0] and not m[y0, cx]:
+        y0 += 1
+    runs: list[tuple[int, int]] = []
+    for y in range(y0, min(m.shape[0], int(pivot_y))):
+        if not m[y, cx]:
+            break
+        lo = cx - int(np.argmin(m[y, cx::-1])) + 1 if not m[y, :cx + 1].all() else 0
+        hi = cx + int(np.argmin(m[y, cx:])) - 1 if not m[y, cx:].all() else m.shape[1] - 1
+        runs.append((lo, hi))
+    w = [hi - lo + 1 for lo, hi in runs]
+    widest = 0
+    for i, wi in enumerate(w):
+        if y0 + i - top >= HEAD_MIN * span and widest and wi <= NECK * widest:
+            # Past the jaw's curve: the neck is the narrowest row before the shoulders widen again.
+            while i + 1 < len(w) and w[i + 1] <= w[i]:
+                i += 1
+            x0, x1 = min(r[0] for r in runs[:i]), max(r[1] for r in runs[:i])
+            head[top:y0 + i, max(0, x0 - 2):x1 + 3] = True
+            return head & m, y0 + i
+        widest = max(widest, wi)
+    return head, None
+
+
 def silhouette_point(mask: np.ndarray, rest: np.ndarray, angle: float, pivot: tuple[float, float]
                      ) -> tuple[float, float]:
     """Mean of the few pixels reaching farthest along the facing, preferring the thick part the pose added over the
-    rest frame (the swung arm / weapon) above the legs; a lean or bob only adds thin slivers, which erosion drops."""
+    rest frame (the swung arm / weapon) above the legs and away from the head; a lean or bob only adds thin slivers,
+    which erosion drops."""
+    floor = max(4, 0.002 * mask.size)
     cut = _upper(rest, pivot[1])
+    fx, fy = _facing(angle)
+    # Facing down the screen the head never leads, and a front view rarely shows a neck to find.
+    head, neck = _head_mask(mask, pivot[1]) if fy <= 0.05 else (np.zeros_like(mask), None)
     m = mask.copy()
     m[cut:] = False
+    body = m & ~head
+    if body.sum() < floor and neck is not None:
+        # A chibi head can reach the leg cut; then the shoulders just below it are the arm's side.
+        body = mask & ~head
+        body[max(cut, neck + int(SHOULDER * (pivot[1] - neck))):] = False
+    if body.sum() >= floor:
+        m = body
     added = m & ~rest
-    floor = max(4, 0.002 * m.size)
     pick = m
     for steps in (max(2, round(0.02 * m.shape[0])), 1, 0):
         core = _erode(added, steps)
@@ -160,7 +208,6 @@ def silhouette_point(mask: np.ndarray, rest: np.ndarray, angle: float, pivot: tu
         ys, xs = np.nonzero(mask)
         if not len(xs):
             return round(pivot[0], 1), round(pivot[1], 1)
-    fx, fy = _facing(angle)
     cx, cy = float(xs.mean()), float(ys.mean())
     score = (xs - pivot[0]) * fx + (ys - pivot[1]) * fy + 0.35 * np.hypot(xs - cx, ys - cy)
     k = max(1, len(xs) // 100)

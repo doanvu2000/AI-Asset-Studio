@@ -159,8 +159,13 @@ async def test_tools_api_put(client: tuple[Settings, httpx.AsyncClient], tmp_pat
     assert empty.status_code == 400
 
 
-def test_engine_paths_auto_detect_from_search_roots(tmp_path: Path) -> None:
+def test_engine_paths_auto_detect_from_search_roots(tmp_path: Path, monkeypatch) -> None:
     from studio_core.config import find_godot, find_unity
+
+    # A Hub install on this machine (secondaryInstallPath.json, Program Files) must not outrank the fake roots.
+    monkeypatch.setenv("APPDATA", str(tmp_path / "appdata"))
+    monkeypatch.setenv("ProgramFiles", str(tmp_path / "pf"))
+    find_unity.cache_clear()
 
     root = tmp_path / "D"
     for rel in ("AI/tools/godot/Godot_v4.98.1-stable_win64_console.exe",
@@ -180,3 +185,4 @@ def test_engine_paths_auto_detect_from_search_roots(tmp_path: Path) -> None:
     assert pinned.unity_exe == tmp_path / "U.exe"
     assert find_godot((tmp_path / "none",)) in ("", find_godot(()))
     assert find_unity((tmp_path / "none",)) == find_unity(())
+    find_unity.cache_clear()

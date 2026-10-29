@@ -10,7 +10,7 @@ from PIL import Image
 
 from studio_core.contracts import Lane, RunRow, StepRow, StepStatus
 from studio_core.export import godot, unity
-from studio_core.export.hitfx import HitOptions, Vfx, analyze, apply, vfx_name
+from studio_core.export.hitfx import HitOptions, Vfx, analyze, apply, silhouette_point, vfx_name
 from studio_core.export.source import Source
 
 from test_api_basic import AUTH, app_ctx  # noqa: F401  (fixture reuse)
@@ -85,6 +85,22 @@ def test_impact_sources_meta_rig_user(tmp_path: Path) -> None:
     assert (e.frame, e.source, e.auto_frame, e.point, e.point_source) == (5, "user", 2, (10.0, 11.0), "user")
     _, idle = analyze(sheet, meta, clips=("idle",))
     assert idle == [] or all(h.clip == "idle" for h in idle)
+
+
+def test_big_head_is_not_the_impact_point() -> None:
+    def pose(head_x: int, arm: bool) -> np.ndarray:
+        yy, xx = np.mgrid[:CELL, :CELL]
+        m = (xx - head_x) ** 2 + (yy - 22) ** 2 <= 14 ** 2
+        m[34:60, 26:38] = True
+        if arm:
+            m[38:44, 16:26] = True
+        return m
+
+    # Chibi lean: the head swings past the arm toward the facing.
+    rest, strike = pose(32, False), pose(24, True)
+    for angle in (90, 135):
+        x, y = silhouette_point(strike, rest, angle, PIVOT)
+        assert y > 30 and x < 26, (angle, x, y)
 
 
 def test_socket_points_win(tmp_path: Path) -> None:
