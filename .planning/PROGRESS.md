@@ -1204,3 +1204,84 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [ ] Nợ thấy khi test: Unity preview GLB cần glTFast (retex chỉ hiện texture albedo); Godot sky preview camera chúc xuống đất; preview thùng (destruct/retex) góc nghiêng, Godot lệch khung; restyle hàng QA "None"; anim 1 ứng viên chém yếu (mặc định 3).
 - Chưa commit fix (3 file core + 1 test).
 - [x] Splash khởi động (chủ nhân yêu cầu): `components/SplashScreen.vue` + `composables/splash.ts` (min 3.2s, đóng khi core ready/error, tối đa 5s), nền trắng/đen theo theme, logo 160px (`assets/art/app-logo.webp` từ resources/icon.png) pop + quầng sáng + 2 vòng ripple + tia lấp lánh + sheen, chữ tiêu đề rơi từng ký tự, dòng trạng thái core + thanh tiến trình, "Copyright by Jin Vũ" góc dưới; App.vue: shell mờ (blur+opacity+scale) → hiện khi splash đóng; WhatsNew chờ splash; main `backgroundColor` #fff/#000. Core vẫn khởi động trong main lúc `whenReady` (song song splash). Kiểm: Chrome headless mock, sáng/tối; typecheck sạch. Chưa build, chưa commit.
+- [x] Release v1.1.0 (a64b06e): https://github.com/doanvu2000/AI-Asset-Studio/releases/tag/v1.1.0 — Setup-1.1.0-x64.exe + Portable-1.1.0-x64.zip (win-unpacked + marker portable). Smoke: exe mở, core tự lên.
+
+## Phiên 2026-10-29 khuya — chủ nhân: "đọc handoff, phân tích thêm 5-10 tính năng"
+- [x] Lượt 6 ý tưởng #45–#54 (3D môi trường, particle thật, audit project, plugin editor; không model mới): `.planning/PLAN-2026-10-29-feature-ideas-r6.md`. Chờ chủ nhân chốt.
+
+## Phiên 2026-10-29 khuya (tiếp) — chủ nhân: "làm cả, spec chi tiết, chia sub agent, review + build test; con giữ handoff/progress/commit" + #55 agent điều khiển studio qua MCP/skill
+- Plan + spec: `.planning/PLAN-2026-10-29-r6-build.md` (luật chung, phân công A–H + R, kết quả dò MCP: 25 tool, AgentConnectCard có sẵn).
+- Chủ nhân: Blender MCP + Unity MCP được bật dùng bất cứ lúc nào (ghi vào plan).
+- [~] Giao 8 agent song song: A #49+#51, B #52+#54, C #48, D #45+#46, E #47, F #50, G #53, H #55. Sau đó R review + build + e2e, con commit.
+- Chủ nhân bổ sung #55: app hiện flow + state khi agent điều khiển qua MCP (đợi Unity/Blender/gate…) → đã gửi Agent H.
+- Chủ nhân chốt: không Rust; sau 8 agent làm P2 (chạy chồng lane) + P3 (cache) — spec ở cuối PLAN-2026-10-29-r6-build.md.
+- Chủ nhân: xong hết (A–H, P2+P3, R) thì commit luôn (không push, không trailer attribution).
+- [x] G #53 plugin editor xong: `integrations/unity/com.assetstudio.bridge` (EditorWindow, menu chuột phải, BridgeBatch, 5 test EditMode pass, 3 gọi API thật),
+  `integrations/godot/addons/asset_studio` (dock + context menu, Godot 4.4+), `app/src/main/enginePlugin.ts` + `EnginePluginCard.vue` (Cài đặt → Công cụ, IPC studio:installEnginePlugin).
+  Đọc core.lock.json, không lộ token. Live Unity concept-2d 85s + item-spin-image ~2s → Assets; Godot 4.7.2 headless item-spin → res:// 0 lỗi. typecheck sạch.
+  Phụ thuộc: extraResources `../integrations` (H thêm) + recipe `library-import` (H). Nợ: chưa mở GUI Unity/Godot xem trực quan; Godot bỏ kiểm pid.
+  Changelog đề xuất: "Plugin Unity và Godot: chạy quy trình, duyệt bước chờ và nhận asset thẳng vào project ngay trong editor; cài 1 chạm từ Cài đặt → Công cụ."
+- [x] A #49+#51 xong: `ops/item_fx.py` (op.spin_frames, op.item_spin, op.ui_juice), `ops/spine_physics.py` (op.spine_physics, physics Spine 4.2 preset hair/cloth/tail/rope/ear);
+  recipe item-spin, item-spin-image, ui-juice, spine-physics; test_r6_item_fx + test_r6_spine_physics (17), art 3 thẻ. Live: item-spin mesh 17.8s lệch trục 0.30px,
+  item-spin-image 2.3s, ui-juice 4.1s; spine-physics rig spine-test 7.7s, 6 chuỗi/19 constraint, spine-core 4.2.43 tóc lắc 8–12°. Unity spin.anim 16 key OK, Godot SpriteFrames OK.
+  Nợ: chưa kiểm Spine trong Unity/Godot (project test chưa có spine-runtime), preset vải đầm (~1°), chưa live trên auto-rig spine-character thật.
+  pytest 951 pass / 2 fail (test_pack, test_similar MCP — do activity POST của H) → đã báo H sửa.
+  Changelog đề xuất: "Thêm vật phẩm xoay vòng (từ GLB qua Blender hoặc từ ảnh 2D), UI động shine/glow/nhún/lấp lánh và vật lý Spine 4.2 cho tóc, áo choàng, váy, đuôi; tất cả xuất thẳng ra Unity/Godot."
+- [x] H #55 xong: MCP 25→36 tool (system_status, control_service, create/update_project, import_to_library, follow_up_options, generate, export_to_engine,
+  restyle_scan/apply/undo; start_run `then`; step `substatus`) + resource `asset-studio://recipes`. Activity: MCP → POST /api/agent/activity → WS `agent.activity`,
+  GET /api/agent/status; app AgentActivity (sidebar), AgentRunBanner, StepNode chữ theo lane. Skill `asset-studio` + `scripts/gen_agent_docs.py` (--check),
+  plugin Claude `integrations/claude-plugin/` (validate qua, /asset-studio:make|status|pack), Codex `integrations/codex/`, CLI `studio-core agent …`,
+  AgentConnectCard cài 1 chạm (backup config), extraResources integrations/, recipe `library-import`. test_agent_mcp 11 test. pytest 955 pass / 1 fail (test_trim_decal của D).
+  Live: `claude -p --strict-mcp-config` gọi list_recipes (70) + generate sprite-normal-map ~20s OK; plugin-dir: skill + 4 lệnh, /asset-studio:status OK.
+  Nợ: Codex chưa `codex exec` thật; nút cài 1 chạm chưa bấm (sẽ gỡ MCP thêm tay trỏ Portable, có backup); library-import thiếu art; R phải chạy lại gen_agent_docs sau cùng.
+  Changelog: "Claude Code và Codex CLI điều khiển được AI Asset Studio qua MCP, skill và plugin cài 1 chạm, mọi thao tác của agent hiện trực tiếp trên app."
+- H fix: activity chỉ gửi khi link là CoreLink HTTP thật → test_pack/test_similar xanh; skill catalog sinh lại. pytest 982 pass / 4 skip (thời điểm H báo).
+- [x] C #48 vfx-particles xong: recipe vfx-particles, `ops/vfx_particles.py` (7 texture CPU + sheet Z-Image có style, 7 preset emitter JSON, giả lập hạt CPU),
+  `export/vfx_particles.py` (Unity prefab ParticleSystem YAML + Trail, URP tự đổi qua Editor/AssetStudioVfx.cs; Godot GPUParticles2D/3D), hit-FX nhận flipbook hit_spark,
+  AssetStudioPreview.cs giả lập 0.3s + camera ortho. 13 test. Live: không style 4.5s; style lửa 65s, VRAM ~11.0GB. Unity Built-in/URP prefab load, đỉnh hạt explosion 67…;
+  Godot 4.7 preview 30f OK, 14 scene sạch. Nợ: Godot burst delay qua script, 3D không stretch, demo nhỏ, chưa có FollowUpMenu.
+  Changelog: "Bộ VFX hạt: 7 preset nổ, hồi máu, nhặt đồ, vệt đạn, bụi, tia va chạm, hào quang (texture CPU, tuỳ chọn texture Z-Image có style) → prefab ParticleSystem Unity (Built-in/URP) và GPUParticles Godot, kèm flipbook tia va chạm cho hit-FX."
+- [x] F #50 ui-screen xong: `ops/ui_screen.py` (7 template màn, mô phỏng CanvasScaler, mockup 16:9/20:9/4:3, báo tràn safe area), `adapters/ui_layout.py` (claude.ui_layout Opus),
+  `export/ui_screen.py` (Unity UGUI prefab + SafeArea + UXML/USS; Godot Control .tscn + Theme 9-slice + safe_area.gd), recipe ui-screen + ui-screen-prompt, 17 test;
+  AssetStudioPreview.cs/preview.gd chụp 3 tỉ lệ + kiểm tràn. Live shop 102s (Z-Image 46s, Claude 28s ~$0.10), VRAM ~10.9GB, 0 tràn; Unity + Godot 0 lỗi 0 missing.
+  Đã chạy lại gen_agent_docs. pytest 982 pass / 4 skip. Nợ: bitmap font không co giãn (chưa TMP), icon tạm CPU, landscape chung tỉ lệ, kit Z-Image đôi khi thiếu nút.
+  Changelog: "Màn UI game: chọn loại màn + bộ ui-kit → Claude bố cục, xem mockup 16:9 / 20:9 / 4:3 trong vùng an toàn, xuất prefab UGUI + UXML và scene Godot + Theme 9-slice."
+- [!] Sự cố F: script preview tạm truyền export_dir rỗng → `_unity_stage` rmtree cả `L:\AI\unity-test-batch\Assets\AssetStudio` (mất LiveHero, PreviewChest, PreviewKnight,
+  approve, sheet). Con khôi phục LiveHero/PreviewChest/PreviewKnight từ `L:\AI\unity-backup-6000.3.6f1` (approve/sheet là staging preview, tự sinh lại).
+  Fix `export/preview.py::_unity_stage`: từ chối tên rỗng/"."/".." hoặc không phải thư mục. Godot preview dùng project tạm trong work → không ảnh hưởng. Test preview 18 pass.
+- [x] E #47 terrain-3d xong: `ops/terrain.py` (op.terrain_height fBm+warp+xói mòn+sông spline, splat 4 kênh; op.terrain_pack; op.terrain_sky), `adapters/terrain.py` (claude.terrain_plan Opus),
+  `export/terrain.py` (Unity TerrainData + 4 TerrainLayer + nước + scene, BuildFromArgs; Godot chunk LOD 3 mức + shader splat triplanar + HeightMapShape3D; .raw/PNG16), recipe terrain-3d, 12 test, art.
+  Live đảo núi lửa + skybox: Claude 17.6s $0.057, height 6.2s, Z-Image 4 tex 194s (ComfyUI crash 1 lần, auto-retry qua), Qwen 360 388s; VRAM 11.46GB.
+  53 911 mức 16-bit, splat=255, seam sky 100. Godot 0 lỗi, 40 RigidBody không xuyên; Unity Built-in OK; URP project test dùng 2D Renderer nên không vẽ terrain (đã trả setting).
+  Nợ: hồ miệng núi lửa về mực nước chung, sông chưa có mesh nước, Godot export cần filter *.r32, 2 terrain/1 project trùng AssetStudioTerrain.cs, dòng C#/tscn >120 ký tự.
+  Changelog: "Địa hình 3D: mô tả → Claude đặt núi, hồ, biển, sông → heightmap 16-bit có xói mòn + 4 lớp texture PBR (+ skybox tuỳ chọn), xuất Terrain Unity / mesh LOD + collision Godot."
+- [x] B #52+#54 xong: `export/audit.py`, `export/audit_media.py`, `api/audit.py` (POST /api/audit chỉ đọc; /audit/fix dry_run + backup zip + chặn path/link + bỏ file đổi sau quét; /undo, /backups),
+  MCP audit_project/audit_fix/audit_undo, `AuditView.vue` (/audit, sidebar "Kiểm tra project", Ctrl+9). Map dữ liệu (height/splat/mask/lightmap/cubemap) không bị nén.
+  Live bản copy: unity-test-batch 108.9→9.3MB (58 file), urp-shadercheck 318.5→9.9MB (60), godot-test 136→7.0MB (5); mở lại 0 lỗi 0 missing.
+  Minimap: `ops/minimap.py`, `export/minimap.py`, recipe minimap (ảnh / Tiled tmx/tmj / LDtk, POI), clean CPU 1.5s, parchment Klein 86s, POI lệch 0px; Unity prefab mask tròn + Godot scene OK.
+  Test audit 8 + minimap 14; pytest 982 pass / 4 skip. Nợ: trùng chưa dùng CLIP, đo kích thước hiển thị hạn chế, FollowUp minimap hiện cho mọi PNG.
+  Changelog: "Thêm màn Kiểm tra project (soát texture, ảnh trùng, asset không dùng, mesh, âm thanh; sửa .meta/.import 1 chạm có backup + hoàn tác) và recipe Minimap từ ảnh màn / Tiled / LDtk với icon POI, mask tròn, prefab Unity + scene Godot."
+- [x] Chủ nhân: full màn hình trang Quy trình vẫn 3 cột (thừa 2 bên) → do `.stack` max-width 1180px. Thêm `.stack.stack-wide` (max 2400px) ở base.css, áp RecipesView + picker NewRunView. Chưa build.
+- [x] D #45+#46 xong: `ops/trim.py`, `ops/decal.py`, `adapters/trim.py` (trim.layout Claude/preset, trim.strips Z-Image), `adapters/blender/modular*.py` + `trim_math.py` (apply_strip),
+  `export/trim.py`, `export/modular.py`, recipe trim-sheet/decal-pack/modular-kit, 14 test, art 3 thẻ; spec thêm modular_bpy/modular_math/trim_math.
+  Live: trim sci-fi 394s (14 dải seam 100, VRAM 11.6GB); modular lâu đài 280s (10 mảnh ≤256 tris, bounds lệch 0.0mm, 0 UV ra ngoài dải); decal ~150s.
+  Unity URP: 5 DecalProjector + 10 Kit prefab + SampleRoom 20 mảnh OK; Godot: 5 Decal, MeshLibrary 10 item, phòng mẫu 3 GridMap 20/20.
+  Nợ: decal dirt/scorch ra vòng tròn, vết sáng tách nền yếu, rêu quầng mép (đã sửa prompt, chưa chạy lại); trim chưa ép màu gỗ; góc render phòng mẫu; README lặp.
+  Changelog: "Thêm trim sheet (Claude chọn dải, lặp ngang liền mạch + PBR), bộ decal nền trong (URP Decal Projector / Godot Decal) và bộ mảnh modular theo lưới map trim sheet, xuất prefab Unity + MeshLibrary GridMap Godot."
+- 8/8 agent xong. Tiếp: kiểm tổng → P2+P3 → R → commit.
+- [x] Kiểm tổng sau 8 agent: pytest 982 pass / 4 skip. [~] Giao Agent P làm P2 (chạy chồng lane) + P3 (cache).
+- [x] P (P2+P3) xong: P2 thực ra đã có (LaneScheduler hàng đợi riêng từng lane gpu1/blender1/cloud3/cpu4); chặn cứng gpu/blender=1. P3: khoá cache bỏ param không đổi output,
+  thêm bảng model Claude vào khoá lane cloud, lưu meta (không tính lại phí), kiểm blob còn tồn tại; 13 executor Claude chuyển `cache_enabled` (mặc định bật);
+  cờ `no_cache` (API /api/runs, MCP start_run, NewRunView "Bỏ qua kết quả cũ"); cột cache.meta + migrate. test_perf_lanes_cache 13 test. pytest 995 pass / 4 skip, typecheck sạch.
+  Đo: 2 run đồng thời 49.5→38.8s (chồng lane có sẵn, một phần dao động GPU); concept-2d-brief chạy lại 36.3→27.8s (−24%), ui-juice 5.5→0.03s.
+  Rủi ro: Claude cache mặc định → cùng prompt cùng câu trả lời (lô trùng prompt), muốn biến thể bật no_cache; cache Claude cũ miss 1 lần; agent_cli chưa có --no-cache.
+  Changelog: "Chạy nhanh hơn: bước Claude và bước tất định dùng lại kết quả khi đầu vào/param/model y hệt (có tuỳ chọn 'Bỏ qua kết quả cũ'), run CPU/Claude chạy song song khi GPU bận."
+- [~] Giao Agent R: review toàn bộ diff + fix, build dist, e2e core đóng gói.
+- [!] 2026-10-30 R dừng giữa chừng (hết hạn mức API), đã build `app/release/1.1.0-r6/`, đang e2e (preview_godot kit). Hạn mức reset → cho R làm tiếp.
+- [x] R xong: review + sửa (export_to_engine chỉ ghi trong project engine; plugin chỉ nhận app_exe đúng tên + host localhost; Codex config giữ bảng con, backup có ms;
+  AuditView quét lại đúng thư mục; agents store giữ WS event lúc tải snapshot; ui_screen `_ident` + UXML quoteattr; trim seed null; item_fx pivot rỗng;
+  preview.gd tính khung GridMap; AssetStudioPreview.cs BuildAll + ưu tiên SampleRoom). agent_cli --no-cache, art library-import, gen_agent_docs --check OK.
+  pytest 995 / 4 skip, typecheck sạch. Build `app/release/1.1.0-r6/win-unpacked` (release/1.1.0 bị khoá bởi app đang mở). E2E core đóng gói: 13 recipe mới succeeded,
+  audit bản copy (hoàn tác md5 khớp 100%), MCP studio-core.exe mcp generate ui-juice 25s. Nợ: Unity preview modular-kit hồng (URP Lit/Built-in).
+- [x] 2026-10-30 Bump app 1.2.0 + changelog 1.2.0 (11 dòng). Commit: 6a41f8b (cache), 852573a (agent/MCP/plugin), 9a9b0c0 (recipe + audit), 7032b8b (1.2.0), + planning. Chưa push.
+- [x] 2026-10-30 02:52 Handoff mới: .planning/HANDOFF-2026-10-30-0252.md
