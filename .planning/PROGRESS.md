@@ -1088,3 +1088,63 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [x] Kiểm 766 pass / 4 skip, typecheck sạch → commit mốc #11. 8189 đã tắt; 8188 (PID 39144) vẫn lỗi, chờ chủ nhân restart.
 - [x] 2026-10-29 Chủ nhân cho push → push master tới 00b37d2 OK.
 - [x] Chủ nhân tắt ComfyUI 8188 lỗi (PID 39144).
+
+## Phiên 2026-10-29 sáng — dialog "Có gì mới" (theo Claude-Code-Monitor 7a46a57)
+- [x] Bump app 1.1.0 (`app/package.json` + lock); `__APP_VERSION__` define ở `electron.vite.config.ts`.
+- [x] `composables/changelog.ts` (CHANGELOG 1.1.0 + 1.0.0 tóm từ git log, `shouldShowWhatsNew`, localStorage `studio.whatsNew.seen`),
+  `components/WhatsNewDialog.vue` (expand/collapse từng bản, Mở hết/Thu hết, focus trap, Esc; tự mở 1 lần/phiên bản sau khi core kết nối,
+  không chồng dialog khác). Mở lại: Cài đặt → "Có gì mới", Ctrl K → "Có gì mới". Typecheck sạch. Chưa commit, chưa build.
+- [x] 2026-10-29 Chủ nhân nghe TTS: tiếng Anh tạm được, tiếng Việt muốn đổi giọng. Đã tải thêm Piper `vi_VN-25hours_single-low`
+  (license không rõ) + `vi_VN-vivos-x_low` (65 giọng, CC BY-NC-SA, cấm thương mại) vào `F:\work\AI\comfyUI_models\tts\`; hai model
+  cũ không có token thanh điệu (0–9). Mẫu nghe: `L:\AI\tts-vi-samples\`. Code TTS chưa sửa.
+- [!] 2026-10-29 Chủ nhân: **tạm dừng hướng audio** (TTS/âm thanh) vì chưa có thời gian test. Không phát triển tiếp đến khi chủ nhân mở lại.
+
+## Phiên 2026-10-29 trưa — chủ nhân: "làm hết đi" (commit, build, dọn nợ Unity/Godot, rà license, brainstorm)
+- [!] Commit dialog "Có gì mới" bị auto-mode chặn → chờ chủ nhân tự commit (message ở báo cáo).
+- [x] Build dist:core + dist:portable 1.1.0 OK: `app/release/1.1.0/win-unpacked/AI Asset Studio.exe` (có image-layers + dialog).
+- [x] Brainstorm lượt 4 (không audio): `.planning/PLAN-2026-10-30-feature-ideas.md` (#30–#39), chờ chủ nhân chốt.
+- [~] Agent rà license → `.planning/LICENSE-REVIEW-2026-10-29.md`.
+- [~] Agent A: Play mode Unity URP cho parallax (#19) + paperdoll (#26).
+- [~] Agent B: chạy lại rig FBX (sau 99c97b2) trong unity-test-batch + sửa Godot `class_name NpcData` trùng.
+- [x] License review xong: `.planning/LICENSE-REVIEW-2026-10-29.md`. Đề xuất sửa `model_licenses.py`/manifest CHƯA áp — chờ chủ nhân.
+- [x] Agent A: Play mode URP (Unity Test Framework `-runTests -testPlatform PlayMode`) PASS #19 parallax (171 frame, không hở/nối) + #26 paperdoll
+  (192/192 khung, sort theo hướng đúng). Sửa: `AssetStudioPaperdoll.SetLayerSprites` để đổi món đồ lúc chạy (`export/paperdoll.py`).
+  Test PlayMode ở `L:\AI\unity-urp-shadercheck\Assets\PlayTests`, `ASV_PLAY_ONLY=parallax|paperdoll`.
+- [x] Agent B: rig FBX KnightV chạy lại → Unity Humanoid 15/15 xương, 4 clip, texture đúng (fails=0). Godot NpcData trùng: `pack.py`
+  `finalize_godot` gộp script class_name về 1 bản trong addon, tiền tố pack (vd `ForestPackNpcData`). Còn: 2 NPC xuất lẻ cùng project vẫn trùng (README hướng dẫn).
+  Khiên méo nhẹ khi run/attack (weight theo khoảng cách) — chưa sửa.
+- [x] Lỗi shader `halfx`/`_Tintx` trong unity-urp-shadercheck là file project bị sửa tay, template core đúng → chép lại từ template.
+- [x] pytest 768 pass / 4 skip. Build 1.1.0 dựng TRƯỚC các sửa core này. Chưa commit (auto-mode chặn).
+
+## Phiên 2026-10-29 chiều — chủ nhân: "làm #30 → #31 → #32 → #33 → #38 luôn đi"
+- [~] Giao 4 agent song song: #30+#31 (atlas + nén mobile), #32 Aseprite, #33 biến thể kẻ địch, #38 hit VFX gắn khung.
+- [x] #32 Aseprite xong (agent): `export/aseprite.py` (writer .aseprite tự viết: layer, cel zlib, tag clip_hướng, palette, slice pivot +
+  JSON array sheet), `ops/aseprite.py` + recipe `aseprite-import` (.aseprite/.ase hoặc JSON+PNG → clip 8 hướng, qua op.sheet),
+  StepExport.aseprite, MCP, app: BundleMenu "Kèm file Aseprite", BlobDropZone `aseprite_sheet`, nút "Nhập Aseprite" ở Thư viện.
+  Dev dep `aseprite` 0.1.0 (parser độc lập để kiểm). 13 test; pytest 804/4. Chưa round-trip bằng Aseprite CLI thật (máy không có).
+- [x] #33 Biến thể kẻ địch xong (agent): recipe `enemy-variants` (prep → Klein phụ kiện 1 lần/hướng → ghép → duyệt), `ops/enemy_variants.py`
+  (palette theo vùng hue + ramp rarity, bảng màu chung cả sheet; phụ kiện bám template matching / socket), `export/enemy_variants.py`
+  (Variants/{asset}_{biến thể}/ Unity anim+controller+prefab, Godot tres+tscn), art thẻ recipe, followUp.ts ưu tiên output trùng tên.
+  Live knight 256 khung, 4 biến thể, sừng elite: 342s (Klein 314s), $0. Ngưỡng bám 0.12→0.18. Chưa mở Unity/Godot; hướng N Klein vẽ mặt
+  lên gáy (cần duyệt); cổng chỉ duyệt/từ chối cả bộ. pytest 804/4, typecheck sạch. ComfyUI 8188 hiện tắt (core tự bật khi cần).
+- [x] #38 hit VFX (agent): `export/hitfx.py` (khung trúng: metadata clip `impact`/`impact_t` → rig strike t=0.5 → dò chuyển động
+  silhouette; điểm: socket hand_r paper-doll → điểm silhouette xa nhất theo hướng nhìn; ghi đè frame/điểm), Unity AnimationEvent
+  OnHit + `AssetStudioHitFx.cs` trên prefab, Godot `<a>_hits.tscn` + `asset_studio_hitfx.gd` (frame_changed), `<a>_hits.json`.
+  API `GET /api/steps/{id}/hits`, `GET /api/hitfx/vfx`, export option `hits`. App: `HitFxDialog.vue` (từ menu Xuất cho engine),
+  overlay VFX trong SpriteSheetViewer. Unity PlayMode (`AsvHitTests`) 8/8 + Godot 4.7.2 8/8 đúng khung/điểm. pytest 804 pass.
+- [x] #30+#31 xong (agent): `export/atlas.py` (MaxRects, trim, padding/extrude, POT, max 2048, xoay chỉ cho JSON, trùng ảnh dùng chung rect;
+  Unity trang Multiple + rect/pivot/physics shape trong .meta; Godot AtlasTexture `.tres` region+margin+metadata pivot; báo byte trước/sau),
+  `export/mobile.py` (preset sprite/ui/texture/tileset/normal/pixel → Unity override Android+iPhone ASTC, Godot `.import` VRAM/lossless;
+  bảng RAM GPU → README + `mobile_budget.json`). Lối vào: BundleMenu "Ngân sách mobile" (mặc định tắt, nhớ), PackDialog "Gộp atlas" +
+  "Ngân sách mobile", Thư viện chọn nhiều → "Gộp atlas" (`POST /api/atlas`, `AtlasDialog.vue`), MCP `build_asset_pack(atlas, mobile)`.
+  Kiểm: Unity 6000.3 `L:\AI\unity-f30-atlas` (F30Verify.Run) fails=0 — 15 rect/pivot đúng, ASTC_6x6 Android/iPhone, render atlas vs sheet lệch ≤0.32/255;
+  Godot 4.7.2 headless: AtlasTexture load đúng size/region/pivot, `.import` giữ params, sinh `.astc.ctex`. 804 pass / 4 skip, typecheck sạch.
+- [x] #38 Hit VFX xong (agent): `export/hitfx.py`, `api/hitfx.py`, HitFxDialog (chọn VFX, sửa khung/điểm từng hướng, preview), Unity
+  AnimationEvent OnHit + AssetStudioHitFx.cs, Godot HitFx + signal hit, `<a>_hits.json`. Unity PlayMode + Godot 8/8 hướng đúng.
+  Còn: N/NW/W điểm tự dò rơi vào đầu; chưa áp cho pack / Engine Preview / Spine.
+- [x] #30+#31 xong (agent): `export/atlas.py` (trim, pad 2, extrude 1, POT, nhiều trang; Unity atlas cắt sẵn trong .meta, Godot
+  AtlasTexture), `export/mobile.py` (Unity ASTC override Android/iOS, Godot .import, bảng RAM GPU), AtlasDialog/MobileStats, PackDialog,
+  `POST /api/atlas`, MCP. Mặc định tắt. Unity project riêng `L:\AI\unity-f30-atlas` fails=0; Godot OK. Còn: normal map ngoài atlas;
+  prefab cũ chưa trỏ sprite atlas; chưa build Android thật.
+- [x] Changelog 1.1.0 thêm #30–#33, #38. Kiểm tổng: pytest 804 pass / 4 skip, typecheck sạch. Chưa commit, chưa build lại.
+- [x] 2026-10-29 11:20 Handoff mới: .planning/HANDOFF-2026-10-29-1120.md (xoá file rỗng core/Asset, core/Studio do agent tạo nhầm).
