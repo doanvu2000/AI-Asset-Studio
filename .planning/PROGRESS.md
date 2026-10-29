@@ -1076,3 +1076,5 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   (archive sherpa-onnx, giải nén) + license/commercial; `config.py` tự dò Godot/Unity (field `tool_search_roots`). Unity run21 fails=0.
   Còn: Godot `class_name NpcData` trùng nếu addon pack + export lẻ chung project.
 - [x] Kiểm 752 pass / 4 skip, typecheck sạch → commit mốc dọn nợ.
+- [x] Handoff 0612 cập nhật (HEAD ee1f30e, Unity đã kiểm).
+- [x] Build lại dist:core + dist:portable từ ee1f30e OK. Handoff 0612 cập nhật.
