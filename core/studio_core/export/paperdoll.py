@@ -42,14 +42,28 @@ public class AssetStudioPaperdoll : MonoBehaviour
     void Awake()
     {
         if (body == null) body = GetComponent<SpriteRenderer>();
-        foreach (var l in layers)
-        {
-            var d = new Dictionary<string, Sprite>();
-            if (l.sprites != null) foreach (var s in l.sprites) if (s != null) d[s.name] = s;
-            lookup.Add(d);
-        }
+        foreach (var l in layers) lookup.Add(Index(l.sprites));
         if (sockets != null)
             foreach (var f in JsonUtility.FromJson<Doc>(sockets.text).frames) frames[f.cell] = f;
+    }
+
+    static Dictionary<string, Sprite> Index(Sprite[] sprites)
+    {
+        var d = new Dictionary<string, Sprite>();
+        if (sprites != null) foreach (var s in sprites) if (s != null) d[s.name] = s;
+        return d;
+    }
+
+    /// <summary>Swap the item drawn on one layer (another sheet cut like the body); applies on the next LateUpdate.</summary>
+    public void SetLayerSprites(string layer, Sprite[] sprites)
+    {
+        for (int i = 0; i < layers.Length; i++)
+        {
+            if (layers[i].name != layer) continue;
+            layers[i].sprites = sprites;
+            if (i < lookup.Count) lookup[i] = Index(sprites);
+        }
+        last = null;
     }
 
     public bool TryGetSocket(string socket, out Transform t)
@@ -275,7 +289,8 @@ def unity_files(src: Source) -> tuple[Files, list[str]]:
             f"(TextAsset). {a}_paperdoll.prefab = nhân vật + mỗi món một SpriteRenderer con + {SCRIPT_FILE}: mỗi "
             "LateUpdate lấy sprite cùng tên với sprite thân đang chạy (Animator chỉ cần điều khiển thân), xếp lớp "
             "theo order của khung, dời các Transform Sockets/<socket> (hand_r, hand_l, head, chest; rot đã đổi sang "
-            "trục Unity). Tắt/bật GameObject con để thay đồ; gắn vật 2D riêng vào Sockets/hand_r. Xuất nhiều nhân vật "
+            "trục Unity). Tắt/bật GameObject con để bỏ/mặc đồ; đổi món khác (sheet cắt giống thân) bằng "
+            "SetLayerSprites(\"weapon\", sprites); gắn vật 2D riêng vào Sockets/hand_r. Xuất nhiều nhân vật "
             f"vào cùng project: giữ 1 file {SCRIPT_FILE}.")
     return files, [note]
 

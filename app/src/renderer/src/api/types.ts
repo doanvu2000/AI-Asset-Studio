@@ -206,7 +206,8 @@ export interface RecipeInputSpec {
   multiline?: boolean
   /** `file` inputs: allowed extensions without the dot. */
   ext?: string[]
-  /** `file` inputs: 'atlas_pages' = a Spine atlas plus the page images it names, uploaded as one list. */
+  /** `file` inputs: 'atlas_pages' = a Spine atlas plus the page images it names, uploaded as one list;
+   *  'aseprite_sheet' = a .aseprite file, or an Aseprite JSON sheet plus the PNG it names. */
   siblings?: string
 }
 
@@ -839,6 +840,73 @@ export interface PackBody {
   /** Absolute folder; omitted = <data>/packs. */
   out_dir?: string
   zip?: boolean
+  /** Android/iOS texture budget (ASTC/ETC2, max size, mipmaps per asset type). */
+  mobile?: boolean
+  /** One shared trimmed atlas of every 2D sprite, beside the per-asset exports. */
+  atlas?: boolean
+  atlas_max_size?: AtlasPageSize
+}
+
+export type AtlasPageSize = 512 | 1024 | 2048 | 4096
+
+export interface AtlasBytes {
+  textures: number
+  file_bytes: number
+  /** RGBA32 in GPU memory, no compression. */
+  gpu_bytes: number
+}
+
+export interface AtlasStats {
+  sprites: number
+  /** Identical images share one rect. */
+  unique: number
+  pages: number
+  page_sizes: [number, number][]
+  fill: number
+  before: AtlasBytes
+  after: AtlasBytes
+}
+
+export interface MobileBudgetRow {
+  file: string
+  kind: 'sprite' | 'ui' | 'texture' | 'tileset' | 'normal' | 'pixel'
+  size: [number, number]
+  import_size: [number, number]
+  format: string
+  file_bytes: number
+  gpu_before: number
+  gpu_after: number
+}
+
+export interface MobileBudget {
+  engine: PackEngine
+  rows: MobileBudgetRow[]
+  totals: { files: number; file_bytes: number; gpu_before: number; gpu_after: number }
+}
+
+export interface AtlasBody {
+  steps: { step_id: string; name?: string }[]
+  name: string
+  /** null = engine-neutral PNG + JSON only. */
+  engine: PackEngine | null
+  mobile?: boolean
+  atlas_max_size?: AtlasPageSize
+  atlas_padding?: number
+  atlas_extrude?: number
+  atlas_pot?: boolean
+  atlas_trim?: boolean
+  atlas_rotate?: boolean
+}
+
+export interface AtlasResult {
+  dir: string
+  name: string
+  engine: PackEngine | null
+  stats: AtlasStats
+  files: string[]
+  mobile: MobileBudget | null
+  /** Asset names that had no 2D sprite to add. */
+  skipped: string[]
 }
 
 export interface PackResult extends PackRecord {
@@ -847,4 +915,6 @@ export interface PackResult extends PackRecord {
   provenance: { commercial: PackCommercial; non_commercial: string[]; restricted: string[]; unverified: string[] }
   items: { name: string; folder: string; commercial: PackCommercial }[]
   skipped: { name: string; step_id: string; reason: string }[]
+  atlas?: (AtlasStats & { folder: string; name: string }) | null
+  mobile?: Partial<Record<PackEngine, MobileBudget>>
 }

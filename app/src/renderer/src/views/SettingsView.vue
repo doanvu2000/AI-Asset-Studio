@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
-import { ArrowDown, ArrowUp, Copy, Download, FolderCog, Lock, LoaderCircle, Plus, Save, ScrollText, SunMoon, Trash2 } from '@lucide/vue'
+import { ArrowDown, ArrowUp, Copy, Download, FolderCog, Lock, LoaderCircle, Plus, Save, ScrollText, Sparkles, SunMoon, Trash2 } from '@lucide/vue'
 import type { Compass, ExportPreset } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import DiagnosticsPanel from '@/components/DiagnosticsPanel.vue'
@@ -11,6 +11,7 @@ import ResizeHandle from '@/components/ResizeHandle.vue'
 import { usePaneWidth } from '@/composables/paneSize'
 import { useUnsavedChanges } from '@/composables/unsaved'
 import { THEME_OPTIONS, useTheme } from '@/composables/theme'
+import { APP_VERSION, whatsNewOpen } from '@/composables/changelog'
 import { usePresets } from '@/stores/catalog'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
@@ -207,6 +208,11 @@ async function remove(): Promise<void> {
           <span class="i-name">Nhật ký chẩn đoán</span>
           <ScrollText :size="13" class="lock" aria-hidden="true" />
           <span class="i-sub caption">Copy · xuất log khi báo lỗi</span>
+        </button>
+        <button class="item" @click="whatsNewOpen = true">
+          <span class="i-name">Có gì mới</span>
+          <Sparkles :size="13" class="lock" aria-hidden="true" />
+          <span class="i-sub caption">Thay đổi từng bản · đang dùng {{ APP_VERSION }}</span>
         </button>
         <div class="group-head">
           <p class="section-label">Preset xuất sprite sheet</p>

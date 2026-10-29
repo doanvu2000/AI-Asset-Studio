@@ -1,0 +1,48 @@
+id: enemy-variants
+name: Biến thể kẻ địch (đổi màu + phụ kiện)
+description: >-
+  Sheet sprite 8 hướng (tĩnh hoặc bộ anim) + sheet.json của nó → mỗi biến thể (lửa, băng, độc, elite…) đổi ramp màu theo
+  từng vùng màu bằng một bảng màu chung cho cả sheet, nên mọi khung đổi y hệt nhau, viền tối giữ nguyên, không thêm màu
+  → tuỳ chọn phụ kiện (sừng, mũ, giáp): Klein vẽ trên khung đầu mỗi hướng, tách phần thêm rồi bám theo từng khung cùng
+  hướng (sockets.json của paper-doll nếu có) → sheet {asset}_{biến thể} giữ đúng ô, pivot, clip + ảnh tổng hợp → duyệt.
+  Xuất Unity/Godot như sheet gốc, mỗi biến thể một thư mục.
+inputs:
+  sheet: {type: image, label: Sprite sheet 8 hướng / sheet anim}
+  meta: {type: file, ext: [json], label: "sheet.json (cùng bước với sheet)"}
+  variants: {type: text, default: "lửa, băng, độc, elite", multiline: true,
+             label: "Biến thể (phẩy, hoặc mỗi dòng: tên: #hex #hex)",
+             placeholder: "lửa, băng, độc, elite\nhoàng gia: #3a2aa0 #e0b030"}
+  asset: {type: text, default: enemy, label: Tên asset}
+  strength: {type: float, default: 0.9, min: 0, max: 1, label: Độ đổi màu}
+  grey: {type: float, default: 0.25, min: 0, max: 1, label: Độ ngả màu vùng xám (kim loại)}
+  accessory: {type: text, default: "", label: "Phụ kiện Klein (trống = bỏ qua, vd: two curved dark horns on the head)"}
+  accessory_on: {type: text, default: elite, label: "Biến thể có phụ kiện (phẩy | all)"}
+  sockets: {type: file, ext: [json], required: false, label: "sockets.json paper-doll (tuỳ chọn, bám phụ kiện chính xác hơn)"}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: prep
+    kind: op.enemy_prep
+    in: {sheet: inputs.sheet, meta: inputs.meta}
+    params: {variants: "${inputs.variants}", accessory: "${inputs.accessory}"}
+  # One edit per direction; with no accessory prep emits no key frames and this step makes no ComfyUI call.
+  - id: accessory
+    kind: comfy.edit_flux2_klein4b
+    in: {image: prep.keys}
+    map: image
+    params:
+      "75:74.text": "Edit this game character sprite: ${inputs.accessory}. Keep exactly the same character, pose, body, outline, size, position, camera angle, framing, colours and art style; change nothing else, nothing added around the character. Plain pure white background."
+  - id: variants
+    kind: op.enemy_variants
+    in: {sheet: inputs.sheet, meta: inputs.meta, edits: accessory.images, layout: prep.layout, sockets: inputs.sockets}
+    params: {variants: "${inputs.variants}", asset: "${inputs.asset}", accessory_on: "${inputs.accessory_on}",
+             strength: "${inputs.strength}", grey: "${inputs.grey}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: variants.preview, accessory_preview: variants.accessory_preview, sheets: variants.sheets,
+         meta: variants.meta, variants: variants.variants}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.sheets
+  preview: approve.preview
+  meta: approve.meta
+  variants: approve.variants

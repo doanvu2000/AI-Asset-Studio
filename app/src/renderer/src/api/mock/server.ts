@@ -2,6 +2,7 @@ import { ApiError, type ListRunsQuery, type RecipeBody, type StudioApi, type Ver
 import { FrameBatcher, type EventSink, type EventStream } from '../ws'
 import type { CoreDiagnostics } from '../../../../preload/types'
 import type { EnginePreviewJob, PreviewEngines } from '../enginePreview'
+import type { HitVfx, StepHits } from '../hitFx'
 import {
   STEP_DONE_OK,
   type BatchCreateBody,
@@ -44,7 +45,7 @@ import type { SetupJob, SetupPlan, SetupStartBody } from '../types'
 import type { ProjectQaAsset, ProjectQaFixResult, ProjectQaReport } from '../types'
 import type { StyleBible, StyleBibleEdit, StyleBibleView } from '../types'
 import type { DuplicateGroup, DuplicatesReport, MoreLikePlan, SimilarAsset, SimilarIndexStatus, SimilarQuery, SimilarResult } from '../types'
-import type { PackBody, PackListing, PackRecord, PackResult } from '../types'
+import type { AtlasBody, AtlasResult, PackBody, PackListing, PackRecord, PackResult } from '../types'
 import { MOCK_KINDS, MOCK_PRESETS, MOCK_TOOLS, mockValidate, stepDeps } from './catalog'
 import { normalizeStyle, styleFills } from '@/composables/projectStyle'
 import sampleGlbUrl from './assets/sample-prop.glb?url'
@@ -1739,7 +1740,30 @@ export class MockCore implements StudioApi, EventStream {
     this.packMap.set(projectId, [rec, ...(this.packMap.get(projectId) ?? []).filter((p) => p.version !== version)])
     return clone({ ...rec, previous: prev?.version ?? null, warnings: [], skipped: [],
       provenance: { commercial: 'restricted', non_commercial: [], restricted: names.slice(0, 1), unverified: [] },
-      items: items.map((a, i) => ({ name: a.name, folder: a.name.replace(/\W+/g, '_'), commercial: i === 0 ? 'restricted' : 'yes' })) })
+      items: items.map((a, i) => ({ name: a.name, folder: a.name.replace(/\W+/g, '_'), commercial: i === 0 ? 'restricted' : 'yes' })),
+      atlas: body.atlas ? { folder: 'Atlas', name: `${listing.slug}_atlas`, sprites: items.length * 8, unique: items.length * 8, pages: 1, page_sizes: [[1024, 1024]], fill: 0.74,
+        before: { textures: items.length, file_bytes: items.length * 380_000, gpu_bytes: items.length * 2_097_152 }, after: { textures: 1, file_bytes: items.length * 240_000, gpu_bytes: 4_194_304 } } : null,
+      mobile: body.mobile ? Object.fromEntries(body.engines.map((e) => [e, { engine: e, rows: [], totals: { files: items.length, file_bytes: items.length * 380_000,
+        gpu_before: items.length * 2_097_152, gpu_after: Math.round(items.length * 2_097_152 / (e === 'unity' ? 9 : 4)) } }])) : undefined })
+  }
+
+  async buildAtlas(body: AtlasBody): Promise<AtlasResult> {
+    await this.ready
+    await sleep(900)
+    if (!body.steps.length) throw new ApiError('invalid', 'pick at least one asset', 422)
+    const sprites = body.steps.length * 9
+    const page = body.atlas_max_size ?? 2048
+    const before = { textures: body.steps.length, file_bytes: body.steps.length * 410_000, gpu_bytes: body.steps.length * 2_097_152 }
+    const after = { textures: 1, file_bytes: Math.round(before.file_bytes * 0.62), gpu_bytes: Math.min(page * page, 1024 * 1024) * 4 }
+    const rows = body.mobile && body.engine
+      ? [{ file: `${body.name}.png`, kind: 'sprite' as const, size: [1024, 1024] as [number, number], import_size: [1024, 1024] as [number, number],
+          format: body.engine === 'unity' ? 'ASTC 6×6' : 'VRAM: ASTC 4×4 (mobile)', file_bytes: after.file_bytes, gpu_before: after.gpu_bytes,
+          gpu_after: Math.round(after.gpu_bytes / (body.engine === 'unity' ? 9 : 4)) }]
+      : []
+    return clone({ dir: `D:\\StudioData\\exports\\app\\atlas\\${body.name}-${body.engine ?? 'json'}`, name: body.name, engine: body.engine,
+      stats: { sprites, unique: sprites - 1, pages: 1, page_sizes: [[1024, 1024]], fill: 0.81, before, after }, files: [],
+      mobile: rows.length && body.engine ? { engine: body.engine, rows, totals: { files: 1, file_bytes: rows[0]!.file_bytes, gpu_before: rows[0]!.gpu_before, gpu_after: rows[0]!.gpu_after } } : null,
+      skipped: [] })
   }
 
   private styleBibles = new Map<string, StyleBible>()
@@ -1830,6 +1854,14 @@ export class MockCore implements StudioApi, EventStream {
     v.qa = this.mockQa(v)
     this.emit('version.updated', v, v.run_id)
     return clone(v)
+  }
+
+  async stepHits(stepId: string): Promise<StepHits> {
+    throw new ApiError('not_exportable', `mock step has no attack sheet: ${stepId}`, 422)
+  }
+
+  async hitVfxLibrary(): Promise<{ vfx: HitVfx[] }> {
+    return { vfx: [] }
   }
 
   async enginePreviewEngines(): Promise<PreviewEngines> {

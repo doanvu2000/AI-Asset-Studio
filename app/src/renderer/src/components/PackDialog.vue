@@ -2,8 +2,9 @@
 import { computed, ref, watch } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { FileArchive, FolderOpen, LoaderCircle, Package, RotateCcw, TriangleAlert, X } from '@lucide/vue'
-import type { PackCommercial, PackEngine, PackLicense, PackListing, PackResult } from '@/api/types'
+import type { AtlasPageSize, MobileBudget, PackCommercial, PackEngine, PackLicense, PackListing, PackResult } from '@/api/types'
 import BlobImage from './BlobImage.vue'
+import MobileStats from './MobileStats.vue'
 import RelTime from './RelTime.vue'
 import { api } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
@@ -47,6 +48,11 @@ const outDir = ref<string | null>(null)
 const picked = ref<Set<string>>(new Set())
 const building = ref(false)
 const result = ref<PackResult | null>(null)
+const atlas = ref(false)
+const atlasSize = ref<AtlasPageSize>(2048)
+const mobile = ref(false)
+const PAGE_SIZES: AtlasPageSize[] = [1024, 2048, 4096]
+const budgets = computed<MobileBudget[]>(() => Object.values(result.value?.mobile ?? {}).filter((b): b is MobileBudget => !!b))
 
 const assets = computed(() => listing.value?.assets ?? [])
 const allPicked = computed(() => assets.value.length > 0 && assets.value.every((a) => picked.value.has(a.step_id)))
@@ -117,7 +123,10 @@ async function build(): Promise<void> {
       include,
       author: author.value.trim() || undefined,
       org: org.value.trim() || undefined,
-      out_dir: outDir.value ?? undefined
+      out_dir: outDir.value ?? undefined,
+      mobile: mobile.value || undefined,
+      atlas: atlas.value || undefined,
+      atlas_max_size: atlas.value ? atlasSize.value : undefined
     })
     version.value = ''
     toasts.push(`Đã đóng gói bản ${result.value.version}`, 'success')
@@ -199,6 +208,23 @@ useEventListener(
                 </div>
               </div>
 
+              <div class="row mob">
+                <span class="section-label">Mobile</span>
+                <div class="mob-opts">
+                  <label class="chk" title="Gom mọi sprite 2D của pack vào atlas chung: bỏ viền trong suốt, chừa 2px + kéo mép 1px chống lem, cạnh lũy thừa 2; pivot giữ nguyên">
+                    <input v-model="atlas" type="checkbox" /> Gộp atlas
+                  </label>
+                  <Transition name="fade">
+                    <div v-if="atlas" class="seg" role="radiogroup" aria-label="Kích thước trang atlas tối đa">
+                      <button v-for="n in PAGE_SIZES" :key="n" type="button" role="radio" :aria-checked="atlasSize === n" @click="atlasSize = n">{{ n }}</button>
+                    </div>
+                  </Transition>
+                  <label class="chk" title="Unity: override Android + iOS ASTC theo loại ảnh, crunch tắt; Godot: .import VRAM + ETC2/ASTC, size_limit, mipmap tắt cho 2D. Kèm bảng RAM GPU trước/sau">
+                    <input v-model="mobile" type="checkbox" /> Ngân sách mobile
+                  </label>
+                </div>
+              </div>
+
               <div class="row">
                 <span class="section-label">Asset ({{ picked.size }}/{{ assets.length }})</span>
                 <button v-if="assets.length" type="button" class="btn btn-plain" @click="toggleAll">{{ allPicked ? 'Bỏ chọn hết' : 'Chọn hết' }}</button>
@@ -226,6 +252,7 @@ useEventListener(
                   <TriangleAlert :size="14" aria-hidden="true" />
                   <span>Kiểm tra trước khi dùng thương mại: {{ flagged.map((f) => `${f.name} (${COMMERCIAL[f.commercial]})`).join(', ') }}. Chi tiết model + giấy phép trong provenance.json.</span>
                 </div>
+                <MobileStats v-if="result.atlas || budgets.length" :atlas="result.atlas" :budgets="budgets" />
                 <p v-for="w in result.warnings" :key="w" class="caption">{{ w }}</p>
                 <div class="actions">
                   <button type="button" class="btn" @click="reveal(result.dir)"><FolderOpen /> Mở thư mục</button>
@@ -310,6 +337,26 @@ useEventListener(
 }
 .hint {
   margin-top: -4px;
+}
+.mob-opts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--t-fast) var(--ease-out);
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 .grid2 {
   display: grid;

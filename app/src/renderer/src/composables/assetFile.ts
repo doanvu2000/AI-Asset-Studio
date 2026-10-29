@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useToasts } from '@/stores/toasts'
+import { bytes } from '@/composables/format'
 import type { BundleEngine, EngineExportOptions } from '../../../preload/types'
 
 export type AssetBusy = 'save' | 'reveal' | 'copy' | 'bundle' | null
@@ -63,7 +64,9 @@ export function useAssetFile() {
   async function saveBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts?: EngineExportOptions): Promise<void> {
     const dest = await run('bundle', () => bridge!.saveBundle(stepId, preset, name, engine, opts), 'Không xuất được thư mục')
     if (!dest) return
-    toasts.push(`Đã xuất thư mục ${baseName(dest.path)}`, 'success', 3200)
+    const m = dest.mobile
+    const budget = m && m.files ? ` · RAM GPU mobile ${bytes(m.gpu_before)} → ${bytes(m.gpu_after)}` : ''
+    toasts.push(`Đã xuất thư mục ${baseName(dest.path)}${budget}`, 'success', budget ? 6000 : 3200)
     if (dest.leftover) toasts.push(`Chưa xoá được thư mục cũ ${dest.leftover} — có thể xoá tay khi rảnh`, 'info', 8000)
   }
 

@@ -295,3 +295,53 @@ def test_finalize_unity_scopes_namespace_and_detects_dependencies(tmp_path: Path
                     "com.unity.render-pipelines.universal": "17.0.3"}
     (d / "btn.png.meta").write_text("  spriteBorder: {x: 12, y: 0, z: 12, w: 0}\n", encoding="utf-8")
     assert pk.unity_dependencies(pkg)["com.unity.ugui"] == "2.0.0"
+
+
+def _npc_src(tmp_path: Path, asset: str) -> Any:
+    from studio_core.export.source import Source
+
+    png = tmp_path / f"{asset}.png"
+    png.write_bytes(_png((200, 100, 50)))
+    npc = {"name": asset, "languages": ["en"],
+           "lines": [{"id": "greeting_01", "category": "greeting", "expression": "neutral", "text": {"en": "Hi"}}]}
+    return Source(asset=asset, npc=npc, npc_portraits=[("neutral", png)])
+
+
+def _write(root: Path, files: list[tuple[str, Any]]) -> None:
+    for rel, data in files:
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(data.read_bytes() if isinstance(data, Path) else data)
+
+
+def test_finalize_godot_shares_one_prefixed_class_script(tmp_path: Path) -> None:
+    from studio_core.export import npc
+
+    addon = tmp_path / "addons" / "forest_pack"
+    for name in ("Granny", "Smith"):
+        _write(addon / name, npc.godot_files(_npc_src(tmp_path, name))[0])
+    assert pk.godot_class_prefix("forest-pack") == "ForestPack" and pk.godot_class_prefix("2d-game") == "_2dGame"
+
+    rep = pk.finalize_godot(addon, "forest_pack", "ForestPack")
+    assert rep["classes"] == {"NpcData": ["ForestPackNpcData"]} and rep["scripts"] == ["scripts/npc_data.gd"]
+    scripts = list(addon.rglob("*.gd"))
+    assert scripts == [addon / "scripts" / "npc_data.gd"]
+    assert scripts[0].read_text(encoding="utf-8").startswith("class_name ForestPackNpcData\nextends Resource")
+    for name in ("Granny", "Smith"):
+        tres = (addon / name / f"{name}_npc.tres").read_text(encoding="utf-8")
+        assert tres.startswith('[gd_resource type="Resource" script_class="ForestPackNpcData"')
+        assert 'path="res://addons/forest_pack/scripts/npc_data.gd"' in tres and 'path="NPC/' in tres
+
+
+def test_finalize_godot_keeps_differing_copies_apart(tmp_path: Path) -> None:
+    from studio_core.export import npc
+
+    addon = tmp_path / "addons" / "p"
+    _write(addon / "A", npc.godot_files(_npc_src(tmp_path, "A"))[0])
+    _write(addon / "B", npc.godot_files(_npc_src(tmp_path, "B"))[0])
+    (addon / "B" / "npc_data.gd").write_text(npc.GODOT_SCRIPT + "\n# v2\n", encoding="utf-8")
+    rep = pk.finalize_godot(addon, "p", "P")
+    assert rep["classes"] == {"NpcData": ["PNpcData", "PNpcData2"]} and rep["warnings"]
+    assert 'script_class="PNpcData2"' in (addon / "B" / "B_npc.tres").read_text(encoding="utf-8")
+    assert 'path="res://addons/p/scripts/npc_data_2.gd"' in (addon / "B" / "B_npc.tres").read_text(encoding="utf-8")
+    assert 'script_class="PNpcData"' in (addon / "A" / "A_npc.tres").read_text(encoding="utf-8")

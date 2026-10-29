@@ -51,13 +51,16 @@ export function followUps(recipes: RecipeInfo[], clicked: BlobRef, siblings: Out
       prefill[target[0]] = [clicked.hash]
       used.add(clicked.hash)
     }
-    for (const [name, spec] of blobInputs) {
-      if (prefill[name]) continue
-      const hit = pool.find((b) => !used.has(b.hash) && fits(spec, b))
-      if (!hit) continue
-      used.add(hit.hash)
-      prefill[name] = spec.siblings === 'atlas_pages' ? [hit.hash, ...pages.map((p) => p.hash)] : [hit.hash]
-    }
+    // An output named like the input (meta → meta, sockets → sockets) wins before any other file of the same type,
+    // so two JSON inputs do not swap their files.
+    for (const byName of [true, false])
+      for (const [name, spec] of blobInputs) {
+        if (prefill[name]) continue
+        const hit = (byName ? (siblings[name] ?? []) : pool).find((b) => !used.has(b.hash) && fits(spec, b))
+        if (!hit) continue
+        used.add(hit.hash)
+        prefill[name] = spec.siblings === 'atlas_pages' ? [hit.hash, ...pages.map((p) => p.hash)] : [hit.hash]
+      }
     const missing = required.filter(([n]) => !prefill[n]).map(([n, s]) => s.label ?? n)
     // Without the clicked file in a required slot, only multi-file recipes (skeleton + atlas…) that the step's other
     // outputs mostly fill are worth offering; single-file ones would just reuse some unrelated sibling.

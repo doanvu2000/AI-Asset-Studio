@@ -35,6 +35,7 @@ import uiKit from './recipe-ui-kit.webp'
 import uiKitStyle from './recipe-ui-kit-style.webp'
 import iconPack from './recipe-icon-pack.webp'
 import spineCharacterImage from './recipe-spine-character-image.webp'
+import enemyVariants from './recipe-enemy-variants.webp'
 
 export const ART = { appIcon, emptyRuns, emptyGates, emptyGallery, coreDisconnected, gettingStarted } as const
 
@@ -73,7 +74,8 @@ const RECIPE_ART: Record<string, string> = {
   'ui-kit': uiKit,
   'ui-kit-style': uiKitStyle,
   'icon-pack': iconPack,
-  'vfx-flipbook': vfxFlipbook
+  'vfx-flipbook': vfxFlipbook,
+  'enemy-variants': enemyVariants
 }
 
 export function recipeArt(id: string): string | undefined {
@@ -135,7 +137,8 @@ const RECIPE_PITCH: Record<string, string> = {
   'bitmap-font-klein': 'Câu chất liệu ("molten gold", "icy crystal") → Klein tô ruột chữ, giữ đúng dáng glyph TTF → bitmap font .fnt + atlas cho Godot / Unity',
   'autotile-terrain-prompt': 'Texture cỏ + prompt nền (đất, nước, cát) → Z-Image vẽ nền → bộ autotile 47 ô khớp mép, TileSet terrain Godot / RuleTile Unity',
   'key-art-motion': 'Key art → teaser 5 giây chuyển động nhẹ (tóc, vải, hạt bay), lặp liền, MP4 + WebM + GIF + poster',
-  'storyboard-animatic': 'Kịch bản cutscene + ảnh nhân vật → 4–12 shot giữ đúng nhân vật, thoại TTS mỗi người một giọng, Ken Burns + phụ đề → animatic MP4 + storyboard PDF'
+  'storyboard-animatic': 'Kịch bản cutscene + ảnh nhân vật → 4–12 shot giữ đúng nhân vật, thoại TTS mỗi người một giọng, Ken Burns + phụ đề → animatic MP4 + storyboard PDF',
+  'enemy-variants': 'Sheet 8 hướng / anim có sẵn → biến thể lửa, băng, độc, elite đổi màu theo vùng, thêm sừng / mũ bám đúng từng khung, giữ nguyên ô + clip'
 }
 
 export function recipePitch(id: string): string | undefined {
@@ -156,7 +159,7 @@ export const RECIPE_GROUP_LABEL: Record<RecipeGroup, string> = {
 // Sprites and rigs are characters to the user regardless of whether they pass through a 3D mesh.
 export function recipeGroup(id: string): RecipeGroup {
   if (id.startsWith('audio-')) return 'audio'
-  if (id.startsWith('sprite-') || id.startsWith('spine-') || id.startsWith('npc-') || id.includes('character')) return 'character'
+  if (id.startsWith('sprite-') || id.startsWith('spine-') || id.startsWith('npc-') || id.startsWith('enemy-') || id.includes('character')) return 'character'
   if (id.includes('3d') || id.includes('glb') || id.includes('mesh')) return '3d'
   return '2d'
 }

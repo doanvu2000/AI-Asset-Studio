@@ -57,6 +57,8 @@ def _with_siblings(name: str, spec: dict[str, Any], value: Any) -> Any:
     exts = spec.get("ext") or []
     if exts and p.suffix.lower().lstrip(".") not in exts:
         raise ToolError(f"input '{name}': expected a .{'/.'.join(exts)} file, got {p.name}")
+    if spec.get("siblings") == "aseprite_sheet":
+        return _aseprite_sheet(name, p)
     if spec.get("siblings") != "atlas_pages":
         return value
     try:
@@ -64,6 +66,21 @@ def _with_siblings(name: str, spec: dict[str, Any], value: Any) -> Any:
     except (OSError, FileNotFoundError) as e:
         raise ToolError(f"input '{name}': {e}") from e
     return [str(p), *(str(f) for f in pages)]
+
+
+def _aseprite_sheet(name: str, p: Path) -> Any:
+    """An Aseprite JSON sheet travels with the PNG its meta.image names (same folder); a .aseprite file is whole."""
+    if p.suffix.lower() != ".json":
+        return str(p)
+    try:
+        doc = json.loads(p.read_bytes())
+    except (OSError, ValueError) as e:
+        raise ToolError(f"input '{name}': cannot read {p.name}: {e}") from e
+    image = Path(str((doc.get("meta") or {}).get("image") or "") if isinstance(doc, dict) else "").name
+    png = p.with_name(image) if image else p.with_suffix(".png")
+    if not png.is_file():
+        raise ToolError(f"input '{name}': the sheet image {png.name} is not next to {p.name}")
+    return [str(p), str(png)]
 
 
 def _safe_id(value: str, what: str) -> str:
@@ -688,14 +705,18 @@ def build_server(link: CoreLink) -> MCPServer:
                                license: Literal["cc0", "cc-by-4.0", "proprietary"] = "cc0",
                                version: str | None = None, include: list[str] | None = None,
                                out_dir: str | None = None, author: str = "", org: str = "assetstudio",
-                               description: str = "") -> dict[str, Any]:
+                               description: str = "", atlas: bool = False, mobile: bool = False
+                               ) -> dict[str, Any]:
         """Package a project's approved assets into a Unity UPM package and/or Godot addon folder + zip on local
         disk (never pushed anywhere), with README, CHANGELOG (vs the previous pack), LICENSE and provenance.json
         (recipe, models + licenses, prompts, seeds per asset; assets made with non-commercial/unverified models are
         flagged). version None = previous pack's patch + 1; include = approved version ids (None = all);
-        out_dir = absolute folder (None = <data>/packs)."""
+        out_dir = absolute folder (None = <data>/packs). atlas = also pack every 2D sprite into one trimmed atlas
+        (2048 POT pages; Unity pre-sliced sprites, Godot AtlasTexture .tres; result.atlas has bytes before/after).
+        mobile = Android/iOS texture budget (ASTC/ETC2, max size, mipmaps per asset type; result.mobile has the
+        estimated GPU memory table)."""
         body: dict[str, Any] = {"engines": engines or ["unity"], "license": license, "author": author, "org": org,
-                                "description": description}
+                                "description": description, "atlas": atlas, "mobile": mobile}
         for k, v in (("version", version), ("include", include), ("out_dir", out_dir)):
             if v is not None:
                 body[k] = v

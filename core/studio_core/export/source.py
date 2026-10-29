@@ -71,6 +71,9 @@ class Source:
     # sheets (name, path), cut on the same cells as `sheet`.
     paperdoll: dict[str, Any] | None = None
     paperdoll_layers: list[tuple[str, Path]] = field(default_factory=list)
+    # Enemy variants (op.enemy_variants): (variant slug, sheet path), all cut on the same cells as `enemy_meta`.
+    enemy_variants: list[tuple[str, Path]] = field(default_factory=list)
+    enemy_meta: dict[str, Any] | None = None
     # Set when the export asked for traced 2D colliders + foot pivot on the sprite sheet (export/collider.py).
     collider: Any = None
 

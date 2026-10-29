@@ -13,6 +13,8 @@ import type {
   StyleBibleView,
   DuplicatesReport,
   PackBody,
+  AtlasBody,
+  AtlasResult,
   PackListing,
   PackResult,
   MoreLikePlan,
@@ -51,6 +53,7 @@ import type {
 } from './types'
 import type { CoreDiagnostics } from '../../../preload/types'
 import type { EnginePreviewBody, EnginePreviewJob, PreviewEngines } from './enginePreview'
+import type { HitVfx, StepHits } from './hitFx'
 import { devlog } from '@/composables/devlog'
 
 export class ApiError extends Error {
@@ -150,6 +153,10 @@ export interface StudioApi {
   startSetup(body: SetupStartBody): Promise<SetupJob>
   cancelSetup(): Promise<SetupJob | null>
   claudeLogin(): Promise<void>
+  /** Attack tracks of a sprite sheet with detected impact frame/point, for binding a hit VFX. */
+  stepHits(stepId: string): Promise<StepHits>
+  /** Finished VFX flipbooks in the library, newest first. */
+  hitVfxLibrary(): Promise<{ vfx: HitVfx[] }>
   enginePreviewEngines(): Promise<PreviewEngines>
   /** Exports the step for the engine, then opens it in Godot/Unity in the background; poll enginePreviewJob. */
   startEnginePreview(stepId: string, body: EnginePreviewBody): Promise<EnginePreviewJob>
@@ -165,6 +172,8 @@ export interface StudioApi {
   projectPacks(projectId: string): Promise<PackListing>
   /** Writes the Unity package / Godot addon + zip to local disk only. */
   buildPack(projectId: string, body: PackBody): Promise<PackResult>
+  /** Trimmed texture atlas of the given steps' sprites, written under the app's export folder. */
+  buildAtlas(body: AtlasBody): Promise<AtlasResult>
   similarStatus(): Promise<SimilarIndexStatus>
   reindexSimilar(body?: { project_id?: string; force?: boolean }): Promise<SimilarIndexStatus>
 }
@@ -305,6 +314,8 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
       call('GET', `/api/stats/overview${query({ since: q.since, until: q.until, project_id: q.project_id, days: q.days, tz_offset_s: q.tz_offset_s })}`),
     recomputeQa: (body = {}) => call('POST', '/api/qa/recompute', body, SLOW_TIMEOUT_MS),
     recomputeVersionQa: (id) => call('POST', `/api/qa/versions/${enc(id)}`, undefined, SLOW_TIMEOUT_MS),
+    stepHits: (stepId) => call('GET', `/api/steps/${enc(stepId)}/hits`),
+    hitVfxLibrary: () => call('GET', '/api/hitfx/vfx'),
     enginePreviewEngines: () => call('GET', '/api/engine-preview'),
     startEnginePreview: (stepId, body) => call('POST', `/api/steps/${enc(stepId)}/engine-preview`, body, SLOW_TIMEOUT_MS),
     enginePreviewJob: (jobId) => call('GET', `/api/engine-preview/jobs/${enc(jobId)}`),
@@ -330,6 +341,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
       call('GET', `/api/projects/${enc(id)}/duplicates${query({ threshold: q.threshold, only_approved: q.only_approved ? 'true' : undefined })}`, undefined, SLOW_TIMEOUT_MS),
     projectPacks: (id) => call('GET', `/api/projects/${enc(id)}/packs`),
     buildPack: (id, body) => call('POST', `/api/projects/${enc(id)}/pack`, body, SLOW_TIMEOUT_MS),
+    buildAtlas: (body) => call('POST', '/api/atlas', body, SLOW_TIMEOUT_MS),
     similarStatus: () => call('GET', '/api/search/status'),
     reindexSimilar: (body = {}) => call('POST', '/api/search/reindex', body)
   }

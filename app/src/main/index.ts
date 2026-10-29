@@ -542,7 +542,7 @@ function registerAssetIpc(): void {
     }
     const leftover = await replaceDir(b.dir, dest)
     devlog.app('info', `exported step ${stepId} (${eng ?? b.preset ?? 'raw'}, ${b.files} files) → ${dest}`)
-    return leftover ? { path: dest, leftover } : { path: dest }
+    return leftover ? { path: dest, leftover, mobile: b.mobile } : { path: dest, mobile: b.mobile }
   })
   handle('studio:asset:revealBundle', async (_e, stepId, preset, name, engine, opts) => {
     const b = await assets.exportBundle(checkStep(stepId), checkPreset(preset), checkName(name), checkEngine(engine), checkEngineOptions(opts))

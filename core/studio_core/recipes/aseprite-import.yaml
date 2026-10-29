@@ -1,0 +1,28 @@
+id: aseprite-import
+name: Nhập sprite từ Aseprite
+description: >-
+  File .aseprite / .ase, hoặc sheet JSON của Aseprite (array hoặc hash) kèm PNG → tách từng khung (ghép layer đang
+  hiện, trả khung bị trim về đúng chỗ) → sprite sheet có clip theo tag. Tag đặt tên `<clip>_<S|SW|W|NW|N|NE|E|SE>`
+  thành sheet 8 hướng; tag khác thành từng clip riêng; ping-pong được trải ra. Thời lượng khung → fps, slice có pivot →
+  pivot. Chạy CPU. Xuất Unity / Godot (và lại .aseprite) từ bước sheet như sprite sinh ra.
+inputs:
+  source: {type: file, ext: [aseprite, ase, json], siblings: aseprite_sheet,
+           label: "File .aseprite, hoặc JSON + PNG sheet (chọn cùng lúc)"}
+  clip: {type: text, required: false, default: "", label: Tên clip khi file không có tag (trống = tên file)}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: frames
+    kind: op.aseprite_import
+    in: {files: inputs.source}
+    params: {clip: "${inputs.clip}"}
+  - id: sheet
+    kind: op.sheet
+    in: {images: frames.images, pivot: frames.anim}
+  - id: approve
+    kind: gate.approve
+    in: {sheet: sheet.sheet, frames: frames.images}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: sheet.sheet
+  meta: sheet.meta
+  frames: frames.images

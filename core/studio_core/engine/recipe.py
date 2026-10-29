@@ -16,7 +16,8 @@ from ..contracts import ExecutorRegistry, RecipeInfo
 
 log = logging.getLogger(__name__)
 
-# `file` carries an `ext` filter and optionally `siblings: atlas_pages` (atlas + its page images as one blob list).
+# `file` carries an `ext` filter and optionally `siblings`: `atlas_pages` (atlas + its page images as one blob list) or
+# `aseprite_sheet` (an Aseprite JSON sheet + the PNG it names; a .aseprite file alone).
 BLOB_TYPES = {"image", "mesh", "file", "video"}
 VIDEO_EXT = ("mp4", "webm", "gif", "mov", "mkv")
 # `preset` is text naming an export preset; the app offers the saved presets as choices.

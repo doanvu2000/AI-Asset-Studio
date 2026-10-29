@@ -5,9 +5,11 @@ from typing import Any
 from ..contracts import ExecutorRegistry, Resource
 from .audio import AudioPost
 from .animatic import Animatic
+from .aseprite import ASEPRITE_OPS
 from .autotile import AUTOTILE_OPS
 from .bitmap_font import BITMAP_FONT_OPS
 from .damage import DAMAGE_OPS
+from .enemy_variants import ENEMY_OPS
 from .executors import ALL_OPS, Sheet
 from .fx import FX_OPS
 from .image_layers import IMAGE_LAYERS_OPS
@@ -64,6 +66,8 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(store_cls())
     for n2d_cls in NORMAL2D_OPS:
         registry.register(n2d_cls())
+    for ase_cls in ASEPRITE_OPS:
+        registry.register(ase_cls())
     for at_cls in AUTOTILE_OPS:
         registry.register(at_cls())
     for bf_cls in BITMAP_FONT_OPS:
@@ -72,4 +76,6 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(pd_cls())
     for il_cls in IMAGE_LAYERS_OPS:
         registry.register(il_cls())
+    for ev_cls in ENEMY_OPS:
+        registry.register(ev_cls())
     return []

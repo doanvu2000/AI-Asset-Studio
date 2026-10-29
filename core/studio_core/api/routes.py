@@ -27,6 +27,7 @@ from studio_core.export.collider import DEFAULT_TOLERANCE, ColliderOptions, defa
 from studio_core.export.shaders import ShaderError, applies_to as shaders_apply, catalog as shader_catalog
 from studio_core.export.shaders import resolve as resolve_shaders
 from studio_core.export.normal2d import Normal2DOptions
+from studio_core.api.hitfx import HitsBody, has_attacks, resolve as resolve_hits
 from studio_core.store.bundle import (ENGINES, BundleError, engine_ready, engine_source, export_bundle, export_engine,
                                       sheet_meta)
 from studio_core.store.export import export_copy
@@ -506,6 +507,12 @@ class StepExport(BaseModel):
     normal2d: bool = False
     normal2d_strength: float = Field(1.0, gt=0, le=10)
     normal2d_bevel: float | None = Field(None, gt=0, le=64)
+    # Hit VFX bound to attack frames (export/hitfx.py): a VFX flipbook step + per-track frame/point overrides.
+    hits: HitsBody | None = None
+    # Mobile texture budget (export/mobile.py): ASTC/ETC2 import overrides + GPU memory table.
+    mobile: bool = False
+    # Aseprite copy of the sheet / layers (export/aseprite.py): .aseprite + Aseprite JSON array sheet + PNG.
+    aseprite: bool = False
 
 
 async def _collider_default(request: Request, step: Any) -> bool:
@@ -535,6 +542,8 @@ async def step_export_options(request: Request, step_id: str) -> Response:
                   "preset": (meta or {}).get("preset"), "engines": engines,
                   "collider": collider, "collider_default": collider and await _collider_default(request, step),
                   "normal2d": collider,
+                  "hits": has_attacks(src),
+                  "aseprite": src is not None and (src.sheet is not None or bool(src.image_layers)),
                   "shaders": shader_catalog() if src is not None and shaders_apply(src) else []})
 
 
@@ -556,9 +565,11 @@ async def export_step(request: Request, step_id: str, body: StepExport) -> Respo
         except ShaderError as e:
             raise ApiError(422, "invalid", str(e)) from e
         normal2d = (Normal2DOptions(body.normal2d_strength, body.normal2d_bevel) if body.normal2d else None)
+        hits = await resolve_hits(request, body.hits)
         try:
             out = await asyncio.to_thread(export_engine, step, siblings, _blobs(request), Path(root), body.name,
-                                          body.engine, body.ppu, body.pixel, collider, shaders, normal2d)
+                                          body.engine, body.ppu, body.pixel, collider, shaders, normal2d,
+                                          body.mobile, aseprite=body.aseprite, hits=hits)
         except BundleError as e:
             raise ApiError(422, "not_exportable", str(e)) from e
         return _json(out)

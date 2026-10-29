@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import { isAbsolute, join, relative } from 'node:path'
 import type { CoreSupervisor } from './core'
-import type { BundleEngine, BundleOptions, EngineExportOptions, ExportedAsset, ExportedBundle } from '../preload/types'
+import type { BundleEngine, BundleOptions, EngineExportOptions, ExportedAsset, ExportedBundle, HitBinding, MobileTotals } from '../preload/types'
 
 const HASH_RE = /^[0-9a-f]{64}$/
 const STEP_RE = /^[\w-]{1,80}$/
@@ -74,9 +74,58 @@ export function checkEngineOptions(v: unknown): EngineExportOptions {
     if (typeof nStrength !== 'number' || !Number.isFinite(nStrength) || nStrength <= 0 || nStrength > 10) throw new Error('invalid normal2d strength')
     out.normal2d_strength = nStrength
   }
+  const { mobile } = v as Record<string, unknown>
+  if (mobile !== undefined && mobile !== null) {
+    if (typeof mobile !== 'boolean') throw new Error('invalid mobile flag')
+    out.mobile = mobile
+  }
+  const { aseprite } = v as Record<string, unknown>
+  if (aseprite !== undefined && aseprite !== null) {
+    if (typeof aseprite !== 'boolean') throw new Error('invalid aseprite flag')
+    out.aseprite = aseprite
+  }
+  const { hits } = v as Record<string, unknown>
+  if (hits !== undefined && hits !== null) out.hits = checkHits(hits)
   return out
 }
 const NAME_MAX = 200
+
+const TRACK_RE = /^[A-Za-z_][\w]{0,63}$/
+function checkHits(v: unknown): HitBinding {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error('invalid hit vfx')
+  const { vfx_step, frames, points, size } = v as Record<string, unknown>
+  const out: HitBinding = { vfx_step: checkStep(vfx_step) }
+  const entries = (x: unknown): [string, unknown][] => {
+    if (x === undefined || x === null) return []
+    if (typeof x !== 'object' || Array.isArray(x) || Object.keys(x).length > 64) throw new Error('invalid hit vfx')
+    return Object.entries(x as Record<string, unknown>).map(([k, val]) => {
+      if (!TRACK_RE.test(k)) throw new Error('invalid hit track')
+      return [k, val]
+    })
+  }
+  const okNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
+  const f = entries(frames)
+  if (f.length) {
+    out.frames = {}
+    for (const [k, n] of f) {
+      if (!Number.isInteger(n) || (n as number) < 0 || (n as number) > 1024) throw new Error('invalid hit frame')
+      out.frames[k] = n as number
+    }
+  }
+  const pts = entries(points)
+  if (pts.length) {
+    out.points = {}
+    for (const [k, p] of pts) {
+      if (!Array.isArray(p) || p.length !== 2 || !p.every(okNum)) throw new Error('invalid hit point')
+      out.points[k] = [p[0] as number, p[1] as number]
+    }
+  }
+  if (size !== undefined && size !== null) {
+    if (!okNum(size) || size <= 0 || size > 4) throw new Error('invalid hit vfx size')
+    out.size = size
+  }
+  return out
+}
 const CACHE_MAX = 64
 
 export function checkHash(v: unknown): string {
@@ -141,9 +190,12 @@ export class AssetExporter {
   async exportBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts: EngineExportOptions = {}): Promise<ExportedBundle> {
     const body = { preset: preset ?? null, name: name ?? null, engine: engine ?? null, ...(engine ? opts : {}) }
     // Engine exports re-pack every sheet (pixel filter, normal maps), well past a plain copy on big runs.
-    const out = await this.call<ExportedBundle>(`steps/${stepId}/export`, body, engine ? 600_000 : 120_000)
+    const out = await this.call<Omit<ExportedBundle, 'files' | 'mobile'> & { files: unknown; mobile?: { totals?: MobileTotals } | null }>(
+      `steps/${stepId}/export`, body, engine ? 600_000 : 120_000)
     if (typeof out.dir !== 'string' || !(await inside(this.root, out.dir))) throw new Error('core trả đường dẫn ngoài thư mục xuất')
-    return { dir: out.dir, name: String(out.name), preset: out.preset ?? null, files: Array.isArray(out.files) ? out.files.length : 0 }
+    const t = out.mobile?.totals
+    const mobile = t && [t.files, t.file_bytes, t.gpu_before, t.gpu_after].every((n) => typeof n === 'number') ? t : null
+    return { dir: out.dir, name: String(out.name), preset: out.preset ?? null, files: Array.isArray(out.files) ? out.files.length : 0, mobile }
   }
 
   async export(hash: string, name?: string): Promise<ExportedAsset> {

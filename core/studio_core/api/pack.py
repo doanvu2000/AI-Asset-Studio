@@ -13,6 +13,7 @@ from studio_core.api.auth import require_token
 from studio_core.api.errors import ApiError, OrjsonResponse
 from studio_core.api.project_qa import _project
 from studio_core.contracts import StepStatus, VersionRow, VersionStatus
+from studio_core.export.atlas import AtlasOptions
 from studio_core.export.collider import DEFAULT_TOLERANCE, ColliderOptions, default_enabled
 from studio_core.export.normal2d import Normal2DOptions
 from studio_core.export.shaders import ShaderError, resolve as resolve_shaders
@@ -47,6 +48,18 @@ class PackBody(BaseModel):
     normal2d: bool = False
     normal2d_strength: float = Field(1.0, gt=0, le=10)
     normal2d_bevel: float | None = Field(None, gt=0, le=64)
+    mobile: bool = False
+    atlas: bool = False
+    atlas_max_size: Literal[512, 1024, 2048, 4096] = 2048
+    atlas_padding: int = Field(2, ge=0, le=16)
+    atlas_extrude: int = Field(1, ge=0, le=8)
+    atlas_pot: bool = True
+    atlas_trim: bool = True
+
+
+def atlas_options(body: Any) -> AtlasOptions:
+    return AtlasOptions(max_size=body.atlas_max_size, padding=body.atlas_padding, extrude=body.atlas_extrude,
+                        pot=body.atlas_pot, trim=body.atlas_trim)
 
 
 def _repo(request: Request) -> SqliteRepo:
@@ -95,7 +108,8 @@ def _engine_options(body: PackBody) -> pk.EngineOptions:
         return opts if on else None
 
     normal2d = Normal2DOptions(body.normal2d_strength, body.normal2d_bevel) if body.normal2d else None
-    return pk.EngineOptions(ppu=body.ppu, pixel=body.pixel, collider=collider, shaders=shaders, normal2d=normal2d)
+    return pk.EngineOptions(ppu=body.ppu, pixel=body.pixel, collider=collider, shaders=shaders, normal2d=normal2d,
+                            mobile=body.mobile)
 
 
 @router.get("/packs")
@@ -140,7 +154,7 @@ async def build_pack(request: Request, project_id: str, body: PackBody) -> Respo
     opts = pk.PackOptions(engines=list(dict.fromkeys(body.engines)), license=body.license, version=body.version,
                           org=body.org, author=body.author, description=body.description,
                           out_dir=Path(body.out_dir) if body.out_dir else None, zip=body.zip,
-                          export=_engine_options(body))
+                          export=_engine_options(body), atlas=atlas_options(body) if body.atlas else None)
     lock = _locks.setdefault(project_id, asyncio.Lock())
     if lock.locked():
         raise ApiError(409, "busy", "a pack for this project is already being built")

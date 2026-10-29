@@ -58,6 +58,7 @@ class EngineOptions:
     collider: Callable[[PackAsset], Any] = lambda _a: None
     shaders: list[Any] | None = None
     normal2d: Any = None
+    mobile: bool = False
 
 
 @dataclass
@@ -71,6 +72,8 @@ class PackOptions:
     out_dir: Path | None = None
     zip: bool = True
     export: EngineOptions = field(default_factory=EngineOptions)
+    # export/atlas.py AtlasOptions: one shared atlas of every 2D sprite in the pack, beside the per-asset exports.
+    atlas: Any = None
 
 
 def ascii_fold(text: str) -> str:
@@ -410,6 +413,69 @@ def _asmdef(name: str, editor: bool, refs: list[str], ns: str = "") -> str:
     return json.dumps(doc, indent=4) + "\n"
 
 
+_GD_CLASS = re.compile(r"^class_name\s+([A-Za-z_]\w*)", re.M)
+_GD_PATH = re.compile(r'(path=")([^"]+)(")')
+_GD_TEXT_EXT = {".gd", ".tres", ".tscn", ".txt", ".md", ".cfg"}
+
+
+def godot_class_prefix(slug: str) -> str:
+    p = _pascal(slug)
+    return f"_{p}" if p[:1].isdigit() else p
+
+
+def finalize_godot(addon_dir: Path, addon: str, prefix: str) -> dict[str, Any]:
+    """class_name is global in a Godot project: every asset's npc_data.gd copy, a second pack, or a loose export of
+    the same asset would all redeclare it (parse error). Each distinct class script is kept once under scripts/ with
+    a pack-prefixed class_name, and resources point at it by res:// path (the addon folder name is fixed)."""
+    report: dict[str, Any] = {"scripts": [], "classes": {}, "warnings": []}
+    copies: dict[str, dict[str, list[Path]]] = {}
+    for p in sorted(addon_dir.rglob("*.gd"), key=lambda q: q.as_posix()):
+        m = _GD_CLASS.search(p.read_text(encoding="utf-8"))
+        if m:
+            copies.setdefault(m[1], {}).setdefault(_sha(p), []).append(p)
+    if not copies:
+        return report
+    shared = addon_dir / "scripts"
+    moved: dict[Path, str] = {}
+    folder_rename: dict[str, dict[str, str]] = {}
+    for cls, by_sha in copies.items():
+        for n, paths in enumerate(by_sha.values(), 1):
+            new_cls = f"{prefix}{cls}" if n == 1 else f"{prefix}{cls}{n}"
+            first = paths[0]
+            dst = shared / (first.name if n == 1 else f"{first.stem}_{n}{first.suffix}")
+            text = first.read_text(encoding="utf-8")
+            shared.mkdir(parents=True, exist_ok=True)
+            dst.write_text(_GD_CLASS.sub(f"class_name {new_cls}", text, count=1), encoding="utf-8", newline="")
+            res = f"res://addons/{addon}/{_rel(dst, addon_dir)}"
+            for p in paths:
+                moved[p.resolve()] = res
+                if p != dst:
+                    p.unlink()
+                folder_rename.setdefault(p.relative_to(addon_dir).parts[0], {})[cls] = new_cls
+            if n > 1:
+                report["warnings"].append(f"{cls}: differing script copies, {_rel(dst, addon_dir)} is {new_cls}")
+            report["scripts"].append(_rel(dst, addon_dir))
+            report["classes"].setdefault(cls, []).append(new_cls)
+    for p in addon_dir.rglob("*"):
+        if not (p.is_file() and p.suffix.lower() in _GD_TEXT_EXT) or p.parent == shared:
+            continue
+        t = p.read_text(encoding="utf-8")
+
+        def _repoint(m: re.Match[str], base: Path = p.parent) -> str:
+            ref = m[2]
+            if ref.startswith("res://") or "://" in ref:
+                return m[0]
+            return m[1] + moved.get((base / ref).resolve(), ref) + m[3]
+
+        new = _GD_PATH.sub(_repoint, t) if p.suffix.lower() in (".tres", ".tscn") else t
+        top = p.relative_to(addon_dir).parts
+        for cls, new_cls in folder_rename.get(top[0] if len(top) > 1 else "", {}).items():
+            new = re.sub(rf"\b{cls}\b", new_cls, new)
+        if new != t:
+            p.write_text(new, encoding="utf-8", newline="")
+    return report
+
+
 def finalize_unity(pkg: Path, package: str, asm: str) -> dict[str, Any]:
     report: dict[str, Any] = {"deduped": [], "remapped": [], "warnings": [], "asmdefs": []}
     runtime = pkg / "Runtime"
@@ -575,18 +641,65 @@ def _raw_copy(a: PackAsset, blobs: BlobStore, dst: Path) -> list[str]:
 
 
 def _export_one(a: PackAsset, blobs: BlobStore, staging: Path, folder: str, engine: str, opts: EngineOptions,
-                warnings: list[str]) -> Path | None:
+                warnings: list[str], budgets: list[dict[str, Any]] | None = None) -> Path | None:
     if not engine_ready(a.step, blobs):
         return None
     args = (a.step, a.siblings, blobs, staging, folder, engine, opts.ppu, opts.pixel, opts.collider(a))
     try:
-        out = export_engine(*args, opts.shaders, opts.normal2d)
+        out = export_engine(*args, opts.shaders, opts.normal2d, opts.mobile)
     except BundleError as e:
         if not opts.shaders:
             warnings.append(f"{folder} ({engine}): {e}; raw files packed instead")
             return None
-        out = export_engine(*args, None, opts.normal2d)
+        out = export_engine(*args, None, opts.normal2d, opts.mobile)
+    if budgets is not None and out.get("mobile"):
+        budgets.append({**out["mobile"], "rows": [{**r, "file": f"{folder}/{r['file']}"} for r in out["mobile"]["rows"]]})
     return Path(out["dir"])
+
+
+def _pack_atlas(assets: list[PackAsset], folders: list[str], blobs: BlobStore, opts: PackOptions, name: str,
+                roots: dict[str, Path], warnings: list[str], budgets: dict[str, list[dict[str, Any]]]
+                ) -> dict[str, Any] | None:
+    from studio_core.export import atlas as at
+    from studio_core.export import mobile as mob
+
+    sprites: list[at.Sprite] = []
+    sources: dict[str, tuple[int, int, int]] = {}
+    for a, f in zip(assets, folders):
+        try:
+            got, src = at.sprites_from_step(a.step, a.siblings, blobs, f, opts.export.ppu, opts.export.pixel,
+                                            opts.export.collider(a))
+        except (OSError, ValueError) as e:
+            warnings.append(f"{f}: not added to the atlas ({e})")
+            continue
+        sprites += got
+        sources.update(src)
+    if not sprites:
+        warnings.append("atlas: no 2D sprites in the selected assets")
+        return None
+    try:
+        atlas = at.pack(sprites, f"{name}_atlas", opts.atlas, sources)
+    except at.AtlasError as e:
+        warnings.append(f"atlas: {e}")
+        return None
+    used = {f.lower() for f in folders}
+    sub, n = "Atlas", 2
+    while sub.lower() in used:
+        sub, n = f"Atlas_{n}", n + 1
+    for engine, base in roots.items():
+        files = at.engine_files(atlas, engine, opts.export.ppu, f"pack-atlas:{name}")
+        if opts.export.mobile:
+            files, rep = mob.apply(files, engine, atlas.pixel, f"pack-atlas:{name}", atlas.name)
+            budgets.setdefault(engine, []).append(
+                {**rep, "rows": [{**r, "file": f"{sub}/{r['file']}"} for r in rep["rows"]]})
+        for rel, data in files:
+            p = base / sub / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            if isinstance(data, Path):
+                shutil.copyfile(data, p)
+            else:
+                p.write_bytes(data)
+    return {"folder": sub, "name": atlas.name, **atlas.stats}
 
 
 def _zip(src: Path, dst: Path) -> None:
@@ -645,6 +758,7 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
         result: dict[str, Any] = {}
 
         roots: dict[str, Path] = {}
+        budgets: dict[str, list[dict[str, Any]]] = {}
         if "unity" in engines:
             roots["unity"] = work / "unity" / pkg_name / "Runtime"
         if "godot" in engines:
@@ -652,13 +766,27 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
         for engine, base_dir in roots.items():
             for a, f in zip(assets, folders):
                 dst = base_dir / f
-                src = _export_one(a, blobs, staging / engine, f, engine, opts.export, warnings)
+                src = _export_one(a, blobs, staging / engine, f, engine, opts.export, warnings,
+                                  budgets.setdefault(engine, []))
                 if src is None:
                     _raw_copy(a, blobs, dst)
                 else:
                     shutil.copytree(src, dst)
                 files[f][engine] = sorted(_rel(p, dst) for p in dst.rglob("*") if p.is_file())
         shutil.rmtree(staging, ignore_errors=True)
+        if opts.atlas is not None:
+            result["atlas"] = _pack_atlas(assets, folders, blobs, opts, addon, roots, warnings, budgets)
+        if opts.export.mobile:
+            from studio_core.export.mobile import merge_reports
+
+            result["mobile"] = {e: merge_reports(budgets.get(e, []), e) for e in roots}
+        g_report: dict[str, Any] = {"classes": {}}
+        if "godot" in roots:
+            g_report = finalize_godot(roots["godot"], addon, godot_class_prefix(slug))
+            warnings += g_report["warnings"]
+            for f in folders:
+                dst = roots["godot"] / f
+                files[f]["godot"] = sorted(_rel(p, dst) for p in dst.rglob("*") if p.is_file())
 
         for p in prov:
             p["files"] = files[p["folder"]]
@@ -724,7 +852,8 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
                 (groot / n).write_text(text, encoding="utf-8")
             (addon_dir / "LICENSE.md").write_text(docs["LICENSE.md"], encoding="utf-8")
             (addon_dir / "provenance.json").write_text(docs["provenance.json"], encoding="utf-8")
-            result["godot"] = {"dir": str(final / "godot"), "addon": f"addons/{addon}", "plugin": plugin}
+            result["godot"] = {"dir": str(final / "godot"), "addon": f"addons/{addon}", "plugin": plugin,
+                               "classes": g_report["classes"]}
         (work / "provenance.json").write_text(docs["provenance.json"], encoding="utf-8")
         (work / "README.md").write_text(docs["README.md"], encoding="utf-8")
         (work / "CHANGELOG.md").write_text(docs["CHANGELOG.md"], encoding="utf-8")

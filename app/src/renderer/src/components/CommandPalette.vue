@@ -2,12 +2,13 @@
 import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { onKeyStroke } from '@vueuse/core'
-import { CornerDownLeft, FolderKanban, Images, Inbox, Keyboard, Layers, LayoutDashboard, ListChecks, Monitor, Moon, Plus, Search, Settings, Sun, Workflow } from '@lucide/vue'
+import { CornerDownLeft, FolderKanban, Images, Inbox, Keyboard, Layers, LayoutDashboard, ListChecks, Monitor, Moon, Plus, Search, Settings, Sparkles, Sun, Workflow } from '@lucide/vue'
 import { useRecipes } from '@/stores/recipes'
 import { useRuns } from '@/stores/runs'
 import { RUN_LABEL } from '@/composables/format'
 import { fold, openShortcuts, paletteOpen, shortcutsOpen } from '@/composables/palette'
 import { THEME_OPTIONS, useTheme } from '@/composables/theme'
+import { APP_VERSION, whatsNewOpen } from '@/composables/changelog'
 import RecipeThumb from './RecipeThumb.vue'
 import BlobImage from './BlobImage.vue'
 
@@ -45,7 +46,8 @@ const NAV: Item[] = [
   { id: 'nav-projects', group: 'Đi tới', label: 'Dự án', hint: 'Ctrl 8', icon: FolderKanban, run: go('/projects') },
   { id: 'nav-batch-new', group: 'Đi tới', label: 'Tạo lô nhiều prompt', icon: Layers, run: go('/new?mode=batch') },
   { id: 'nav-settings', group: 'Đi tới', label: 'Cài đặt', icon: Settings, run: go('/settings') },
-  { id: 'nav-keys', group: 'Đi tới', label: 'Phím tắt', hint: '?', icon: Keyboard, run: () => openShortcuts() }
+  { id: 'nav-keys', group: 'Đi tới', label: 'Phím tắt', hint: '?', icon: Keyboard, run: () => openShortcuts() },
+  { id: 'nav-whats-new', group: 'Đi tới', label: 'Có gì mới', hint: APP_VERSION, icon: Sparkles, run: () => (whatsNewOpen.value = true) }
 ]
 
 const theme = useTheme()

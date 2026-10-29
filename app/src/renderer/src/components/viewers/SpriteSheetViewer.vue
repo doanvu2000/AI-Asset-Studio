@@ -7,6 +7,7 @@ import { blobUrl } from '@/stores/connection'
 import { useReducedMotion } from '@/composables/motion'
 import { blobJson } from './fetchBlob'
 import { angleText, arrowRotation, directionName, normAngle } from './directions'
+import type { HitOverlay } from './hitOverlay'
 
 interface NamedFrame {
   label?: string
@@ -50,10 +51,11 @@ interface Frame {
   angle: number | null
 }
 
-const props = withDefaults(defineProps<{ sheet: BlobRef; meta: BlobRef; normal?: BlobRef | null; compact?: boolean }>(), {
-  compact: false,
-  normal: null
-})
+const props = withDefaults(
+  defineProps<{ sheet: BlobRef; meta: BlobRef; normal?: BlobRef | null; compact?: boolean; hitFx?: HitOverlay | null }>(),
+  { compact: false, normal: null, hitFx: null }
+)
+const emit = defineEmits<{ view: [v: { row: number; frame: number }]; point: [p: { row: number; x: number; y: number }] }>()
 
 const CLIP_NAME: Record<string, string> = { walk: 'Đi bộ', idle: 'Đứng thở', run: 'Chạy', attack: 'Tấn công', hurt: 'Bị đánh', jump: 'Nhảy' }
 const reduced = useReducedMotion()
@@ -85,10 +87,11 @@ async function load(): Promise<void> {
     if (!(m.frame_w > 0 && m.frame_h > 0 && m.cols > 0)) throw new Error('JSON sheet thiếu frame_w / frame_h / cols')
     meta.value = m
     img.value = im
-    clipIdx.value = 0
+    const want = props.hitFx?.clip ? clips.value.findIndex((c) => c.name === props.hitFx?.clip) : -1
+    clipIdx.value = Math.max(0, want)
     frame.value = 0
-    row.value = clips.value[0]?.row0 ?? 0
-    if (clips.value[0]?.fps) fps.value = clampFps(clips.value[0].fps)
+    row.value = clips.value[clipIdx.value]?.row0 ?? 0
+    if (clips.value[clipIdx.value]?.fps) fps.value = clampFps(clips.value[clipIdx.value]!.fps!)
     zoom.value = 'fit'
     pixel.value = Math.max(m.frame_w, m.frame_h) <= 160
     state.value = 'ready'
@@ -308,6 +311,84 @@ function draw(): void {
 }
 watch([frame, frames, canvas, source], () => void nextTick(draw), { flush: 'post' })
 
+const hitRow = computed(() => props.hitFx?.rows[row.value] ?? null)
+const hitCanvas = ref<HTMLCanvasElement | null>(null)
+let hitStart = -1
+let hitFrame = -1
+watch(frame, (f) => {
+  if (hitRow.value && f === hitRow.value.frame) {
+    hitStart = playing.value ? performance.now() : -1
+    if (playing.value) hitRaf.resume()
+  }
+  if (!playing.value) {
+    hitStart = -1
+    void nextTick(drawHit)
+  }
+})
+watch([row, () => hitRow.value?.frame], () => {
+  hitStart = -1
+  drawHit()
+})
+watch([() => props.hitFx, hitCanvas], () => void nextTick(drawHit))
+emitView()
+watch([row, frame], emitView)
+function emitView(): void {
+  emit('view', { row: row.value, frame: frame.value })
+}
+function drawHit(): void {
+  const c = hitCanvas.value
+  const o = props.hitFx
+  const ctx = c?.getContext('2d')
+  if (!c || !o || !ctx) return
+  ctx.clearRect(0, 0, c.width, c.height)
+  const h = hitRow.value
+  let k = -1
+  if (h && hitStart >= 0) k = Math.floor(((performance.now() - hitStart) / 1000) * o.fps)
+  // Paused on the impact frame: hold a frame where the effect is near full size, for placing it.
+  else if (h && !playing.value && frame.value === h.frame) k = Math.floor(o.count / 4)
+  if (k < 0 || k >= o.count) {
+    hitFrame = -1
+    return
+  }
+  hitFrame = k
+  ctx.drawImage(o.image, (k % o.cols) * o.cellW, Math.floor(k / o.cols) * o.cellH, o.cellW, o.cellH, 0, 0, c.width, c.height)
+}
+const hitRaf = useRafFn(
+  () => {
+    drawHit()
+    if (hitFrame < 0 && hitStart >= 0) {
+      hitStart = -1
+      hitRaf.pause()
+    }
+  },
+  { immediate: false }
+)
+watch(playing, () => void nextTick(drawHit))
+const hitStyle = computed(() => {
+  const m = meta.value
+  const h = hitRow.value
+  const o = props.hitFx
+  if (!m || !h || !o) return null
+  const side = o.size * m.frame_h * scale.value
+  return {
+    width: `${side * (o.cellW / o.cellH)}px`,
+    height: `${side}px`,
+    transform: `translate(${h.x * scale.value - (side * (o.cellW / o.cellH)) / 2}px, ${h.y * scale.value - side / 2}px)`
+  }
+})
+const hitMark = computed(() => {
+  const h = hitRow.value
+  return h && frame.value === h.frame ? { transform: `translate(${h.x * scale.value}px, ${h.y * scale.value}px)` } : null
+})
+function onStageClick(e: MouseEvent): void {
+  const m = meta.value
+  if (!props.hitFx || !m || !hitRow.value) return
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const x = ((e.clientX - r.left) / r.width) * m.frame_w
+  const y = ((e.clientY - r.top) / r.height) * m.frame_h
+  emit('point', { row: row.value, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 })
+}
+
 const boxStyle = computed(() => {
   const m = meta.value
   return m ? { width: `${m.frame_w * scale.value}px`, height: `${m.frame_h * scale.value}px` } : {}
@@ -386,9 +467,25 @@ watch(
         </div>
 
         <figure class="frame-wrap">
-          <div class="box" :style="boxStyle">
+          <div
+            class="box"
+            :class="{ 'hit-pick': hitRow }"
+            :style="boxStyle"
+            :title="hitRow ? 'Bấm để đặt điểm trúng đòn cho hướng này' : undefined"
+            @click="onStageClick"
+          >
             <canvas ref="canvas" :width="meta.frame_w" :height="meta.frame_h" :class="{ pixel }" />
             <span v-if="pivot && pivotStyle" class="pivot" :style="pivotStyle" aria-hidden="true"><i /></span>
+            <canvas
+              v-if="hitFx && hitStyle"
+              ref="hitCanvas"
+              class="hit-fx"
+              :width="hitFx.cellW"
+              :height="hitFx.cellH"
+              :style="hitStyle"
+              aria-hidden="true"
+            />
+            <span v-if="hitMark" class="hit-mark" :style="hitMark" aria-hidden="true" />
           </div>
           <figcaption class="label">
             <span class="num cap-line">
@@ -483,7 +580,7 @@ watch(
           role="option"
           :aria-selected="frame === i"
           class="fr"
-          :class="{ on: frame === i }"
+          :class="{ on: frame === i, hit: hitRow?.frame === i }"
           :title="f.sub ? `${f.label} · ${f.sub}` : f.label"
           @click="pick(i)"
         >
@@ -667,6 +764,30 @@ canvas.pixel,
 }
 .fr:active {
   transform: scale(0.95);
+}
+.fr.hit .th-wrap {
+  box-shadow: 0 0 0 2px var(--warning, #f5a524);
+}
+.box.hit-pick {
+  cursor: crosshair;
+}
+.hit-fx {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  transition: transform var(--t-base) var(--ease-out);
+}
+.hit-mark {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--warning, #f5a524);
+  pointer-events: none;
+  transition: transform var(--t-base) var(--ease-spring);
 }
 .fr.on {
   background: var(--accent-soft);

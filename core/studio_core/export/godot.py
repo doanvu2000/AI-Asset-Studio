@@ -440,6 +440,12 @@ def export(src: Source) -> Files:
         pd_files, pd_notes = paperdoll_files(src)
         files += pd_files
         notes += pd_notes
+    if src.enemy_variants and src.enemy_meta:
+        from studio_core.export.enemy_variants import godot_files as enemy_files
+
+        ev_files, ev_notes = enemy_files(src)
+        files += ev_files
+        notes += ev_notes
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

@@ -108,12 +108,31 @@ export interface AssetBridge {
   startDrag(hash: string, name?: string): void
   /** Folder exports of a whole step (Spine json+atlas+png, sprite sheet repacked for an engine preset). */
   bundleOptions(stepId: string): Promise<BundleOptions>
-  saveBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts?: EngineExportOptions): Promise<{ path: string; leftover?: string } | null>
+  saveBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts?: EngineExportOptions): Promise<{ path: string; leftover?: string; mobile?: MobileTotals | null } | null>
   revealBundle(stepId: string, preset?: string, name?: string, engine?: BundleEngine, opts?: EngineExportOptions): Promise<void>
 }
 
 /** `pixel` null/absent = the core decides from the sheet meta (point filter for pixel-art sheets). */
+/** Hit VFX bound to attack frames: a VFX flipbook step + per-track (attack_S…) impact frame / point overrides. */
+export interface HitBinding {
+  vfx_step: string
+  frames?: Record<string, number>
+  points?: Record<string, [number, number]>
+  /** VFX cell height as a share of the character frame height. */
+  size?: number
+}
+
+/** Estimated GPU memory of the exported textures before/after the mobile budget. */
+export interface MobileTotals {
+  files: number
+  file_bytes: number
+  gpu_before: number
+  gpu_after: number
+}
+
 export interface EngineExportOptions {
+  /** Android/iOS texture budget: ASTC/ETC2 overrides, max size, mipmaps per asset type. */
+  mobile?: boolean
   ppu?: number
   pixel?: boolean | null
   /** Traced 2D collider + foot pivot on sprite sheets; null/absent = the recipe's default. */
@@ -126,6 +145,9 @@ export interface EngineExportOptions {
   /** CPU normal map for 2D lights (per frame); a normal sheet rendered from 3D is kept instead. */
   normal2d?: boolean
   normal2d_strength?: number
+  /** Also write aseprite/<asset>.aseprite + Aseprite JSON array sheet + PNG (clips as tags, layers kept). */
+  aseprite?: boolean
+  hits?: HitBinding
 }
 
 export interface ShaderPresetInfo {
@@ -152,6 +174,10 @@ export interface BundleOptions {
   shaders?: ShaderPresetInfo[]
   /** Sprite sheet present, so the "Normal map 2D" export option applies. */
   normal2d?: boolean
+  /** Sprite sheet or image layers present, so the Aseprite export option applies. */
+  aseprite?: boolean
+  /** Sprite sheet with attack clips, so a hit VFX can be bound to their impact frames. */
+  hits?: boolean
 }
 
 export interface ExportedBundle {
@@ -159,6 +185,7 @@ export interface ExportedBundle {
   name: string
   preset: string | null
   files: number
+  mobile?: MobileTotals | null
 }
 
 export interface LogFileInfo {

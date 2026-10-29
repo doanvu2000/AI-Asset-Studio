@@ -8,6 +8,7 @@ import CoreBanner from './components/CoreBanner.vue'
 import CoreOffline from './components/CoreOffline.vue'
 import CommandPalette from './components/CommandPalette.vue'
 import ToastHost from './components/ToastHost.vue'
+import WhatsNewDialog from './components/WhatsNewDialog.vue'
 import ResizeHandle from './components/ResizeHandle.vue'
 import { usePaneWidth } from './composables/paneSize'
 import { useShellIntegration } from './composables/shellIntegration'
@@ -69,6 +70,7 @@ onKeyStroke(
     </div>
     <ToastHost />
     <CommandPalette />
+    <WhatsNewDialog />
   </MotionConfig>
 </template>
 

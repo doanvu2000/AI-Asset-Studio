@@ -280,6 +280,10 @@ async def test_export_unity_and_godot(tmp_path: Path) -> None:
     assert prefab.count("    - {fileID: ") == 2 * 40
     assert "m_Controller:" in prefab and "public class AssetStudioPaperdoll" in u["AssetStudioPaperdoll.cs"].decode()
     assert "Paper-doll" in u["README.txt"].decode()
+    cs = u["AssetStudioPaperdoll.cs"].decode()
+    swap = cs[cs.index("public void SetLayerSprites(string layer, Sprite[] sprites)"):cs.index("public bool TryGetSocket")]
+    assert "lookup[i] = Index(sprites)" in swap and "last = null;" in swap
+    assert "SetLayerSprites" in u["README.txt"].decode()
 
     g = dict(godot.export(src))
     assert {"Hero.tres", "Hero.tscn", "Hero_weapon.tres", "Hero_helmet_sheet.png", "Hero_paperdoll.tscn",

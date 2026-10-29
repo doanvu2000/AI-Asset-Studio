@@ -3,7 +3,7 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useElementSize, useEventListener, useIntervalFn } from '@vueuse/core'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { Check, Columns2, Gauge, LoaderCircle, Search, X } from '@lucide/vue'
+import { Check, Columns2, FileInput, Gauge, LayoutGrid, LoaderCircle, Search, X } from '@lucide/vue'
 import { ART } from '@/assets/art'
 import type { BlobRef, QaResult, VersionRow, VersionStatus } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
@@ -12,6 +12,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import Lightbox from '@/components/Lightbox.vue'
 import CompareView, { type CompareItem } from '@/components/CompareView.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
+import AtlasDialog from '@/components/AtlasDialog.vue'
 import RelTime from '@/components/RelTime.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
 import QaBadge from '@/components/QaBadge.vue'
@@ -361,6 +362,13 @@ async function reviewSelected(action: 'approve' | 'reject'): Promise<void> {
   }
 }
 
+const atlasOpen = ref(false)
+const atlasItems = computed(() => {
+  const seen = new Set<string>()
+  return selectedGroups.value
+    .filter((g) => g.type !== '3d' && g.type !== 'audio' && !seen.has(g.lead.step_id) && !!seen.add(g.lead.step_id))
+    .map((g) => ({ step_id: g.lead.step_id, name: g.name }))
+})
 const compareKeys = ref<string[] | null>(null)
 function itemOf(g: AssetGroup): CompareItem {
   return {
@@ -416,6 +424,13 @@ function move(d: -1 | 1): void {
   <div class="view">
     <PageHeader title="Thư viện">
       <template #subtitle><TweenNumber :value="base.length" /> asset</template>
+      <RouterLink
+        :to="{ path: '/new', query: { recipe: 'aseprite-import' } }"
+        class="btn btn-plain"
+        title="Đưa sprite làm trong Aseprite (.aseprite, hoặc JSON + PNG sheet) vào thư viện: clip lấy từ tag, xuất tiếp cho Unity / Godot"
+      >
+        <FileInput /> Nhập Aseprite
+      </RouterLink>
     </PageHeader>
     <div class="bar">
       <label class="search">
@@ -561,11 +576,21 @@ function move(d: -1 | 1): void {
           >
             <Columns2 /> So sánh
           </button>
+          <button
+            type="button"
+            class="btn sb"
+            :disabled="!atlasItems.length"
+            :title="atlasItems.length ? 'Gộp sprite của các asset 2D đã chọn vào atlas (Unity / Godot / JSON)' : 'Chọn ít nhất một asset 2D'"
+            @click="atlasOpen = true"
+          >
+            <LayoutGrid /> Gộp atlas
+          </button>
         </template>
         <button type="button" class="btn btn-plain sb" :disabled="!!bulk" title="Bỏ chọn (Esc)" @click="clearSelection">Bỏ chọn</button>
       </div>
     </Transition>
     <CompareView :items="compareItems" @close="compareKeys = null" @review="reviewCompared" />
+    <AtlasDialog :open="atlasOpen" :items="atlasItems" @close="atlasOpen = false" />
     <Lightbox
       :blob="current?.lead.blob ?? null"
       :siblings="current?.versions.map((v) => v.blob) ?? []"

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useId, watch } from 'vue'
 import { onClickOutside, useEventListener } from '@vueuse/core'
-import { Boxes, ChevronDown, FolderDown, FolderOpen, LoaderCircle } from '@lucide/vue'
+import { Boxes, ChevronDown, FolderDown, FolderOpen, LoaderCircle, Swords } from '@lucide/vue'
 import type { BundleEngine, BundleOptions, EngineExportOptions, ShaderPresetInfo } from '../../../preload/types'
 import { useAssetFile } from '@/composables/assetFile'
 import { usePresets } from '@/stores/catalog'
+import { hitExportOption, savedHit } from '@/composables/hitFx'
+import HitFxDialog from './HitFxDialog.vue'
 
 const props = defineProps<{ stepId: string; name?: string; compact?: boolean }>()
 
@@ -79,6 +81,9 @@ const savedStrength = Number(readPref(NSTRENGTH_KEY) ?? NaN)
 const normalStrength = ref(Number.isFinite(savedStrength) && savedStrength > 0 && savedStrength <= 10 ? savedStrength : 1)
 const strengthValid = computed(() => Number.isFinite(normalStrength.value) && normalStrength.value > 0 && normalStrength.value <= 10)
 watch(normal2d, (v) => writePref(NORMAL_KEY, v ? 'on' : 'off'))
+const ASE_KEY = 'export:aseprite'
+const aseprite = ref(readPref(ASE_KEY) === 'on')
+watch(aseprite, (v) => writePref(ASE_KEY, v ? 'on' : 'off'))
 watch(normalStrength, (v) => strengthValid.value && writePref(NSTRENGTH_KEY, String(v)))
 const SHADERS_KEY = 'export:shaders'
 const shaderList = computed<ShaderPresetInfo[]>(() => opts.value?.shaders ?? [])
@@ -114,11 +119,34 @@ function shaderOpts(): Pick<EngineExportOptions, 'shaders' | 'shader_params'> {
   }
   return { shaders: ids, shader_params: params }
 }
+// Off by default: Godot's VRAM import also changes desktop builds, and block compression smears UI / pixel art.
+const MOBILE_KEY = 'export:mobile'
+const mobile = ref(readPref(MOBILE_KEY) === 'on')
+watch(mobile, (v) => writePref(MOBILE_KEY, v ? 'on' : 'off'))
 function engineOpts(): EngineExportOptions {
-  const base = { ppu: ppuValid.value ? ppu.value : 100, pixel: pixelMode.value === 'auto' ? null : pixelMode.value === 'on', ...shaderOpts() }
-  const normal = opts.value?.normal2d && normal2d.value ? { normal2d: true, normal2d_strength: strengthValid.value ? normalStrength.value : 1 } : {}
+  const hits = opts.value?.hits ? hitExportOption(props.stepId) : undefined
+  const base = {
+    ppu: ppuValid.value ? ppu.value : 100,
+    pixel: pixelMode.value === 'auto' ? null : pixelMode.value === 'on',
+    ...shaderOpts(),
+    ...(hits ? { hits } : {}),
+    ...(mobile.value ? { mobile: true } : {})
+  }
+  const normal = {
+    ...(opts.value?.normal2d && normal2d.value ? { normal2d: true, normal2d_strength: strengthValid.value ? normalStrength.value : 1 } : {}),
+    ...(opts.value?.aseprite && aseprite.value ? { aseprite: true } : {})
+  }
   if (!opts.value?.sprite_sheet) return { ...base, ...normal }
   return { ...base, ...normal, collider: colliderOn.value, collider_tolerance: tolValid.value ? tolerance.value : 1.5 }
+}
+const hitOpen = ref(false)
+const hitBound = computed(() => {
+  const h = savedHit(props.stepId)
+  return h?.enabled ? h.vfx_name || 'đã gắn' : null
+})
+function openHits(): void {
+  close(false)
+  hitOpen.value = true
 }
 const PIXEL_MODES: { id: PixelMode; label: string }[] = [
   { id: 'auto', label: 'Tự động' },
@@ -319,6 +347,19 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
                 :aria-invalid="!strengthValid"
               />
             </div>
+            <div v-if="opts?.aseprite" class="b-opt">
+              <label class="b-check" title="Thêm thư mục aseprite/: file .aseprite (mỗi clip × hướng là một tag, thời lượng khung theo fps, giữ layer) + sheet JSON array của Aseprite kèm PNG">
+                <input v-model="aseprite" type="checkbox" />
+                <span class="b-opt-label">Kèm file Aseprite</span>
+              </label>
+            </div>
+            <div v-if="opts?.hits" class="b-opt">
+              <span class="b-opt-label" title="Gắn VFX flipbook vào khung trúng đòn của clip tấn công: Unity AnimationEvent OnHit + script sinh VFX, Godot node nghe frame_changed, kèm hits.json">Hiệu ứng trúng đòn</span>
+              <button type="button" class="btn btn-plain b-hit" :class="{ on: hitBound }" @click="openHits">
+                <Swords :size="13" aria-hidden="true" />
+                <span class="b-hit-name">{{ hitBound ?? 'Chọn…' }}</span>
+              </button>
+            </div>
             <div v-if="shaderList.length" class="b-shaders">
               <span class="b-opt-label" title="Shader viết tay, đã kiểm biên dịch trên Godot 4 và Unity URP 2D; mỗi preset kèm một material">Shader</span>
               <div class="b-chips" role="group" aria-label="Shader preset cho sprite">
@@ -362,11 +403,21 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
               </div>
               <p v-if="pickedInfo.length === 1 && opts?.sprite_sheet" class="b-note caption">Gán sẵn material vào sprite chính</p>
             </div>
+            <div class="b-opt">
+              <label
+                class="b-check"
+                title="Nén cho Android / iOS theo loại ảnh: Unity override ASTC (sprite 6×6, UI 4×4, pixel art không nén), Godot .import VRAM + ETC2/ASTC; giới hạn kích thước, tắt mipmap cho 2D. README kèm bảng RAM GPU trước/sau"
+              >
+                <input v-model="mobile" type="checkbox" />
+                <span class="b-opt-label">Ngân sách mobile</span>
+              </label>
+            </div>
             <p v-if="!ppuValid" class="b-err caption">PPU từ 1 đến 10000 — đang dùng 100</p>
           </div>
         </div>
       </Transition>
     </Teleport>
+    <HitFxDialog v-if="opts?.hits" v-model:open="hitOpen" :step-id="stepId" />
   </template>
 </template>
 
@@ -480,6 +531,21 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
   background: var(--bg-elevated);
   color: var(--text);
   box-shadow: var(--shadow-1);
+}
+.b-hit {
+  height: 24px;
+  max-width: 150px;
+  padding: 0 8px;
+  gap: 5px;
+  font-size: var(--fs-caption);
+}
+.b-hit.on {
+  color: var(--accent);
+}
+.b-hit-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .b-err {
   color: var(--danger);

@@ -17,14 +17,16 @@ const input = ref<HTMLInputElement | null>(null)
 
 const VIDEO_EXT = ['mp4', 'webm', 'gif', 'mov', 'mkv']
 const atlasPages = computed(() => props.kind === 'file' && props.siblings === 'atlas_pages')
-const multiple = computed(() => props.kind === 'images' || atlasPages.value)
+const aseSheet = computed(() => props.kind === 'file' && props.siblings === 'aseprite_sheet')
+const withPng = computed(() => atlasPages.value || aseSheet.value)
+const multiple = computed(() => props.kind === 'images' || withPng.value)
 const extOf = (name: string): string => name.toLowerCase().split('.').pop() ?? ''
 const fileExts = computed(() => (props.kind === 'video' ? VIDEO_EXT : (props.ext ?? [])))
 const accept = computed(() => {
   if (props.kind === 'mesh') return '.glb,model/gltf-binary'
   if (props.kind === 'file' || props.kind === 'video') {
     const list = fileExts.value.map((e) => `.${e}`)
-    return (atlasPages.value ? [...list, '.png'] : list).join(',')
+    return (withPng.value ? [...list, '.png'] : list).join(',')
   }
   return 'image/png,image/jpeg,image/webp'
 })
@@ -38,7 +40,7 @@ const kindLabel = computed(() => {
 function accepts(f: File): boolean {
   if (props.kind === 'mesh') return f.name.toLowerCase().endsWith('.glb')
   if (props.kind === 'video') return f.type.startsWith('video/') || VIDEO_EXT.includes(extOf(f.name))
-  if (props.kind === 'file') return !fileExts.value.length || fileExts.value.includes(extOf(f.name)) || (atlasPages.value && extOf(f.name) === 'png')
+  if (props.kind === 'file') return !fileExts.value.length || fileExts.value.includes(extOf(f.name)) || (withPng.value && extOf(f.name) === 'png')
   return f.type.startsWith('image/')
 }
 
@@ -74,6 +76,32 @@ async function atlasBundle(list: File[]): Promise<File[] | null> {
   return [atlas, ...pages.map((p) => byName.get(p.toLowerCase())!)]
 }
 
+/** A .aseprite file alone, or an Aseprite JSON sheet first and then the PNG its meta.image names. */
+async function aseBundle(list: File[]): Promise<File[] | null> {
+  const ase = list.find((f) => ['aseprite', 'ase'].includes(extOf(f.name)))
+  if (ase) return [ase]
+  const json = list.find((f) => extOf(f.name) === 'json')
+  if (!json) {
+    error.value = 'Cần file .aseprite, hoặc file JSON của Aseprite kèm PNG sheet'
+    return null
+  }
+  let image = ''
+  try {
+    const doc = JSON.parse(await json.text()) as { meta?: { image?: unknown } }
+    image = typeof doc.meta?.image === 'string' ? (doc.meta.image.split(/[\\/]/).pop() ?? '') : ''
+  } catch {
+    error.value = `${json.name} không phải JSON hợp lệ`
+    return null
+  }
+  const pngs = list.filter((f) => extOf(f.name) === 'png')
+  const png = pngs.find((f) => f.name.toLowerCase() === image.toLowerCase()) ?? (pngs.length === 1 ? pngs[0] : undefined)
+  if (!png) {
+    error.value = `Thiếu ảnh sheet${image ? ` ${image}` : ''}. Chọn cùng lúc file JSON và PNG.`
+    return null
+  }
+  return [json, png]
+}
+
 async function take(files: FileList | File[] | null): Promise<void> {
   error.value = null
   const list = [...(files ?? [])].filter(accepts)
@@ -81,7 +109,7 @@ async function take(files: FileList | File[] | null): Promise<void> {
     error.value = props.kind === 'image' || props.kind === 'images' ? 'Chỉ nhận ảnh PNG, JPEG hoặc WebP' : `Chỉ nhận ${kindLabel.value}`
     return
   }
-  const chosen = atlasPages.value ? await atlasBundle(list) : multiple.value ? list : list.slice(0, 1)
+  const chosen = atlasPages.value ? await atlasBundle(list) : aseSheet.value ? await aseBundle(list) : multiple.value ? list : list.slice(0, 1)
   if (!chosen) return
   uploading.value += chosen.length
   try {
@@ -130,7 +158,7 @@ const totalSize = computed(() => model.value.reduce((n, b) => n + (b.size ?? 0),
           <component :is="kind === 'video' ? Film : FileText" :size="22" />
           <span>
             <strong>{{ model[0]!.name ?? kindLabel }}</strong>
-            <span class="caption">{{ atlasPages ? `+ ${model.length - 1} trang ảnh · ` : '' }}{{ bytes(totalSize) }}</span>
+            <span class="caption">{{ atlasPages ? `+ ${model.length - 1} trang ảnh · ` : aseSheet && model.length > 1 ? `+ ${model[1]!.name ?? 'PNG'} · ` : '' }}{{ bytes(totalSize) }}</span>
           </span>
         </div>
         <div v-else-if="kind === 'mesh'" class="mesh">
@@ -146,7 +174,7 @@ const totalSize = computed(() => model.value.reduce((n, b) => n + (b.size ?? 0),
       <template v-else>
         <component :is="kind === 'mesh' ? FileBox : kind === 'video' ? Film : kind === 'file' ? FileText : ImagePlus" :size="22" class="dz-ic" />
         <span><strong>Thả {{ kindLabel }} vào đây</strong></span>
-        <span class="caption">{{ atlasPages ? 'chọn cùng lúc atlas và mọi trang png của nó' : `hoặc bấm để chọn${multiple ? ' (nhiều file)' : ''}` }}</span>
+        <span class="caption">{{ atlasPages ? 'chọn cùng lúc atlas và mọi trang png của nó' : aseSheet ? 'file .aseprite, hoặc chọn cùng lúc JSON và PNG sheet' : `hoặc bấm để chọn${multiple ? ' (nhiều file)' : ''}` }}</span>
       </template>
       <input
         ref="input"

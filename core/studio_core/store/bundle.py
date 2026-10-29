@@ -222,6 +222,12 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
     if body is not None and src.sheet is None:
         src.sheet, src.meta = body
         src.directional_rows = True
+    from studio_core.export.enemy_variants import variant_set
+
+    src.enemy_variants, src.enemy_meta, enemy_source = variant_set(step, blobs)
+    if enemy_source is not None and src.enemy_meta and src.sheet is None:
+        src.sheet, src.meta = enemy_source, src.enemy_meta
+        src.directional_rows = True
     return src
 
 
@@ -372,7 +378,8 @@ def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
 
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,
                   engine: str, ppu: float = 100.0, pixel: bool | None = None, collider: Any = None,
-                  shaders: list[Any] | None = None, normal2d: Any = None) -> dict[str, Any]:
+                  shaders: list[Any] | None = None, normal2d: Any = None, mobile: bool = False,
+                  hits: Any = None, aseprite: bool = False) -> dict[str, Any]:
     exporter = ENGINES.get(engine)
     if exporter is None:
         raise BundleError(f"unknown engine '{engine}' (use {', '.join(ENGINES)})")
@@ -396,11 +403,27 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
             files = apply(files, engine, src, shaders)
         except ShaderError as e:
             raise BundleError(str(e)) from None
+    if hits is not None:
+        from studio_core.export.hitfx import apply as apply_hits
+
+        files = apply_hits(files, engine, src, hits)
+    budget = None
+    if mobile:
+        from studio_core.export import mobile as mob
+
+        files, budget = mob.apply(files, engine, src.is_pixel(), src.uid, src.asset)
+    if aseprite:
+        from studio_core.export.aseprite import export_files as aseprite_files
+
+        ase, ase_note = aseprite_files(src)
+        if not ase:
+            raise BundleError("Aseprite export needs a sprite sheet or image layers")
+        files = append_readme([*files, *ase], ase_note) if ase_note else [*files, *ase]
     dst = root / "bundles" / f"{step.id[:12]}-{engine}" / folder
     dst.parent.mkdir(parents=True, exist_ok=True)
     written = _write(dst, files)
     return {"dir": str(dst.resolve()), "name": folder, "preset": None, "engine": engine,
-            "files": [str(p.resolve()) for p in written]}
+            "files": [str(p.resolve()) for p in written], "mobile": budget}
 
 
 def _png(img: Any) -> bytes:
