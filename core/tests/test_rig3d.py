@@ -14,7 +14,7 @@ from studio_core.contracts import StepError
 from studio_core.engine.library import validate
 from studio_core.engine.recipe import load_recipes
 from studio_core.export import godot, unity
-from studio_core.export.rig3d import unity_model_meta
+from studio_core.export.rig3d import fbx_embedded_images, unity_model_meta
 from studio_core.export.source import Source
 from studio_core.store.bundle import engine_source
 from test_export_engines import _Blobs, _row
@@ -164,6 +164,9 @@ def test_engine_export_of_rigged_character(tmp_path: Path) -> None:
     assert "ModelImporter:" in meta and "animationType: 3" in meta and "avatarSetup: 1" in meta
     assert "takeName: idle" in meta and "lastFrame: 24" in meta
     assert meta.count("loopTime: 1") == 1 and meta.count("loopTime: 0") == 1
+    # Unity 6 crashed importing a clip with an empty bodyMask; embedded textures need the External material location.
+    assert meta.count("bodyMask: " + "01000000" * 13 + "\n") == 2 and "bodyMask: \n" not in meta
+    assert "    materialLocation: 0\n" in meta
     assert "Humanoid" in u["README.txt"].decode()  # type: ignore[union-attr]
     again = dict(unity.export(src))["Models/hero.fbx.meta"]
     assert again == u["Models/hero.fbx.meta"]  # stable guid across re-exports
@@ -180,3 +183,70 @@ def test_unity_meta_generic_without_report() -> None:
     files = dict(unity.export(src))
     assert "Models/x.fbx" in files and "Models/y.glb" in files
     assert "animationType: 2" in files["Models/x.fbx.meta"].decode()  # type: ignore[union-attr]
+
+
+def _fbx_node(name: str, props: list[Any], kids: list[bytes], at: int) -> bytes:
+    import struct
+
+    body = b""
+    for v in props:
+        if isinstance(v, int):
+            body += b"L" + struct.pack("<q", v)
+        elif isinstance(v, bytes):
+            body += b"R" + struct.pack("<I", len(v)) + v
+        else:
+            s = v.encode()
+            body += b"S" + struct.pack("<I", len(s)) + s
+    inner = b"".join(kids) + (b"\0" * 13 if kids else b"")
+    end = at + 13 + len(name) + len(body) + len(inner)
+    return struct.pack("<III", end, len(props), len(body)) + bytes([len(name)]) + name.encode() + body + inner
+
+
+def _fbx(tmp: Path, png: bytes) -> Path:
+    import struct
+
+    def tree(at: int) -> bytes:
+        out = b""
+        spec = [("Objects", [], [("Texture", [10, "base\0\1Texture", ""]), ("Texture", [11, "nrm\0\1Texture", ""]),
+                                 ("Video", [20, "Image_0\0\1Video", "Clip"], [("RelativeFilename", [r"hero.fbm\Image_0.png"]),
+                                                                            ("Content", [png])]),
+                                 ("Video", [21, "Image_2\0\1Video", "Clip"], [("RelativeFilename", [r"hero.fbm\Image_2"]),
+                                                                            ("Content", [png])])]),
+                ("Connections", [], [("C", ["OO", 20, 10]), ("C", ["OO", 21, 11]), ("C", ["OP", 10, 1, "DiffuseColor"]),
+                                     ("C", ["OP", 11, 1, "NormalMap"])])]
+
+        def build(n: tuple, pos: int) -> bytes:
+            name, props, *rest = n
+            kids_spec = rest[0] if rest else []
+            cur = pos + len(_fbx_node(name, props, [], pos))  # children start after the header + properties
+            kids = []
+            for k in kids_spec:
+                b = build(k, cur)
+                kids.append(b)
+                cur += len(b)
+            return _fbx_node(name, props, kids, pos)
+
+        for n in spec:
+            b = build(n, at)
+            out += b
+            at += len(b)
+        return out
+
+    head = b"Kaydara FBX Binary  \x00\x1a\x00" + struct.pack("<I", 7400)
+    p = tmp / "hero.fbx"
+    p.write_bytes(head + tree(len(head)) + b"\0" * 13 + b"\0" * 160)
+    return p
+
+
+def test_fbx_embedded_textures_ship_beside_the_model(tmp_path: Path) -> None:
+    # Unity leaves an FBX's embedded textures unused (white model, never extracted inside a package).
+    buf = __import__("io").BytesIO()
+    Image.new("RGB", (8, 4), (200, 30, 30)).save(buf, "PNG")
+    fbx = _fbx(tmp_path, buf.getvalue())
+    imgs = fbx_embedded_images(fbx)
+    assert [(n, nm) for n, _, nm in imgs] == [("Image_0.png", False), ("Image_2.png", True)]
+    files = dict(unity.export(Source(asset="Hero", fbx=[("hero.fbx", fbx)], rig={"humanoid": True})))
+    assert files["Models/hero.fbm/Image_0.png"] == buf.getvalue()
+    assert "textureType: 0" in files["Models/hero.fbm/Image_0.png.meta"].decode()  # type: ignore[union-attr]
+    assert "textureType: 1" in files["Models/hero.fbm/Image_2.png.meta"].decode()  # type: ignore[union-attr]
+    assert fbx_embedded_images(tmp_path / "missing.fbx") == []

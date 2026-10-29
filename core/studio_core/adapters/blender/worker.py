@@ -1382,6 +1382,20 @@ def _verify_exports(glb, fbx):
     return out
 
 
+_IMAGE_EXT = {"PNG": ".png", "JPEG": ".jpg", "TARGA": ".tga", "BMP": ".bmp", "WEBP": ".webp"}
+
+
+def _name_packed_images():
+    """glTF-imported textures are packed as "Image_0" with no file path; the FBX then embeds them under an
+    extension-less name and Unity skips them (white material). Give each a file name with its format's extension."""
+    for img in bpy.data.images:
+        if img.packed_file is None or os.path.splitext(img.filepath)[1]:
+            continue
+        ext = _IMAGE_EXT.get(img.file_format, ".png")
+        stem = os.path.splitext(img.name)[0] or "texture"
+        img.filepath_raw = f"{stem}{ext}"
+
+
 def rig_export(p, emit):
     """Auto-rig a static mesh with Humanoid bone names, bake the procedural clips as one NLA track each, export
     GLB + FBX and render a rest turntable plus key poses per clip from the baked actions."""
@@ -1484,6 +1498,7 @@ def rig_export(p, emit):
     gltf(**_op_kwargs(gltf, {"filepath": p["out_glb"], "export_format": "GLB", "use_selection": False,
                              "export_animations": True, "export_animation_mode": "NLA_TRACKS", "export_skins": True,
                              "export_yup": True, "export_apply": False}))
+    _name_packed_images()
     # Unity: -Z forward / Y up with "FBX All" scaling imports at scale 1 facing +Z; leaf bones only add junk joints.
     fbx = bpy.ops.export_scene.fbx
     fbx(**_op_kwargs(fbx, {"filepath": p["out_fbx"], "use_selection": False, "object_types": {"ARMATURE", "MESH"},

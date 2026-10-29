@@ -9,6 +9,7 @@ from typing import Any
 from PIL import Image
 
 from studio_core.contracts import Lane, ProjectRow, RunRow, StepRow, StepStatus, VersionRow, VersionStatus
+from studio_core.export.sheet import stable_hex
 from studio_core.store import model_licenses as ml
 from studio_core.store import pack as pk
 from test_api_basic import AUTH, app_ctx  # noqa: F401  (fixture reuse)
@@ -204,12 +205,16 @@ def test_finalize_unity_dedupes_shared_scripts_and_guids(tmp_path: Path) -> None
     assert (rt / "Scripts" / "NpcData.cs").is_file() and len(list(pkg.rglob("NpcData.cs"))) == 1
     assert len(list(pkg.rglob("AssetStudioLodGroup.cs"))) == 1 and (pkg / "Editor" / "AssetStudioLodGroup.cs").is_file()
     assert len(list(pkg.rglob("HitFlash.shader"))) == 1
+    scoped = {g: stable_hex("pack-guid", "com.x.y", g) for g in ("a" * 32, "b" * 32, "d" * 32)}
     assert "c" * 32 not in (rt / "B" / "B.mat").read_text(encoding="utf-8")
-    assert "b" * 32 in (rt / "B" / "B.mat").read_text(encoding="utf-8")
+    assert scoped["b" * 32] in (rt / "B" / "B.mat").read_text(encoding="utf-8")
     assert rep["remapped"] == ["Runtime/B/B.mat.meta"]
     new = GUID.search((rt / "B" / "B.mat.meta").read_text(encoding="utf-8"))[1]
     assert new in (rt / "B" / "B.prefab").read_text(encoding="utf-8")
-    assert "d" * 32 in (rt / "A" / "A.prefab").read_text(encoding="utf-8")
+    assert scoped["d" * 32] in (rt / "A" / "A.prefab").read_text(encoding="utf-8")
+    # No GUID of a standalone export (same step + asset) or the fixed NpcData.cs GUID survives into the package.
+    assert GUID.search((rt / "Scripts" / "NpcData.cs.meta").read_text(encoding="utf-8"))[1] == scoped["a" * 32]
+    assert not {"a" * 32, "b" * 32, "d" * 32} & set(_guids(pkg))
     asm = json.loads((rt / "X.Y.asmdef").read_text(encoding="utf-8"))
     ed = json.loads((pkg / "Editor" / "X.Y.Editor.asmdef").read_text(encoding="utf-8"))
     assert asm["name"] == "X.Y" and ed["includePlatforms"] == ["Editor"] and ed["references"] == ["X.Y"]

@@ -328,6 +328,27 @@ def _fix_collisions(pkg: Path, runtime: Path, report: dict[str, Any]) -> None:
         report["remapped"].append(_rel(meta, pkg))
 
 
+_GUID_REF = re.compile(r"(guid: )([0-9a-f]{32})")
+
+
+def _scope_guids(pkg: Path, package: str) -> None:
+    """Export GUIDs derive from (step, asset), so the same asset exported into Assets/ and installed from the pack
+    (and the fixed-GUID NpcData.cs) collide; Unity then rebinds one copy's references to the other. Re-key every
+    GUID the package owns by package name — stable across pack versions, untouched GUIDs (Unity/package scripts)."""
+    owned = {g for m in pkg.rglob("*.meta") if (g := _meta_guid(m))}
+    remap = {g: stable_hex("pack-guid", package, g) for g in owned}
+    for p in pkg.rglob("*"):
+        if not (p.is_file() and p.suffix in _TEXT_EXT):
+            continue
+        try:
+            t = p.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        new = _GUID_REF.sub(lambda m: m[1] + remap.get(m[2], m[2]), t)
+        if new != t:
+            p.write_text(new, encoding="utf-8", newline="")
+
+
 def _meta_text(p: Path, g: str) -> str:
     head = f"fileFormatVersion: 2\nguid: {g}\n"
     tail = "  userData: \n  assetBundleName: \n  assetBundleVariant: \n"
@@ -384,6 +405,7 @@ def finalize_unity(pkg: Path, package: str, asm: str) -> dict[str, Any]:
             _asmdef(f"{asm}.Editor", True, [asm] if has_runtime else []), encoding="utf-8")
         report["asmdefs"].append(f"Editor/{asm}.Editor.asmdef")
     _fix_collisions(pkg, runtime, report)
+    _scope_guids(pkg, package)
     _write_metas(pkg, package)
     report["guids"] = check_guids(pkg)
     return report

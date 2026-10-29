@@ -13,6 +13,9 @@ CLIP_FILE_ID = 7400000
 CONTROLLER_FILE_ID = 9100000
 _RESERVED_IDS = {0, TEXTURE_FILE_ID, CLIP_FILE_ID, CONTROLLER_FILE_ID, 21300000}
 HEADER = "%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n"
+SPRITE_DEFAULT_MAT = "{fileID: 10754, guid: 0000000000000000f000000000000000, type: 0}"
+# URP 2D Sprite-Lit-Default: built-in Sprites-Default ignores Light2D, so the normal map would never show.
+SPRITE_LIT_MAT = "{fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type: 2}"
 
 
 def guid(uid: str, asset: str, rel: str) -> str:
@@ -392,7 +395,8 @@ AnimatorStateMachine:
     return HEADER + "".join(docs)
 
 
-def prefab(asset: str, name: str, lay: Layout, tex_guid: str, ppu: float, ctrl_guid: str | None) -> str:
+def prefab(asset: str, name: str, lay: Layout, tex_guid: str, ppu: float, ctrl_guid: str | None,
+           material: str = SPRITE_DEFAULT_MAT) -> str:
     go, tr, sr, an = (file_id(k, asset) for k in ("go", "transform", "renderer", "animator"))
     first = lay.tracks[0].cells[0] if lay.tracks else lay.cells[0]
     comps = f"  - component: {{fileID: {tr}}}\n  - component: {{fileID: {sr}}}\n"
@@ -473,7 +477,7 @@ SpriteRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {{fileID: 10754, guid: 0000000000000000f000000000000000, type: 0}}
+  - {material}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -577,7 +581,9 @@ def export(src: Source) -> Files:
             files += [(normal_rel, src.normal),
                       (f"{normal_rel}.meta",
                        texture_meta(a, normal_guid, None, size, src.ppu, pixel, is_normal=True).encode())]
-            notes.append(f"- {normal_rel}: normal map, đã gắn làm secondary texture _NormalMap (URP 2D Light).")
+            notes.append(f"- {normal_rel}: normal map, đã gắn làm secondary texture _NormalMap (URP 2D Light); "
+                         f"{a}.prefab dùng material Sprite-Lit-Default của URP 2D để Light2D chiếu được (Built-in RP: "
+                         "đổi về Sprites-Default).")
         ctrl_guid = None
         if lay.tracks:
             clip_guids = {t.name: guid(u, a, f"Animations/{t.name}.anim") for t in lay.tracks}
@@ -591,7 +597,8 @@ def export(src: Source) -> Files:
                       (f"{ctrl_rel}.meta", native_meta(ctrl_guid, CONTROLLER_FILE_ID).encode())]
         if lay.cells:
             pf_rel = f"{a}.prefab"
-            files += [(pf_rel, prefab(a, a, lay, tex_guid, src.ppu, ctrl_guid).encode()),
+            files += [(pf_rel, prefab(a, a, lay, tex_guid, src.ppu, ctrl_guid,
+                                                 SPRITE_LIT_MAT if normal_guid else SPRITE_DEFAULT_MAT).encode()),
                       (f"{pf_rel}.meta", prefab_meta(guid(u, a, pf_rel)).encode())]
     if src.spine_json is not None and src.spine_atlas is not None:
         stem = Path(src.spine_json[0]).stem

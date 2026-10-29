@@ -1052,3 +1052,20 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [x] 2026-10-29 06:12 Handoff mới: .planning/HANDOFF-2026-10-29-0612.md. Đang build dist:core → dist:portable.
 - [x] 2026-10-29 06:3x Build dist:core OK; smoke core frozen: CLIP/onnxruntime OK, TTS lỗi FileNotFound tts.py (hash nguồn) → sửa `adapters/tts.py` cache_material bỏ qua file không có; build lại, run npc-voice-csv tới gate OK.
 - [x] 2026-10-29 06:1x Build dist:portable OK (`app/release/1.0.0/win-unpacked/AI Asset Studio.exe`); mở thử: core kết nối, Tổng quan hiện GPU/RAM, ComfyUI/Blender/Codex/Claude trạng thái; đã đóng. Chưa bấm thử từng recipe mới trong UI.
+
+## Phiên 2026-10-29 06:3x (sau HANDOFF-0612) — chủ nhân: "cứ làm tiếp, tự mở Unity mà test"
+- [~] Giao 2 agent kiểm Unity thật (song song, 2 project khác nhau):
+  A `L:\AI\unity-urp-shadercheck` (URP): #17 damage, #19 parallax, #26 paperdoll, #25 font, #15 LUT Volume, #9 PBR .mat, #24 normal + Light2D.
+  B `L:\AI\unity-test-batch` (Built-in): #10 FBX Humanoid, #12 NPC .asset, #23 RuleTile, #3 9-slice, #13 physicsShape, #6 UPM pack, #16/#21 import.
+  Lỗi tìm được → sửa exporter + test. #11 image-layers và push: chưa có lệnh, giữ mặc định (không làm/không push).
+- [x] Agent A (URP) xong: PASS #17 damage (6 mảnh văng đúng), #19 parallax (4 vị trí camera, không lộ nối), #26 paperdoll, #25 font
+  (dấu Việt đúng), #15 LUT (lệch 0.6–0.9/255, lật dọc đúng), #9 PBR Lit. #24 FAIL → sửa: prefab có normal dùng Sprite-Lit-Default
+  (`export/unity.py:16-18,399,601`, `export/shaders.py:345`, test_normal2d). 746 pass. Ảnh: scratchpad `uverify/shots/`.
+  Script kiểm chạy lại: `L:\AI\unity-urp-shadercheck\Assets\AssetStudioVerify\Editor\AssetStudioVerify.cs` (`-executeMethod AssetStudioVerify.RunAll`).
+  Chờ agent B (đang sửa blender/worker.py, rig3d.py) xong mới commit.
+- [x] Agent B (Built-in) xong, fails=0 lượt cuối: PASS #12 NPC, #23 RuleTile, #3 9-slice, #13 physicsShape, #16/#21. Sửa 4 lỗi:
+  #10 FBX crash do bodyMask trống + trắng do texture nhúng không đuôi / Unity không dùng texture nhúng (`export/rig3d.py` tách `.fbm`,
+  materialLocation External; `blender/worker.py` `_name_packed_images`); #6 pack trùng GUID với export lẻ → `_scope_guids` theo package.
+  Thêm package vào `unity-test-batch`: ugui 2.0.0, tilemap.extras 6.0.1. Ảnh: scratchpad `ubatch/shots/`. Còn: pack chưa khai báo
+  dependency tilemap.extras/glTFast; NpcData trùng class khi có cả pack + export lẻ (CS0433); soundscape audio chưa có .meta Streaming.
+- [x] Kiểm 747 pass / 4 skip, typecheck sạch → commit mốc sửa lỗi từ kiểm Unity.

@@ -321,7 +321,7 @@ def apply(files: Files, engine: str, src: Source, chosen: list[ShaderChoice]) ->
             out = [(n, godot_assign(d.decode(), assigned).encode() if n == scene and isinstance(d, bytes) else d)
                    for n, d in out]
     else:
-        from studio_core.export.unity import guid, native_meta, texture_meta
+        from studio_core.export.unity import SPRITE_LIT_MAT, guid, native_meta, texture_meta
 
         ramp_guid = None
         if swap is not None:
@@ -342,7 +342,7 @@ def apply(files: Files, engine: str, src: Source, chosen: list[ShaderChoice]) ->
             mat = f"Shaders/{a}_{chosen[0].preset.id}.mat"
             assigned = mat
             ref = f"{{fileID: {MATERIAL_FILE_ID}, guid: {guid(src.uid, a, mat)}, type: 2}}"
-            out = [(n, d.decode().replace(UNITY_DEFAULT_SPRITE_MAT, ref).encode()
+            out = [(n, d.decode().replace(UNITY_DEFAULT_SPRITE_MAT, ref).replace(SPRITE_LIT_MAT, ref).encode()
                     if n == prefab and isinstance(d, bytes) else d) for n, d in out]
     note = _notes(engine, a, chosen, assigned, rows)
     readme = names.get("README.txt")

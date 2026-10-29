@@ -117,6 +117,13 @@ def test_unity_gets_normal_texture_and_secondary_slot(tmp_path: Path) -> None:
     (sec,) = main["TextureImporter"]["spriteSheet"]["secondaryTextures"]
     assert sec["name"] == "_NormalMap"
     assert sec["texture"]["guid"] == yaml.safe_load(files["Hero_normal.png.meta"].decode())["guid"]
+    prefab = files["Hero.prefab"].decode()
+    assert unity.SPRITE_LIT_MAT in prefab and unity.SPRITE_DEFAULT_MAT not in prefab
+
+
+def test_unity_prefab_without_normal_keeps_sprites_default(tmp_path: Path) -> None:
+    prefab = dict(unity.export(_src(tmp_path)))["Hero.prefab"].decode()
+    assert unity.SPRITE_DEFAULT_MAT in prefab and unity.SPRITE_LIT_MAT not in prefab
 
 
 def test_godot_sprite_frames_use_canvas_texture(tmp_path: Path) -> None:
