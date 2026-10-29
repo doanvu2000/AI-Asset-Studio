@@ -1,0 +1,15 @@
+id: library-import
+name: Nhập file vào Thư viện
+description: >-
+  File có sẵn (ảnh, GLB/FBX, JSON, atlas…) → thành phiên bản trong Thư viện, gắn vào project, duyệt / tìm tương tự /
+  đóng gói như asset sinh ra. Không chạy AI, không dùng GPU. Agent qua MCP gọi bằng tool import_to_library.
+inputs:
+  files: {type: file, label: File cần nhập (chọn nhiều được)}
+  review: {type: bool, default: false, label: Duyệt trước khi vào Thư viện}
+steps:
+  - id: keep
+    kind: gate.approve
+    in: {files: inputs.files}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: keep.files

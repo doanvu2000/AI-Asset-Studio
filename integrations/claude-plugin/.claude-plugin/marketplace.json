@@ -1,0 +1,13 @@
+{
+  "name": "asset-studio-local",
+  "description": "AI Asset Studio plugin shipped with the desktop app (local, no network).",
+  "owner": { "name": "Doan Vu" },
+  "plugins": [
+    {
+      "name": "asset-studio",
+      "source": "./",
+      "description": "MCP server + skill + /asset-studio:make, :status, :pack for the local AI Asset Studio.",
+      "version": "1.1.0"
+    }
+  ]
+}

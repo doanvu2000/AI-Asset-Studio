@@ -14,6 +14,8 @@ from studio_core.api import pack
 from studio_core.api import atlas
 from studio_core.api import hitfx
 from studio_core.api import restyle
+from studio_core.api import audit
+from studio_core.api import agent
 from studio_core.api.auth import OriginCheckMiddleware
 from studio_core.api.errors import ApiError, OrjsonResponse, install_error_handlers
 
@@ -34,6 +36,8 @@ def mount_api(app: FastAPI, allowed_origins: list[str]) -> None:
     app.include_router(atlas.router)
     app.include_router(hitfx.router)
     app.include_router(restyle.router)
+    app.include_router(audit.router)
+    app.include_router(agent.router)
     app.include_router(diagnostics.router)
     app.include_router(stats.router)
     app.include_router(qa.router)

@@ -1,0 +1,9 @@
+{
+  "name": "com.assetstudio.bridge",
+  "version": "1.0.0",
+  "displayName": "AI Asset Studio Bridge",
+  "description": "Run AI Asset Studio recipes from the Unity Editor: recipe form, progress, gate review and output import into Assets/AssetStudio.",
+  "unity": "2021.3",
+  "author": { "name": "AI Asset Studio" },
+  "keywords": ["ai", "assets", "pipeline"]
+}

@@ -9,7 +9,9 @@ import trayIconPath from '../../resources/tray.png?asset'
 import appIconPath from '../../resources/icon.png?asset'
 import winIconPath from '../../resources/icon.ico?asset'
 import { CoreSupervisor } from './core'
+import { agentStatus, installAgent, manualCommands, type AgentPaths } from './agentInstall'
 import { deviceInfo } from './device'
+import { installEnginePlugin } from './enginePlugin'
 import { AssetExporter, checkEngine, checkEngineOptions, checkHash, checkName, checkPreset, checkStep } from './assets'
 import { Devlog, listLogs, RateLimiter, type LogLevel } from './devlog'
 import { buildBundle, buildReport, parsePayload, REPORT_MAX_CHARS } from './diagnostics'
@@ -298,6 +300,14 @@ function stamp(): string {
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`
 }
 
+function agentPaths(): AgentPaths {
+  return {
+    launch: core.launch(...(isPortable ? ['mcp', '--data-dir', core.dataDir] : ['mcp'])),
+    integrationsDir: app.isPackaged ? join(process.resourcesPath, 'integrations') : join(resolve(core.coreDir, '..'), 'integrations'),
+    workDir: join(app.getPath('userData'), 'agent-integrations')
+  }
+}
+
 const RENDERER_LEVELS = new Set<string>(['info', 'warn', 'error'])
 const RENDERER_LINE_MAX = 4000
 
@@ -307,6 +317,12 @@ function registerIpc(): void {
     const launch = core.launch(...(isPortable ? ['mcp', '--data-dir', core.dataDir] : ['mcp']))
     return { ...launch, coreDir: core.coreDir, packaged: app.isPackaged }
   })
+  handle('studio:agentStatus', () => agentStatus())
+  handle('studio:agentInstall', (_e, target) => {
+    if (target !== 'claude' && target !== 'codex') throw new Error('invalid agent target')
+    return installAgent(target, agentPaths())
+  })
+  handle('studio:agentCommands', () => manualCommands(agentPaths()))
   handle('studio:copyText', (_e, text) => {
     if (typeof text !== 'string' || text.length > 10_000) throw new Error('invalid text')
     clipboard.writeText(text)
@@ -372,6 +388,20 @@ function registerIpc(): void {
     return saveTheme(mode as ThemeMode)
   })
   handle('studio:pickPath', (e, raw) => pickPath(e, raw))
+  // The folder comes from the main-process dialog, never from the renderer.
+  handle('studio:installEnginePlugin', async (e) => {
+    const owner = ownerOf(e)
+    const opts: Electron.OpenDialogOptions = { title: 'Chọn thư mục project Unity hoặc Godot', properties: ['openDirectory'] }
+    const res = owner ? await dialog.showOpenDialog(owner, opts) : await dialog.showOpenDialog(opts)
+    const dir = res.canceled ? null : res.filePaths[0]
+    if (!dir) return null
+    const out = await installEnginePlugin(join(dirname(core.coreDir), 'integrations'), dir, {
+      dataDir: resolve(core.dataDir),
+      appExe: app.isPackaged ? process.execPath : ''
+    })
+    devlog.app('info', `installed ${out.engine} plugin into ${out.dest}`)
+    return out
+  })
   registerAssetIpc()
   registerShellIpc()
   core.on('status', (s) => {

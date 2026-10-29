@@ -8,6 +8,7 @@ import { NO_PROJECT, RUN_ACTIVE, STEP_DONE_OK } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
 import StepChip from '@/components/StepChip.vue'
+import AgentRunBanner from '@/components/AgentRunBanner.vue'
 import ElapsedTimer from '@/components/ElapsedTimer.vue'
 import BlobThumb from '@/components/BlobThumb.vue'
 import AssetViewer from '@/components/viewers/AssetViewer.vue'
@@ -463,6 +464,8 @@ function segTitle(s: StepRow): string {
       </div>
       <span class="runbar-label caption num">{{ progressLabel }}</span>
     </div>
+
+    <AgentRunBanner :run-id="id" />
 
     <EmptyState v-if="loadError && !run" :icon="CircleAlert" title="Không mở được lượt chạy" :text="loadError">
       <button class="btn" @click="load">Thử lại</button>

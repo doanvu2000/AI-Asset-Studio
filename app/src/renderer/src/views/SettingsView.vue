@@ -6,6 +6,7 @@ import type { Compass, ExportPreset } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import DiagnosticsPanel from '@/components/DiagnosticsPanel.vue'
 import ToolPathsPanel from '@/components/ToolPathsPanel.vue'
+import EnginePluginCard from '@/components/EnginePluginCard.vue'
 import SetupPanel from '@/components/SetupPanel.vue'
 import ResizeHandle from '@/components/ResizeHandle.vue'
 import { usePaneWidth } from '@/composables/paneSize'
@@ -265,6 +266,7 @@ async function remove(): Promise<void> {
       </section>
       <section v-else-if="pane === 'tools'" class="scroll pane">
         <ToolPathsPanel />
+        <EnginePluginCard />
       </section>
       <section v-else-if="pane === 'diag'" class="scroll pane">
         <DiagnosticsPanel />

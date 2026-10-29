@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "asset-studio": {
+      "command": "uv",
+      "args": ["--directory", "${ASSET_STUDIO_REPO}/core", "run", "python", "-m", "studio_core", "mcp"]
+    }
+  }
+}

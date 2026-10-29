@@ -134,6 +134,42 @@ export type EventType =
   | 'version.updated'
   | 'resource.updated'
   | 'project.updated'
+  | 'agent.activity'
+
+/** An MCP client (Claude Code, Codex…) driving the studio; core/studio_core/api/agent.py. */
+export type AgentPhase = 'connect' | 'disconnect' | 'start' | 'end' | 'error' | 'wait'
+
+export interface AgentActivity {
+  session: string
+  client: string
+  client_version: string
+  phase: AgentPhase
+  tool: string | null
+  summary: string
+  detail: string
+  run_id: string | null
+  step_id: string | null
+  seconds: number | null
+  ts: number
+}
+
+export interface AgentSession {
+  session: string
+  client: string
+  client_version: string
+  connected_at: number
+  last_seen: number
+  connected: boolean
+  active: boolean
+  calls: number
+  last_run_id?: string
+  current?: { tool: string | null; summary: string; run_id: string | null; since: number; detail?: string }
+}
+
+export interface AgentActivitySnapshot {
+  sessions: AgentSession[]
+  events: AgentActivity[]
+}
 
 export interface StudioEvent<T = Record<string, unknown>> {
   seq: number
@@ -249,6 +285,7 @@ export interface StartRunBody {
   params?: Record<string, Record<string, unknown>>
   title?: string
   project_id?: string
+  no_cache?: boolean
 }
 
 export type RecipeSource = 'builtin' | 'user' | 'override'

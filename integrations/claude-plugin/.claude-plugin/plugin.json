@@ -1,0 +1,9 @@
+{
+  "name": "asset-studio",
+  "displayName": "AI Asset Studio",
+  "version": "1.1.0",
+  "description": "Drive the local AI Asset Studio from Claude Code: game-asset recipes (sprites, Spine, 3D, terrain, UI, VFX), gates, Library, packs, Unity/Godot export.",
+  "author": { "name": "Doan Vu" },
+  "license": "proprietary",
+  "keywords": ["game-assets", "sprites", "unity", "godot", "comfyui", "blender"]
+}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "asset-studio": {
+      "command": "${LOCALAPPDATA}/Programs/AI Asset Studio/resources/core/studio-core.exe",
+      "args": ["mcp"]
+    }
+  }
+}

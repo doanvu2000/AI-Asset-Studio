@@ -38,6 +38,9 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     mcp = sub.add_parser("mcp", help="stdio MCP server proxying to a running (or auto-spawned) core")
     mcp.add_argument("--data-dir", type=Path, default=None)
     mcp.add_argument("--log-level", default="warning")
+    from studio_core.mcp.agent_cli import add_parser as add_agent_parser
+
+    add_agent_parser(sub)
     launch = sub.add_parser(LAUNCH_CMD, help="internal: start a detached core (frozen build)")
     launch.add_argument("argv_json")
     launch.set_defaults(log_level="warning")
@@ -155,6 +158,10 @@ def main(argv: list[str] | None = None) -> int:
         from studio_core.mcp.server import run_stdio
 
         run_stdio(args.data_dir)
+    elif args.cmd == "agent":
+        from studio_core.mcp.agent_cli import run as run_agent
+
+        return run_agent(args)
     elif args.cmd == LAUNCH_CMD:
         from studio_core.mcp.link import launch_detached
 

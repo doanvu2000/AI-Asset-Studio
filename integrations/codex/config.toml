@@ -1,0 +1,18 @@
+# Append to ~/.codex/config.toml (the app's "Kết nối agent" card writes this for you, with a backup).
+# Installed app (per-user install path; adjust if you chose another folder):
+[mcp_servers.asset-studio]
+command = 'C:\Users\<you>\AppData\Local\Programs\AI Asset Studio\resources\core\studio-core.exe'
+args = ["mcp"]
+# GPU recipes run for minutes: wait_run/generate block up to their timeout_s.
+startup_timeout_sec = 90
+tool_timeout_sec = 1900
+# codex exec cannot answer approval prompts; the studio tools never touch files outside its data dir unless asked.
+default_tools_approval_mode = "approve"
+
+# Dev checkout instead:
+# [mcp_servers.asset-studio]
+# command = "uv"
+# args = ["--directory", 'L:\AI\AI-Asset-Studio\core', "run", "python", "-m", "studio_core", "mcp"]
+# startup_timeout_sec = 90
+# tool_timeout_sec = 1900
+# default_tools_approval_mode = "approve"

@@ -4,6 +4,9 @@ import type { CoreStatus, StudioBridge } from './types'
 const bridge: StudioBridge = {
   getConnection: () => ipcRenderer.invoke('studio:getConnection'),
   mcpInfo: () => ipcRenderer.invoke('studio:mcpInfo'),
+  agentStatus: () => ipcRenderer.invoke('studio:agentStatus'),
+  agentInstall: (target) => ipcRenderer.invoke('studio:agentInstall', target),
+  agentCommands: () => ipcRenderer.invoke('studio:agentCommands'),
   copyText: (text) => ipcRenderer.invoke('studio:copyText', text),
   onCoreStatus(cb) {
     const listener = (_e: IpcRendererEvent, s: CoreStatus): void => cb(s)
@@ -23,6 +26,7 @@ const bridge: StudioBridge = {
   deviceInfo: () => ipcRenderer.invoke('studio:deviceInfo'),
   setTheme: (mode) => ipcRenderer.invoke('studio:setTheme', mode),
   pickPath: (opts) => ipcRenderer.invoke('studio:pickPath', opts),
+  installEnginePlugin: () => ipcRenderer.invoke('studio:installEnginePlugin'),
   asset: {
     prepare: (hash, name) => ipcRenderer.invoke('studio:asset:prepare', hash, name),
     saveAs: (hash, name) => ipcRenderer.invoke('studio:asset:saveAs', hash, name),

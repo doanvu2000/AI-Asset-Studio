@@ -24,9 +24,39 @@ export interface McpInfo {
   packaged: boolean
 }
 
+export type AgentTarget = 'claude' | 'codex'
+
+export interface AgentTargetStatus {
+  /** Absolute path of the CLI found in PATH, null when not installed. */
+  cli: string | null
+  installed: boolean
+  /** plugin = Claude plugin (MCP + skill + commands); mcp = server entry only. */
+  mode: 'plugin' | 'mcp' | 'none'
+  detail: string
+  configPath: string
+  skill?: boolean
+}
+
+export interface AgentStatus {
+  claude: AgentTargetStatus
+  codex: AgentTargetStatus
+}
+
+export interface AgentInstallResult {
+  ok: boolean
+  log: string[]
+  /** Copies of the config files taken before changing them. */
+  backups: string[]
+}
+
 export interface StudioBridge {
   getConnection(): Promise<CoreConnection>
   mcpInfo(): Promise<McpInfo>
+  agentStatus(): Promise<AgentStatus>
+  /** One-click setup: Claude = local plugin marketplace + install; Codex = config.toml section + skill (backups first). */
+  agentInstall(target: AgentTarget): Promise<AgentInstallResult>
+  /** Manual commands for the plugin route (the plugin folder is staged so the commands work). */
+  agentCommands(): Promise<{ claude: string[]; codexToml: string }>
   copyText(text: string): Promise<void>
   onCoreStatus(cb: (s: CoreStatus) => void): () => void
   log(level: RendererLogLevel, message: string): void
@@ -45,6 +75,8 @@ export interface StudioBridge {
   deviceInfo(): Promise<DeviceInfo>
   setTheme(mode: ThemeMode): Promise<void>
   pickPath(opts: PickPathOptions): Promise<string | null>
+  /** Asks for a Unity/Godot project folder and copies the editor plugin into it; null when cancelled. */
+  installEnginePlugin(): Promise<EnginePluginInstall | null>
   asset: AssetBridge
   /** Taskbar progress: 0..1, or null to clear. `paused` paints it amber (waiting on the user). */
   setProgress(value: number | null, mode?: ProgressMode): void
@@ -81,6 +113,12 @@ export interface AppNotification {
   title: string
   body: string
   route?: string
+}
+
+export interface EnginePluginInstall {
+  engine: 'unity' | 'godot'
+  projectDir: string
+  dest: string
 }
 
 export interface PickPathOptions {

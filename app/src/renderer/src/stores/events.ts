@@ -1,4 +1,5 @@
 import type {
+  AgentActivity,
   GateAwaitingData,
   ProjectRow,
   LogData,
@@ -17,6 +18,7 @@ import { useResources } from './resources'
 import { useVersions } from './versions'
 import { useRecipes } from './recipes'
 import { useProjects } from './projects'
+import { useAgents } from './agents'
 import { NO_PROJECT } from '@/api/types'
 
 // One pass per animation frame: each store mutates in place and triggers its shallowRefs once.
@@ -75,6 +77,9 @@ export function applyEvents(events: StudioEvent[]): void {
       case 'resource.updated':
         resources.upsert(e.data as unknown as ResourceHealth)
         break
+      case 'agent.activity':
+        useAgents().push(e.data as unknown as AgentActivity)
+        break
     }
   }
   tx.commit()
@@ -93,6 +98,7 @@ export async function resyncAll(): Promise<void> {
     useRuns().reloadDetails(),
     useGates().load(),
     useVersions().load(),
-    useProjects().load()
+    useProjects().load(),
+    useAgents().load()
   ])
 }

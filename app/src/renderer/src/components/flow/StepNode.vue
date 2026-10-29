@@ -12,6 +12,8 @@ import ElapsedTimer from '../ElapsedTimer.vue'
 import TweenNumber from '../TweenNumber.vue'
 
 const props = defineProps<{ data: StepNodeData }>()
+// Shown while a step reports no progress label yet, so a long Blender/ComfyUI job still says what it waits on.
+const LANE_RUNNING: Record<string, string> = { gpu: 'ComfyUI đang vẽ (GPU)', blender: 'Blender đang dựng / render', cloud: 'Đang chờ Claude trả lời' }
 const runs = useRuns()
 
 const errors = computed(() => props.data.issues.filter((i) => i.level === 'error').length)
@@ -34,7 +36,7 @@ const fraction = computed(() => {
 const detail = computed(() => {
   const s = step.value
   if (!s) return ''
-  if (s.status === 'running') return progress.value?.label || progress.value?.node || 'Đang chạy'
+  if (s.status === 'running') return progress.value?.label || progress.value?.node || LANE_RUNNING[s.lane] || 'Đang chạy'
   if (s.status === 'waiting_resource') return waitingLabel(s.meta.waiting_for)
   if (s.status === 'failed') return s.error?.message ?? 'Lỗi'
   return STEP_LABEL[s.status]

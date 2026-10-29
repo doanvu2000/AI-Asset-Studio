@@ -1,4 +1,5 @@
 import type { RestyleApplyResult, RestyleBackup, RestyleScan, RestyleUndoResult } from './restyleTypes'
+import type { AuditBackup, AuditFix, AuditFixResult, AuditReport } from './auditTypes'
 import type {
   ApiErrorBody,
   BatchCreateBody,
@@ -53,6 +54,7 @@ import type {
   SetupStartBody
 } from './types'
 import type { CoreDiagnostics } from '../../../preload/types'
+import type { AgentActivitySnapshot } from './types'
 import type { EnginePreviewBody, EnginePreviewJob, PreviewEngines } from './enginePreview'
 import type { HitVfx, StepHits } from './hitFx'
 import { devlog } from '@/composables/devlog'
@@ -119,6 +121,7 @@ export interface StudioApi {
   toolPaths(versions?: boolean): Promise<ToolPaths>
   saveToolPaths(paths: Partial<Record<ToolKey, string>>): Promise<ToolPaths>
   diagnostics(): Promise<CoreDiagnostics>
+  agentActivity(limit?: number): Promise<AgentActivitySnapshot>
   projects(q?: { archived?: boolean }): Promise<ProjectWithSummary[]>
   getProject(id: string): Promise<ProjectRow>
   createProject(body: ProjectCreateBody): Promise<ProjectRow>
@@ -181,6 +184,12 @@ export interface StudioApi {
   restyleApply(runId: string): Promise<RestyleApplyResult>
   restyleUndo(backupId: string, force?: boolean): Promise<RestyleUndoResult>
   restyleBackups(runId?: string): Promise<{ backups: RestyleBackup[] }>
+  /** Read-only audit of a Unity / Godot project folder (texture budget, duplicates, unreferenced, meshes, audio). */
+  audit(body: { path: string; engine?: 'auto' | 'unity' | 'godot'; tri_budget?: number; duplicates?: boolean }): Promise<AuditReport>
+  /** Importer-only fixes from the last audit (dry_run plans them; zip backup + undo). */
+  auditFix(body: { path: string; actions: AuditFix[]; dry_run: boolean }): Promise<AuditFixResult>
+  auditUndo(backupId: string, force?: boolean): Promise<{ backup_id: string; restored: string[]; conflicts: { rel: string; why: string }[] }>
+  auditBackups(path?: string): Promise<{ backups: AuditBackup[] }>
   similarStatus(): Promise<SimilarIndexStatus>
   reindexSimilar(body?: { project_id?: string; force?: boolean }): Promise<SimilarIndexStatus>
 }
@@ -288,6 +297,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     toolPaths: (versions = true) => call('GET', `/api/settings/tools${query({ versions: versions ? undefined : 'false' })}`, undefined, SLOW_TIMEOUT_MS),
     saveToolPaths: (paths) => call('PUT', '/api/settings/tools', { paths }),
     diagnostics: () => call('GET', '/api/diagnostics', undefined, SLOW_TIMEOUT_MS),
+    agentActivity: (limit) => call('GET', `/api/agent/activity${query({ limit })}`),
     setupPlan: (dirs = {}) => call('GET', `/api/setup${query(dirs)}`, undefined, SLOW_TIMEOUT_MS),
     setupJob: () => call('GET', '/api/setup/job'),
     startSetup: (body) => call('POST', '/api/setup/start', body),
@@ -353,6 +363,10 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     restyleApply: (runId) => call('POST', '/api/restyle/apply', { run_id: runId }, SLOW_TIMEOUT_MS),
     restyleUndo: (backupId, force = false) => call('POST', '/api/restyle/undo', { backup_id: backupId, force }, SLOW_TIMEOUT_MS),
     restyleBackups: (runId) => call('GET', `/api/restyle/backups${query({ run_id: runId })}`),
+    audit: (body) => call('POST', '/api/audit', body, SLOW_TIMEOUT_MS),
+    auditFix: (body) => call('POST', '/api/audit/fix', body, SLOW_TIMEOUT_MS),
+    auditUndo: (backupId, force = false) => call('POST', '/api/audit/undo', { backup_id: backupId, force }, SLOW_TIMEOUT_MS),
+    auditBackups: (path) => call('GET', `/api/audit/backups${query({ path })}`),
     similarStatus: () => call('GET', '/api/search/status'),
     reindexSimilar: (body = {}) => call('POST', '/api/search/reindex', body)
   }

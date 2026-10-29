@@ -16,6 +16,13 @@ extraResources:
     to: core
     filter:
       - "**/*"
+  # Claude Code plugin + Codex skill for the "Kết nối agent" card (staged into userData before install).
+  # Also unity/ + godot/: the editor plugins the Settings "Cài plugin vào project…" button copies (enginePlugin.ts).
+  - from: ../integrations
+    to: integrations
+    filter:
+      - "**/*"
+      - "!**/mcp.dev.json"
 win:
   target:
     - target: nsis

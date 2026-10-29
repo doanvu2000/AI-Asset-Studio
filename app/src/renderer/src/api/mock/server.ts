@@ -1,6 +1,7 @@
 import { ApiError, type ListRunsQuery, type RecipeBody, type StudioApi, type VersionsQuery } from '../client'
 import { FrameBatcher, type EventSink, type EventStream } from '../ws'
 import type { CoreDiagnostics } from '../../../../preload/types'
+import type { AgentActivitySnapshot } from '../types'
 import type { EnginePreviewJob, PreviewEngines } from '../enginePreview'
 import type { HitVfx, StepHits } from '../hitFx'
 import {
@@ -47,6 +48,7 @@ import type { StyleBible, StyleBibleEdit, StyleBibleView } from '../types'
 import type { DuplicateGroup, DuplicatesReport, MoreLikePlan, SimilarAsset, SimilarIndexStatus, SimilarQuery, SimilarResult } from '../types'
 import type { AtlasBody, AtlasResult, PackBody, PackListing, PackRecord, PackResult } from '../types'
 import type { RestyleApplyResult, RestyleBackup, RestyleScan, RestyleUndoResult } from '../restyleTypes'
+import type { AuditBackup, AuditFix, AuditFixResult, AuditReport } from '../auditTypes'
 import { MOCK_KINDS, MOCK_PRESETS, MOCK_TOOLS, mockValidate, stepDeps } from './catalog'
 import { normalizeStyle, styleFills } from '@/composables/projectStyle'
 import sampleGlbUrl from './assets/sample-prop.glb?url'
@@ -1167,6 +1169,10 @@ export class MockCore implements StudioApi, EventStream {
     return { tools: clone(this.tools), settings_file: 'C:\\Users\\mock\\AppData\\Roaming\\AI Asset Studio\\data\\settings.json' }
   }
 
+  async agentActivity(): Promise<AgentActivitySnapshot> {
+    return { sessions: [], events: [] }
+  }
+
   async diagnostics(): Promise<CoreDiagnostics> {
     await this.ready
     await sleep(160)
@@ -1802,6 +1808,59 @@ export class MockCore implements StudioApi, EventStream {
 
   async restyleBackups(runId?: string): Promise<{ backups: RestyleBackup[] }> {
     return clone({ backups: this.restyleBackupList.filter((b) => !runId || b.source.run_id === runId) })
+  }
+
+  private auditBackupList: AuditBackup[] = []
+
+  async audit(body: { path: string }): Promise<AuditReport> {
+    await sleep(900)
+    const mb = 1048576
+    const tex = (rel: string, w: number, h: number, kind: string, before: number, after: number, code = 'mobile'): AuditReport['textures'][number] => ({
+      rel, w, h, bytes: Math.round(w * h * 0.6), kind, alpha_channel: true, alpha_used: true, importer: `${rel.split('/').pop()}.meta`, display: null,
+      gpu_before: before, gpu_after: after,
+      issues: [{ code, severity: 'warn', msg: `Chưa có thiết lập nén mobile; RAM GPU ${(before / mb).toFixed(2)} MB → ${(after / mb).toFixed(2)} MB.`,
+        fix: { type: 'mobile_preset', rel, kind, max_size: 2048 } }]
+    })
+    const textures = [
+      tex('Assets/Art/hero.png', 4096, 4096, 'sprite', 64 * mb, 4.7 * mb),
+      tex('Assets/Art/bg_forest.png', 2048, 1024, 'sprite', 8 * mb, 0.6 * mb),
+      tex('Assets/UI/panel.png', 1024, 1024, 'ui', 4 * mb, 1 * mb)
+    ]
+    return {
+      root: body.path, project: body.path.replace(/[\\/]Assets.*$/, ''), engine: 'unity', at: now(), seconds: 1.2, tri_budget: 15000,
+      summary: { textures: 42, texture_bytes: 31 * mb, gpu_before: 76 * mb, gpu_after: 6.3 * mb, fixable: 3, duplicate_groups: 1, duplicate_bytes: 2.1 * mb,
+        unreferenced: 2, unreferenced_bytes: 5.4 * mb, meshes: 3, meshes_over: 1, audio: 4, issues: { mobile: 3, duplicate: 2, mesh_tris: 1 } },
+      textures,
+      duplicates: [{ kind: 'exact', files: ['Assets/Art/hero.png', 'Assets/Old/hero copy.png'], wasted_bytes: 2.1 * mb }],
+      unreferenced: [{ rel: 'Assets/Old/hero copy.png', kind: 'texture', bytes: 2.1 * mb }, { rel: 'Assets/Models/unused_tree.fbx', kind: 'model', bytes: 3.3 * mb }],
+      meshes: [{ rel: 'Assets/Models/knight.fbx', bytes: 7.7 * mb, tris: 29278, over: true }],
+      audio: [{ rel: 'Assets/Audio/theme.ogg', bytes: 3 * mb, seconds: 92, issues: [{ code: 'audio_decompress', severity: 'warn', msg: 'Clip dài 92s đang Decompress On Load (tốn RAM); nhạc nền nên Streaming.' }] }],
+      notes: []
+    }
+  }
+
+  async auditFix(body: { path: string; actions: AuditFix[]; dry_run: boolean }): Promise<AuditFixResult> {
+    await sleep(600)
+    const files = body.actions.filter((a) => a.rel).map((a) => ({ rel: a.rel!, action: 'write' as const, fixes: [a.type] }))
+    const res: AuditFixResult = { dry_run: body.dry_run, written: body.dry_run ? 0 : files.length, skipped: 0, gpu_before: 76 * 1048576, gpu_after: 6.3 * 1048576, files }
+    if (!body.dry_run) {
+      res.backup_id = `mock-${Date.now()}`
+      this.auditBackupList.unshift({ backup_id: res.backup_id, project: body.path, engine: 'unity', at: now(), written: files.length, undone_at: null,
+        gpu_before: res.gpu_before ?? null, gpu_after: res.gpu_after ?? null })
+    }
+    return res
+  }
+
+  async auditUndo(backupId: string): Promise<{ backup_id: string; restored: string[]; conflicts: { rel: string; why: string }[] }> {
+    await sleep(400)
+    const b = this.auditBackupList.find((x) => x.backup_id === backupId)
+    if (!b || b.undone_at) throw new ApiError('undo_failed', 'unknown or already undone backup', 409)
+    b.undone_at = now()
+    return { backup_id: backupId, restored: ['Assets/Art/hero.png'], conflicts: [] }
+  }
+
+  async auditBackups(): Promise<{ backups: AuditBackup[] }> {
+    return clone({ backups: this.auditBackupList })
   }
 
   private styleBibles = new Map<string, StyleBible>()
