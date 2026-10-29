@@ -16,6 +16,23 @@ export const whatsNewOpen = ref(false)
 // Summaries of `git log <prev tag>..<tag>` and the matching .planning plans; newest first.
 export const CHANGELOG: Release[] = [
   {
+    version: '1.2.0',
+    date: '2026-10-30',
+    items: [
+      'Claude Code và Codex CLI điều khiển được AI Asset Studio qua MCP, skill và plugin cài 1 chạm; mọi thao tác của agent hiện trực tiếp trên app',
+      'Plugin Unity và Godot: chạy quy trình, duyệt bước chờ và nhận asset thẳng vào project ngay trong editor; cài từ Cài đặt → Công cụ',
+      'Màn Kiểm tra project: soát texture, ảnh trùng, asset không dùng, mesh, âm thanh; sửa .meta / .import 1 chạm có backup và hoàn tác',
+      'Địa hình 3D: mô tả → Claude đặt núi, hồ, biển, sông → heightmap 16-bit có xói mòn, 4 lớp texture PBR, xuất Terrain Unity / mesh LOD Godot',
+      'Trim sheet lặp ngang liền mạch + PBR, bộ decal nền trong và bộ mảnh modular theo lưới; prefab Unity, MeshLibrary GridMap Godot',
+      'Bộ VFX hạt 7 preset (nổ, hồi máu, nhặt đồ, vệt đạn, bụi, tia va chạm, hào quang) → ParticleSystem Unity, GPUParticles Godot',
+      'Màn UI game: Claude bố cục từ ui-kit, mockup 16:9 / 20:9 / 4:3 trong vùng an toàn, xuất prefab UGUI + UXML và scene Godot + Theme',
+      'Vật phẩm xoay vòng, UI động shine / glow / nhún / lấp lánh, vật lý Spine 4.2 cho tóc, áo choàng, đuôi',
+      'Minimap từ ảnh màn, Tiled hoặc LDtk, có icon điểm đánh dấu và mặt nạ tròn',
+      'Chạy nhanh hơn: bước Claude và bước tất định dùng lại kết quả khi đầu vào y hệt (tuỳ chọn “Bỏ qua kết quả cũ”)',
+      'Trang Quy trình dùng hết bề ngang khi màn hình rộng'
+    ]
+  },
+  {
     version: '1.1.0',
     date: '2026-10-29',
     items: [
