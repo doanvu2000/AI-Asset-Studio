@@ -1148,3 +1148,49 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   prefab cũ chưa trỏ sprite atlas; chưa build Android thật.
 - [x] Changelog 1.1.0 thêm #30–#33, #38. Kiểm tổng: pytest 804 pass / 4 skip, typecheck sạch. Chưa commit, chưa build lại.
 - [x] 2026-10-29 11:20 Handoff mới: .planning/HANDOFF-2026-10-29-1120.md (xoá file rỗng core/Asset, core/Studio do agent tạo nhầm).
+
+## Phiên 2026-10-29 tối (sau HANDOFF-1120) — chủ nhân: "commit push" rồi "đọc handoff rồi làm tiếp"
+- [x] Commit + push: `0e2a247` (app+core: atlas, mobile, Aseprite, enemy-variants, hit-FX, What's New), `e6be2fa` (planning). origin/master = HEAD.
+- Build / license / lượt 4 vẫn chờ chủ nhân → làm nợ tự xử được, bắt đầu #38 (điểm trúng N/NW/W rơi vào đầu).
+- [x] #38 điểm trúng không còn rơi vào đầu: `export/hitfx.py` `_head_mask` (dò cổ theo độ rộng run qua cột tâm, NECK 0.8, qua cong hàm tới hàng hẹp nhất)
+  loại đầu khỏi ứng viên khi hướng nhìn ngang/lên (fy ≤ 0.05); chibi đầu chạm đường cắt chân → cho xuống tới cổ + SHOULDER 0.35. Knight (godot-test/HitFx):
+  S/SW/SE giữ nguyên, W/NW/N/NE/E rời khỏi đầu (NE trúng mũi kiếm; N/NW vũ khí bị đầu che → mép vai). Ảnh QA scratchpad `hit/viz.png`.
+  Test `test_big_head_is_not_the_impact_point` (fail trên code cũ). pytest 805 pass / 4 skip. Chưa commit.
+- [x] Unity CLI chính chủ 1.0.0-beta.14 cài `L:\setup\unity\bin\unity.exe` (UNITY_CLI_HOME, user PATH). Editor F:\Unity\6000.3.6f1 đã `editors add`.
+  `com.unity.pipeline` 0.9.1-exp.1 vào 3 project test. MCP `unity-editor-mcp` (stdio `unity.exe mcp`, scope user) — chủ nhân tự `claude mcp add` (auto-mode chặn).
+  Global editor install-path → `L:\setup\unity\Editor` (Hub dùng chung).
+- [~] Cài Editor 6000.3.27f1 (6.3 LTS) + Android (child modules) — nền, log `L:\setup\unity\install-6000.3.27f1.log`. Xong → upgrade 3 project test.
+- [x] Backup 3 project test (bỏ Library/Temp/Logs/obj/UserSettings) → `L:\AI\unity-backup-6000.3.6f1\`.
+- [~] Agent nghiên cứu 5 chức năng mới #40–#44 → `.planning/PLAN-2026-10-29-feature-ideas-r5.md`.
+- [x] Editor 6000.3.27f1 + Android cài xong (`L:\setup\unity\Editor\6000.3.27f1`). 3 project test nâng lên 6000.3.27f1 (batchmode `unity run`):
+  exit 0, 0 `error CS`, pipeline resolve. F30Verify.Run trên Editor mới: `F30 DONE fails=0` (log `L:\setup\unity\verify-f30.log`).
+- [x] Nghiên cứu lượt 5 xong: `.planning/PLAN-2026-10-29-feature-ideas-r5.md` (#40–#44, thứ tự 40→43→42→44→41).
+- [x] 2026-10-29 14:30 Handoff mới: .planning/HANDOFF-2026-10-29-1430.md
+
+## Phiên 2026-10-29 chiều muộn — chủ nhân: "ok làm hết đi" (#40–#44)
+- Plan: `.planning/PLAN-2026-10-29-r5-build.md`. Spec: `.planning/PLAN-2026-10-29-feature-ideas-r5.md`.
+- [~] Giao 5 agent song song: A #40 sprite-anim-video, B #43 skybox-360, C #42 restyle-folder, D #44 prop-destructible, E #41 mesh-retexture.
+- [x] #40 sprite-anim-video xong (agent): `ops/anim_video.py` (anim_prep/candidates/pick/loop), `adapters/anim_motion.py` (claude.anim_motion Opus),
+  recipe `sprite-anim-video.yaml`, FollowUpMenu "Hoạt ảnh sprite" + preset động tác, art thẻ. Live: knight chém 12f, Wan TI2V 3 ứng viên 223s, pivot lệch 0.45px.
+  Godot `slash_E` 12f/12fps OK; Unity `slash_E.anim` 12 key fails=0. Nợ: timeline chỉnh điểm cắt (giờ qua param start/end), pixel-art tuỳ chọn, Fun-Control 5B, live idle/walk.
+  QA: scratchpad 701b93af…/scratchpad/live/out/anim_qa.png.
+- [x] Sửa `tests/test_p7_paths.py` auto-detect: cô lập APPDATA/ProgramFiles (máy có Hub install path L:\setup\unity\Editor làm test lệch).
+- [x] #42 restyle-folder xong (agent): `ops/restyle.py`, `export/restyle.py`, `api/restyle.py`, recipe, `RestyleView.vue` (/restyle), art thẻ.
+  Mặc định dry_run; mirror/apply (backup zip, chặn path/symlink, bỏ qua file đổi sau quét, hoàn tác). Engine: bước dùng được map + map_param cùng lúc
+  (test_p2_recipes đổi theo). Live Unity `L:\AI\unity-restyle-test` 6 ảnh 390s, 13 ref 0 missing, .meta không đổi byte; Godot `L:\AI\godot-restyle-test`
+  3 ảnh, import 0 lỗi, hoàn tác OK. Nợ: walk mất bước chân (sửa nguyên sheet), gate tất-cả-hoặc-không, Godot Sprite2D region_rect, sidebar.
+- [x] #44 prop-destructible xong (agent): `adapters/blender/fracture*.py` (Voronoi bmesh tự viết, không Cell Fracture/GPL; manifold fix boolean),
+  `export/destructible.py` (Unity Intact/Fractured prefab + Rigidbody/MeshCollider convex + SwapOnHit; Godot RigidBody3D), recipe, art thẻ.
+  Live thùng gỗ 16 mảnh planks: thể tích lệch 0.011%, 16/16 kín, 19 372 tris; Godot 60f không xuyên sàn; Unity verify PASS.
+  Nợ: mesh TRELLIS hở → voxel remesh vỏ dày (50kg), convex hull 64 điểm lún 1–2cm, mặc định 20k tris nặng mobile. QA `L:\AI\blender\project\destructible-live\qa_exploded_planks.png`.
+- [x] #41 mesh-retexture xong (agent): `adapters/blender/retex_math.py` (camera/z-buffer/trộn cos^4/push-pull, numpy), `retex_bpy.py`, `retexture.py`
+  (blender.views_render, blender.retex_apply), `adapters/comfy/retexture.py` (retex.paint tuần tự + extra_views tự chọn), `ops/retexture.py` (op.project_bake),
+  `export/mesh_retexture.py`, workflow `retex_zimage_union2.api.json`, recipe, 16 test, art thẻ. Model mới Z-Image-Turbo-Fun-Controlnet-Union-2.0 (6.7GB, Apache-2.0)
+  `F:\work\AI\comfyUI_models\model_patches\`. Live: crate greybox 627s 0.0% chưa tô; rương TRELLIS 549s 0.30%. VRAM đỉnh 11.7GB.
+  Unity URP/Built-in material đủ map fails=0 (chưa import GLB — project test không có glTFast); Godot .tres + GLB UV OK.
+  Nợ: ~80s/góc (thử Union 2.1 lite 2GB), chi tiết lặp mặt sau, ánh sáng ngấm albedo, Godot --import không tự thoát. QA `L:\AI\blender\temp\retex\`.
+- [x] #43 skybox-360 xong (agent): `ops/pano.py`, `export/skybox.py`, workflow `t2i_qwen_image_360`, PanoViewer/panoScene (three.js), art thẻ. Model Qwen-Image-2512 int8
+  (cộng đồng, Apache-2.0) + LoRA 360 v2 (MIT). Live 630s, VRAM 10.6GB, seam 75→100; Unity Panoramic/6 Sided khớp 1.000, Godot 0.97–0.997.
+- [x] Changelog 1.1.0 thêm #40–#44 + #38. `packaging/studio-core.spec` thêm retex_math/retex_bpy (#41 quên). Kiểm tổng: pytest 878 pass / 4 skip, typecheck sạch.
+- [x] 2026-10-29 19:00 Handoff mới: .planning/HANDOFF-2026-10-29-1900.md
+- [x] Chủ nhân "dọn rồi commit": `git rm core/check.gd`; xoá L:\AI\unity-restyle-test, godot-restyle-test, unity-test-destructible, godot-test-destructible, blender/project/destructible-live, blender/retex-live-data, blender/temp/retex, unity-test-batch/Assets/{SkyboxTest,AnimVideoLive,Editor/AnimVideoCheck.cs}(+.meta), godot-test/{SkyboxTest,AnimVideoLive}. Commit 3 commit, chưa push.
