@@ -1,0 +1,37 @@
+id: item-spin-image
+name: Vật phẩm xoay vòng từ ảnh 2D
+description: >-
+  Ảnh vật phẩm phẳng (đồng xu, huy hiệu, icon) → giả xoay quanh trục đứng: co ngang theo cos, quá 90° hiện mặt sau
+  lật gương tối hơn, viền dày theo sin → 12/16/24 frame lặp liền, trục ở tâm ô → sprite sheet + GIF / WebP xem trước
+  + báo cáo → duyệt. Chạy CPU. Xuất Unity AnimationClip, Godot SpriteFrames.
+inputs:
+  image: {type: image, label: Ảnh vật phẩm (nền trong suốt)}
+  frames: {type: int, default: 16, options: [12, 16, 24], label: Số frame một vòng}
+  size: {type: int, default: 128, options: [64, 96, 128, 192, 256], label: Cỡ ô (px)}
+  thickness: {type: int, default: 6, min: 0, max: 24, label: Độ dày viền khi nghiêng (px)}
+  back: {type: enum, default: mirror, options: [mirror, dark, flat],
+         label: "Mặt sau (mirror = lật gương tối hơn, dark = xám tối, flat = màu viền)"}
+  fps: {type: int, default: 12, min: 4, max: 30, label: FPS}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: frames
+    kind: op.item_spin
+    in: {images: inputs.image}
+    params: {frames: "${inputs.frames}", size: "${inputs.size}", thickness: "${inputs.thickness}",
+             back: "${inputs.back}", fps: "${inputs.fps}", clip: spin}
+  - id: spin
+    kind: op.sheet
+    in: {images: frames.images, pivot: frames.pivot}
+    params: {cols: "${steps.frames.json.cols}", flipbook: loop, fps: "${inputs.fps}"}
+  - id: approve
+    kind: gate.approve
+    in: {sheet: spin.sheet, meta: spin.meta, preview: frames.gif, webp: frames.webp, qa: frames.qa,
+         report: frames.json, frames: frames.images}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: spin.sheet
+  meta: spin.meta
+  preview: frames.gif
+  webp: frames.webp
+  qa: frames.qa
+  frames: frames.images

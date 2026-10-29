@@ -251,8 +251,13 @@ const bibleTargets = computed<string[]>(() => {
   if (b.refs.length && styleRef) out.push('ảnh style mẫu')
   return out
 })
-const bibleParams = (): Record<string, Record<string, unknown>> | undefined =>
-  bibleTargets.value.length && !useBible.value ? { $meta: { use_style_bible: false } } : undefined
+const noCache = ref(false)
+const bibleParams = (): Record<string, Record<string, unknown>> | undefined => {
+  const meta: Record<string, unknown> = {}
+  if (bibleTargets.value.length && !useBible.value) meta.use_style_bible = false
+  if (noCache.value) meta.no_cache = true
+  return Object.keys(meta).length ? { $meta: meta } : undefined
+}
 
 function defaultOf(spec: RecipeInputSpec): FieldValue {
   return (spec.default as FieldValue | undefined) ?? (spec.type === 'bool' ? false : isNum(spec.type) ? (spec.min ?? 0) : '')
@@ -510,7 +515,7 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
 
     <div class="scroll">
       <!-- Picker -->
-      <div v-if="!selected" class="picker stack">
+      <div v-if="!selected" class="picker stack stack-wide">
         <p v-if="!recipes.loaded && !recipes.error" class="caption">Đang tải quy trình…</p>
         <EmptyState
           v-else-if="!recipes.list.length"
@@ -782,6 +787,9 @@ ${r.description}`" @click="pick(r.id)">
         <div class="submit-row">
           <span v-if="blockReason" id="run-block" class="caption reason" role="status">{{ blockReason }}</span>
           <span v-else class="caption"><span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> để chạy</span>
+          <label class="no-cache caption" title="Chạy lại mọi bước thay vì dùng lại kết quả của bước giống hệt lần trước">
+            <input v-model="noCache" type="checkbox" /> Bỏ qua kết quả cũ
+          </label>
           <button
             type="submit"
             class="btn btn-primary btn-lg"
@@ -1082,6 +1090,12 @@ ${r.description}`" @click="pick(r.id)">
   align-items: center;
   gap: 14px;
   padding-bottom: 24px;
+}
+.no-cache {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
 }
 .reason {
   color: var(--text-2);

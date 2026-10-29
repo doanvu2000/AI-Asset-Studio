@@ -1,0 +1,42 @@
+id: decal-pack
+name: Bộ decal (nứt, rêu, bẩn, cháy, graffiti)
+description: >-
+  Mỗi dòng 1 decal (vết nứt, rêu, vết bẩn, vết cháy, graffiti / logo sơn) → Z-Image vẽ trên nền trắng phẳng → tách
+  nền theo màu nền (giữ được vết nứt mảnh, bụi loang) hoặc BiRefNet (logo, sticker khối đặc) → màu khử nền trắng,
+  mép mờ dần để không lộ khung vuông → normal map (vết tối là lõm) → duyệt. Xuất Unity URP Decal Projector prefab
+  + material Shader Graphs/Decal, Godot node Decal (.tscn) gắn sẵn albedo + normal.
+inputs:
+  prompt: {type: text, multiline: true, label: Decal (mỗi dòng 1),
+           placeholder: "wall cracks\nmoss patch\ndirt stain\nscorch mark\nred graffiti tag"}
+  style: {type: text, default: "realistic game texture", label: Phong cách chung}
+  alpha: {type: enum, default: key, options: [key, birefnet], label: "Tách nền (key = theo nền trắng, birefnet = vật khối)"}
+  size: {type: int, default: 512, options: [256, 512, 1024], label: Cỡ decal (px)}
+  width_m: {type: float, default: 1.0, min: 0.05, max: 20, label: Cỡ decal trong engine (m, cạnh dài)}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+rules:
+  - max_lines: {prompt: 12}
+steps:
+  - id: gen
+    kind: comfy.t2i_zimage_turbo
+    params:
+      "57:27.text": "flat top-down photo of ${inputs.prompt | lines} on a plain clean pure white surface, the mark lies flat in the surface like paint or a stain, irregular natural organic outline, filled in, never a ring or a circle outline, ${inputs.style}, orthographic, flat even lighting, no cast shadow, no 3D object, no frame, no border, no text, centered with a wide empty white margin around it"
+      "57:13.width": 1024
+      "57:13.height": 1024
+    map_param: "57:27.text"
+  - id: rmbg
+    kind: comfy.remove_bg_birefnet
+    in: {image: gen.images}
+    map: image
+  - id: pack
+    kind: op.decal_pack
+    in: {images: gen.images, cutout: rmbg.images}
+    params: {names: "${inputs.prompt}", alpha: "${inputs.alpha}", size: "${inputs.size}", width_m: "${inputs.width_m}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: pack.preview, images: pack.images, normals: pack.normals, decals: pack.decals}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  normals: approve.normals
+  preview: approve.preview
+  decals: approve.decals

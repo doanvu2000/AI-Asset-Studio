@@ -24,13 +24,16 @@ datas = [
     (str(PKG / "adapters" / "blender" / "fracture_bpy.py"), "studio_core/adapters/blender"),
     (str(PKG / "adapters" / "blender" / "retex_math.py"), "studio_core/adapters/blender"),
     (str(PKG / "adapters" / "blender" / "retex_bpy.py"), "studio_core/adapters/blender"),
+    (str(PKG / "adapters" / "blender" / "modular_bpy.py"), "studio_core/adapters/blender"),
+    (str(PKG / "adapters" / "blender" / "modular_math.py"), "studio_core/adapters/blender"),
+    (str(PKG / "adapters" / "blender" / "trim_math.py"), "studio_core/adapters/blender"),
     # Op cache keys hash these sources (ops/executors.py: ops_source_hash).
     (str(PKG / "ops" / "*.py"), "studio_core/ops"),
 ]
 
 # app.py loads plugins and the engine via importlib, which static analysis cannot follow.
 hiddenimports = [
-    *collect_submodules("studio_core", filter=lambda name: not name.endswith((".blender.worker", ".blender.fracture_bpy", ".blender.retex_bpy"))),
+    *collect_submodules("studio_core", filter=lambda name: not name.endswith((".blender.worker", ".blender.fracture_bpy", ".blender.retex_bpy", ".blender.modular_bpy"))),
     *collect_submodules("uvicorn"),
     *collect_submodules("mcp", filter=lambda name: not name.startswith("mcp.cli")),
     *collect_submodules("claude_agent_sdk"),

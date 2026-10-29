@@ -217,6 +217,9 @@ def _unity_stage(export_dir: Path, project: Path) -> str:
     dst = script_dir / "AssetStudioPreview.cs"
     if not dst.is_file() or dst.read_bytes() != src:
         dst.write_bytes(src)
+    # An empty/"."/".." name would point target at the shared AssetStudio folder (or above) and rmtree other exports.
+    if export_dir.name in ("", ".", "..") or not export_dir.is_dir():
+        raise ValueError(f"export_dir must be an existing named folder: {export_dir!r}")
     target = project / "Assets" / UNITY_FOLDER / export_dir.name
     if target.exists():
         shutil.rmtree(target)

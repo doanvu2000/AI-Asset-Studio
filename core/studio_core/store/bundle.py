@@ -237,6 +237,24 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
     from studio_core.export.mesh_retexture import retexture_doc
 
     src.retexture = retexture_doc(step, blobs)
+    from studio_core.export.modular import modular_set
+    from studio_core.export.trim import decal_set, trim_doc
+
+    src.trim = trim_doc(step, blobs)
+    src.decals_doc, src.decals = decal_set(step, blobs)
+    src.modular, src.modular_obj = modular_set(step, blobs)
+    from studio_core.export.terrain import terrain_set
+
+    src.terrain, src.terrain_files = terrain_set(step, blobs)
+    from studio_core.export.ui_screen import screen_doc
+
+    src.ui_screen = screen_doc(step, blobs)
+    from studio_core.export.vfx_particles import vfx_set
+
+    src.vfx, src.vfx_files = vfx_set(step, blobs)
+    from studio_core.export.minimap import minimap_set
+
+    src.minimap, src.minimap_files = minimap_set(step, blobs)
     return src
 
 
@@ -382,7 +400,8 @@ def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
             or bool(src.audio) or bool(src.ui) or bool(src.pbr) or bool(src.fbx)
             or bool(src.rarity) or bool(src.luts) or bool(src.damage_states)
             or bool(src.parallax) or bool(src.image_layers) or bool(src.localized) or bool(src.npc)
-            or bool(src.autotile) or bool(src.font) or bool(src.skybox))
+            or bool(src.autotile) or bool(src.font) or bool(src.skybox) or bool(src.decals) or bool(src.terrain)
+            or bool(src.vfx) or bool(src.minimap))
 
 
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,

@@ -81,6 +81,26 @@ class Source:
     destructible: dict[str, Any] | None = None
     # Retextured mesh (op.project_bake): its retexture.json report; GLBs are in `glb`, maps in `pbr`.
     retexture: dict[str, Any] | None = None
+    # 3D terrain (op.terrain_pack): its terrain.json doc and paths by key (raw, heightmap, splat, <role>_<map>).
+    terrain: dict[str, Any] | None = None
+    terrain_files: dict[str, Path] = field(default_factory=dict)
+    # UI screen (op.ui_screen): its ui_screen.json (normalized layout + sprite names); the sprites are in `ui`.
+    ui_screen: dict[str, Any] | None = None
+    # Particle VFX pack (op.vfx_particles): its vfx_particles.json doc and texture paths by key (soft_dot, smoke...).
+    vfx: dict[str, Any] | None = None
+    vfx_files: dict[str, Path] = field(default_factory=dict)
+    # Minimap (op.minimap_finish): its minimap.json doc (POIs) and paths by key (map, mask, framed).
+    minimap: dict[str, Any] | None = None
+    minimap_files: dict[str, Path] = field(default_factory=dict)
+    # Trim sheet (op.trim_sheet): its trim.json; the atlas and its maps are in `pbr`.
+    trim: dict[str, Any] | None = None
+    # Decal pack (op.decal_pack): its decal.json and (name, albedo RGBA, normal) per decal.
+    decals_doc: dict[str, Any] | None = None
+    decals: list[tuple[str, Path, Path]] = field(default_factory=list)
+    # Modular kit (blender.modular_kit): its modular.json and the per-piece OBJ meshes (name, path); FBX/GLB are in
+    # `fbx` / `glb`, the trim material in `pbr`.
+    modular: dict[str, Any] | None = None
+    modular_obj: list[tuple[str, Path]] = field(default_factory=list)
     # Set when the export asked for traced 2D colliders + foot pivot on the sprite sheet (export/collider.py).
     collider: Any = None
 

@@ -1,0 +1,37 @@
+id: spine-physics
+name: Vật lý Spine cho tóc, áo choàng, váy, đuôi
+description: >-
+  Skeleton Spine 4.2 (từ spine-character* hoặc có sẵn) + atlas → tìm phần phụ theo tên xương / slot (tóc, áo choàng,
+  váy, khăn, đuôi, dây, tai). Chuỗi xương sẵn có dùng luôn; phần ảnh cứng treo dưới xương cha được chia chuỗi 2–4
+  xương mới và thành mesh weight theo chuỗi (dáng đứng không đổi) → thêm physics constraint Spine 4.2 theo preset (tóc
+  nhẹ, vải nặng, đuôi, dây, tai) → kiểm định dạng → ảnh QA + spine-player xem walk lắc → duyệt. Cần spine-unity /
+  spine-godot 4.2 trở lên. Không dùng GPU.
+inputs:
+  skeleton: {type: file, ext: [json], label: Skeleton JSON (Spine 4.2)}
+  atlas: {type: file, ext: [atlas, txt], siblings: atlas_pages, label: "Atlas (các trang png cùng thư mục tự đi kèm)"}
+  parts: {type: text, default: auto, label: "Phần phụ (auto = theo tên | tên,tên — vd cape,hair)"}
+  preset: {type: enum, default: auto, options: [auto, hair, cloth, tail, rope, ear],
+           label: "Preset (auto = theo tên phần; hair nhẹ, cloth nặng)"}
+  segments: {type: enum, default: auto, options: [auto, "2", "3", "4"], label: Số xương chia cho phần ảnh cứng}
+  strength: {type: float, default: 1.0, min: 0.2, max: 3, label: "Độ cứng lò xo (thấp = lắc nhiều)"}
+  wind: {type: float, default: 0, min: -200, max: 200, label: Gió (ngang)}
+  gravity: {type: float, default: 0, min: -200, max: 400, label: Trọng lực thêm}
+  skin_parts: {type: text, default: auto, label: "Skin ghép để render QA (auto = skin đầu mỗi nhóm | skin,skin)"}
+steps:
+  - id: physics
+    kind: op.spine_physics
+    in: {skeleton: inputs.skeleton, atlas: inputs.atlas}
+    params: {parts: "${inputs.parts}", preset: "${inputs.preset}", segments: "${inputs.segments}",
+             strength: "${inputs.strength}", wind: "${inputs.wind}", gravity: "${inputs.gravity}",
+             skin: "${inputs.skin_parts}"}
+  - id: approve
+    kind: gate.approve
+    in: {skeleton: physics.skeleton, atlas: physics.atlas, texture: physics.texture, preview: physics.preview,
+         html: physics.html, report: physics.report}
+outputs:
+  final: approve.skeleton
+  skeleton: approve.skeleton
+  atlas: approve.atlas
+  texture: approve.texture
+  preview: approve.preview
+  html: approve.html

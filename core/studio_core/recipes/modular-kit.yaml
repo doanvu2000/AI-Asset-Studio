@@ -1,0 +1,48 @@
+id: modular-kit
+name: Bộ mảnh modular (tường, cửa, góc, sàn, cầu thang) + trim sheet
+description: >-
+  Phong cách (gạch, gỗ, sci-fi…) → preset trim sheet modular (tường, sàn, cột, phào, chân tường, khung, bậc, lan can…)
+  → Z-Image vẽ từng dải, liền mạch ngang, map PBR → Blender dựng bộ mảnh theo lưới 1/2/4 m bằng bmesh: wall,
+  wall_window, wall_door, corner_out/in, floor, ceiling, stair, pillar, railing — pivot góc dưới-trái, kích thước đúng
+  bội lưới, trim vát cạnh, mỗi mặt UV vào dải theo tên → kiểm bounds, đầu mảnh khớp tường kề, tam giác/mảnh → phòng
+  mẫu ghép + ảnh render → duyệt. Xuất GLB/FBX/OBJ từng mảnh, Unity prefab + BoxCollider + phòng mẫu, Godot MeshLibrary
+  .tres cho GridMap + scene phòng mẫu.
+inputs:
+  style: {type: text, label: Phong cách, placeholder: "medieval stone castle with dark oak trims"}
+  asset: {type: text, default: kit, label: Tên asset}
+  grid: {type: int, default: 2, options: [1, 2, 4], label: Lưới (m)}
+  storey: {type: int, default: 0, min: 0, max: 4, label: "Chiều cao tầng (số ô, 0 = tự ≥ 3 m)"}
+  pieces: {type: text, default: all, label: "Mảnh (all hoặc: wall, wall_window, wall_door, corner_out, corner_in, floor, ceiling, stair, pillar, railing)"}
+  max_tris: {type: int, default: 2000, min: 200, max: 20000, label: Tam giác tối đa mỗi mảnh}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: layout
+    kind: trim.layout
+    params: {style: "${inputs.style}", mode: preset, preset: modular, grid: "${inputs.grid}", storey: "${inputs.storey}"}
+  - id: strips
+    kind: trim.strips
+    in: {layout: layout.json}
+  - id: sheet
+    kind: op.trim_sheet
+    in: {images: strips.images, layout: layout.json}
+    params: {asset: "${inputs.asset}", size: 2048}
+  - id: kit
+    kind: blender.modular_kit
+    in: {trim: sheet.trim, maps: sheet.maps}
+    params: {asset: "${inputs.asset}", grid: "${inputs.grid}", storey: "${inputs.storey}", pieces: "${inputs.pieces}",
+             max_tris: "${inputs.max_tris}"}
+  - id: room_view
+    kind: blender.render_dirs
+    in: {mesh: kit.room}
+    params: {count: 4, res: 512, elevation: 35}
+  - id: approve
+    kind: gate.approve
+    in: {preview: room_view.images, sheet: sheet.preview, meshes: kit.meshes, room: kit.room, fbx: kit.fbx,
+         obj: kit.obj, report: kit.report, maps: sheet.maps, material: sheet.material, trim: sheet.trim}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.meshes
+  preview: approve.preview
+  room: approve.room
+  fbx: approve.fbx
+  report: approve.report

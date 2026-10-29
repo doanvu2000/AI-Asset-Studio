@@ -1,0 +1,47 @@
+id: vfx-particles
+name: Bộ VFX hạt (particle) Unity / Godot
+description: >-
+  Chọn preset (nổ, hồi máu, nhặt đồ, vệt đạn, bụi bước chân, tia va chạm, hào quang phép) → vẽ texture hạt nền trong
+  bằng CPU (chấm mềm, tia lửa, 4 làn khói, vòng, vệt chém, sao, ấn phép) → tuỳ chọn Z-Image vẽ texture có style
+  (lửa, phép...) trên nền đen rồi tách thành ô cộng sáng → preset emitter trung lập (vfx_particles.json) + ảnh xem
+  thử + flipbook tia va chạm cho hit-FX → duyệt. Xuất Unity (prefab ParticleSystem, TrailRenderer cho đạn, material
+  Built-in tự đổi sang URP) và Godot (GPUParticles2D + ParticleProcessMaterial, bản 3D, scene demo).
+inputs:
+  presets: {type: text, label: "Preset (phẩy)",
+            default: "explosion, heal, pickup, projectile_trail, dust_step, hit_spark, magic_aura"}
+  tint: {type: text, default: auto, label: "Màu chủ đạo (auto = màu riêng từng preset, hoặc #rrggbb)"}
+  size: {type: int, default: 128, options: [64, 128, 256], label: Cỡ texture (px)}
+  style: {type: text, required: false, default: "", label: "Texture có style (tuỳ chọn, Z-Image)",
+          placeholder: "swirling orange fire flames"}
+  asset: {type: text, default: vfx, label: Tên asset}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: plan
+    kind: op.vfx_style_plan
+    params: {style: "${inputs.style}"}
+  # Runs once per prompt in the plan: none when style is blank, so no ComfyUI call then.
+  - id: styled
+    kind: comfy.t2i_zimage_turbo
+    params:
+      "57:27.text": ["${steps.plan.plan.prompts}"]
+      "57:13.width": 768
+      "57:13.height": 768
+      "57:13.batch_size": 4
+    map_param: "57:27.text"
+  - id: pack
+    kind: op.vfx_particles
+    in: {styled: styled.images}
+    params: {asset: "${inputs.asset}", presets: "${inputs.presets}", tint: "${inputs.tint}", size: "${inputs.size}"}
+  - id: hit_sheet
+    kind: op.sheet
+    in: {images: pack.hit_frames}
+    params: {cols: 8, flipbook: oneshot, fps: 24}
+  - id: approve
+    kind: gate.approve
+    in: {preview: pack.preview, images: pack.images, vfx: pack.vfx}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  vfx: approve.vfx
+  hit_spark: hit_sheet.sheet

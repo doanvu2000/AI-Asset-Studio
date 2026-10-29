@@ -35,6 +35,8 @@ import upscale from './recipe-upscale.webp'
 import uiKit from './recipe-ui-kit.webp'
 import uiKitStyle from './recipe-ui-kit-style.webp'
 import iconPack from './recipe-icon-pack.webp'
+import uiScreen from './recipe-ui-screen.webp'
+import uiScreenPrompt from './recipe-ui-screen-prompt.webp'
 import spineCharacterImage from './recipe-spine-character-image.webp'
 import enemyVariants from './recipe-enemy-variants.webp'
 import restyleFolder from './recipe-restyle-folder.webp'
@@ -42,10 +44,25 @@ import spriteAnimVideo from './recipe-sprite-anim-video.webp'
 import propDestructible from './recipe-prop-destructible.webp'
 import meshRetexture from './recipe-mesh-retexture.webp'
 import skybox360 from './recipe-skybox-360.webp'
+import trimSheet from './recipe-trim-sheet.webp'
+import decalPack from './recipe-decal-pack.webp'
+import modularKit from './recipe-modular-kit.webp'
+import itemSpin from './recipe-item-spin.webp'
+import uiJuice from './recipe-ui-juice.webp'
+import spinePhysics from './recipe-spine-physics.webp'
+import vfxParticles from './recipe-vfx-particles.webp'
+import terrain3d from './recipe-terrain-3d.webp'
+import minimap from './recipe-minimap.webp'
+import libraryImport from './recipe-library-import.webp'
 
 export const ART = { appIcon, appLogo, emptyRuns, emptyGates, emptyGallery, coreDisconnected, gettingStarted } as const
 
 const RECIPE_ART: Record<string, string> = {
+  'item-spin': itemSpin,
+  'item-spin-image': itemSpin,
+  'ui-juice': uiJuice,
+  minimap,
+  'spine-physics': spinePhysics,
   'concept-2d': concept2d,
   'concept-2d-codex': concept2dCodex,
   'concept-2d-brief': concept2dBrief,
@@ -80,13 +97,21 @@ const RECIPE_ART: Record<string, string> = {
   'ui-kit': uiKit,
   'ui-kit-style': uiKitStyle,
   'icon-pack': iconPack,
+  'ui-screen': uiScreen,
+  'ui-screen-prompt': uiScreenPrompt,
   'vfx-flipbook': vfxFlipbook,
+  'vfx-particles': vfxParticles,
   'prop-destructible': propDestructible,
   'mesh-retexture': meshRetexture,
   'enemy-variants': enemyVariants,
   'restyle-folder': restyleFolder,
   'sprite-anim-video': spriteAnimVideo,
-  'skybox-360': skybox360
+  'trim-sheet': trimSheet,
+  'decal-pack': decalPack,
+  'modular-kit': modularKit,
+  'skybox-360': skybox360,
+  'terrain-3d': terrain3d,
+  'library-import': libraryImport
 }
 
 export function recipeArt(id: string): string | undefined {
@@ -95,6 +120,11 @@ export function recipeArt(id: string): string | undefined {
 
 // What a card promises, in the user's words; the step list stays in the tooltip-level detail.
 const RECIPE_PITCH: Record<string, string> = {
+  'item-spin': 'Mesh vật phẩm GLB → Blender quay vòng 12/16/24 frame, trục ở tâm ô → sheet lặp liền + GIF / WebP, clip Unity / Godot',
+  minimap: 'Ảnh màn / bản đồ Tiled, LDtk → minimap tròn gọn nét hoặc giấy cũ / vẽ tay, icon POI đúng chỗ + JSON toạ độ, prefab Unity / scene Godot',
+  'item-spin-image': 'Ảnh đồng xu / huy hiệu phẳng → xoay vòng giả 3D (mặt sau, viền dày) → sheet lặp liền + GIF / WebP, chạy CPU',
+  'ui-juice': 'Nút / icon → vòng lặp dải sáng quét, quầng sáng phập phồng, nhún, sao lấp lánh → sheet + GIF / WebP, chạy CPU',
+  'spine-physics': 'Nhân vật Spine 4.2 → tóc, áo choàng, váy, đuôi tự lắc theo physics constraint, phần ảnh cứng chia chuỗi xương + mesh',
   'concept-2d': 'Prompt → ảnh PNG nền trong suốt',
   'concept-2d-codex': 'Prompt → ảnh PNG nền trong suốt, không cần GPU',
   'concept-2d-brief': 'Ý tưởng ngắn → Claude viết prompt → ảnh PNG nền trong suốt',
@@ -126,12 +156,15 @@ const RECIPE_PITCH: Record<string, string> = {
   'npc-pack-prompt': 'Prompt → chân dung NPC → 8 biểu cảm + thoại đúng giọng (vi/en) + giọng đọc + phụ đề, xuất Unity/Godot',
   'npc-voice-csv': 'CSV thoại (id,lang,text,expression) → giọng đọc OGG + phụ đề có mốc thời gian, không cần GPU',
   'vfx-flipbook': 'Prompt → hiệu ứng VFX nền trong suốt → chuỗi frame / flipbook',
+  'vfx-particles': 'Bộ hiệu ứng hạt: nổ, hồi máu, nhặt đồ, vệt đạn, bụi, tia va chạm, hào quang → texture + prefab ParticleSystem Unity / GPUParticles Godot, chạy CPU',
   'concept-2d-style': 'Ảnh phong cách tham chiếu + prompt → concept 2D cùng phong cách',
   'spine-skin-variant': 'Nhân vật Spine + ảnh sửa → skin mới, tô lại atlas giữ nguyên xương',
   'spine-anim-ref': 'Nhân vật Spine + video tham chiếu → anim mới cho bộ xương sẵn có',
   'ui-kit': 'Chủ đề → bộ nút, khung, thanh, ô có viền 9-slice + trạng thái nút, xuất Unity/Godot',
   'ui-kit-style': 'Ảnh style tham chiếu + chủ đề → bộ UI 9-slice cùng phong cách',
   'icon-pack': 'Mỗi dòng 1 icon → cả bộ icon cùng khung, nét viền, đổ bóng',
+  'ui-screen': 'Loại màn + bộ ui-kit → Claude bố cục, mockup 16:9 / 20:9 / 4:3 trong vùng an toàn, xuất prefab UGUI + UXML / scene Godot + Theme',
+  'ui-screen-prompt': 'Chủ đề → Z-Image vẽ bộ kit 9-slice → Claude bố cục màn home / shop / thắng / thua… → prefab Unity, scene Godot',
   upscale: 'Ảnh / atlas có sẵn → bản x2, x4 nét hơn, nền trong suốt vẫn sạch',
   'pbr-material': 'Texture có sẵn → bộ map PBR (normal, height, roughness, metallic, AO) + material Unity/Godot, không cần GPU',
   'sprite-normal-map': 'Sprite / sheet → normal map 2D (viền vát tròn theo alpha, từng khung) để nhận Light2D, chạy CPU',
@@ -154,7 +187,12 @@ const RECIPE_PITCH: Record<string, string> = {
   'prop-destructible': 'Prop 3D có sẵn → bản vỡ 8–40 mảnh kín (đều / quanh điểm va chạm / thanh gỗ), mặt cắt có texture, khối lượng theo thể tích → prefab Unity + scene Godot vật lý',
   'enemy-variants': 'Sheet 8 hướng / anim có sẵn → biến thể lửa, băng, độc, elite đổi màu theo vùng, thêm sừng / mũ bám đúng từng khung, giữ nguyên ô + clip',
   'sprite-anim-video': '1 ảnh nhân vật + động tác (thở, đi, chạy, chém, nhảy, bị đánh) → video AI → 8/12/16 frame lặp liền, chân đứng yên, sheet có clip cho Unity / Godot / Aseprite',
-  'skybox-360': 'Mô tả bầu trời / phông cảnh → panorama 360° liền mép, xem kéo xoay → 6 mặt cube + hướng nắng, skybox Unity / Godot gắn sẵn'
+  'skybox-360': 'Mô tả bầu trời / phông cảnh → panorama 360° liền mép, xem kéo xoay → 6 mặt cube + hướng nắng, skybox Unity / Godot gắn sẵn',
+  'terrain-3d': 'Mô tả địa hình → Claude đặt núi, đồi, hồ, biển, sông → heightmap 16-bit có xói mòn + 4 lớp texture PBR (+ skybox tuỳ chọn) → Terrain Unity / mesh LOD + collision Godot',
+  'trim-sheet': 'Phong cách → Claude chọn dải (tường, phào, khung, chân tường…) → trim sheet 2048 lặp ngang liền mạch + map PBR + trim.json để map UV theo tên dải',
+  'decal-pack': 'Mỗi dòng 1 vết (nứt, rêu, bẩn, cháy, graffiti) → decal nền trong + normal map → URP Decal Projector prefab / Godot Decal',
+  'modular-kit': 'Phong cách → bộ mảnh theo lưới 1/2/4 m: tường, cửa sổ, cửa, góc, sàn, trần, cầu thang, cột, lan can map trim sheet → prefab Unity + MeshLibrary GridMap Godot',
+  'library-import': 'File có sẵn (ảnh, GLB / FBX, JSON, atlas) → phiên bản trong Thư viện gắn vào project, duyệt / tìm tương tự / đóng gói như asset sinh ra, không cần GPU'
 }
 
 export function recipePitch(id: string): string | undefined {
@@ -176,6 +214,6 @@ export const RECIPE_GROUP_LABEL: Record<RecipeGroup, string> = {
 export function recipeGroup(id: string): RecipeGroup {
   if (id.startsWith('audio-')) return 'audio'
   if (id.startsWith('sprite-') || id.startsWith('spine-') || id.startsWith('npc-') || id.startsWith('enemy-') || id.includes('character')) return 'character'
-  if (id.includes('3d') || id.includes('glb') || id.includes('mesh') || id.startsWith('skybox') || id.startsWith('prop-')) return '3d'
+  if (id.includes('3d') || id.includes('glb') || id.includes('mesh') || id.startsWith('skybox') || id.startsWith('prop-') || id.startsWith('modular-')) return '3d'
   return '2d'
 }

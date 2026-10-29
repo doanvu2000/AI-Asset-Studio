@@ -3,11 +3,12 @@ import { ART } from '@/assets/art'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { motion } from 'motion-v'
-import { FolderKanban, Images, Inbox, Layers, LayoutDashboard, ListChecks, Plus, Settings, Workflow } from '@lucide/vue'
+import { FolderKanban, Images, Inbox, Layers, LayoutDashboard, ListChecks, Plus, ScanSearch, Settings, Workflow } from '@lucide/vue'
 import { useRuns } from '@/stores/runs'
 import { useGates } from '@/stores/gates'
 import { useConnection } from '@/stores/connection'
 import TweenNumber from './TweenNumber.vue'
+import AgentActivity from './AgentActivity.vue'
 
 defineProps<{ compact?: boolean }>()
 
@@ -39,7 +40,8 @@ const groups = computed(() => [
     title: 'Công cụ',
     items: [
       { to: '/recipes', name: 'recipes', label: 'Quy trình', icon: Workflow, badge: 0, busy: false, key: '6' },
-      { to: '/batch', name: 'batch', label: 'Hàng loạt', icon: Layers, badge: 0, busy: false, key: '7' }
+      { to: '/batch', name: 'batch', label: 'Hàng loạt', icon: Layers, badge: 0, busy: false, key: '7' },
+      { to: '/audit', name: 'audit', label: 'Kiểm tra project', icon: ScanSearch, badge: 0, busy: false, key: '9' }
     ]
   }
 ])
@@ -103,6 +105,7 @@ const status = computed(() => {
       </template>
     </nav>
 
+    <AgentActivity class="agent-slot" :compact="compact" />
     <nav class="nav-foot" aria-label="Cài đặt">
       <RouterLink
         to="/settings"
@@ -245,6 +248,12 @@ nav {
 .count.human {
   color: var(--bg-content);
   background: var(--st-human);
+}
+.agent-slot {
+  margin-top: auto;
+}
+.agent-slot + .nav-foot {
+  margin-top: 0;
 }
 .nav-foot {
   -webkit-app-region: no-drag;

@@ -1,0 +1,697 @@
+"""UI screen export (op.ui_screen): Unity UGUI prefab (Canvas Scaler, sliced Images, Buttons with sprite swap, legacy
+Text) + UI Toolkit UXML/USS, Godot Control scene + Theme (StyleBoxTexture 9-slice). The sprites themselves go out
+through the ui_slices.json path (UI/<name>.png) the same step carries."""
+from __future__ import annotations
+
+import json
+from typing import Any
+from xml.sax.saxutils import quoteattr
+
+from studio_core.contracts import BlobStore, StepRow
+from studio_core.export.source import Files, Source
+from studio_core.ops.ui_screen import fill_rect
+
+SPRITE_FILE_ID = 21300000
+FONT_FILE_ID = 12800000
+LEGACY_FONT = "{fileID: 10102, guid: 0000000000000000e000000000000000, type: 0}"
+UGUI = {"Image": "fe87c0e1cc204ed48ad3b37840f39efc", "Text": "5f7201a12d95ffc409449d95f23cf332",
+        "Button": "4e29b1a8efbd4b44bb3f3716e73f07ff", "CanvasScaler": "0cd44c1031e13a943bb63640046fad76",
+        "GraphicRaycaster": "dc42784cf147c0c48a680349fa168899", "AspectRatioFitter": "86710e43de46f6f4bac7c8e50813a599",
+        "Outline": "e19747de3f5aca642ab2be37e372fb86"}
+SAFE_AREA_REL = "Scripts/AssetStudioSafeArea.cs"
+SAFE_AREA_CS = """using UnityEngine;
+
+[ExecuteAlways]
+[RequireComponent(typeof(RectTransform))]
+public class AssetStudioSafeArea : MonoBehaviour
+{
+    Rect applied;
+    Vector2Int screen;
+
+    void OnEnable() { Apply(); }
+
+    void Update()
+    {
+        if (Screen.safeArea != applied || Screen.width != screen.x || Screen.height != screen.y) Apply();
+    }
+
+    void Apply()
+    {
+        applied = Screen.safeArea;
+        screen = new Vector2Int(Screen.width, Screen.height);
+        if (Screen.width <= 0 || Screen.height <= 0) return;
+        var rt = (RectTransform)transform;
+        rt.anchorMin = new Vector2(applied.xMin / Screen.width, applied.yMin / Screen.height);
+        rt.anchorMax = new Vector2(applied.xMax / Screen.width, applied.yMax / Screen.height);
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+    }
+}
+"""
+GODOT_SAFE_AREA = """extends Control
+## Shrinks this full-rect Control to the display safe area (notch, home bar) on phones; desktop keeps the window.
+
+
+func _ready() -> void:
+	get_viewport().size_changed.connect(_apply)
+	_apply()
+
+
+func _apply() -> void:
+	if not OS.has_feature("mobile"):
+		return
+	var safe := Rect2(DisplayServer.get_display_safe_area())
+	var win := Vector2(DisplayServer.window_get_size())
+	if win.x <= 0.0 or win.y <= 0.0 or safe.size.x <= 0.0:
+		return
+	anchor_left = safe.position.x / win.x
+	anchor_top = safe.position.y / win.y
+	anchor_right = safe.end.x / win.x
+	anchor_bottom = safe.end.y / win.y
+	offset_left = 0.0
+	offset_top = 0.0
+	offset_right = 0.0
+	offset_bottom = 0.0
+"""
+
+
+def safe_area_cs(asset: str) -> str:
+    """One copy per exported screen, each in its own namespace: several screens dropped into one project must not
+    collide on the class name (Unity also re-GUIDs duplicate .meta files)."""
+    from studio_core.export.sheet import CS_NAMESPACE, cs_namespace, ident
+
+    return cs_namespace(SAFE_AREA_CS, f"{CS_NAMESPACE}.{ident(asset, 'Screen')}")
+
+
+def screen_doc(step: StepRow, blobs: BlobStore) -> dict[str, Any] | None:
+    from studio_core.ops.ui_screen import SCREEN_FILE, SCREEN_TYPE
+
+    for refs in step.outputs.values():
+        for ref in refs:
+            if (ref.name or "") != SCREEN_FILE:
+                continue
+            try:
+                doc = json.loads(blobs.path(ref.hash).read_bytes())
+            except (OSError, ValueError):
+                return None
+            return doc if isinstance(doc, dict) and doc.get("type") == SCREEN_TYPE and doc.get("nodes") else None
+    return None
+
+
+def _f(v: float) -> str:
+    return f"{v:.6g}"
+
+
+def _rgba(hex_: str) -> tuple[float, float, float]:
+    h = hex_.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))  # type: ignore[return-value]
+
+
+def _anchors(rect: list[float]) -> tuple[float, float, float, float]:
+    """Layout rects are top-left origin fractions; Unity anchors are bottom-left: (minX, minY, maxX, maxY)."""
+    x, y, w, h = rect
+    return x, 1 - (y + h), x + w, 1 - y
+
+
+class _Prefab:
+    """Collects GameObject/component documents of one prefab with deterministic local file ids."""
+
+    def __init__(self, asset: str):
+        from studio_core.export.unity import file_id
+
+        self.asset = asset
+        self.fid = lambda *p: file_id("ui_screen", asset, *p)
+        self.docs: list[str] = []
+        self.children: dict[str, list[int]] = {}
+
+    def go(self, key: str, name: str, comps: list[int]) -> int:
+        g = self.fid(key, "go")
+        comp = "".join(f"  - component: {{fileID: {c}}}\n" for c in comps)
+        self.docs.append(f"""--- !u!1 &{g}
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {{fileID: 0}}
+  m_PrefabInstance: {{fileID: 0}}
+  m_PrefabAsset: {{fileID: 0}}
+  serializedVersion: 6
+  m_Component:
+{comp}  m_Layer: 5
+  m_Name: {name}
+  m_TagString: Untagged
+  m_Icon: {{fileID: 0}}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+""")
+        return g
+
+    def rect(self, key: str, parent: str | None, anchors: tuple[float, float, float, float]) -> int:
+        rt = self.fid(key, "rt")
+        if parent is not None:
+            self.children.setdefault(parent, []).append(rt)
+        self.docs.append(("RT", key, parent, anchors, rt))  # type: ignore[arg-type]
+        return rt
+
+    def _rt_doc(self, key: str, parent: str | None, a: tuple[float, float, float, float], rt: int) -> str:
+        kids = self.children.get(key, [])
+        kid_s = "".join(f"  - {{fileID: {c}}}\n" for c in kids)
+        father = self.fid(parent, "rt") if parent is not None else 0
+        return f"""--- !u!224 &{rt}
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {{fileID: 0}}
+  m_PrefabInstance: {{fileID: 0}}
+  m_PrefabAsset: {{fileID: 0}}
+  m_GameObject: {{fileID: {self.fid(key, "go")}}}
+  m_LocalRotation: {{x: 0, y: 0, z: 0, w: 1}}
+  m_LocalPosition: {{x: 0, y: 0, z: 0}}
+  m_LocalScale: {{x: 1, y: 1, z: 1}}
+  m_ConstrainProportionsScale: 0
+  m_Children:{" []" if not kids else chr(10) + kid_s.rstrip(chr(10))}
+  m_Father: {{fileID: {father}}}
+  m_LocalEulerAnglesHint: {{x: 0, y: 0, z: 0}}
+  m_AnchorMin: {{x: {_f(a[0])}, y: {_f(a[1])}}}
+  m_AnchorMax: {{x: {_f(a[2])}, y: {_f(a[3])}}}
+  m_AnchoredPosition: {{x: 0, y: 0}}
+  m_SizeDelta: {{x: 0, y: 0}}
+  m_Pivot: {{x: 0.5, y: 0.5}}
+"""
+
+    def comp(self, key: str, kind: str, body: str, class_id: int = 114) -> int:
+        c = self.fid(key, kind)
+        head = "MonoBehaviour" if class_id == 114 else {222: "CanvasRenderer", 223: "Canvas"}[class_id]
+        extra = ""
+        if class_id == 114:
+            extra = "  m_Enabled: 1\n  m_EditorHideFlags: 0\n"
+        elif class_id == 223:
+            extra = "  m_Enabled: 1\n"
+        self.docs.append(f"""--- !u!{class_id} &{c}
+{head}:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {{fileID: 0}}
+  m_PrefabInstance: {{fileID: 0}}
+  m_PrefabAsset: {{fileID: 0}}
+  m_GameObject: {{fileID: {self.fid(key, "go")}}}
+{extra}{body}""")
+        return c
+
+    def text(self) -> str:
+        out = ["%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n"]
+        for d in self.docs:
+            out.append(self._rt_doc(*d[1:]) if isinstance(d, tuple) else d)
+        return "".join(out)
+
+
+def _script(guid: str, file_id: int = 11500000) -> str:
+    return f"  m_Script: {{fileID: {file_id}, guid: {guid}, type: 3}}\n  m_Name: \n  m_EditorClassIdentifier: \n"
+
+
+_GRAPHIC = """  m_Material: {{fileID: 0}}
+  m_Color: {{r: {r}, g: {g}, b: {b}, a: 1}}
+  m_RaycastTarget: {ray}
+  m_RaycastPadding: {{x: 0, y: 0, z: 0, w: 0}}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+"""
+
+
+def _image(sprite_ref: str, sliced: bool, preserve: bool, ppu_mult: float, ray: bool = True) -> str:
+    return _script(UGUI["Image"]) + _GRAPHIC.format(r=1, g=1, b=1, ray=int(ray)) + f"""  m_Sprite: {sprite_ref}
+  m_Type: {1 if sliced else 0}
+  m_PreserveAspect: {int(preserve)}
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: {_f(ppu_mult)}
+"""
+
+
+def _text(text: str, color: str, size: int, align: str, font: str, best_fit: bool) -> str:
+    r, g, b = _rgba(color)
+    anchor = {"left": 3, "center": 4, "right": 5}.get(align, 4)
+    esc = json.dumps(text, ensure_ascii=False)
+    return _script(UGUI["Text"]) + _GRAPHIC.format(r=_f(r), g=_f(g), b=_f(b), ray=0) + f"""  m_FontData:
+    m_Font: {font}
+    m_FontSize: {size}
+    m_FontStyle: {1 if font == LEGACY_FONT else 0}
+    m_BestFit: {int(best_fit)}
+    m_MinSize: {max(1, round(size * 0.6))}
+    m_MaxSize: {size}
+    m_Alignment: {anchor}
+    m_AlignByGeometry: 0
+    m_RichText: 0
+    m_HorizontalOverflow: 0
+    m_VerticalOverflow: 1
+    m_LineSpacing: 1
+  m_Text: {esc}
+"""
+
+
+def _outline() -> str:
+    return _script(UGUI["Outline"]) + """  m_EffectColor: {r: 0.06, g: 0.05, b: 0.09, a: 0.9}
+  m_EffectDistance: {x: 2, y: -2}
+  m_UseGraphicAlpha: 1
+"""
+
+
+def _button(target: int, states: dict[str, str]) -> str:
+    def ref(s: str) -> str:
+        return states.get(s, "{fileID: 0}")
+
+    return _script(UGUI["Button"]) + f"""  m_Navigation:
+    m_Mode: 3
+    m_WrapAround: 0
+    m_SelectOnUp: {{fileID: 0}}
+    m_SelectOnDown: {{fileID: 0}}
+    m_SelectOnLeft: {{fileID: 0}}
+    m_SelectOnRight: {{fileID: 0}}
+  m_Transition: {2 if states else 1}
+  m_Colors:
+    m_NormalColor: {{r: 1, g: 1, b: 1, a: 1}}
+    m_HighlightedColor: {{r: 0.96, g: 0.96, b: 0.96, a: 1}}
+    m_PressedColor: {{r: 0.78, g: 0.78, b: 0.78, a: 1}}
+    m_SelectedColor: {{r: 0.96, g: 0.96, b: 0.96, a: 1}}
+    m_DisabledColor: {{r: 0.78, g: 0.78, b: 0.78, a: 0.5}}
+    m_ColorMultiplier: 1
+    m_FadeDuration: 0.1
+  m_SpriteState:
+    m_HighlightedSprite: {ref("hover")}
+    m_PressedSprite: {ref("pressed")}
+    m_SelectedSprite: {ref("hover")}
+    m_DisabledSprite: {ref("disabled")}
+  m_AnimationTriggers:
+    m_NormalTrigger: Normal
+    m_HighlightedTrigger: Highlighted
+    m_PressedTrigger: Pressed
+    m_SelectedTrigger: Selected
+    m_DisabledTrigger: Disabled
+  m_Interactable: 1
+  m_TargetGraphic: {{fileID: {target}}}
+  m_OnClick:
+    m_PersistentCalls:
+      m_Calls: []
+"""
+
+
+def _sub_anchors(f: list[float] | None) -> tuple[float, float, float, float]:
+    return _anchors(f) if f else (0, 0, 1, 1)
+
+
+def unity_prefab(src: Source, guid_of: Any) -> str:
+    doc = src.ui_screen or {}
+    a = src.asset
+    pf = _Prefab(a)
+    ref_w, ref_h = doc.get("ref") or [1080, 1920]
+    ppu_mult = src.ppu / 100.0
+    sprites = set(doc.get("sprites") or {})
+    states = doc.get("sprites") or {}
+    bmf = doc.get("bitmap_font")
+    font = (f"{{fileID: {FONT_FILE_ID}, guid: {guid_of(f'Fonts/{a}.fontsettings')}, type: 2}}"
+            if bmf and src.font else LEGACY_FONT)
+    sliced_names = {n for n, _, b, _ in src.ui if any(b)}
+
+    def sref(name: str) -> str:
+        return f"{{fileID: {SPRITE_FILE_ID}, guid: {guid_of(f'UI/{name}.png')}, type: 3}}"
+
+    def graphic_go(key: str, name: str, parent: str, anchors: tuple[float, float, float, float],
+                   bodies: list[tuple[str, str]]) -> dict[str, int]:
+        rt = pf.rect(key, parent, anchors)
+        ids = {"rt": rt}
+        comps = [rt]
+        if bodies:
+            ids["cr"] = pf.comp(key, "cr", "  m_CullTransparentMesh: 1\n", 222)
+            comps.append(ids["cr"])
+        for kind, body in bodies:
+            ids[kind] = pf.comp(key, kind, body)
+            comps.append(ids[kind])
+        pf.go(key, name, comps)
+        return ids
+
+    root_rt = pf.rect("Root", None, (0, 0, 0, 0))
+    canvas = pf.comp("Root", "canvas", """  serializedVersion: 3
+  m_RenderMode: 0
+  m_Camera: {fileID: 0}
+  m_PlaneDistance: 100
+  m_PixelPerfect: 0
+  m_ReceivesEvents: 1
+  m_OverrideSorting: 0
+  m_OverridePixelPerfect: 0
+  m_SortingBucketNormalizedSize: 0
+  m_VertexColorAlwaysGammaSpace: 0
+  m_AdditionalShaderChannelsFlag: 25
+  m_UpdateRectTransformForStandalone: 0
+  m_SortingLayerID: 0
+  m_SortingOrder: 0
+  m_TargetDisplay: 0
+""", 223)
+    scaler = pf.comp("Root", "scaler", _script(UGUI["CanvasScaler"]) + f"""  m_UiScaleMode: 1
+  m_ReferencePixelsPerUnit: 100
+  m_ScaleFactor: 1
+  m_ReferenceResolution: {{x: {ref_w}, y: {ref_h}}}
+  m_ScreenMatchMode: 0
+  m_MatchWidthOrHeight: {_f(float(doc.get("match", 0.5)))}
+  m_PhysicalUnit: 3
+  m_FallbackScreenDPI: 96
+  m_DefaultSpriteDPI: 96
+  m_DynamicPixelsPerUnit: 1
+  m_PresetInfoIsWorld: 0
+""")
+    ray = pf.comp("Root", "raycaster", _script(UGUI["GraphicRaycaster"]) + """  m_IgnoreReversedGraphics: 1
+  m_BlockingObjects: 0
+  m_BlockingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+""")
+    pf.go("Root", a, [root_rt, canvas, scaler, ray])
+    if doc.get("background"):
+        bg = doc["background"]
+        bg_path = next((p for n, p, _, _ in src.ui if n == bg), None)
+        bg_aspect = ref_w / ref_h
+        if bg_path is not None:
+            from PIL import Image
+
+            with Image.open(bg_path) as im:
+                bg_aspect = im.width / max(1, im.height)
+        graphic_go("Background", "Background", "Root", (0, 0, 1, 1),
+                   [("img", _image(sref(bg), False, False, ppu_mult, ray=False)),
+                    ("fit", _script(UGUI["AspectRatioFitter"]) + "  m_AspectMode: 4\n  m_AspectRatio: "
+                     f"{_f(bg_aspect)}\n")])
+    safe_rt = pf.rect("SafeArea", "Root", (0, 0, 1, 1))
+    safe = pf.comp("SafeArea", "safe", _script(guid_of(SAFE_AREA_REL)))
+    pf.go("SafeArea", "SafeArea", [safe_rt, safe])
+
+    for n in doc["nodes"]:
+        key, parent = n["name"], n["parent"] or "SafeArea"
+        anchors = _anchors(n["rect"])
+        t = n["type"]
+        sprite = n.get("sprite") if n.get("sprite") in sprites else None
+        bodies: list[tuple[str, str]] = []
+        if sprite:
+            clickable = t in ("button", "tab")
+            bodies.append(("img", _image(sref(sprite), sprite in sliced_names, False, ppu_mult, clickable)))
+            if t in ("button", "tab"):
+                st = {s: sref(f"{sprite}_{s}") for s in states.get(sprite, [])}
+                bodies.append(("button", _button(pf.fid(key, "img"), st)))
+        elif t == "icon" and n.get("icon_sprite"):
+            bodies.append(("img", _image(sref(n["icon_sprite"]), False, True, ppu_mult, False)))
+        elif t == "label" and n.get("text"):
+            bodies.append(("text", _text(n["text"], n.get("color", "#ffffff"), int(n["font_size"]),
+                                         n.get("align", "center"), font, font == LEGACY_FONT)))
+            bodies.append(("outline", _outline()))
+        graphic_go(key, key, parent, anchors, bodies)
+        if t in ("button", "tab"):
+            if n.get("icon_sprite") and n.get("icon_rect"):
+                graphic_go(f"{key}/Icon", "Icon", key, _sub_anchors(n["icon_rect"]),
+                           [("img", _image(sref(n["icon_sprite"]), False, True, ppu_mult, False))])
+            if n.get("text"):
+                graphic_go(f"{key}/Text", "Text", key, _sub_anchors(n.get("text_rect")),
+                           [("text", _text(n["text"], n.get("color", "#ffffff"), int(n["font_size"]),
+                                           n.get("align", "center"), font, font == LEGACY_FONT)),
+                            ("outline", _outline())])
+        if t == "bar" and n.get("fill_sprite"):
+            fill_name = n["fill_sprite"]
+            graphic_go(f"{key}/Fill", "Fill", key, _anchors(fill_rect(n)),
+                       [("img", _image(sref(fill_name), fill_name in sliced_names, False, ppu_mult, False))])
+    return pf.text()
+
+
+def uxml_files(src: Source) -> tuple[str, str]:
+    doc = src.ui_screen or {}
+    a = src.asset
+    states = doc.get("sprites") or {}
+    borders = {n: b for n, _, b, _ in src.ui}
+    ref_w, ref_h = doc.get("ref") or [1080, 1920]
+    uss = [".as-root { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }",
+           ".as-safe { position: absolute; left: 0; top: 0; right: 0; bottom: 0; }",
+           ".as-node { position: absolute; margin: 0; padding: 0; border-width: 0; background-color: rgba(0,0,0,0);"
+           " -unity-font-style: bold; color: rgb(255,255,255); white-space: nowrap; overflow: hidden; }"]
+
+    def bg(name: str, keep: bool = False) -> str:
+        b = borders.get(name, (0, 0, 0, 0))
+        s = f' background-image: url("../UI/{name}.png");'
+        if any(b):
+            s += (f" -unity-slice-left: {b[0]}; -unity-slice-top: {b[1]}; -unity-slice-right: {b[2]};"
+                  f" -unity-slice-bottom: {b[3]};")
+        if keep:
+            s += " -unity-background-scale-mode: scale-to-fit;"
+        return s
+
+    def pos(f: list[float]) -> str:
+        return (f" left: {f[0] * 100:.3f}%; top: {f[1] * 100:.3f}%; width: {f[2] * 100:.3f}%;"
+                f" height: {f[3] * 100:.3f}%;")
+
+    kids: dict[str, list[str]] = {}
+    for n in doc["nodes"]:
+        name, t = n["name"], n["type"]
+        cls = f"n-{name}"
+        rule = pos(n["rect"])
+        if n.get("sprite"):
+            rule += bg(n["sprite"])
+        elif t == "icon" and n.get("icon_sprite"):
+            rule += bg(n["icon_sprite"], True)
+        if n.get("text"):
+            rule += (f" font-size: {int(n['font_size'])}px; -unity-text-align: middle-{n.get('align', 'center')};"
+                     f" color: {n.get('color', '#ffffff')};")
+            if n.get("text_rect") and t in ("button", "tab"):
+                tr = n["text_rect"]
+                rule += (f" padding-left: {tr[0] * 100:.2f}%; padding-right: {(1 - tr[0] - tr[2]) * 100:.2f}%;")
+        uss.append(f".{cls} {{{rule} }}")
+        for st, pseudo in (("hover", "hover"), ("pressed", "active"), ("disabled", "disabled")):
+            if n.get("sprite") and st in states.get(n["sprite"], []):
+                uss.append(f".{cls}:{pseudo} {{{bg(n['sprite'] + '_' + st)} }}")
+        tag = {"button": "ui:Button", "tab": "ui:Button", "label": "ui:Label"}.get(t, "ui:VisualElement")
+        attrs = f' name="{name}" class="as-node {cls}"' + (f" text={quoteattr(n['text'])}" if n.get("text") else "")
+        inner = ""
+        if t in ("button", "tab") and n.get("icon_sprite") and n.get("icon_rect"):
+            icls = f"n-{name}-icon"
+            uss.append(f".{icls} {{{pos(n['icon_rect'])}{bg(n['icon_sprite'], True)} }}")
+            inner = f'<ui:VisualElement name="Icon" class="as-node {icls}" picking-mode="Ignore" />'
+        kids.setdefault(n["parent"], []).append(f"{tag}{attrs}>{inner}{{children:{name}}}</{tag}>")
+
+    def emit(parent: str, depth: int) -> str:
+        out = []
+        for item in kids.get(parent, []):
+            name = item.split('name="', 1)[1].split('"', 1)[0]
+            body = emit(name, depth + 1)
+            out.append("    " * depth + "<" + item.replace(f"{{children:{name}}}", ("\n" + body + "    " * depth)
+                                                         if body else ""))
+        return "".join(o + "\n" for o in out)
+
+    head = (f'<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">\n'
+            f'    <Style src="{a}.uss" />\n'
+            f'    <ui:VisualElement name="{a}" class="as-root">\n'
+            f'        <ui:VisualElement name="SafeArea" class="as-safe">\n')
+    body = emit("", 3)
+    uxml = head + body + "        </ui:VisualElement>\n    </ui:VisualElement>\n</ui:UXML>\n"
+    uss.insert(0, f"/* {a}: PanelSettings Scale Mode = Scale With Screen Size, {ref_w}x{ref_h}, match 0.5 */")
+    return uxml, "\n".join(uss) + "\n"
+
+
+def unity_files(src: Source) -> tuple[Files, list[str]]:
+    from studio_core.export.npc import script_meta
+    from studio_core.export.unity import guid, prefab_meta
+
+    a, u = src.asset, src.uid
+    doc = src.ui_screen or {}
+
+    def guid_of(rel: str) -> str:
+        return guid(u, a, rel)
+
+    pf_rel = f"{a}.prefab"
+    uxml, uss = uxml_files(src)
+    files: Files = [(pf_rel, unity_prefab(src, guid_of).encode()),
+                    (f"{pf_rel}.meta", prefab_meta(guid_of(pf_rel)).encode()),
+                    (SAFE_AREA_REL, safe_area_cs(a).encode()),
+                    (f"{SAFE_AREA_REL}.meta", script_meta(guid_of(SAFE_AREA_REL)).encode()),
+                    (f"UIToolkit/{a}.uxml", uxml.encode()), (f"UIToolkit/{a}.uss", uss.encode())]
+    ref = doc.get("ref") or [1080, 1920]
+    note = (f"- {a}.prefab: màn \"{doc.get('screen')}\" UGUI — Canvas (Screen Space Overlay) + Canvas Scaler "
+            f"Scale With Screen Size {ref[0]}x{ref[1]}, match {doc.get('match', 0.5)}; SafeArea (script "
+            "AssetStudioSafeArea co theo Screen.safeArea) chứa mọi node, anchor theo tỉ lệ nên giãn đúng 16:9 / 20:9 / "
+            "4:3. Image Sliced dùng viền 9-slice của UI/, Button đổi sprite hover/pressed/disabled. Kéo prefab vào "
+            "scene (cần EventSystem để bấm nút: GameObject › UI › Event System).")
+    if doc.get("bitmap_font") and src.font:
+        note += (f" Chữ: UI Text (legacy) dùng Custom Font Fonts/{a}.fontsettings ở cỡ gốc "
+                 f"{doc['bitmap_font'].get('size')}px (font bitmap không co giãn).")
+    else:
+        note += " Chữ: UI Text (legacy) font LegacyRuntime đậm, Best Fit đã đặt cỡ vừa khung; muốn TextMeshPro thì " \
+                "Window › TextMeshPro › Import TMP Essentials rồi chuột phải Text › Replace with TextMeshPro."
+    note += (f"\n- UIToolkit/{a}.uxml + .uss: cùng bố cục cho UI Toolkit (UIDocument + PanelSettings Scale With "
+             f"Screen Size {ref[0]}x{ref[1]}), nền 9-slice qua -unity-slice-*, :hover/:active đổi sprite.")
+    if doc.get("placeholder_icons"):
+        note += (f"\n- Icon tạm vẽ CPU: {', '.join(doc['placeholder_icons'])} — chạy icon-pack rồi ui-screen với "
+                 "icons = ui_slices.json của nó để thay.")
+    return files, [note]
+
+
+def _gd_color(hex_: str) -> str:
+    r, g, b = _rgba(hex_)
+    return f"Color({_f(r)}, {_f(g)}, {_f(b)}, 1)"
+
+
+BUTTON_SUFFIX = "_btn"
+
+
+def variation(n: dict[str, Any]) -> str:
+    """Theme type variation of a skinned node: one sprite can skin both a Panel and a Button (kit fallback)."""
+    return n["sprite"] + (BUTTON_SUFFIX if n["type"] in ("button", "tab") else "")
+
+
+def godot_theme(src: Source) -> str:
+    doc = src.ui_screen or {}
+    states = doc.get("sprites") or {}
+    borders = {n: b for n, _, b, _ in src.ui}
+    used = sorted({variation(n) for n in doc["nodes"] if n.get("sprite")} |
+                  {n["fill_sprite"] for n in doc["nodes"] if n.get("fill_sprite")})
+    ext, subs, props = [], [], []
+    tex_ids: dict[str, str] = {}
+
+    def tex(name: str) -> str:
+        if name not in tex_ids:
+            tex_ids[name] = f"{len(tex_ids) + 1}_{name}"
+            ext.append(f'[ext_resource type="Texture2D" path="UI/{name}.png" id="{tex_ids[name]}"]')
+        return tex_ids[name]
+
+    def box(name: str) -> str:
+        sid = f"StyleBoxTexture_{name}"
+        b = borders.get(name, (0, 0, 0, 0))
+        subs.append(f'[sub_resource type="StyleBoxTexture" id="{sid}"]\ntexture = ExtResource("{tex(name)}")\n'
+                    f"texture_margin_left = {b[0]}.0\ntexture_margin_top = {b[1]}.0\n"
+                    f"texture_margin_right = {b[2]}.0\ntexture_margin_bottom = {b[3]}.0\n"
+                    # Content margins default to the texture margins, which would make a Button's minimum size
+                    # outgrow small anchored rects; text placement comes from the layout instead.
+                    "content_margin_left = 0.0\ncontent_margin_top = 0.0\ncontent_margin_right = 0.0\n"
+                    "content_margin_bottom = 0.0\n")
+        return sid
+
+    subs.append('[sub_resource type="StyleBoxEmpty" id="StyleBoxEmpty_focus"]\n')
+    boxes: dict[str, str] = {}
+
+    def once(name: str) -> str:
+        if name not in boxes:
+            boxes[name] = box(name)
+        return boxes[name]
+
+    for var in used:
+        is_button = var.endswith(BUTTON_SUFFIX)
+        sprite = var[:-len(BUTTON_SUFFIX)] if is_button else var
+        normal = once(sprite)
+        props.append(f'{var}/base_type = &"{"Button" if is_button else "Panel"}"')
+        if is_button:
+            props.append(f'{var}/styles/normal = SubResource("{normal}")')
+            for st in ("hover", "pressed", "disabled"):
+                sid = once(f"{sprite}_{st}") if st in states.get(sprite, []) else normal
+                props.append(f'{var}/styles/{st} = SubResource("{sid}")')
+            props.append(f'{var}/styles/focus = SubResource("StyleBoxEmpty_focus")')
+        else:
+            props.append(f'{var}/styles/panel = SubResource("{normal}")')
+    font_line = []
+    if doc.get("bitmap_font") and src.font:
+        ext.append(f'[ext_resource type="FontFile" path="Fonts/{src.asset}.fnt" id="font"]')
+        font_line = ['default_font = ExtResource("font")', f"default_font_size = {doc['bitmap_font'].get('size')}"]
+    else:
+        # Matches the mockup / Unity LegacyRuntime look (bold Arial) instead of Godot's default font.
+        subs.append('[sub_resource type="SystemFont" id="SystemFont_text"]\nfont_names = PackedStringArray("Arial", '
+                    '"Liberation Sans", "DejaVu Sans")\nfont_weight = 700\n')
+        font_line = ['default_font = SubResource("SystemFont_text")']
+    props += ["Label/colors/font_outline_color = Color(0.06, 0.05, 0.09, 0.9)", "Label/constants/outline_size = 6",
+              "Button/colors/font_outline_color = Color(0.06, 0.05, 0.09, 0.9)", "Button/constants/outline_size = 6"]
+    return "\n".join([f'[gd_resource type="Theme" load_steps={len(ext) + len(subs) + 1} format=3]', "", *ext, "",
+                      *subs, "[resource]", *font_line, *props]) + "\n"
+
+
+def _anchor_lines(f: list[float]) -> list[str]:
+    x, y, w, h = f
+    return ["layout_mode = 1", "anchors_preset = -1", f"anchor_left = {_f(x)}", f"anchor_top = {_f(y)}",
+            f"anchor_right = {_f(x + w)}", f"anchor_bottom = {_f(y + h)}", "grow_horizontal = 2", "grow_vertical = 2"]
+
+
+def godot_scene(src: Source) -> str:
+    doc = src.ui_screen or {}
+    a = src.asset
+    bmf = doc.get("bitmap_font") if src.font else None
+    icons = sorted({n["icon_sprite"] for n in doc["nodes"] if n.get("icon_sprite")})
+    ext = [f'[ext_resource type="Theme" path="{a}_theme.tres" id="theme"]',
+           '[ext_resource type="Script" path="safe_area.gd" id="safe"]']
+    ext += [f'[ext_resource type="Texture2D" path="UI/{i}.png" id="{i}"]' for i in icons]
+    if doc.get("background"):
+        ext.append(f'[ext_resource type="Texture2D" path="UI/{doc["background"]}.png" id="bg"]')
+    lines = [f"[gd_scene load_steps={len(ext) + 1} format=3]", "", *ext, "",
+             f'[node name="{a}" type="Control"]', "layout_mode = 3", "anchors_preset = 15", "anchor_right = 1.0",
+             "anchor_bottom = 1.0", "grow_horizontal = 2", "grow_vertical = 2", 'theme = ExtResource("theme")',
+             "metadata/asset_studio_ref = Vector2({}, {})".format(*(doc.get("ref") or [1080, 1920]))]
+    if doc.get("background"):
+        lines += ["", '[node name="Background" type="TextureRect" parent="."]', *_anchor_lines([0, 0, 1, 1]),
+                  'texture = ExtResource("bg")', "expand_mode = 1", "stretch_mode = 6", "mouse_filter = 2"]
+    lines += ["", '[node name="SafeArea" type="Control" parent="."]', *_anchor_lines([0, 0, 1, 1]),
+              "mouse_filter = 2", 'script = ExtResource("safe")']
+    path: dict[str, str] = {"": "SafeArea"}
+
+    def text_props(n: dict[str, Any]) -> list[str]:
+        size = int(bmf.get("size")) if bmf else int(n["font_size"])
+        out = [f"text = {json.dumps(n['text'], ensure_ascii=False)}",
+               f"theme_override_font_sizes/font_size = {size}"]
+        if n.get("color", "#ffffff") != "#ffffff":
+            out.append(f"theme_override_colors/font_color = {_gd_color(n['color'])}")
+        return out
+
+    for n in doc["nodes"]:
+        name, t = n["name"], n["type"]
+        parent = path.get(n["parent"], "SafeArea")
+        path[name] = f"{parent}/{name}"
+        gtype = {"button": "Button", "tab": "Button", "label": "Label", "icon": "TextureRect"}.get(t, "Control")
+        if t in ("panel", "slot", "bar") and n.get("sprite"):
+            gtype = "Panel"
+        lines += ["", f'[node name="{name}" type="{gtype}" parent="{parent}"]', *_anchor_lines(n["rect"])]
+        if n.get("sprite"):
+            lines.append(f'theme_type_variation = &"{variation(n)}"')
+        if gtype in ("Control", "Panel"):
+            lines.append("mouse_filter = 2" if gtype == "Control" else "mouse_filter = 1")
+        if t == "icon" and n.get("icon_sprite"):
+            lines += [f'texture = ExtResource("{n["icon_sprite"]}")', "expand_mode = 1", "stretch_mode = 5",
+                      "mouse_filter = 2"]
+        if t == "label" and n.get("text"):
+            align = {"left": 0, "center": 1, "right": 2}.get(n.get("align", "center"), 1)
+            lines += [*text_props(n), f"horizontal_alignment = {align}", "vertical_alignment = 1",
+                      "text_overrun_behavior = 3", "clip_text = true"]
+        if t in ("button", "tab"):
+            lines += ["focus_mode = 0", "clip_text = true"]
+            if n.get("text") and not n.get("icon_rect"):
+                lines += text_props(n)
+        if bmf and bmf.get("pixel") and t in ("label", "button", "tab"):
+            lines.append("texture_filter = 1")
+        if t in ("button", "tab"):
+            if n.get("icon_sprite") and n.get("icon_rect"):
+                lines += ["", f'[node name="Icon" type="TextureRect" parent="{path[name]}"]',
+                          *_anchor_lines(n["icon_rect"]), f'texture = ExtResource("{n["icon_sprite"]}")',
+                          "expand_mode = 1", "stretch_mode = 5", "mouse_filter = 2"]
+                if n.get("text"):
+                    lines += ["", f'[node name="Text" type="Label" parent="{path[name]}"]',
+                              *_anchor_lines(n.get("text_rect") or [0, 0, 1, 1]), *text_props(n),
+                              "horizontal_alignment = 1", "vertical_alignment = 1", "text_overrun_behavior = 3",
+                              "clip_text = true", "mouse_filter = 2"]
+        if t == "bar" and n.get("fill_sprite"):
+            lines += ["", f'[node name="Fill" type="Panel" parent="{path[name]}"]',
+                      *_anchor_lines(fill_rect(n)), f'theme_type_variation = &"{n["fill_sprite"]}"',
+                      "mouse_filter = 2"]
+    return "\n".join(lines) + "\n"
+
+
+def godot_files(src: Source) -> tuple[Files, list[str]]:
+    doc = src.ui_screen or {}
+    a = src.asset
+    ref = doc.get("ref") or [1080, 1920]
+    files: Files = [(f"{a}.tscn", godot_scene(src).encode()), (f"{a}_theme.tres", godot_theme(src).encode()),
+                    ("safe_area.gd", GODOT_SAFE_AREA.encode())]
+    note = (f"- {a}.tscn: màn \"{doc.get('screen')}\" Control, anchor theo tỉ lệ trong SafeArea (safe_area.gd co theo "
+            f"vùng an toàn trên điện thoại). {a}_theme.tres: Theme có type variation cho từng sprite (StyleBoxTexture "
+            "9-slice; nút có normal/hover/pressed/disabled). Đặt Project Settings › Display › Window: Viewport "
+            f"{ref[0]}x{ref[1]}, Stretch Mode = canvas_items, Aspect = expand để cỡ chữ/viền đúng như mockup.")
+    if doc.get("bitmap_font") and src.font:
+        note += f" Theme dùng bitmap font Fonts/{a}.fnt làm font mặc định."
+    return files, [note]

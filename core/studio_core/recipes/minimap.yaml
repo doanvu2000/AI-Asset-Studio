@@ -1,0 +1,53 @@
+id: minimap
+name: Minimap từ ảnh màn / Tiled / LDtk
+description: >-
+  Ảnh màn chơi (mockup / screenshot) hoặc bản đồ Tiled (.tmx / .tmj) / LDtk (.ldtk) → vừa khung vuông → kiểu
+  clean (CPU: gom màu thành vùng, bỏ chi tiết vụn, viền đậm giữa các vùng), parchment (giấy cũ, mực sepia) hoặc
+  stylized (vẽ tay kiểu game mobile) bằng Flux.2 Klein giữ nguyên bố cục → POI (lấy từ object Tiled / entity LDtk,
+  hoặc gõ "tên, x, y, loại") gắn icon đúng tâm pixel (icon-pack nếu có, không thì vẽ CPU) → mask tròn / vuông →
+  minimap.json (toạ độ 0–1 + pixel) → duyệt. Xuất Unity (prefab uGUI Image + Mask tròn + RawImage) và Godot
+  (TextureRect + shader mask tròn).
+inputs:
+  source: {type: file, ext: [png, jpg, jpeg, webp, tmx, tmj, ldtk],
+           label: "Ảnh màn, hoặc bản đồ Tiled .tmx / .tmj, LDtk .ldtk"}
+  pois: {type: text, required: false, default: "", multiline: true,
+         label: "POI thêm (mỗi dòng: tên, x, y, loại — pixel của ảnh / bản đồ, hoặc 0–1)",
+         placeholder: "Làng, 120, 340, town\nCửa hàng, 410, 220, shop\nBoss, 0.82, 0.15, boss"}
+  style: {type: enum, options: [clean, parchment, stylized], default: clean,
+          label: "Kiểu (clean = CPU; parchment / stylized = Klein)"}
+  shape: {type: enum, options: [circle, square], default: circle, label: Khung}
+  size: {type: int, default: 512, min: 64, max: 2048, label: Cỡ minimap (px)}
+  colors: {type: int, default: 8, min: 2, max: 32, label: Số màu (clean)}
+  level: {type: text, required: false, default: "", label: "Level LDtk (tên hoặc số thứ tự, trống = đầu tiên)"}
+  prompt: {type: text, required: false, default: "", label: Thêm mô tả cho Klein (tuỳ chọn)}
+  icons: {type: image, required: false, label: "Icon POI từ icon-pack (tuỳ chọn; tên file bắt đầu bằng loại: town_…, shop_…)"}
+  asset: {type: text, default: minimap, label: Tên asset}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: base
+    kind: op.minimap_base
+    in: {source: inputs.source}
+    params: {pois: "${inputs.pois}", style: "${inputs.style}", shape: "${inputs.shape}", size: "${inputs.size}",
+             colors: "${inputs.colors}", level: "${inputs.level}", prompt: "${inputs.prompt}",
+             asset: "${inputs.asset}"}
+  # Only parchment / stylized emit restyle_in; with clean the list is empty and ComfyUI is never called.
+  - id: restyle
+    kind: comfy.edit_flux2_klein4b
+    in: {image: base.restyle_in}
+    map: image
+    params:
+      "75:74.text": ["${steps.base.layout.prompts}"]
+    map_param: "75:74.text"
+  - id: finish
+    kind: op.minimap_finish
+    in: {base: base.base, edits: restyle.images, info: base.info, icons: inputs.icons}
+  - id: approve
+    kind: gate.approve
+    in: {preview: finish.preview, images: finish.images, framed: finish.framed, mask: finish.mask,
+         minimap: finish.minimap}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  framed: approve.framed
+  minimap: approve.minimap

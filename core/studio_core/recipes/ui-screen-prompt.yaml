@@ -1,0 +1,53 @@
+id: ui-screen-prompt
+name: Màn UI game từ chủ đề (Z-Image kit + Claude bố cục)
+description: >-
+  Chủ đề → Z-Image vẽ sheet ui-kit (nút, khung, thanh, ô; không chữ) → chọn → tách phần tử + viền 9-slice + trạng
+  thái nút → Claude nhìn bộ kit bố cục màn (home, shop, chọn màn, tạm dừng, thắng, thua, cài đặt) → CPU ráp mockup
+  16:9 / 20:9 / 4:3, kiểm safe area → duyệt. Xuất Unity UGUI prefab + UXML/USS, Godot Control .tscn + Theme .tres.
+inputs:
+  prompt: {type: text, label: Chủ đề UI, placeholder: "cute candy puzzle game, glossy pastel buttons with white rims"}
+  screen: {type: enum, default: home, options: [home, shop, level_select, pause, result_win, result_lose, settings],
+           label: Loại màn}
+  title: {type: text, default: "", label: Tên game / tiêu đề màn}
+  brief: {type: text, multiline: true, default: "", label: "Ghi chú chữ (ngôn ngữ chữ theo ghi chú)"}
+  orientation: {type: enum, default: portrait, options: [portrait, landscape], label: Hướng màn}
+  planner: {type: enum, default: claude, options: [claude, template], label: "Bố cục (claude | template có sẵn)"}
+  count: {type: int, default: 2, min: 1, max: 4, label: Số sheet kit để chọn}
+  font: {type: file, ext: [json], required: false, label: "font.json của bitmap-font (tuỳ chọn)"}
+  icons: {type: file, ext: [json], required: false, label: "ui_slices.json của icon-pack (tuỳ chọn)"}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: gen
+    kind: comfy.t2i_zimage_turbo
+    params:
+      "57:27.text": "A game UI kit asset sheet, ${inputs.prompt}. Flat 2D front view of separate user interface elements laid out in a neat grid with wide empty gaps between them, on a plain pure white background: three wide rectangular buttons, one large empty window panel with a decorative frame, one empty horizontal progress bar frame, one filled horizontal health bar, four square inventory slots, two tab buttons. No outer frame or border around the whole sheet. Ornaments only on the four corners; the straight edges between the corners are plain and even so each element can be stretched as a 9-slice. Every element is blank: no text, no letters, no numbers, no icons, no symbols. Clean edges, no shadows on the background, no perspective, no screen, no characters."
+      "57:13.batch_size": "${inputs.count}"
+  - id: pick
+    kind: gate.pick
+    in: {images: gen.images}
+    params: {k: 0}
+  - id: split
+    kind: op.ui_split
+    in: {images: pick.images}
+  - id: slice
+    kind: op.nine_slice
+    in: {images: split.images}
+  - id: layout
+    kind: claude.ui_layout
+    in: {kit: slice.slices, images: slice.preview}
+    params: {screen: "${inputs.screen}", orientation: "${inputs.orientation}", planner: "${inputs.planner}",
+             title: "${inputs.title}", brief: "${inputs.prompt}. ${inputs.brief}", model: opus, _auto_retry: 1}
+  - id: screen
+    kind: op.ui_screen
+    in: {layout: layout.json, kit: slice.slices, icons: inputs.icons, font: inputs.font}
+    params: {screen: "${inputs.screen}", orientation: "${inputs.orientation}", title: "${inputs.title}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: screen.preview, images: screen.images, slices: screen.slices, screen: screen.screen,
+         sprites: screen.sprites, font: screen.font, kit_preview: slice.preview}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  screen: approve.screen
+  slices: approve.slices

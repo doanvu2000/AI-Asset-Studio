@@ -317,6 +317,10 @@ def export(src: Source) -> Files:
         files += [(f"Spine/{stem}.spine-json", src.spine_json[1]), (f"Spine/{stem}.atlas", src.spine_atlas[1])]
         files += [(f"Spine/{n}", p) for n, p in src.spine_pages]
         notes.append(f"- Spine/: {stem}.spine-json + {stem}.atlas + ảnh trang — cần spine-godot 4.2 (bản Godot có Spine).")
+        from studio_core.ops.spine_physics import physics_readme
+
+        if note := physics_readme(src.spine_json[1], "spine-godot"):
+            notes.append(note)
     for n, p in src.glb:
         files.append((f"Models/{n}", p))
     if src.glb:
@@ -458,12 +462,48 @@ def export(src: Source) -> Files:
         de_files, de_notes = destructible_files(src)
         files += de_files
         notes += de_notes
+    if src.trim or src.decals:
+        from studio_core.export.trim import godot_files as trim_files
+
+        tr_files, tr_notes = trim_files(src)
+        files += tr_files
+        notes += tr_notes
+    if src.modular:
+        from studio_core.export.modular import godot_files as modular_files
+
+        mk_files, mk_notes = modular_files(src)
+        files += mk_files
+        notes += mk_notes
     if src.retexture:
         from studio_core.export.mesh_retexture import godot_files as retexture_files
 
         rt_files, rt_notes = retexture_files(src)
         files += rt_files
         notes += rt_notes
+    if src.terrain and src.terrain_files:
+        from studio_core.export.terrain import godot_files as terrain_files
+
+        te_files, te_notes = terrain_files(src)
+        files += te_files
+        notes += te_notes
+    if src.ui_screen:
+        from studio_core.export.ui_screen import godot_files as screen_files
+
+        us_files, us_notes = screen_files(src)
+        files += us_files
+        notes += us_notes
+    if src.vfx and src.vfx_files:
+        from studio_core.export.vfx_particles import godot_files as vfx_files
+
+        vx_files, vx_notes = vfx_files(src)
+        files += vx_files
+        notes += vx_notes
+    if src.minimap and src.minimap_files:
+        from studio_core.export.minimap import godot_files as minimap_files
+
+        mm_files, mm_notes = minimap_files(src)
+        files += mm_files
+        notes += mm_notes
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

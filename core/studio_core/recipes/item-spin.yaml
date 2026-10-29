@@ -1,0 +1,46 @@
+id: item-spin
+name: Vật phẩm xoay vòng (GLB → Blender)
+description: >-
+  Mesh vật phẩm GLB (từ prop-3d hoặc có sẵn) → dọn mesh → Blender quay turntable quanh trục đứng 12/16/24 frame, ortho,
+  đèn 3 điểm, nền trong → cắt cùng một ô giữ trục xoay ở tâm (thu nhỏ premultiplied, không viền đen) → sprite sheet
+  lặp liền + GIF / WebP xem trước + báo cáo mối nối, lệch trục → duyệt. Xuất Unity AnimationClip, Godot SpriteFrames.
+inputs:
+  mesh: {type: mesh, label: Mesh vật phẩm GLB}
+  frames: {type: int, default: 16, options: [12, 16, 24], label: Số frame một vòng}
+  size: {type: int, default: 128, options: [64, 96, 128, 192, 256], label: Cỡ ô (px)}
+  elevation: {type: float, default: 15, min: 0, max: 60, label: Góc nhìn nghiêng (độ)}
+  lighting: {type: enum, default: studio, options: [studio, flat], label: "Ánh sáng (studio = 3 điểm, flat = dịu)"}
+  upright: {type: enum, default: none, options: [none, x90, x-90, y90, y-90, x180], label: Dựng đứng}
+  fps: {type: int, default: 12, min: 4, max: 30, label: FPS}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: cleanup
+    kind: blender.cleanup
+    in: {mesh: inputs.mesh}
+    params: {target_faces: 50000, height: 1.0, origin: feet, upright: "${inputs.upright}"}
+  - id: render
+    kind: blender.render_dirs
+    in: {mesh: cleanup.meshes}
+    params: {count: "${inputs.frames}", elevation: "${inputs.elevation}", res: 512, supersample: 1,
+             lighting: "${inputs.lighting}"}
+  - id: frames
+    kind: op.spin_frames
+    in: {images: render.images, json: render.meta}
+    params: {size: "${inputs.size}", fps: "${inputs.fps}", clip: spin}
+  # The sheet step's id names the clip in Unity / Godot (spin.anim, SpriteFrames "spin").
+  - id: spin
+    kind: op.sheet
+    in: {images: frames.images, pivot: frames.pivot}
+    params: {cols: "${steps.frames.json.cols}", flipbook: loop, fps: "${inputs.fps}"}
+  - id: approve
+    kind: gate.approve
+    in: {sheet: spin.sheet, meta: spin.meta, preview: frames.gif, webp: frames.webp, qa: frames.qa,
+         report: frames.json, frames: frames.images}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: spin.sheet
+  meta: spin.meta
+  preview: frames.gif
+  webp: frames.webp
+  qa: frames.qa
+  frames: frames.images

@@ -1,0 +1,44 @@
+id: ui-screen
+name: Màn UI game (bố cục Claude + mockup + prefab/scene)
+description: >-
+  Loại màn (home, shop, chọn màn, tạm dừng, thắng, thua, cài đặt) + bộ ui-kit đã duyệt (ui_slices.json; chưa có
+  thì dùng "Màn UI game từ chủ đề") + bitmap font / icon-pack tuỳ chọn → Claude bố cục cây node theo tỉ lệ trong
+  vùng an toàn (hoặc template có sẵn, hoặc file layout) → CPU ráp mockup từ mảnh 9-slice + chữ ở 16:9, 20:9 (có tai thỏ) và 4:3, tự thu
+  cỡ chữ cho vừa, báo node tràn safe area → duyệt. Xuất Unity UGUI prefab (Canvas Scaler 1080×1920 match 0.5, Image
+  Sliced, Button đổi sprite, Text) + UXML/USS, Godot Control .tscn + Theme .tres (StyleBoxTexture 9-slice).
+inputs:
+  screen: {type: enum, default: home, options: [home, shop, level_select, pause, result_win, result_lose, settings],
+           label: Loại màn}
+  kit: {type: file, ext: [json], label: "ui_slices.json của ui-kit / ui-kit-style (đã duyệt)"}
+  title: {type: text, default: "", label: Tên game / tiêu đề màn, placeholder: "Ember Knight"}
+  brief: {type: text, multiline: true, default: "", label: "Ghi chú chữ / chủ đề (ngôn ngữ chữ theo ghi chú)",
+          placeholder: "fantasy RPG, shop bán vàng + đá quý, chữ tiếng Việt"}
+  orientation: {type: enum, default: portrait, options: [portrait, landscape], label: Hướng màn}
+  planner: {type: enum, default: claude, options: [claude, template], label: "Bố cục (claude | template có sẵn)"}
+  font: {type: file, ext: [json], required: false, label: "font.json của bitmap-font (tuỳ chọn)"}
+  icons: {type: file, ext: [json], required: false, label: "ui_slices.json của icon-pack (tuỳ chọn, thay icon tạm)"}
+  background: {type: image, required: false, label: Ảnh nền màn (tuỳ chọn)}
+  layout: {type: file, ext: [json], required: false, label: "ui_layout.json sửa tay (tuỳ chọn, bỏ qua Claude)"}
+  accent: {type: text, default: "#f0a020", label: Màu nhấn (kit mặc định + nền)}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: layout
+    kind: claude.ui_layout
+    in: {kit: inputs.kit, layout: inputs.layout}
+    params: {screen: "${inputs.screen}", orientation: "${inputs.orientation}", planner: "${inputs.planner}",
+             title: "${inputs.title}", brief: "${inputs.brief}", model: opus, _auto_retry: 1}
+  - id: screen
+    kind: op.ui_screen
+    in: {layout: layout.json, kit: inputs.kit, icons: inputs.icons, font: inputs.font, background: inputs.background}
+    params: {screen: "${inputs.screen}", orientation: "${inputs.orientation}", title: "${inputs.title}",
+             accent: "${inputs.accent}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: screen.preview, images: screen.images, slices: screen.slices, screen: screen.screen,
+         sprites: screen.sprites, font: screen.font}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  screen: approve.screen
+  slices: approve.slices

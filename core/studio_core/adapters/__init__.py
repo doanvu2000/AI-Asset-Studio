@@ -10,6 +10,7 @@ from .blender import (BlenderAgentExecutor, BlenderAnimateDirsExecutor, BlenderC
                       BlenderRigExportExecutor, BlenderScriptExecutor, Procedural3DExecutor)
 from .blender.fracture import BlenderFractureExecutor
 from .blender.retexture import BlenderRetexApplyExecutor, BlenderViewsRenderExecutor
+from .blender.modular import BlenderModularKitExecutor
 from .claude import ClaudeBriefExecutor, ClaudeResource, ClaudeTaskExecutor
 from .codex import CodexImageExecutor, CodexResource
 from .image_layers import ClaudeLayersCaptionExecutor, ClaudeLayersNamesExecutor
@@ -21,9 +22,12 @@ from .npc import ClaudeNpcDialogueExecutor
 from .storyboard import ClaudeStoryboardExecutor, StoryboardFramesExecutor, StoryboardScoreExecutor
 from .tts import NpcVoiceExecutor
 from .store_layout import ClaudeStoreLayoutExecutor
+from .ui_layout import ClaudeUiLayoutExecutor
 from .spine_review import SpineReviewLoopExecutor
+from .terrain import ClaudeTerrainPlanExecutor
 from .comfy import CheckedMeshExecutor, CheckedViewsExecutor, ComfyExecutor, ComfyResource
 from .comfy.retexture import RetexPaintExecutor
+from .trim import TrimLayoutExecutor, TrimStripsExecutor
 
 
 def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: Any = None) -> list[Resource]:
@@ -46,6 +50,9 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     registry.register(BlenderViewsRenderExecutor(settings, blender))
     registry.register(BlenderRetexApplyExecutor(settings, blender))
     registry.register(RetexPaintExecutor(registry.resolve, comfy))
+    registry.register(BlenderModularKitExecutor(settings, blender))
+    registry.register(TrimLayoutExecutor(settings))
+    registry.register(TrimStripsExecutor(registry.resolve, comfy))
     registry.register(ClaudeBriefExecutor(settings))
     registry.register(ClaudeSoundscapeExecutor(settings))
     registry.register(ClaudeKeyartMotionExecutor(settings))
@@ -58,9 +65,11 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     registry.register(StoryboardScoreExecutor(registry.resolve))
     registry.register(ClaudeLocalizeExecutor(settings))
     registry.register(ClaudeStoreLayoutExecutor(settings))
+    registry.register(ClaudeUiLayoutExecutor(settings))
     registry.register(ClaudeLayersCaptionExecutor(settings))
     registry.register(ClaudeLayersNamesExecutor(settings))
     registry.register(SpineReviewLoopExecutor(settings))
+    registry.register(ClaudeTerrainPlanExecutor(settings))
     registry.register(BlenderScriptExecutor(settings, blender))
     registry.register(Procedural3DExecutor(settings, blender))
     registry.register(BlenderAgentExecutor(settings))

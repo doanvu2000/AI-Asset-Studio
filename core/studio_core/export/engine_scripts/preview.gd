@@ -18,6 +18,9 @@ func _init() -> void:
 		printerr("PREVIEW_FAIL cannot load ", target)
 		quit(3)
 		return
+	if res is PackedScene and ClassDB.is_parent_class(res.get_state().get_node_type(0), "Control"):
+		await _ui_preview(res, out)
+		return
 	var node := _spawn(res)
 	if node == null:
 		printerr("PREVIEW_FAIL unsupported resource ", res.get_class())
@@ -69,6 +72,14 @@ func _aabbs(n: Node, acc: Array) -> void:
 		var a: AABB = n.get_aabb()
 		if a.size.length() > 0.0:
 			acc.append(n.global_transform * a)
+	elif n is GridMap and n.mesh_library and n.is_visible_in_tree():
+		# GridMap draws through the RenderingServer, so it is no VisualInstance3D: frame its cells' meshes.
+		for cell in n.get_used_cells():
+			var item: int = n.get_cell_item(cell)
+			var mesh: Mesh = n.mesh_library.get_item_mesh(item)
+			if mesh:
+				var t := Transform3D(n.get_cell_item_basis(cell), n.map_to_local(cell))
+				acc.append(n.global_transform * t * n.mesh_library.get_item_mesh_transform(item) * mesh.get_aabb())
 	for c in n.get_children():
 		_aabbs(c, acc)
 
@@ -137,3 +148,86 @@ func _frame_3d(node: Node, boxes: Array) -> void:
 		var we := WorldEnvironment.new()
 		we.environment = env
 		get_root().add_child(we)
+
+
+# UI screens: one SubViewport per phone shape (canvas_items + expand logic: the short side keeps the base size),
+# 20:9 with a notch / home-bar safe area; every Control must stay inside SafeArea and its parent.
+const UI_ASPECTS := [[9.0, 16.0, 0.0, 0.0], [9.0, 20.0, 0.04, 0.0267], [3.0, 4.0, 0.0, 0.0]]
+
+
+func _ui_preview(scene: PackedScene, out: String) -> void:
+	var probe: Control = scene.instantiate()
+	var base: Vector2 = probe.get_meta("asset_studio_ref", Vector2(1080, 1920))
+	probe.free()
+	var landscape := base.x > base.y
+	var shots: Array[Image] = []
+	var bad := 0
+	for a in UI_ASPECTS:
+		var ax: float = a[1] if landscape else a[0]
+		var ay: float = a[0] if landscape else a[1]
+		var size := Vector2(base.x, base.x * ay / ax) if not landscape else Vector2(base.y * ax / ay, base.y)
+		if size.x < base.x or size.y < base.y:
+			size = Vector2(base.y * ax / ay, base.y) if not landscape else Vector2(base.x, base.x * ay / ax)
+		var vp := SubViewport.new()
+		vp.size = Vector2i(size)
+		vp.transparent_bg = false
+		vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+		get_root().add_child(vp)
+		var bg := ColorRect.new()
+		bg.color = BG
+		bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+		vp.add_child(bg)
+		var ui: Control = scene.instantiate()
+		vp.add_child(ui)
+		var safe := ui.get_node_or_null("SafeArea") as Control
+		if safe != null:
+			var notch: float = a[2]
+			var bar: float = a[3]
+			if landscape:
+				safe.anchor_left = notch
+				safe.anchor_right = 1.0 - notch
+				safe.anchor_bottom = 1.0 - bar
+			else:
+				safe.anchor_top = notch
+				safe.anchor_bottom = 1.0 - bar
+		for i in 4:
+			await process_frame
+		var label := "%dx%d" % [int(a[0]), int(a[1])]
+		bad += _ui_check(safe if safe != null else ui, label)
+		var img := vp.get_texture().get_image()
+		img.resize(int(round(img.get_width() * 960.0 / img.get_height())), 960, Image.INTERPOLATE_BILINEAR)
+		shots.append(img)
+		vp.queue_free()
+	var gap := 16
+	var w := gap
+	for im in shots:
+		w += im.get_width() + gap
+	var sheet := Image.create(w, 960 + 2 * gap, false, Image.FORMAT_RGBA8)
+	sheet.fill(BG)
+	var x := gap
+	for im in shots:
+		im.convert(Image.FORMAT_RGBA8)
+		sheet.blit_rect(im, Rect2i(Vector2i.ZERO, im.get_size()), Vector2i(x, gap))
+		x += im.get_width() + gap
+	var err := sheet.save_png(out)
+	if err != OK:
+		printerr("PREVIEW_FAIL save_png ", err)
+		quit(5)
+		return
+	print("PREVIEW_OK ui ", shots.size(), " aspects, overflow ", bad)
+	quit(0)
+
+
+func _ui_check(safe: Control, label: String) -> int:
+	var sr := safe.get_global_rect()
+	var bad := 0
+	for c in safe.find_children("*", "Control", true, false):
+		var r: Rect2 = c.get_global_rect()
+		var p := c.get_parent() as Control
+		var pr: Rect2 = p.get_global_rect() if p != null else sr
+		var lo := Vector2(maxf(sr.position.x, pr.position.x), maxf(sr.position.y, pr.position.y)) - Vector2.ONE
+		var hi := Vector2(minf(sr.end.x, pr.end.x), minf(sr.end.y, pr.end.y)) + Vector2.ONE
+		if r.position.x < lo.x or r.position.y < lo.y or r.end.x > hi.x or r.end.y > hi.y:
+			printerr("PREVIEW_FAIL UI overflow ", label, ": ", c.name)
+			bad += 1
+	return bad

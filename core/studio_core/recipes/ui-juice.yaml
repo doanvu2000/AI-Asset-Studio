@@ -1,0 +1,40 @@
+id: ui-juice
+name: UI động (shine, glow, nhún, lấp lánh)
+description: >-
+  Ảnh nút / icon / huy hiệu → vòng lặp hiệu ứng: dải sáng chéo quét qua (theo alpha), quầng sáng phập phồng, nhún lên
+  xuống, sao lấp lánh ngẫu nhiên có seed → 16/24/32 frame lặp liền, nền trong không viền đen → sprite sheet + GIF /
+  WebP xem trước → duyệt. Chạy CPU. Xuất Unity AnimationClip, Godot SpriteFrames.
+inputs:
+  image: {type: image, label: Ảnh nút / icon (nền trong suốt)}
+  effects: {type: text, default: "shine,glow", label: "Hiệu ứng (phẩy: shine, glow, bob, sparkle)"}
+  frames: {type: int, default: 24, options: [16, 24, 32], label: Số frame một vòng}
+  size: {type: int, default: 256, options: [128, 192, 256, 384, 512], label: Cạnh dài ô (px)}
+  color: {type: text, default: "#fff4c2", label: Màu sáng / quầng (#rrggbb)}
+  strength: {type: float, default: 1.0, min: 0.2, max: 1.5, label: Độ mạnh}
+  sparkles: {type: int, default: 4, min: 1, max: 12, label: Số sao lấp lánh}
+  seed: {type: int, default: 7, min: 0, max: 99999, label: Seed vị trí sao}
+  fps: {type: int, default: 12, min: 4, max: 30, label: FPS}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: frames
+    kind: op.ui_juice
+    in: {images: inputs.image}
+    params: {effects: "${inputs.effects}", frames: "${inputs.frames}", size: "${inputs.size}",
+             color: "${inputs.color}", strength: "${inputs.strength}", sparkles: "${inputs.sparkles}",
+             seed: "${inputs.seed}", fps: "${inputs.fps}", clip: juice}
+  - id: juice
+    kind: op.sheet
+    in: {images: frames.images, pivot: frames.pivot}
+    params: {cols: "${steps.frames.json.cols}", flipbook: loop, fps: "${inputs.fps}"}
+  - id: approve
+    kind: gate.approve
+    in: {sheet: juice.sheet, meta: juice.meta, preview: frames.gif, webp: frames.webp, qa: frames.qa,
+         report: frames.json, frames: frames.images}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: juice.sheet
+  meta: juice.meta
+  preview: frames.gif
+  webp: frames.webp
+  qa: frames.qa
+  frames: frames.images

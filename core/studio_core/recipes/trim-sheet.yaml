@@ -1,0 +1,36 @@
+id: trim-sheet
+name: Trim sheet (Claude chọn dải + Z-Image)
+description: >-
+  Mô tả phong cách → Claude chọn bố cục dải ngang (cao 32/64/128/256/512 trên sheet 2048, tổng đúng 2048: tường,
+  gạch, phào, khung, chân tường, kim loại…) hoặc dùng preset → Z-Image vẽ từng dải → mỗi dải làm liền mạch theo chiều
+  ngang (chồng mép như texture liền mạch, chỉ 1 trục) và chấm điểm mối nối → ghép atlas → bộ map PBR (normal, height,
+  roughness, metallic, AO) tính riêng từng dải nên không lem sang dải bên → trim.json {name, px, v0, v1} để map UV mặt
+  vào dải theo tên → duyệt. Xuất Unity URP Lit / Godot StandardMaterial3D gắn sẵn map.
+inputs:
+  style: {type: text, label: Phong cách / vật liệu, placeholder: "medieval castle, weathered grey stone and dark oak"}
+  mode: {type: enum, default: claude, options: [claude, preset], label: "Chọn dải (claude = Claude tự chọn theo style)"}
+  preset: {type: enum, default: general, options: [general, modular], label: "Preset (khi chọn preset)"}
+  notes: {type: text, default: "", label: "Gợi ý thêm cho Claude (tuỳ chọn)", placeholder: "more metal trims, no rope"}
+  asset: {type: text, default: trim, label: Tên asset}
+  size: {type: int, default: 2048, options: [1024, 2048], label: Cỡ sheet (px)}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: layout
+    kind: trim.layout
+    params: {style: "${inputs.style}", mode: "${inputs.mode}", preset: "${inputs.preset}", notes: "${inputs.notes}"}
+  - id: strips
+    kind: trim.strips
+    in: {layout: layout.json}
+  - id: sheet
+    kind: op.trim_sheet
+    in: {images: strips.images, layout: layout.json}
+    params: {asset: "${inputs.asset}", size: "${inputs.size}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: sheet.preview, maps: sheet.maps, material: sheet.material, trim: sheet.trim, strips: strips.images}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.maps
+  preview: approve.preview
+  material: approve.material
+  trim: approve.trim

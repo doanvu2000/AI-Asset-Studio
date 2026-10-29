@@ -20,6 +20,8 @@ from studio_core.store.bundle import engine_source
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)])
 
 VFX_RECIPE = "vfx-flipbook"
+# vfx-particles bakes its hit_spark preset into a flipbook sheet (step hit_sheet) for the same binding.
+PARTICLES_RECIPE = "vfx-particles"
 DONE = (StepStatus.SUCCEEDED, StepStatus.CACHED)
 
 
@@ -57,7 +59,10 @@ async def _vfx_entry(request: Request, run: Any, step: StepRow) -> dict[str, Any
     meta = await asyncio.to_thread(_read_json, blobs, refs[1])
     if meta is None or not _is_flipbook(meta):
         return None
-    prompt = str((getattr(run, "inputs", None) or {}).get("prompt") or "")
+    inputs = getattr(run, "inputs", None) or {}
+    prompt = str(inputs.get("prompt") or "")
+    if not prompt and getattr(run, "recipe_id", None) == PARTICLES_RECIPE:
+        prompt = f"{inputs.get('asset') or 'vfx'} hit spark"
     v = Vfx(vfx_name(prompt, f"vfx_{step.id[:6]}"), blobs.path(refs[0].hash), meta)
     lay, cells, fps, loop = vfx_layout(v)
     return {"step_id": step.id, "run_id": step.run_id, "name": v.name, "prompt": prompt,
@@ -72,7 +77,7 @@ async def list_vfx(request: Request, limit: int = Query(200, ge=1, le=1000)) -> 
     repo = request.app.state.repo
     out = []
     for run in await repo.list_runs(limit=limit):
-        if run.recipe_id != VFX_RECIPE:
+        if run.recipe_id not in (VFX_RECIPE, PARTICLES_RECIPE):
             continue
         steps = [s for s in await repo.get_steps(run.id) if s.kind == "op.sheet"]
         for s in sorted(steps, key=lambda s: s.key != "sheet"):

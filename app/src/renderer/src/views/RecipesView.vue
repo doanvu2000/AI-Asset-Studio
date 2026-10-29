@@ -37,7 +37,7 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
       <button class="btn btn-primary" @click="router.push('/recipes/new')"><Plus /> Quy trình mới</button>
     </PageHeader>
     <div class="scroll">
-      <div class="stack">
+      <div class="stack stack-wide">
         <EmptyState
           v-if="(recipes.loaded || recipes.error) && !recipes.list.length"
           :icon="BookOpen"

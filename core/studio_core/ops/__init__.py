@@ -14,6 +14,7 @@ from .enemy_variants import ENEMY_OPS
 from .executors import ALL_OPS, Sheet
 from .fx import FX_OPS
 from .image_layers import IMAGE_LAYERS_OPS
+from .item_fx import ITEM_FX_OPS
 from .keyart import KEYART_OPS, KeyartVideo
 from .pbr import PBR_OPS
 from .retexture import RETEX_OPS
@@ -21,6 +22,7 @@ from .pixel import PIXEL_OPS
 from .presets import PresetStore
 from .localize import LOCALIZE_OPS
 from .lut import LUT_OPS
+from .minimap import MINIMAP_OPS
 from .normal2d import NORMAL2D_OPS
 from .npc import NPC_OPS
 from .pano import PANO_OPS
@@ -30,13 +32,19 @@ from .rarity import RARITY_OPS
 from .restyle import register_restyle
 from .rig import RIG_OPS
 from .soundscape import SOUNDSCAPE_OPS
+from .spine_physics import SPINE_PHYSICS_OPS
 from .spine_ref import SPINE_REF_OPS, VideoFrames
 from .spine_variant import VARIANT_OPS
 from .store_kit import STORE_OPS
 from .tile import TILE_OPS
 from .ui import UI_OPS
+from .ui_screen import UI_SCREEN_OPS
+from .trim import TRIM_OPS
+from .decal import DECAL_OPS
+from .terrain import TERRAIN_OPS
 from .upscale import UPSCALE_OPS
 from .vfx import VfxFrames
+from .vfx_particles import VFX_PARTICLE_OPS
 
 
 def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, blobs: Any = None) -> list[Resource]:
@@ -89,4 +97,16 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(av_cls())
     for rt_cls in RETEX_OPS:
         registry.register(rt_cls())
+    for trim_cls in (*TRIM_OPS, *DECAL_OPS):
+        registry.register(trim_cls())
+    for us_cls in UI_SCREEN_OPS:
+        registry.register(us_cls())
+    for tr_cls in TERRAIN_OPS:
+        registry.register(tr_cls())
+    for fx_cls in (*ITEM_FX_OPS, *SPINE_PHYSICS_OPS):
+        registry.register(fx_cls())
+    for vp_cls in VFX_PARTICLE_OPS:
+        registry.register(vp_cls())
+    for mm_cls in MINIMAP_OPS:
+        registry.register(mm_cls())
     return []
