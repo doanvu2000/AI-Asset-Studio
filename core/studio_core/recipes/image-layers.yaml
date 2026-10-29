@@ -1,0 +1,60 @@
+id: image-layers
+name: Tách ảnh thành layer PSD (Qwen-Image-Layered)
+description: >-
+  Ảnh (key art, nhân vật, UI mockup) → đặt lên khung model giữ tỉ lệ → Claude mô tả ảnh nếu chưa có mô tả →
+  Qwen-Image-Layered tách thành các layer RGBA theo độ sâu, vẽ bù cả phần bị che → bỏ lớp nền trắng, làm sạch viền,
+  xếp sau → trước, tính độ phủ + sai số ghép lại so với ảnh gốc → Claude đặt tên layer → PSD nhiều layer + PNG từng
+  layer + layers.json → duyệt. Unity nhận prefab xếp SpriteRenderer theo sorting order, Godot nhận scene Sprite2D.
+  1024 / 4 layer mất ~9 phút, VRAM ~11GB.
+inputs:
+  image: {type: image, label: Ảnh cần tách layer}
+  prompt: {type: text, default: "", multiline: true, label: "Mô tả ảnh (trống = Claude nhìn ảnh tự viết)",
+           placeholder: "a young adventurer in red cape and leather armor, T-pose, on a plain white background"}
+  resolution: {type: int, default: 1024, options: [640, 1024], label: "Độ phân giải (640 xem nhanh ~3 phút, 1024 đẹp ~9 phút)"}
+  layers: {type: int, default: 4, min: 3, max: 8, label: "Số layer model tách (gồm 1 lớp nền)"}
+  background: {type: enum, default: auto, options: [auto, drop, keep],
+               label: "Lớp nền (auto = bỏ khi là màu phẳng, keep = giữ làm layer dưới cùng)"}
+  name_layers: {type: bool, default: true, label: Claude đặt tên layer (tắt = layer_01, layer_02…)}
+  asset: {type: text, default: layers, label: Tên file xuất}
+  sampler_steps: {type: int, default: 20, min: 8, max: 50, label: Số bước khử nhiễu}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: prep
+    kind: op.layers_prep
+    in: {images: inputs.image}
+    params: {resolution: "${inputs.resolution}"}
+  - id: caption
+    kind: claude.layers_caption
+    in: {images: prep.image}
+    params: {prompt: "${inputs.prompt}", model: opus}
+  - id: split
+    kind: comfy.qwen_image_layered
+    in: {image: prep.image}
+    params:
+      "83:6.text": "${steps.caption.json.prompt}"
+      "83:118.layers": "${inputs.layers}"
+      "82.largest_size": "${steps.prep.json.max_side}"
+      "83:3.steps": "${inputs.sampler_steps}"
+      _free_before: true
+      _timeout_s: 3600
+  - id: post
+    kind: op.image_layers
+    in: {images: split.images, source: inputs.image, crop: prep.json}
+    params: {background: "${inputs.background}", order: auto}
+  - id: names
+    kind: claude.layers_names
+    in: {images: post.sheet, info: post.info}
+    params: {enabled: "${inputs.name_layers}", model: opus}
+  - id: export
+    kind: op.layers_export
+    in: {images: post.images, info: post.info, names: names.json}
+    params: {asset: "${inputs.asset}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: export.preview, images: export.images, psd: export.psd, layers: export.layers}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  psd: approve.psd
+  layers: approve.layers
+  preview: approve.preview

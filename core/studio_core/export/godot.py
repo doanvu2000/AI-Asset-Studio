@@ -410,6 +410,12 @@ def export(src: Source) -> Files:
         px_files, px_notes = parallax_files(src)
         files += px_files
         notes += px_notes
+    if src.image_layers:
+        from studio_core.export.image_layers import godot_files as image_layers_files
+
+        il_files, il_notes = image_layers_files(src)
+        files += il_files
+        notes += il_notes
     if src.localized:
         from studio_core.export.localize import godot_files as localized_files
 

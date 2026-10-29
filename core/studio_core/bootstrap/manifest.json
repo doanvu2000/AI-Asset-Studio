@@ -108,6 +108,15 @@
    ]
   },
   {
+   "id": "image_layers",
+   "label": "Tách layer PSD",
+   "detail": "Ảnh → các layer RGBA theo độ sâu, vẽ bù phần bị che, xuất PSD (Qwen-Image-Layered fp8, Apache-2.0, ≈21 GB; cần ~64GB RAM khi VRAM 12GB).",
+   "required": false,
+   "workflows": [
+    "qwen_image_layered"
+   ]
+  },
+  {
    "id": "similar",
    "label": "Tìm ảnh giống",
    "detail": "Tìm asset giống nhau bằng ảnh/chữ (CLIP ViT-B/32, chạy CPU, ≈150 MB).",
@@ -474,6 +483,24 @@
    "archive": "tar.bz2",
    "size": 132353410,
    "sha256": "72c347230107ef8a31098ec4d468a605244beef5f1ed00db97efa13518800653",
+   "license": "Apache-2.0",
+   "commercial": "yes"
+  },
+  {
+   "name": "qwen_image_layered_fp8mixed.safetensors",
+   "dir": "diffusion_models",
+   "url": "https://huggingface.co/Comfy-Org/Qwen-Image-Layered/resolve/main/split_files/diffusion_models/qwen_image_layered_fp8mixed.safetensors",
+   "size": 20533591821,
+   "sha256": "e68c406b1bc08c97382a46dce6ed46699bc18a0f50422d97952ee4e8b63ad50a",
+   "license": "Apache-2.0",
+   "commercial": "yes"
+  },
+  {
+   "name": "qwen_image_layered_vae.safetensors",
+   "dir": "vae",
+   "url": "https://huggingface.co/Comfy-Org/Qwen-Image-Layered/resolve/main/split_files/vae/qwen_image_layered_vae.safetensors",
+   "size": 253816616,
+   "sha256": "c5320595fc61859ccdd0282184208f7b781c983b8ce4c6bc3e7723a807d3d28d",
    "license": "Apache-2.0",
    "commercial": "yes"
   }

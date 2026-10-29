@@ -10,6 +10,7 @@ from .bitmap_font import BITMAP_FONT_OPS
 from .damage import DAMAGE_OPS
 from .executors import ALL_OPS, Sheet
 from .fx import FX_OPS
+from .image_layers import IMAGE_LAYERS_OPS
 from .keyart import KEYART_OPS, KeyartVideo
 from .pbr import PBR_OPS
 from .pixel import PIXEL_OPS
@@ -69,4 +70,6 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(bf_cls())
     for pd_cls in PAPERDOLL_OPS:
         registry.register(pd_cls())
+    for il_cls in IMAGE_LAYERS_OPS:
+        registry.register(il_cls())
     return []

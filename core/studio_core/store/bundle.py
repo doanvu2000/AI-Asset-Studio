@@ -204,6 +204,9 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
     from studio_core.export.parallax import parallax_set
 
     src.parallax, src.parallax_size = parallax_set(step, blobs)
+    from studio_core.export.image_layers import layers_set
+
+    src.image_layers, src.image_layers_size = layers_set(step, blobs)
     from studio_core.export.localize import localized_set
 
     src.localized, src.localized_source_lang = localized_set(step, blobs)
@@ -363,8 +366,8 @@ def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
     return (src.sheet is not None or src.spine_json is not None or bool(src.glb) or bool(src.textures)
             or bool(src.audio) or bool(src.ui) or bool(src.pbr) or bool(src.fbx)
             or bool(src.rarity) or bool(src.luts) or bool(src.damage_states)
-            or bool(src.parallax) or bool(src.localized) or bool(src.npc) or bool(src.autotile)
-            or bool(src.font))
+            or bool(src.parallax) or bool(src.image_layers) or bool(src.localized) or bool(src.npc)
+            or bool(src.autotile) or bool(src.font))
 
 
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,
@@ -385,7 +388,7 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
         files = append_readme(files, normal_note)
     if not files:
         raise BundleError("nothing to export for a game engine (needs a sprite sheet, Spine export, GLB, tileable "
-                          "texture, PBR material, sound, UI kit, rarity set, LUT pack or parallax layers)")
+                          "texture, PBR material, sound, UI kit, rarity set, LUT pack, parallax or image layers)")
     if shaders:
         from studio_core.export.shaders import ShaderError, apply
 

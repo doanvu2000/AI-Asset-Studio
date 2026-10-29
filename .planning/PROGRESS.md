@@ -1078,3 +1078,11 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [x] Kiểm 752 pass / 4 skip, typecheck sạch → commit mốc dọn nợ.
 - [x] Handoff 0612 cập nhật (HEAD ee1f30e, Unity đã kiểm).
 - [x] Build lại dist:core + dist:portable từ ee1f30e OK. Handoff 0612 cập nhật.
+- [x] 2026-10-29 Chủ nhân chốt làm #11 image-layers (PNG + PSD).
+- [~] Giao agent #11 image-layers: recipe `image-layers`, workflow Qwen-Image-Layered, op post (bỏ nền trắng, crop, metric), PSD, pack bootstrap `image_layers`, export stack Unity/Godot.
+- [x] #11 image-layers xong (agent): `ops/image_layers.py` (`op.layers_prep/image_layers/layers_export`: bỏ nền trắng, crop về khung gốc,
+  thứ tự che khuất, metric ghép lại), `ops/psd.py` (PSD writer tự viết, PackBits), `adapters/image_layers.py` (caption + đặt tên),
+  workflow `qwen_image_layered`, recipe `image-layers`, pack bootstrap `image_layers`, export Unity prefab/Godot tscn. Dep dev `psd-tools`.
+  14 test; live 640 417s (err 1.47), 1024 794s (err 1.01, VRAM 11.7GB) — chậm do ComfyUI 8188 cũ (spike bật) lỗi /system_stats 500,
+  chiếm ~7GB; agent chạy server riêng 8189. CẦN chủ nhân khởi động lại ComfyUI 8188.
+- [x] Kiểm 766 pass / 4 skip, typecheck sạch → commit mốc #11. 8189 đã tắt; 8188 (PID 39144) vẫn lỗi, chờ chủ nhân restart.

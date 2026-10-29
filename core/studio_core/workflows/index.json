@@ -470,5 +470,33 @@
         "class": "SaveImage"
       }
     ]
+  },
+  "qwen_image_layered": {
+    "file": "qwen_image_layered.api.json",
+    "template": "image_qwen_image_layered",
+    "images": [
+      {
+        "key": "74.image",
+        "title": "Load Image",
+        "default": "example.png"
+      }
+    ],
+    "texts": [
+      {
+        "key": "83:6.text",
+        "node": "CLIPTextEncode",
+        "title": "Image description",
+        "default": "A 2D game art illustration on a plain white background."
+      }
+    ],
+    "seeds": [
+      "83:3.seed"
+    ],
+    "outputs": [
+      {
+        "node": "60",
+        "class": "SaveImage"
+      }
+    ]
   }
 }

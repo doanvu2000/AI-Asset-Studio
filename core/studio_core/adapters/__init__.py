@@ -10,6 +10,7 @@ from .blender import (BlenderAgentExecutor, BlenderAnimateDirsExecutor, BlenderC
                       BlenderRigExportExecutor, BlenderScriptExecutor, Procedural3DExecutor)
 from .claude import ClaudeBriefExecutor, ClaudeResource, ClaudeTaskExecutor
 from .codex import CodexImageExecutor, CodexResource
+from .image_layers import ClaudeLayersCaptionExecutor, ClaudeLayersNamesExecutor
 from .localize import ClaudeLocalizeExecutor
 from .soundscape import ClaudeSoundscapeExecutor
 from .keyart_motion import ClaudeKeyartMotionExecutor
@@ -48,6 +49,8 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     registry.register(StoryboardScoreExecutor(registry.resolve))
     registry.register(ClaudeLocalizeExecutor(settings))
     registry.register(ClaudeStoreLayoutExecutor(settings))
+    registry.register(ClaudeLayersCaptionExecutor(settings))
+    registry.register(ClaudeLayersNamesExecutor(settings))
     registry.register(SpineReviewLoopExecutor(settings))
     registry.register(BlenderScriptExecutor(settings, blender))
     registry.register(Procedural3DExecutor(settings, blender))

@@ -52,6 +52,9 @@ class Source:
     # Parallax background (op.parallax_layers): (layer, path, scroll factor) sky first → foreground, layer px size.
     parallax: list[tuple[str, Path, float]] = field(default_factory=list)
     parallax_size: tuple[int, int] = (0, 0)
+    # Image layers (op.layers_export): (name, full-canvas RGBA path) back → front, canvas size.
+    image_layers: list[tuple[str, Path]] = field(default_factory=list)
+    image_layers_size: tuple[int, int] = (0, 0)
     # Localized image text (op.localize_render): (language code or "notext", path), source language.
     localized: list[tuple[str, Path]] = field(default_factory=list)
     localized_source_lang: str = ""

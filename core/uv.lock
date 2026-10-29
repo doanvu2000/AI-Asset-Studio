@@ -551,6 +551,26 @@ wheels = [
 ]
 
 [[package]]
+name = "psd-tools"
+version = "1.26.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "attrs" },
+    { name = "numpy" },
+    { name = "pillow" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/25/b7/b453c7b40726efae21c5e74015c6a59d18f25f19ea63b561a32d482b3465/psd_tools-1.26.0-cp313-abi3-macosx_10_13_x86_64.whl", hash = "sha256:b070866b237a8659f5ea04c0912a471c4e9c3020b79cd877f9fd8f19e7381c51", size = 507741, upload-time = "2026-10-21T10:17:18.86Z" },
+    { url = "https://files.pythonhosted.org/packages/06/d2/d0d9f79eb7512e3222172f8d1f6bf03edba39e113b7666e57f050f257415/psd_tools-1.26.0-cp313-abi3-macosx_11_0_arm64.whl", hash = "sha256:79d818cfe3c26dbe55ccee72add4343efbb811f7e8a22c2143ba74b64be28443", size = 506644, upload-time = "2026-10-21T10:17:20.22Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/6f/f9464c4dc234e6d11a353c20def959617acea3d7c4de10b901087671e9fc/psd_tools-1.26.0-cp313-abi3-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:9baec346224fc49607af32528a2360b64dc93f4784850d8f5550e2bcf723a861", size = 841981, upload-time = "2026-10-21T10:17:21.711Z" },
+    { url = "https://files.pythonhosted.org/packages/32/cf/04749b9c23b5c43e1cfac45f866e97f01770abc8863a5a09c870c6eb0095/psd_tools-1.26.0-cp313-abi3-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ea72bbafa50907c6d02963015481ddd28fb6c4d647fdb6a456df25f9608635f1", size = 845687, upload-time = "2026-10-21T10:17:22.994Z" },
+    { url = "https://files.pythonhosted.org/packages/9d/3d/970237bf4788a9aff082a9e4c7ae20d3e98a4e7b17e6a14d848e66f9b746/psd_tools-1.26.0-cp313-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:1da5689b59c23802a7c549ca509903b4084f9601cd5b71f618eeeb47ae29d598", size = 1817879, upload-time = "2026-10-21T10:17:24.382Z" },
+    { url = "https://files.pythonhosted.org/packages/c4/55/678bf42210d993bc30b67cfe24b278d61bdb48c3f60acd0ce4287e783f13/psd_tools-1.26.0-cp313-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:578319a77ab7e51f32fcc5481ad8477bfdd15d2fcfc037c246c8ff9484642ec9", size = 1876429, upload-time = "2026-10-21T10:17:29.429Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/22/c1c0a5ee83723cbaad5a9718ff7bc67268f00b8838dd85a006e161e37470/psd_tools-1.26.0-cp313-cp313-win_amd64.whl", hash = "sha256:cb40d3635c28381e3d76ea517b33ec7c5122bb38f62a6efb16d479891667838e", size = 699437, upload-time = "2026-10-21T10:17:30.96Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/5e/537e28db3849fc652d2af3bc1e7e385776d16eb5e28ed7820867bf80b145/psd_tools-1.26.0-cp313-cp313-win_arm64.whl", hash = "sha256:c1cbeecd44e968cdfc7ac5c7da7924dab72d05ff50ca8a28d1796732f20b5df6", size = 862683, upload-time = "2026-10-21T10:17:32.54Z" },
+]
+
+[[package]]
 name = "pycparser"
 version = "3.11"
 source = { registry = "https://pypi.org/simple" }
@@ -901,6 +921,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "psd-tools" },
     { name = "pyinstaller" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -930,6 +951,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "psd-tools", specifier = ">=1.26.0" },
     { name = "pyinstaller", specifier = ">=6.22.3" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.24" },

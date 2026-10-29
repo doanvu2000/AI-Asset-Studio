@@ -129,6 +129,7 @@ const RECIPE_PITCH: Record<string, string> = {
   'store-kit-image': 'Ảnh nhân vật + tên game → icon app + key art giữ đúng nhân vật → đủ cỡ iOS / Android / Steam / web, zip sẵn nộp store',
   'image-localize': 'Nút / logo / banner có chữ → bản Việt, Nhật, Trung, Hàn, Đức…: xoá chữ gốc, vẽ chữ dịch đúng font, màu, viền, vừa khung',
   'parallax-layers': 'Prompt cảnh → nền cuộn ngang 4–5 lớp (trời, xa, giữa, gần, tiền cảnh) lặp liền mạch, prefab Unity / Parallax2D Godot',
+  'image-layers': 'Ảnh nhân vật / key art → 3–7 layer RGBA theo độ sâu, vẽ bù phần bị che, xuất PSD + PNG từng layer, prefab Unity / scene Godot',
   'autotile-terrain': 'Texture cỏ + texture đất / nước → bộ autotile 47 ô mép tự nhiên, khớp mép mọi kiểu xếp, TileSet terrain Godot / RuleTile Unity, chạy CPU',
   'bitmap-font': 'Bộ số / ASCII / chữ Việt có dấu → bitmap font gradient, viền, bóng, vát hoặc pixel art: atlas + .fnt BMFont, Godot đọc thẳng, chạy CPU',
   'bitmap-font-klein': 'Câu chất liệu ("molten gold", "icy crystal") → Klein tô ruột chữ, giữ đúng dáng glyph TTF → bitmap font .fnt + atlas cho Godot / Unity',
