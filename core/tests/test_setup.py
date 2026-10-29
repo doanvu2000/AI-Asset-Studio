@@ -65,8 +65,47 @@ def test_manifest_covers_every_model_the_packs_need() -> None:
             assert plan.workflow_models(w), w
             assert plan.workflow_models(w) <= names, (w, plan.workflow_models(w) - names)
     for x in m["models"]:
-        assert x["size"] > 0 and len(x["sha256"]) == 64 and x["url"].startswith("https://huggingface.co/")
+        assert x["size"] > 0 and len(x["sha256"]) == 64
+        assert x["url"].startswith(("https://huggingface.co/", "https://github.com/k2-fsa/sherpa-onnx/releases/"))
+    for p in m["packs"]:
+        assert set(p.get("models") or []) <= names, p["id"]
     assert {x["name"] for x in plan.pack_models([])} < {x["name"] for x in plan.pack_models(["mesh"])}
+    from studio_core.adapters import embedder, tts
+
+    sim = {x["name"]: x for x in plan.pack_models(["similar"])}
+    assert set(embedder.FILES) <= set(sim)
+    assert all(sim[f]["dir"] == f"similarity/{embedder.MODEL_DIR}" for f in embedder.FILES)
+    voices = {x["name"]: x for x in plan.pack_models(["tts"])}
+    assert {tts.VI_MODEL, tts.EN_MODEL} <= set(voices) and voices[tts.EN_MODEL]["archive"] == "tar.bz2"
+
+
+def test_archive_model_extracts_and_counts_as_present(tmp_path: Path) -> None:
+    import io
+    import tarfile
+
+    m = {"name": "voice-x", "dir": "tts", "archive": "tar.bz2", "size": 1}
+    assert not plan.model_present(tmp_path, m)
+    archive = plan.download_path(tmp_path, m)
+    assert archive == tmp_path / "tts" / "voice-x.tar.bz2"
+    archive.parent.mkdir(parents=True)
+    with tarfile.open(archive, "w:bz2") as t:
+        info = tarfile.TarInfo("voice-x/tokens.txt")
+        info.size = 3
+        t.addfile(info, io.BytesIO(b"a 0"))
+    setup_job.extract_archive(archive, plan.model_path(tmp_path, m))
+    assert (tmp_path / "tts" / "voice-x" / "tokens.txt").read_bytes() == b"a 0" and not archive.exists()
+    assert plan.model_present(tmp_path, m)
+
+
+def test_model_license_prefers_manifest() -> None:
+    from studio_core.store import model_licenses as ml
+
+    vi = ml.model_license("vits-piper-vi_VN-vais1000-medium")
+    assert vi["license"].startswith("CC-BY-4.0") and vi["commercial"] == "unknown"
+    assert ml.model_license("kokoro-int8-multi-lang-v1_0")["commercial"] == "yes"
+    assert ml.model_license("vision_model_quantized.onnx")["license"] == "MIT"
+    assert ml.model_license("codex")["commercial"] == "yes"
+    assert ml.model_license("nope.safetensors")["commercial"] == "unknown"
 
 
 def test_recipe_packs() -> None:
@@ -76,6 +115,7 @@ def test_recipe_packs() -> None:
     assert packs("concept-2d") == {"base"}
     assert packs("spine-character") == {"base", "edit"}
     assert {"angles", "mesh"} <= packs("sprite-8dir-anim")
+    assert "tts" in packs("npc-pack") and "tts" not in packs("concept-2d")
     known = {p["id"] for p in plan.manifest()["packs"]}
     for f in recipes_dir().glob("*.yaml"):
         assert plan.recipe_packs(f.read_text(encoding="utf-8")) <= known

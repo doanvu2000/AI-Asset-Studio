@@ -34,30 +34,43 @@ def workflow_models(workflow: str) -> frozenset[str]:
 
 
 def pack_models(pack_ids: list[str] | set[str]) -> list[dict[str, Any]]:
+    """Models of the wanted packs: those their ComfyUI workflows load plus the pack's own `models` list (CPU-side
+    ONNX models no workflow names)."""
     wanted = {p["id"] for p in manifest()["packs"] if p["required"] or p["id"] in pack_ids}
     names: set[str] = set()
     for p in manifest()["packs"]:
         if p["id"] in wanted:
             for w in p["workflows"]:
                 names |= workflow_models(w)
+            names |= set(p.get("models") or [])
     return [m for m in manifest()["models"] if m["name"] in names]
 
 
 def model_path(models_dir: Path, m: dict[str, Any]) -> Path:
+    """The model file, or for an `archive` entry the folder it unpacks to."""
     return models_dir / m["dir"] / m["name"]
+
+
+def download_path(models_dir: Path, m: dict[str, Any]) -> Path:
+    p = model_path(models_dir, m)
+    return p.with_name(f"{p.name}.{m['archive']}") if m.get("archive") else p
 
 
 def model_present(models_dir: Path, m: dict[str, Any]) -> bool:
     p = model_path(models_dir, m)
+    if m.get("archive"):
+        return p.is_dir() and any(p.iterdir())
     return p.is_file() and p.stat().st_size == m["size"]
 
 
 def recipe_packs(recipe_text: str) -> set[str]:
-    """Packs a recipe's workflows come from (`views.qwen*` steps run the multi-angle workflow)."""
+    """Packs a recipe's workflows come from (`views.qwen*` steps run the multi-angle workflow), plus packs whose
+    `kinds` prefixes (CPU steps such as `tts.`) appear in it."""
     used = set(re.findall(r"\b[a-z0-9]+(?:_[a-z0-9]+)+\b", recipe_text))
     if "views.qwen" in recipe_text:
         used.add("multi_angles_qwen2511")
-    return {p["id"] for p in manifest()["packs"] if used & set(p["workflows"])}
+    return {p["id"] for p in manifest()["packs"]
+            if used & set(p["workflows"]) or any(k in recipe_text for k in p.get("kinds") or [])}
 
 
 @dataclass

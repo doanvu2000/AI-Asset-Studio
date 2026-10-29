@@ -1069,3 +1069,10 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   Thêm package vào `unity-test-batch`: ugui 2.0.0, tilemap.extras 6.0.1. Ảnh: scratchpad `ubatch/shots/`. Còn: pack chưa khai báo
   dependency tilemap.extras/glTFast; NpcData trùng class khi có cả pack + export lẻ (CS0433); soundscape audio chưa có .meta Streaming.
 - [x] Kiểm 747 pass / 4 skip, typecheck sạch → commit mốc sửa lỗi từ kiểm Unity.
+- [~] Giao agent dọn nợ: dependency package.json của pack, namespace script C# (NpcData CS0433), .meta/.import audio soundscape + README, model CLIP/TTS vào manifest bootstrap + license, config.py tự dò Godot/Unity.
+- [x] Dọn nợ xong (agent): pack `package.json` khai dependency (tilemap.extras/gltfast/ugui/URP, Unity resolve OK); C# sinh ra bọc
+  `namespace AssetStudio` (pack dùng namespace riêng = asmdef) → hết CS0433, preview `-executeMethod AssetStudio.AssetStudioPreview.Run`;
+  soundscape `.meta` Unity theo loại + Godot `.import` loop + README khi lệch BPM; manifest bootstrap thêm pack `similar` (CLIP) + `tts`
+  (archive sherpa-onnx, giải nén) + license/commercial; `config.py` tự dò Godot/Unity (field `tool_search_roots`). Unity run21 fails=0.
+  Còn: Godot `class_name NpcData` trùng nếu addon pack + export lẻ chung project.
+- [x] Kiểm 752 pass / 4 skip, typecheck sạch → commit mốc dọn nợ.

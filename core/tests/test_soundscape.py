@@ -214,3 +214,39 @@ def test_recipe_loads_and_lints() -> None:
     assert r.step("music").map_param == "94.tags" and r.step("sfx").map_param == "6.text"
     _, issues = validate((RECIPES / "scene-soundscape.yaml").read_text(encoding="utf-8"), None)
     assert issues == []
+
+
+def _scene_source(tmp_path: Path, bpm_ok: bool):
+    from studio_core.export.source import Source
+
+    names = ["music_a_1_loop.ogg", "music_b_1_loop.ogg", "ambience_x_1_loop.ogg", "sfx_bell_1.ogg", "sfx_hit_1.wav"]
+    for n in names:
+        (tmp_path / n).write_bytes(b"x")
+    roles = ["music", "music_tense", "ambience", "sfx", "sfx"]
+    items = [{"stem": Path(n).stem, "role": r, "label": r, "volume_db": -10, "loop": "_loop" in n}
+             for n, r in zip(names, roles)]
+    check = {"ok": bpm_ok, "message": "music_b ước lượng 123 BPM, lệch 96"}
+    return Source(asset="Harbour", uid="u1", audio=[(n, tmp_path / n) for n in names],
+                  soundscape={"bpm": 96, "keyscale": "D minor", "items": items, "checks": {"bpm": check}})
+
+
+def test_engine_import_settings_and_bpm_mismatch_readme(tmp_path: Path) -> None:
+    from studio_core.export import godot, unity
+
+    src = _scene_source(tmp_path, bpm_ok=False)
+    u = dict(unity.export(src))
+    load = {n: int(u[f"Audio/{n}.meta"].decode().split("loadType: ")[1][0]) for n in
+            ("music_a_1_loop.ogg", "music_b_1_loop.ogg", "ambience_x_1_loop.ogg", "sfx_bell_1.ogg")}
+    assert load == {"music_a_1_loop.ogg": 2, "music_b_1_loop.ogg": 2, "ambience_x_1_loop.ogg": 1, "sfx_bell_1.ogg": 0}
+    assert "preloadAudioData: 1" in u["Audio/sfx_bell_1.ogg.meta"].decode()
+    readme = u["README.txt"].decode()
+    assert "LỆCH BPM" in readme and "PlayScheduled" not in readme
+    g = dict(godot.export(src))
+    imp = g["Audio/music_a_1_loop.ogg.import"].decode()
+    assert 'importer="oggvorbisstr"' in imp and "loop=true" in imp
+    assert "Audio/ambience_x_1_loop.ogg.import" in g and "Audio/sfx_bell_1.ogg.import" not in g
+    assert "AudioStreamSynchronized" not in g["README.txt"].decode()
+
+    ok = _scene_source(tmp_path, bpm_ok=True)
+    assert "PlayScheduled" in dict(unity.export(ok))["README.txt"].decode()
+    assert "AudioStreamSynchronized" in dict(godot.export(ok))["README.txt"].decode()

@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import threading
 import time
 import urllib.error
@@ -16,8 +17,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from studio_core.bootstrap.plan import (comfy_ready, detect_gpu, free_bytes, manifest, model_path, model_present,
-                                        pack_models, workflows_dir)
+from studio_core.bootstrap.plan import (comfy_ready, detect_gpu, download_path, free_bytes, manifest, model_path,
+                                        model_present, pack_models, workflows_dir)
 from studio_core.config import Settings, save_overrides
 
 CHUNK = 1 << 20
@@ -242,7 +243,10 @@ class SetupJob:
                     item.detail = "  ·  ".join(f"{k} {v[0] / GIB:.1f}/{v[1] / GIB:.1f} GB" for k, v in active.items())
 
             try:
-                download(m["url"], model_path(self.req.models_dir, m), tick, m["size"], m["sha256"])
+                dest = download_path(self.req.models_dir, m)
+                download(m["url"], dest, tick, m["size"], m["sha256"])
+                if m.get("archive"):
+                    extract_archive(dest, model_path(self.req.models_dir, m))
             finally:
                 with self._lock:
                     active.pop(m["name"], None)
@@ -373,6 +377,25 @@ def file_sha256(path: Path) -> str:
 
 def _drive(path: Path) -> str:
     return path.resolve().drive or path.resolve().anchor
+
+
+def extract_archive(archive: Path, target: Path) -> None:
+    """A .tar.bz2 / .tar.gz / .zip whose single top folder becomes `target`; the archive is removed afterwards."""
+    tmp = target.with_name(target.name + ".unpack")
+    shutil.rmtree(tmp, ignore_errors=True)
+    if archive.suffix == ".zip":
+        with zipfile.ZipFile(archive) as z:
+            z.extractall(tmp)
+    else:
+        with tarfile.open(archive) as t:
+            t.extractall(tmp, filter="data")
+    roots = list(tmp.iterdir())
+    src = roots[0] if len(roots) == 1 and roots[0].is_dir() else tmp
+    if target.exists():
+        shutil.rmtree(target)
+    shutil.move(str(src), str(target))
+    shutil.rmtree(tmp, ignore_errors=True)
+    archive.unlink(missing_ok=True)
 
 
 def _extract_single_root(archive: Path, target: Path) -> None:

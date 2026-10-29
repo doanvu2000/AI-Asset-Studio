@@ -1,6 +1,7 @@
 """Licenses of the generators a run can use, for a pack's provenance.json.
 
-The bootstrap manifest records no license, so this table is the source. `commercial` is one of yes | restricted
+The bootstrap manifest's `license` / `commercial` fields win when present; this table is the fallback (and the
+source for entries the manifest does not list). `commercial` is one of yes | restricted
 (allowed under conditions: revenue caps, attribution, custom terms) | no | unknown (not verified, check before
 shipping a commercial game). Keys are model file names from bootstrap/manifest.json or a generator kind.
 """
@@ -59,8 +60,19 @@ SERVICES: dict[str, tuple[str, str, str]] = {
 _RANK = {"yes": 0, "restricted": 1, "unknown": 2, "no": 3}
 
 
+def _manifest_entry(name: str) -> dict[str, Any] | None:
+    from studio_core.bootstrap.plan import manifest
+
+    return next((m for m in manifest()["models"] if m["name"] == name and m.get("license")), None)
+
+
 def model_license(name: str) -> dict[str, Any]:
     lic, commercial, source = MODELS.get(name) or SERVICES.get(name) or ("unverified", "unknown", "")
+    entry = _manifest_entry(name)
+    if entry:
+        lic = entry["license"]
+        commercial = entry.get("commercial") or (commercial if name in MODELS else "unknown")
+        source = entry.get("source") or source or entry.get("url", "")
     return {"name": name, "license": lic, "commercial": commercial, "source": source}
 
 

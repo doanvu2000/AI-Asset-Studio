@@ -53,19 +53,21 @@ class PreviewCancelled(Exception):
 
 
 def availability(settings: Any) -> dict[str, dict[str, Any]]:
-    godot = Path(getattr(settings, "godot_exe", "") or "")
-    unity = Path(getattr(settings, "unity_exe", "") or "")
-    project = Path(getattr(settings, "unity_project", "") or "")
+    godot, unity, project = (Path(getattr(settings, k, "") or "") for k in ("godot_exe", "unity_exe", "unity_project"))
+
+    def shown(p: Path) -> str:
+        return "" if str(p) in ("", ".") else str(p)
+
     out: dict[str, dict[str, Any]] = {
-        "godot": {"available": godot.is_file(), "path": str(godot), "reason": None if godot.is_file() else
+        "godot": {"available": godot.is_file(), "path": shown(godot), "reason": None if godot.is_file() else
                   "Chưa có Godot (cài đặt › Công cụ › godot_exe)"},
     }
     reason = None
     if not unity.is_file():
         reason = "Chưa có Unity.exe (cài đặt › Công cụ › unity_exe)"
-    elif not (project / "Assets").is_dir() or not (project / "ProjectSettings").is_dir():
+    elif not shown(project) or not (project / "Assets").is_dir() or not (project / "ProjectSettings").is_dir():
         reason = "Thư mục project Unity không hợp lệ (cần Assets/ và ProjectSettings/)"
-    out["unity"] = {"available": reason is None, "path": str(unity), "project": str(project), "reason": reason}
+    out["unity"] = {"available": reason is None, "path": shown(unity), "project": shown(project), "reason": reason}
     return out
 
 
@@ -233,7 +235,8 @@ async def preview_unity(export_dir: Path, work: Path, exe: Path, project: Path, 
            "ASSET_STUDIO_PREVIEW_REPORT": str(report), "ASSET_STUDIO_PREVIEW_SIZE": str(SIZE)}
     # No -nographics: Camera.Render needs a graphics device. No -quit: the method calls EditorApplication.Exit.
     run = await run_proc([str(exe), "-batchmode", "-projectPath", str(project), "-executeMethod",
-                          "AssetStudioPreview.Run", "-logFile", str(log_file)], project, env, UNITY_TIMEOUT_S, cancel)
+                          "AssetStudio.AssetStudioPreview.Run", "-logFile", str(log_file)], project, env,
+                         UNITY_TIMEOUT_S, cancel)
     log = log_file.read_text(encoding="utf-8", errors="replace") if log_file.is_file() else run.output
     errors, warnings = unity_log_issues(log, asset_dir)
     rep: dict[str, Any] = {}

@@ -1,9 +1,12 @@
 import json
 import os
+import re
 import shutil
+import sys
+from functools import cache
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from studio_core.paths import default_data_dir, package_dir, recipes_dir
 
@@ -37,6 +40,74 @@ def _default_claude_exe() -> str:
     return str(next((c for c in candidates if c.is_file()), candidates[0]))
 
 
+def fixed_drives() -> list[Path]:
+    """Local fixed disks only: probing a disconnected network or empty card-reader drive can block for seconds."""
+    if sys.platform != "win32":
+        return []
+    import ctypes
+
+    k32 = ctypes.windll.kernel32
+    mask = k32.GetLogicalDrives()
+    roots = [f"{chr(65 + i)}:\\" for i in range(26) if mask >> i & 1]
+    return [Path(r) for r in roots if k32.GetDriveTypeW(r) == 3]
+
+
+def _version_key(p: Path) -> tuple[int, ...]:
+    return tuple(int(n) for n in re.findall(r"\d+", p.as_posix()))
+
+
+def _newest(hits: list[Path]) -> str:
+    files = [h for h in hits if h.is_file()]
+    return str(max(files, key=_version_key)) if files else ""
+
+
+@cache
+def find_godot(roots: tuple[Path, ...]) -> str:
+    env = os.environ
+    dirs = [Path(d) for d in env.get("PATH", "").split(os.pathsep) if d]
+    dirs += [Path(env.get("LOCALAPPDATA", "")) / "Programs/Godot", Path(env.get("ProgramFiles", "")) / "Godot",
+             Path.home() / "scoop/apps/godot/current"]
+    dirs += [r / sub for r in roots for sub in ("AI/tools/godot", "tools/godot", "Godot")]
+    hits = [h for d in dirs if d.is_dir() for h in d.glob("Godot_v4*_console.exe")]
+    winget = Path(env.get("LOCALAPPDATA", "")) / "Microsoft/WinGet/Packages"
+    if winget.is_dir():
+        hits += winget.glob("GodotEngine.GodotEngine*/Godot_v4*_console.exe")
+    return _newest(hits)
+
+
+@cache
+def find_unity(roots: tuple[Path, ...]) -> str:
+    editors = [Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Unity/Hub/Editor"]
+    hub = Path(os.environ.get("APPDATA", "")) / "UnityHub/secondaryInstallPath.json"
+    try:
+        extra = json.loads(hub.read_text(encoding="utf-8"))
+        if isinstance(extra, str) and extra:
+            editors.append(Path(extra))
+    except (OSError, ValueError):
+        pass
+    editors += [r / sub for r in roots for sub in ("Unity", "Program Files/Unity/Hub/Editor")]
+    return _newest([h for d in editors if d.is_dir() for h in d.glob("*/Editor/Unity.exe")])
+
+
+@cache
+def find_unity_project(roots: tuple[Path, ...]) -> str:
+    """A project the engine preview already used (it leaves Assets/AssetStudioPreview), up to two levels deep."""
+    for r in roots:
+        for pattern in ("*/Assets/AssetStudioPreview", "*/*/Assets/AssetStudioPreview"):
+            try:
+                hit = next((h.parents[1] for h in r.glob(pattern) if (h.parents[1] / "ProjectSettings").is_dir()),
+                           None)
+            except OSError:
+                hit = None
+            if hit:
+                return str(hit)
+    return ""
+
+
+def _unset(p: Path) -> bool:
+    return str(p) in ("", ".")
+
+
 class Settings(BaseModel):
     data_dir: Path = Field(default_factory=default_data_dir)
     recipes_dir: Path = recipes_dir()
@@ -54,12 +125,25 @@ class Settings(BaseModel):
     codex_home: Path = Path.home() / ".codex"
     claude_exe: Path = Field(default_factory=lambda: Path(_default_claude_exe()))
     ffmpeg_exe: Path = Field(default_factory=lambda: Path(_default_ffmpeg_exe()))
-    godot_exe: Path = Path(r"L:\AI\tools\godot\Godot_v4.7.2-stable_win64_console.exe")
-    unity_exe: Path = Path(r"F:\Unity\6000.3.6f1\Editor\Unity.exe")
-    unity_project: Path = Path(r"L:\AI\unity-test-batch")
+    # Empty = auto-detect (see _detect_engines); settings.json may list extra install roots in tool_search_roots.
+    godot_exe: Path = Path("")
+    unity_exe: Path = Path("")
+    unity_project: Path = Path("")
+    tool_search_roots: list[Path] = Field(default_factory=fixed_drives)
 
     lane_limits: dict[str, int] = {"gpu": 1, "blender": 1, "cloud": 3, "cpu": 4}
     allowed_origins: list[str] = ["app://studio", "http://localhost:5173", "http://127.0.0.1:5173"]
+
+    @model_validator(mode="after")
+    def _detect_engines(self) -> "Settings":
+        roots = tuple(self.tool_search_roots)
+        if _unset(self.godot_exe):
+            self.godot_exe = Path(find_godot(roots))
+        if _unset(self.unity_exe):
+            self.unity_exe = Path(find_unity(roots))
+        if _unset(self.unity_project):
+            self.unity_project = Path(find_unity_project(roots))
+        return self
 
     @property
     def db_path(self) -> Path:

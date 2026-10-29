@@ -127,7 +127,7 @@ async def test_preview_unity_stages_export_and_reads_report(tmp_path: Path, monk
                                       asyncio.Event())
     args, env = seen["args"], seen["env"]
     assert "-batchmode" in args and "-nographics" not in args and "-quit" not in args
-    assert _value_after(args, "-executeMethod") == "AssetStudioPreview.Run"
+    assert _value_after(args, "-executeMethod") == "AssetStudio.AssetStudioPreview.Run"
     assert env["ASSET_STUDIO_PREVIEW_DIR"] == "Assets/AssetStudio/Knight"
     staged = project / "Assets" / "AssetStudio" / "Knight"
     assert (staged / "Knight.tscn").is_file() and not (staged / "stale.png").exists()

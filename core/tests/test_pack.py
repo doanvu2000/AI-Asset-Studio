@@ -10,7 +10,6 @@ from PIL import Image
 
 from studio_core.contracts import Lane, ProjectRow, RunRow, StepRow, StepStatus, VersionRow, VersionStatus
 from studio_core.export.sheet import stable_hex
-from studio_core.store import model_licenses as ml
 from studio_core.store import pack as pk
 from test_api_basic import AUTH, app_ctx  # noqa: F401  (fixture reuse)
 
@@ -150,7 +149,11 @@ async def test_version_bump_changelog_and_noncommercial_flag(app_ctx, tmp_path: 
     await app.state.repo.add_version(VersionRow(id="v-r1b", project_id="p1", asset_name="Knight", run_id="r1",
                                                 step_id="r1-sheet", blob=newer, status=VersionStatus.APPROVED,
                                                 created_at=time.time()))
-    monkeypatch.setitem(ml.MODELS, "z_image_turbo_bf16.safetensors", ("CC-BY-NC-4.0", "no", "test"))
+    from studio_core.bootstrap.plan import manifest
+
+    zit = next(m for m in manifest()["models"] if m["name"] == "z_image_turbo_bf16.safetensors")
+    monkeypatch.setitem(zit, "license", "CC-BY-NC-4.0")
+    monkeypatch.setitem(zit, "commercial", "no")
     r = await client.post("/api/projects/p1/pack", headers=AUTH, json=body)
     second = r.json()
     assert second["version"] == "1.0.1" and second["previous"] == "1.0.0"
@@ -259,3 +262,36 @@ async def test_mcp_build_asset_pack() -> None:
         assert (method, path) == ("POST", "/api/projects/p1/pack")
         assert kw["json"]["engines"] == ["unity", "godot"] and kw["json"]["version"] == "1.2.3"
         assert "include" not in kw["json"]
+
+
+def test_finalize_unity_scopes_namespace_and_detects_dependencies(tmp_path: Path) -> None:
+    from studio_core.export import npc, unity
+    from studio_core.export.autotile import RULE_TILE_GUID
+
+    pkg = tmp_path / "com.x.y"
+    d = pkg / "Runtime" / "Npc"
+    (d / "Scripts").mkdir(parents=True)
+    (d / "Scripts" / "NpcData.cs").write_text(npc.UNITY_SCRIPT, encoding="utf-8")
+    (d / "Editor").mkdir()
+    (d / "Editor" / "AssetStudioLodGroup.cs").write_text(unity.LOD_GROUP_SCRIPT, encoding="utf-8")
+    assert pk.unity_dependencies(pkg) == {}
+
+    rep = pk.finalize_unity(pkg, "com.x.y", "X.2dPack")
+    assert rep["namespace"] == "X._2dPack"
+    code = (pkg / "Runtime" / "Scripts" / "NpcData.cs").read_text(encoding="utf-8")
+    assert "namespace X._2dPack\n{" in code and "namespace AssetStudio\n" not in code
+    assert "namespace X._2dPack" in (pkg / "Editor" / "AssetStudioLodGroup.cs").read_text(encoding="utf-8")
+    assert json.loads((pkg / "Runtime" / "X.2dPack.asmdef").read_text(encoding="utf-8"))["rootNamespace"] == "X._2dPack"
+
+    d.mkdir()
+    (d / "Meadow.asset").write_text(f"m_Script: {{fileID: 11500000, guid: {RULE_TILE_GUID}, type: 3}}\n",
+                                    encoding="utf-8")
+    (d / "knight.glb").write_bytes(b"glTF")
+    (d / "Lit.mat").write_text("m_Shader: {fileID: 4800000, guid: 933532a4fcc9baf4fa0491de14d08ed7, type: 3}\n",
+                               encoding="utf-8")
+    (d / "btn.png.meta").write_text("  spriteBorder: {x: 0, y: 0, z: 0, w: 0}\n", encoding="utf-8")
+    deps = pk.unity_dependencies(pkg)
+    assert deps == {"com.unity.2d.tilemap.extras": "4.1.0", "com.unity.cloud.gltfast": "6.14.1",
+                    "com.unity.render-pipelines.universal": "17.0.3"}
+    (d / "btn.png.meta").write_text("  spriteBorder: {x: 12, y: 0, z: 12, w: 0}\n", encoding="utf-8")
+    assert pk.unity_dependencies(pkg)["com.unity.ugui"] == "2.0.0"

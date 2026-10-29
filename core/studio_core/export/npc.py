@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from studio_core.contracts import BlobStore, StepRow
-from studio_core.export.sheet import ident
+from studio_core.export.sheet import cs_namespace, ident
 from studio_core.export.source import Files, Source
 
 SPRITE_ID = 21300000
@@ -73,7 +73,7 @@ def doc_json(src: Source) -> bytes:
     return json.dumps(doc, ensure_ascii=False, indent=1).encode("utf-8")
 
 
-UNITY_SCRIPT = """using System;
+UNITY_SCRIPT = cs_namespace("""using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -134,7 +134,7 @@ public class NpcData : ScriptableObject
         return "";
     }
 }
-"""
+""")
 
 
 def _q(s: Any) -> str:
@@ -173,12 +173,9 @@ def unity_asset(src: Source, sprite_guids: dict[str, str], clip_guids: dict[str,
 
 
 def audio_meta(g: str) -> str:
-    return (f"fileFormatVersion: 2\nguid: {g}\nAudioImporter:\n  externalObjects: {{}}\n  serializedVersion: 8\n"
-            "  defaultSettings:\n    serializedVersion: 2\n    loadType: 0\n    sampleRateSetting: 0\n"
-            "    sampleRateOverride: 44100\n    compressionFormat: 1\n    quality: 1\n    conversionMode: 0\n"
-            "    preloadAudioData: 0\n  platformSettingOverrides: {}\n  forceToMono: 1\n  normalize: 0\n"
-            "  loadInBackground: 0\n  ambisonic: 0\n  3D: 0\n  userData: \n  assetBundleName: \n"
-            "  assetBundleVariant: \n")
+    from studio_core.export.soundscape import unity_audio_meta
+
+    return unity_audio_meta(g, 0, 0, 0, mono=True)
 
 
 def script_meta(g: str) -> str:
@@ -215,7 +212,7 @@ def unity_files(src: Source) -> tuple[Files, list[str]]:
               ("Scripts/NpcData.cs", UNITY_SCRIPT.encode()), ("Scripts/NpcData.cs.meta", script_meta(SCRIPT_GUID).encode()),
               (asset_rel, unity_asset(src, sprite_guids, clip_guids).encode()),
               (f"{asset_rel}.meta", native_meta(guid(src.uid, src.asset, asset_rel), ASSET_ID).encode())]
-    note = (f"- NPC/{src.asset}_npc.asset: ScriptableObject NpcData (Scripts/NpcData.cs) — {len(src.npc_portraits)} "
+    note = (f"- NPC/{src.asset}_npc.asset: ScriptableObject AssetStudio.NpcData (Scripts/NpcData.cs; code dùng `using AssetStudio;`) —{len(src.npc_portraits)} "
             f"chân dung theo biểu cảm, {len(flat_lines(src))} câu thoại (mỗi ngôn ngữ một dòng) gắn AudioClip trong "
             "Audio/ + cues phụ đề (giây). Dùng: GetPortrait(line.expression), RandomLine(\"idle\", \"vi\"), "
             f"CueAt(line, audioSource.time). NPC/{src.asset}_npc.json chứa cùng dữ liệu cho code tự đọc. Nhập nhiều "

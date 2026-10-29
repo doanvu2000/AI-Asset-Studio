@@ -157,3 +157,26 @@ async def test_tools_api_put(client: tuple[Settings, httpx.AsyncClient], tmp_pat
     assert bad.status_code == 400 and bad.json()["error"]["code"] == "invalid"
     empty = await c.put("/api/settings/tools", headers=AUTH, json={"paths": {"blender_exe": "  "}})
     assert empty.status_code == 400
+
+
+def test_engine_paths_auto_detect_from_search_roots(tmp_path: Path) -> None:
+    from studio_core.config import find_godot, find_unity
+
+    root = tmp_path / "D"
+    for rel in ("AI/tools/godot/Godot_v4.98.1-stable_win64_console.exe",
+                "AI/tools/godot/Godot_v4.99.0-stable_win64_console.exe",
+                "Unity/6000.0.30f1/Editor/Unity.exe", "Unity/6000.99.1f1/Editor/Unity.exe"):
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_bytes(b"")
+    proj = root / "games" / "Proj"
+    (proj / "Assets" / "AssetStudioPreview").mkdir(parents=True)
+    (proj / "ProjectSettings").mkdir()
+
+    s = Settings(data_dir=tmp_path / "data", tool_search_roots=[root])
+    assert s.godot_exe == root / "AI/tools/godot/Godot_v4.99.0-stable_win64_console.exe"
+    assert s.unity_exe == root / "Unity/6000.99.1f1/Editor/Unity.exe"
+    assert s.unity_project == proj
+    pinned = Settings(data_dir=tmp_path / "data", tool_search_roots=[root], unity_exe=tmp_path / "U.exe")
+    assert pinned.unity_exe == tmp_path / "U.exe"
+    assert find_godot((tmp_path / "none",)) in ("", find_godot(()))
+    assert find_unity((tmp_path / "none",)) == find_unity(())

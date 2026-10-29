@@ -69,11 +69,14 @@ def exe_version(path: Path, flag: str = "--version") -> str | None:
 
 def inspect_tool(key: str, path: Path, versions: bool = True) -> dict[str, Any]:
     spec = TOOLS[key]
-    exists = path.is_dir() if spec.kind == "dir" else path.is_file()
-    out: dict[str, Any] = {"key": key, "label": spec.label, "kind": spec.kind, "path": str(path), "exists": exists,
-                           "ok": exists, "version": None, "detail": None}
+    # Path("") (an engine path nothing auto-detected) reads as "." and would pass is_dir() on the working dir.
+    unset = str(path) in ("", ".")
+    exists = not unset and (path.is_dir() if spec.kind == "dir" else path.is_file())
+    out: dict[str, Any] = {"key": key, "label": spec.label, "kind": spec.kind, "path": "" if unset else str(path),
+                           "exists": exists, "ok": exists, "version": None, "detail": None}
     if not exists:
-        out["detail"] = "Không tìm thấy thư mục" if spec.kind == "dir" else "Không tìm thấy file"
+        out["detail"] = ("Chưa đặt, không tự tìm thấy" if unset else
+                         "Không tìm thấy thư mục" if spec.kind == "dir" else "Không tìm thấy file")
         return out
     if spec.marker and not (path / spec.marker).is_file():
         out["ok"] = False

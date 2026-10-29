@@ -30,6 +30,22 @@ def direction_vector(angle: float) -> tuple[float, float]:
     return round(-math.sin(r), 4) + 0.0, round(-math.cos(r), 4) + 0.0
 
 
+CS_NAMESPACE = "AssetStudio"
+
+
+def cs_namespace(src: str, ns: str = CS_NAMESPACE) -> str:
+    """Wraps generated C# (leading comments/usings stay outside) in `namespace ns { ... }`."""
+    lines = src.rstrip("\n").split("\n")
+    i = 0
+    while i < len(lines) and (not lines[i].strip() or lines[i].startswith(("//", "using "))):
+        i += 1
+    head = lines[:i]
+    while head and not head[-1].strip():
+        head.pop()
+    body = ["    " + ln if ln.strip() else "" for ln in lines[i:]]
+    return "\n".join([*head, "", f"namespace {ns}", "{", *body, "}", ""])
+
+
 def stable_hex(*parts: str) -> str:
     return hashlib.blake2b("\x1f".join(parts).encode(), digest_size=16).hexdigest()
 

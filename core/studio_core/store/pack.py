@@ -18,7 +18,7 @@ from typing import Any, Callable
 
 from studio_core import __version__
 from studio_core.contracts import BlobStore, RunRow, StepRow, VersionRow
-from studio_core.export.sheet import stable_hex
+from studio_core.export.sheet import CS_NAMESPACE, stable_hex
 from studio_core.store.bundle import BundleError, engine_ready, export_engine
 from studio_core.store.export import safe_filename
 from studio_core.store.model_licenses import model_license, worst
@@ -349,6 +349,25 @@ def _scope_guids(pkg: Path, package: str) -> None:
             p.write_text(new, encoding="utf-8", newline="")
 
 
+_NS_LINE = re.compile(rf"^namespace {CS_NAMESPACE}$", re.M)
+
+
+def pack_namespace(asm: str) -> str:
+    return ".".join(f"_{s}" if s[:1].isdigit() else s for s in asm.split(".") if s)
+
+
+def _scope_namespace(pkg: Path, ns: str) -> None:
+    """Loose exports declare AssetStudio.NpcData etc. in Assembly-CSharp; the same full name in the pack's asmdef
+    would be CS0433 for any assembly seeing both (Assembly-CSharp-Editor), and two packs would clash with each other.
+    Each pack's copy lives in the pack's own namespace; m_Script binds by GUID + class name, so assets still
+    resolve."""
+    for p in pkg.rglob("*.cs"):
+        t = p.read_text(encoding="utf-8")
+        new = _NS_LINE.sub(f"namespace {ns}", t)
+        if new != t:
+            p.write_text(new, encoding="utf-8", newline="")
+
+
 def _meta_text(p: Path, g: str) -> str:
     head = f"fileFormatVersion: 2\nguid: {g}\n"
     tail = "  userData: \n  assetBundleName: \n  assetBundleVariant: \n"
@@ -382,8 +401,8 @@ def _write_metas(pkg: Path, name: str) -> None:
             meta.write_text(_meta_text(p, stable_hex("pack-meta", name, rel.as_posix())), encoding="utf-8")
 
 
-def _asmdef(name: str, editor: bool, refs: list[str]) -> str:
-    doc: dict[str, Any] = {"name": name, "rootNamespace": "", "references": refs,
+def _asmdef(name: str, editor: bool, refs: list[str], ns: str = "") -> str:
+    doc: dict[str, Any] = {"name": name, "rootNamespace": ns, "references": refs,
                            "includePlatforms": ["Editor"] if editor else [], "excludePlatforms": [],
                            "allowUnsafeCode": False, "overrideReferences": False, "precompiledReferences": [],
                            "autoReferenced": True, "defineConstraints": [], "versionDefines": [],
@@ -396,19 +415,59 @@ def finalize_unity(pkg: Path, package: str, asm: str) -> dict[str, Any]:
     runtime = pkg / "Runtime"
     _dedupe_shared(pkg, report)
     _hoist_scripts(pkg, runtime, report)
+    ns = pack_namespace(asm)
+    _scope_namespace(pkg, ns)
+    report["namespace"] = ns
     has_runtime = any(runtime.rglob("*.cs"))
     if has_runtime:
-        (runtime / f"{asm}.asmdef").write_text(_asmdef(asm, False, []), encoding="utf-8")
+        (runtime / f"{asm}.asmdef").write_text(_asmdef(asm, False, [], ns), encoding="utf-8")
         report["asmdefs"].append(f"Runtime/{asm}.asmdef")
     if any((pkg / "Editor").rglob("*.cs")):
         (pkg / "Editor" / f"{asm}.Editor.asmdef").write_text(
-            _asmdef(f"{asm}.Editor", True, [asm] if has_runtime else []), encoding="utf-8")
+            _asmdef(f"{asm}.Editor", True, [asm] if has_runtime else [], ns), encoding="utf-8")
         report["asmdefs"].append(f"Editor/{asm}.Editor.asmdef")
     _fix_collisions(pkg, runtime, report)
     _scope_guids(pkg, package)
     _write_metas(pkg, package)
     report["guids"] = check_guids(pkg)
     return report
+
+
+# Lowest versions that resolve on Unity 6000.0 (packages.unity.com "unity" field). Editor-bundled packages
+# (ugui, URP, tilemap.extras) are bumped by UPM to the editor's own minimumVersion on newer editors; 6000.3.6f1's
+# Resources/PackageManager/Editor/manifest.json pins tilemap.extras 6.0.1, gltfast 6.14.1, ugui 2.0.0, URP 17.3.0.
+UNITY_DEPS = {"tilemap": ("com.unity.2d.tilemap.extras", "4.1.0"), "gltf": ("com.unity.cloud.gltfast", "6.14.1"),
+              "ugui": ("com.unity.ugui", "2.0.0"), "urp": ("com.unity.render-pipelines.universal", "17.0.3")}
+_URP_GUIDS = ("a97c105638bdf8b4a8650670310a4cd3", "933532a4fcc9baf4fa0491de14d08ed7")
+_BORDER = re.compile(r"spriteBorder: \{x: (\d+), y: (\d+), z: (\d+), w: (\d+)\}")
+
+
+def unity_dependencies(pkg: Path) -> dict[str, str]:
+    from studio_core.export.autotile import RULE_TILE_GUID
+
+    need: set[str] = set()
+    for p in pkg.rglob("*"):
+        if not p.is_file():
+            continue
+        ext = p.suffix.lower()
+        if ext == ".glb":
+            need.add("gltf")
+        elif ext == ".fontsettings":
+            need.add("ugui")
+        if ext not in {".asset", ".mat", ".prefab", ".meta", ".shader", ".hlsl"}:
+            continue
+        try:
+            t = p.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if RULE_TILE_GUID in t:
+            need.add("tilemap")
+        if any(g in t for g in _URP_GUIDS) or "com.unity.render-pipelines.universal" in t \
+                or '"UniversalPipeline"' in t:
+            need.add("urp")
+        if ext == ".meta" and any(int(v) for m in _BORDER.finditer(t) for v in m.groups()):
+            need.add("ugui")
+    return dict(sorted(UNITY_DEPS[k] for k in need))
 
 
 def check_guids(pkg: Path) -> int:
@@ -644,6 +703,9 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
             for n, text in docs.items():
                 (pkg / n).write_text(text, encoding="utf-8")
             report = finalize_unity(pkg, pkg_name, _pascal(opts.org) + "." + _pascal(slug))
+            manifest["dependencies"] = unity_dependencies(pkg)
+            (pkg / "package.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+                                              encoding="utf-8")
             warnings += report["warnings"]
             result["unity"] = {"dir": str(final / "unity" / pkg_name), "package": manifest, **report}
         if "godot" in engines:
