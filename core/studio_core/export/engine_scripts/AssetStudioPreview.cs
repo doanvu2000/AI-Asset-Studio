@@ -83,6 +83,15 @@ namespace AssetStudio
                 report.kind = "model";
                 return (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(model));
             }
+            var sky = Find("t:Material", dir).Select(AssetDatabase.LoadAssetAtPath<Material>)
+                .FirstOrDefault(m => m != null && m.shader != null && m.shader.name.StartsWith("Skybox/"));
+            if (sky != null)
+            {
+                report.target = AssetDatabase.GetAssetPath(sky);
+                report.kind = "skybox";
+                RenderSettings.skybox = sky;
+                return new GameObject("Skybox");
+            }
             if (Directory.GetFiles(dir, "*.glb", SearchOption.AllDirectories).Length > 0)
                 report.warnings.Add("GLB was not imported as a model (install com.unity.cloud.gltfast)");
             var sprites = Find("t:Sprite", dir).SelectMany(p => AssetDatabase.LoadAllAssetsAtPath(p).OfType<Sprite>())
@@ -93,7 +102,9 @@ namespace AssetStudio
                 report.kind = "sprites";
                 return SpriteGrid(sprites);
             }
-            var tex = Find("t:Texture2D", dir).Select(AssetDatabase.LoadAssetAtPath<Texture2D>).FirstOrDefault(t => t != null);
+            var tex = Find("t:Texture2D", dir)
+                .OrderBy(p => Path.GetFileName(p).ToLowerInvariant().Contains("albedo") || p.ToLowerInvariant().Contains("basecolor") ? 0 : 1)
+                .Select(AssetDatabase.LoadAssetAtPath<Texture2D>).FirstOrDefault(t => t != null);
             if (tex != null)
             {
                 report.target = AssetDatabase.GetAssetPath(tex);
@@ -126,7 +137,6 @@ namespace AssetStudio
             mat.mainTexture = tex;
             if (tex.wrapMode == TextureWrapMode.Repeat) mat.mainTextureScale = new Vector2(3, 3);
             go.GetComponent<MeshRenderer>().sharedMaterial = mat;
-            go.transform.rotation = Quaternion.Euler(0, 180, 0);
             return go;
         }
 
@@ -140,7 +150,13 @@ namespace AssetStudio
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = Bg;
             cam.aspect = 1f;
-            if (flat)
+            if (report.kind == "skybox")
+            {
+                cam.clearFlags = CameraClearFlags.Skybox;
+                cam.fieldOfView = 90f;
+                cam.transform.rotation = Quaternion.Euler(-10f, 0f, 0f);
+            }
+            else if (flat)
             {
                 cam.orthographic = true;
                 cam.orthographicSize = Mathf.Max(b.extents.x, b.extents.y, 0.01f) * 1.1f;

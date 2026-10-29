@@ -122,7 +122,8 @@ def godot_issues(text: str) -> tuple[list[str], list[str]]:
 def godot_target(folder: Path) -> Path | None:
     """The file to open: a scene first, then a model, a resource, a texture."""
     def pick(paths: list[Path]) -> Path | None:
-        return min(paths, key=lambda p: (len(p.relative_to(folder).parts), len(p.stem), p.name)) if paths else None
+        return min(paths, key=lambda p: (p.stem.endswith("_original"), len(p.relative_to(folder).parts),
+                                         len(p.stem), p.name)) if paths else None
 
     for pattern in ("*.tscn", "*.glb", "*.gltf", "*.tres", "*.png"):
         hit = pick([p for p in folder.rglob(pattern) if p.is_file()])

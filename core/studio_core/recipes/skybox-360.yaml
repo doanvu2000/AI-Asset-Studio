@@ -30,7 +30,7 @@ steps:
   - id: pick
     kind: gate.pick
     in: {images: gen.images}
-    params: {k: 1}
+    params: {k: 1, enabled: "${inputs.review}"}
   - id: fix
     kind: op.pano_fix
     in: {images: pick.images}

@@ -47,7 +47,12 @@ def test_godot_target_prefers_shortest_top_level_scene(tmp_path: Path) -> None:
     for p in d.glob("*.tscn"):
         p.unlink()
     assert preview.godot_target(d).name == "m.glb"
+    (d / "Models" / "crate_original.glb").write_bytes(b"")
+    (d / "Models" / "crate_retextured.glb").write_bytes(b"")
     (d / "Models" / "m.glb").unlink()
+    assert preview.godot_target(d).name == "crate_retextured.glb"
+    for p in d.glob("Models/*.glb"):
+        p.unlink()
     assert preview.godot_target(d).name == "Knight.png"
 
 
