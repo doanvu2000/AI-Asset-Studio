@@ -1194,3 +1194,13 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [x] Changelog 1.1.0 thêm #40–#44 + #38. `packaging/studio-core.spec` thêm retex_math/retex_bpy (#41 quên). Kiểm tổng: pytest 878 pass / 4 skip, typecheck sạch.
 - [x] 2026-10-29 19:00 Handoff mới: .planning/HANDOFF-2026-10-29-1900.md
 - [x] Chủ nhân "dọn rồi commit": `git rm core/check.gd`; xoá L:\AI\unity-restyle-test, godot-restyle-test, unity-test-destructible, godot-test-destructible, blender/project/destructible-live, blender/retex-live-data, blender/temp/retex, unity-test-batch/Assets/{SkyboxTest,AnimVideoLive,Editor/AnimVideoCheck.cs}(+.meta), godot-test/{SkyboxTest,AnimVideoLive}. Commit 3 commit, chưa push.
+
+## Phiên 2026-10-29 tối — chủ nhân: "tự build lên test thử các tính năng mới"
+- [x] Build dist:core + dist:portable 1.1.0 → `app/release/1.1.0/win-unpacked` (build 2 lần, lần 2 có fix dưới).
+- [x] E2E bằng core đóng gói (`studio-core.exe serve`, data riêng ở scratchpad 701b93af…/scratchpad/e2e110, script `e2e.py`): 61 recipe, 5 recipe mới đều succeeded + engine preview Unity/Godot:
+  restyle 121s (mirror 2 ảnh, GUID/.meta giữ; không có engine preview — by design), destruct 47s (10 mảnh), anim 105s (8f, pivot đứng yên), retex 638s, sky 254s.
+- [x] Fix: `export/preview.py` godot_target xếp `*_original` sau cùng (Godot preview retex hiện bản gốc) + test; `AssetStudioPreview.cs` nhánh skybox (RenderSettings.skybox, trước đây ra ảnh trống), TiledQuad bỏ xoay 180° (quad bị cull → mọi preview chỉ-texture ra trống), ưu tiên albedo/basecolor;
+  `skybox-360.yaml` gate.pick thêm `enabled: ${inputs.review}` (review=false vẫn kẹt chờ chọn). pytest 878 pass / 4 skip. Chạy lại sky trên build mới: không kẹt gate, Unity preview có trời.
+- [ ] Nợ thấy khi test: Unity preview GLB cần glTFast (retex chỉ hiện texture albedo); Godot sky preview camera chúc xuống đất; preview thùng (destruct/retex) góc nghiêng, Godot lệch khung; restyle hàng QA "None"; anim 1 ứng viên chém yếu (mặc định 3).
+- Chưa commit fix (3 file core + 1 test).
+- [x] Splash khởi động (chủ nhân yêu cầu): `components/SplashScreen.vue` + `composables/splash.ts` (min 3.2s, đóng khi core ready/error, tối đa 5s), nền trắng/đen theo theme, logo 160px (`assets/art/app-logo.webp` từ resources/icon.png) pop + quầng sáng + 2 vòng ripple + tia lấp lánh + sheen, chữ tiêu đề rơi từng ký tự, dòng trạng thái core + thanh tiến trình, "Copyright by Jin Vũ" góc dưới; App.vue: shell mờ (blur+opacity+scale) → hiện khi splash đóng; WhatsNew chờ splash; main `backgroundColor` #fff/#000. Core vẫn khởi động trong main lúc `whenReady` (song song splash). Kiểm: Chrome headless mock, sáng/tối; typecheck sạch. Chưa build, chưa commit.
