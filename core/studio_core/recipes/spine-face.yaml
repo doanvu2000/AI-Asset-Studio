@@ -31,6 +31,9 @@ steps:
         Return a tight box [x0, y0, x1, y1] around each eye (lashes and outline included), each eyebrow and the mouth.
         Set face_visible false when the face is hidden (helmet, mask, back of the head). Set brows_visible false when
         the eyebrows are hidden under hair or absent; give your best guess for their boxes anyway.
+        A partly covered face (fringe over an eye or a brow, a turned head showing one eye, a hat brim) still counts as
+        visible: list in hidden the names (eye_l, eye_r, brow_l, brow_r, mouth) of the features you cannot see at all,
+        and box only the visible part of a feature that hair crosses. Use an empty hidden list when all are visible.
       schema:
         type: object
         properties:
@@ -41,8 +44,9 @@ steps:
           brow_l: {type: array, items: {type: number}, minItems: 4, maxItems: 4}
           brow_r: {type: array, items: {type: number}, minItems: 4, maxItems: 4}
           mouth: {type: array, items: {type: number}, minItems: 4, maxItems: 4}
+          hidden: {type: array, items: {type: string}}
           notes: {type: string}
-        required: [face_visible, brows_visible, eye_l, eye_r, brow_l, brow_r, mouth, notes]
+        required: [face_visible, brows_visible, eye_l, eye_r, brow_l, brow_r, mouth, hidden, notes]
   - id: plan
     kind: op.spine_face_plan
     in: {info: prep.info, boxes: locate.json, atlas: inputs.atlas}

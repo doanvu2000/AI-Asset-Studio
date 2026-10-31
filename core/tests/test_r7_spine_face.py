@@ -10,7 +10,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 from test_engine_runner import Env
 from test_ops_executors import FakeCtx
 
@@ -39,7 +39,12 @@ FEATURES = {"eye_r": (24, 52, 42, 66), "eye_l": (66, 52, 84, 66), "brow_r": (22,
             "brow_l": (64, 36, 86, 42), "mouth": (42, 96, 66, 104)}
 
 
-def head_image() -> Image.Image:
+HAIR = (150, 80, 30, 255)
+# A fringe strand from the top of the head down across the right brow, ending above the eye.
+STRAND = [(26, 0), (34, 0), (38, 47), (32, 47)]
+
+
+def head_image(hair: bool = False) -> Image.Image:
     img = Image.new("RGBA", (108, 132), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     d.ellipse((2, 2, 105, 129), fill=SKIN, outline=(60, 40, 30, 255), width=2)
@@ -50,17 +55,19 @@ def head_image() -> Image.Image:
     for k in ("brow_l", "brow_r"):
         d.rectangle(FEATURES[k], fill=(70, 40, 20, 255))
     d.arc(FEATURES["mouth"], 10, 170, fill=(150, 50, 40, 255), width=2)
+    if hair:
+        d.polygon(STRAND, fill=HAIR)
     return img
 
 
-def layers() -> list[sp.Layer]:
+def layers(hair: bool = False) -> list[sp.Layer]:
     return [sp.Layer("torso", Image.new("RGBA", (40 * K, 100 * K), (60, 90, 160, 255)), (80 * K, 55 * K)),
-            sp.Layer("head", head_image(), (82 * K - 0, 18 * K - 0))]
+            sp.Layer("head", head_image(hair), (82 * K - 0, 18 * K - 0))]
 
 
-def rig() -> tuple[dict[str, Any], str, Image.Image]:
+def rig(hair: bool = False) -> tuple[dict[str, Any], str, Image.Image]:
     doc, _ = sp.build_skeleton(layers(), JOINTS, (100 * K, 255 * K), "hero", True)
-    ls = layers()
+    ls = layers(hair)
     pos, pw, phh = sp.pack([layer.image.size for layer in ls], 2)
     page = Image.new("RGBA", (pw, phh), (0, 0, 0, 0))
     regions = []
@@ -142,8 +149,9 @@ def test_extend_atlas_keeps_other_pages() -> None:
     assert at.regions["head_eyes_open"].page == 0 and at.regions["torso"].page == 1
 
 
-async def _pipeline(tmp: Path) -> tuple[FakeCtx, dict[str, Any], Any, dict[str, Any]]:
-    doc, atlas_text, page = rig()
+async def _pipeline(tmp: Path, hidden: tuple[str, ...] = (), hair: bool = False, emotions: str = "happy,angry,sad"
+                    ) -> tuple[FakeCtx, dict[str, Any], Any, dict[str, Any]]:
+    doc, atlas_text, page = rig(hair)
     ctx = FakeCtx(tmp)
     ctx.job_dir.mkdir(parents=True)
     sk = await _put(ctx, json.dumps(doc).encode(), "hero.json", "application/json")
@@ -152,8 +160,11 @@ async def _pipeline(tmp: Path) -> tuple[FakeCtx, dict[str, Any], Any, dict[str, 
     prep = await sf.SpineFacePrep().run(ctx, {}, {"skeleton": [sk], "atlas": atlas})
     info = json.loads(ctx.blobs.path(prep.outputs["info"][0].hash).read_bytes())
     assert prep.meta["size"] == info["work"] and all(v % 16 == 0 for v in info["work"])
-    boxes = await _put(ctx, json.dumps(located(info["scale"])).encode(), "b.json", "application/json")
-    plan = await sf.SpineFacePlan().run(ctx, {}, {"info": prep.outputs["info"], "boxes": [boxes], "atlas": atlas})
+    loc = located(info["scale"]) | {"hidden": list(hidden)}
+    boxes = await _put(ctx, json.dumps(loc).encode(), "b.json", "application/json")
+    plan = await sf.SpineFacePlan().run(ctx, {"emotions": emotions}, {"info": prep.outputs["info"], "boxes": [boxes],
+                                                                      "atlas": atlas})
+    ctx.plan_result = plan
     layout = json.loads(ctx.blobs.path(plan.outputs["layout"][0].hash).read_bytes())
     assert len(layout["prompts"]) == len(plan.outputs["holes"]) == len(plan.meta["variants"])
     edits = []
@@ -161,8 +172,8 @@ async def _pipeline(tmp: Path) -> tuple[FakeCtx, dict[str, Any], Any, dict[str, 
         hole = Image.open(ctx.blobs.path(ref.hash))
         assert hole.mode == "RGBA" and (np.asarray(hole)[..., 3] == 0).any()
         edits.append(await _put(ctx, _png(fake_edit(hole)), "e.png", "image/png"))
-    res = await sf.SpineFaceBuild().run(ctx, {}, {"skeleton": [sk], "atlas": atlas, "plan": plan.outputs["plan"],
-                                                  "edits": edits})
+    res = await sf.SpineFaceBuild().run(ctx, {"emotions": emotions}, {"skeleton": [sk], "atlas": atlas,
+                                                                      "plan": plan.outputs["plan"], "edits": edits})
     report = json.loads(ctx.blobs.path(res.outputs["report"][0].hash).read_bytes())
     return ctx, report, res, doc
 
@@ -241,12 +252,104 @@ console.log(JSON.stringify(out));
 """
 
 
+def _work(img: Image.Image) -> tuple[Image.Image, float]:
+    s, canvas = sf.work_size(img.width, img.height)
+    return sf.work_layer(img, {"scale": s, "work": list(canvas)}), s
+
+
 async def test_covered_face_is_refused(tmp_path: Path) -> None:
     work = Image.new("RGBA", (64, 64), SKIN)
     with pytest.raises(StepError, match="no face"):
         sf.feature_holes(work, {"face_visible": False, "eye_l": [1, 1, 5, 5], "mouth": [1, 1, 5, 5]})
-    with pytest.raises(StepError, match="no eyes"):
+    with pytest.raises(StepError, match="no eye, brow or mouth"):
         sf.feature_holes(work, {"face_visible": True})
+    work, s = _work(head_image())
+    with pytest.raises(StepError, match="no eye, brow or mouth"):
+        sf.feature_holes(work, located(s) | {"hidden": list(sf.FEATURES)}, s)
+
+
+def test_partial_face_keeps_what_is_visible() -> None:
+    work, s = _work(head_image())
+    fh = sf.feature_holes(work, located(s) | {"hidden": ["eye_l", "eye_r"]}, s)
+    assert set(fh.holes) == {"brow", "mouth"} and "eye_l: hidden" in fh.skipped and "eyes" not in fh.boxes
+    fh = sf.feature_holes(work, located(s) | {"eye_l": [0, 0, 0, 0], "brows_visible": False}, s)
+    assert set(fh.holes) == {"eyes", "mouth"} and len(fh.boxes["eyes"]) == 1
+    assert {"eye_l: no box", "brow_l: hidden", "brow_r: hidden"} <= set(fh.skipped)
+    assert "the visible eye" in sf.one_sided(sf.WHAT["eyes_closed"], 1)
+    assert "both" not in sf.one_sided(sf.WHAT["brow_angry"], 1)
+    fh = sf.feature_holes(work, located(s) | {"hidden": ["eye_l", "eye_r", "brow_l", "brow_r"]}, s)
+    assert set(fh.holes) == {"mouth"}
+
+
+def test_eye_under_a_fringe_is_dropped_without_hidden() -> None:
+    img = head_image()
+    ImageDraw.Draw(img).polygon([(14, 0), (50, 0), (48, 72), (20, 72)], fill=HAIR)
+    work, s = _work(img)
+    fh = sf.feature_holes(work, located(s), s)
+    assert any(n.startswith("eye_r: covered by hair") for n in fh.skipped)
+    assert any(n.startswith("brow_r: covered by hair") for n in fh.skipped)
+    assert len(fh.boxes["eyes"]) == 1 and len(fh.boxes["brow"]) == 1 and set(fh.holes) == {"eyes", "brow", "mouth"}
+
+
+@pytest.mark.parametrize("size", [(108, 132), (27, 33)])
+def test_holes_on_small_and_opaque_heads(size: tuple[int, int]) -> None:
+    """A head under 32 px and one with no alpha (RGB region on skin) still get all three holes, apart."""
+    img = head_image().resize(size, Image.Resampling.LANCZOS)
+    if size[0] > 32:
+        flat = Image.new("RGB", img.size, SKIN[:3])
+        flat.paste(img, mask=img.getchannel("A"))
+        img = flat
+    work, s = _work(img)
+    f = size[0] / 108
+    fh = sf.feature_holes(work, {k: [v * s * f for v in b] for k, b in FEATURES.items()}, s)
+    assert set(fh.holes) == {"eyes", "brow", "mouth"}, fh.skipped
+    assert not (fh.holes["eyes"] & fh.holes["brow"]).any() and not (fh.holes["mouth"] & fh.holes["eyes"]).any()
+
+
+def test_eye_hole_does_not_reach_into_the_brow() -> None:
+    """On a real run the eye box grew into brow ink, the brow hole shrank to a strip over the hair and Klein painted
+    a hair-brown band where the brows should have changed."""
+    work, s = _work(head_image())
+    fh = sf.feature_holes(work, located(s), s)
+    assert min(b[1] for b in fh.boxes["eyes"]) >= FEATURES["eye_r"][1] * s - 6
+    brow = np.zeros(fh.holes["brow"].shape, bool)
+    for k in ("brow_l", "brow_r"):
+        x0, y0, x1, y1 = (int(v * s) for v in FEATURES[k])
+        brow[y0 + 2:y1 - 2, x0 + 2:x1 - 2] = True
+    assert (fh.holes["brow"] & brow).sum() / brow.sum() > 0.95
+    assert not (fh.holes["eyes"] & brow).any()
+
+
+async def test_hair_over_brow_stays_original(tmp_path: Path) -> None:
+    ctx, report, res, _ = await _pipeline(tmp_path, hair=True, emotions="angry")
+    assert ctx.plan_result.meta["groups"] == ["brow", "eyes", "mouth"]
+    new = json.loads(ctx.blobs.path(res.outputs["skeleton"][0].hash).read_bytes())
+    from studio_core.spine_atlas import parse_atlas
+
+    regions = parse_atlas(ctx.blobs.path(res.outputs["atlas"][0].hash).read_text(encoding="utf-8")).regions
+    page = np.asarray(Image.open(ctx.blobs.path(res.outputs["texture"][0].hash)).convert("RGBA"), np.float64)
+    r = regions[new["skins"][0]["attachments"]["brow"]["brow_angry"]["path"]]
+    patch = page[r.y:r.y + r.height, r.x:r.x + r.width]
+    x0, y0, x1, y1 = report["boxes"]["brow"]
+    head = np.asarray(head_image(hair=True), np.float64)[y0:y1, x0:x1]
+    a = patch[..., 3:] / 255
+    comp = head[..., :3] * (1 - a) + patch[..., :3] * a
+    strand = Image.new("L", (108, 132), 0)
+    ImageDraw.Draw(strand).polygon(STRAND, fill=255)
+    inner = np.asarray(strand.filter(ImageFilter.MinFilter(3)))[y0:y1, x0:x1] > 0
+    assert inner.sum() > 20
+    assert np.abs(comp - head[..., :3]).mean(2)[inner].max() < 6
+    # The brow itself still takes the edit (the fake inpaint paints magenta).
+    assert ((patch[..., 0] > 150) & (patch[..., 1] < 80) & (patch[..., 3] > 200)).sum() > 20
+
+
+async def test_hidden_eyes_drop_blink_but_keep_talk(tmp_path: Path) -> None:
+    ctx, report, res, _ = await _pipeline(tmp_path, hidden=("eye_l", "eye_r"))
+    new = json.loads(ctx.blobs.path(res.outputs["skeleton"][0].hash).read_bytes())
+    assert set(report["slots"]) == {"brow", "mouth"}
+    assert "blink" not in new["animations"] and {"talk", "happy", "angry", "sad"} <= set(new["animations"])
+    assert "eye_l: hidden" in report["skipped"] and ctx.plan_result.meta["skipped"]
+    assert report["neutral_match"]["mae"] < 1.5
 
 
 class FakeClaude:

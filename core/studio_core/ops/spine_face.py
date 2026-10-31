@@ -11,7 +11,7 @@ import math
 import random
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
@@ -233,69 +233,213 @@ def refine(box: tuple[float, float, float, float], ink: np.ndarray) -> tuple[flo
             max(box[3], wy0 + ys.max() + 1.0))
 
 
-def feature_holes(work: Image.Image, boxes: dict[str, Any]) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
-    """Inpaint holes per group (bool masks on the work canvas) and the refined boxes. Brows stay clear of the eyes'
-    composite area and the mouth of both, so slots never repaint each other's pixels."""
+class FaceHoles(NamedTuple):
+    holes: dict[str, np.ndarray]
+    boxes: dict[str, Any]
+    keep: dict[str, np.ndarray]
+    ink: np.ndarray
+    skipped: list[str]
+
+
+FEATURES = ("eye_l", "eye_r", "brow_l", "brow_r", "mouth")
+SPLIT = 3
+
+
+def _tight(box: tuple[float, float, float, float], ink: np.ndarray, off: list[tuple[float, ...]]
+           ) -> tuple[float, float, float, float]:
+    """Bounding box of the ink inside `box` that no box in `off` claims (Claude's brow and eye boxes overlap)."""
+    x0, y0, x1, y1 = (int(round(v)) for v in box)
+    m = np.zeros(ink.shape, bool)
+    m[max(0, y0):max(0, y1), max(0, x0):max(0, x1)] = True
+    for o in off:
+        ox0, oy0, ox1, oy1 = (int(round(v)) for v in o)
+        m[max(0, oy0):max(0, oy1), max(0, ox0):max(0, ox1)] = False
+    ys, xs = np.nonzero(m & ink)
+    if len(xs) < 10:
+        return box
+    return float(xs.min()), float(ys.min()), float(xs.max() + 1), float(ys.max() + 1)
+
+
+def _flood(seed: np.ndarray, allowed: np.ndarray) -> np.ndarray:
+    grown = seed & allowed
+    if not grown.any():
+        return grown
+    for _ in range(max(allowed.shape)):
+        nxt = _dilate(grown, 1) & allowed
+        if (nxt == grown).all():
+            break
+        grown = nxt
+    return grown
+
+
+def occluder(hole: np.ndarray, cores: list[tuple[float, ...]], ink: np.ndarray, rgb: np.ndarray, no_seed: np.ndarray,
+             blur: int, hair_in_core: bool) -> np.ndarray:
+    """Pixels of `hole` drawn over the feature (a fringe strand, the head outline): line art reaching in from outside
+    the hole. Inside the feature's own box only pixels nearer the outside colour than the feature's count (brows are
+    darker than the hair crossing them). Grown by the upscale's blur so the antialiased hair edge stays original."""
+    ring = _dilate(hole, GROW + 3) & ~hole & ink & ~no_seed
+    if ring.sum() < 20:
+        return np.zeros_like(hole)
+    core = _mask_of(cores, hole.shape)
+    allowed = (hole | ring) & ink & ~core
+    if hair_in_core:
+        hair = np.median(rgb[ring], 0)
+        own = core & ink & hole
+        if own.sum() >= 20:
+            feat = np.median(rgb[own], 0)
+            if np.linalg.norm(hair - feat) > 40:
+                dh = np.linalg.norm(rgb - hair, axis=2)
+                allowed |= own & (dh < np.linalg.norm(rgb - feat, axis=2)) & (dh < 48)
+    out = _flood(ring, allowed) & hole
+    return _dilate(out, blur) & hole if out.sum() >= 20 else np.zeros_like(hole)
+
+
+def hair_share(box: tuple[float, float, float, float], ink: np.ndarray, rgb: np.ndarray, alpha: np.ndarray) -> float:
+    """Share of a feature box in the colour of the line art just around it: high when Claude boxed an eye / brow a
+    fringe hides without listing it as hidden (an eye is white, iris and skin, never mostly one outside colour)."""
+    inner = _mask_of([box], alpha.shape) & alpha
+    ring = _mask_of([_pad(box, 0, 0, 10)], alpha.shape) & ~_mask_of([_pad(box, 0, 0, 3)], alpha.shape) & ink
+    if ring.sum() < 20 or inner.sum() < 20:
+        return 0.0
+    hair = np.median(rgb[ring], 0)
+    return float((np.linalg.norm(rgb[inner] - hair, axis=1) < 30).mean())
+
+
+def feature_holes(work: Image.Image, boxes: dict[str, Any], scale: float = 1.0) -> FaceHoles:
+    """Inpaint holes per group (bool masks on the work canvas), the refined boxes, what to keep from the original
+    inside each hole (hair over it) and the features dropped with why. A covered feature (Claude's `hidden`, or a
+    hole the hair / a neighbour leaves too little of) is skipped; only a face with none left is an error. Eyes and
+    brows split the gap between them, the mouth stays clear of both, so slots never repaint each other's pixels."""
     if boxes.get("face_visible") is False:
         raise StepError("op_no_face", "the head shows no face (helmet, mask or back view)", detail={"boxes": boxes})
     arr = np.asarray(work.convert("RGBA"))
     alpha = arr[..., 3] > 200
     size = work.size
-    eyes = [b for b in (_box(boxes.get("eye_l"), size), _box(boxes.get("eye_r"), size)) if b]
-    if not eyes or _box(boxes.get("mouth"), size) is None:
-        raise StepError("op_no_face", "no eyes / mouth located on the head; a covered face (helmet, mask) has no "
-                        "expressions to draw", detail={"boxes": boxes})
-    mouth = _box(boxes.get("mouth"), size)
-    assert mouth is not None
+    hidden = {str(h).strip().lower() for h in boxes.get("hidden") or []}
+    if boxes.get("brows_visible") is False:
+        hidden |= {"brow_l", "brow_r"}
+    raw = {k: _box(boxes.get(k), size) for k in FEATURES}
+    skipped = [f"{k}: hidden" for k in FEATURES if k in hidden and boxes.get(k) is not None]
+    skipped += [f"{k}: no box" for k in FEATURES if k not in hidden and raw[k] is None]
+    vis = {k: b for k, b in raw.items() if b is not None and k not in hidden}
+    if not vis:
+        raise StepError("op_no_face", "no eye, brow or mouth is visible on the head; a covered face (helmet, mask) "
+                        "has no expressions to draw", detail={"boxes": boxes})
     rgb = arr[..., :3].astype(np.float64)
-    ex = [(b[0] + b[2]) / 2 for b in eyes]
+    eyes = [vis[k] for k in ("eye_l", "eye_r") if k in vis]
+    brows = [vis[k] for k in ("brow_l", "brow_r") if k in vis]
+    mouth = vis.get("mouth")
     cheek = np.zeros(alpha.shape, bool)
-    cy0 = int(max(b[3] for b in eyes))
-    cy1 = int(mouth[1])
-    if cy1 - cy0 >= 4:
-        cheek[cy0:cy1, int(min(ex)):int(max(ex)) + 1] = True
+    if eyes and mouth:
+        ex = [(b[0] + b[2]) / 2 for b in eyes] if len(eyes) > 1 else [eyes[0][0], eyes[0][2]]
+        cy0, cy1 = int(max(b[3] for b in eyes)), int(mouth[1])
+        if cy1 - cy0 >= 4:
+            cheek[cy0:cy1, int(min(ex)):int(max(ex)) + 1] = True
     cheek &= alpha
-    skin = np.median(rgb[cheek], 0) if cheek.sum() >= 20 else np.median(rgb[alpha], 0)
+    if cheek.sum() < 20:
+        cheek = alpha.copy()
+        for b in vis.values():
+            x0, y0, x1, y1 = (int(round(v)) for v in _pad(b, 0.3, 0.3))
+            cheek[max(0, y0):max(0, y1), max(0, x0):max(0, x1)] = False
+        if cheek.sum() < 20:
+            cheek = alpha
+    skin = np.median(rgb[cheek], 0) if cheek.any() else np.full(3, 255.0)
     ink = alpha & (np.linalg.norm(rgb - skin, axis=2) > 48)
+    blur = max(1, int(round(scale)))
 
-    eyes = [refine(b, ink) for b in eyes]
+    # A brow can be the hair's colour, so only a box that is nearly all of it counts as covered.
+    for k, limit, group in (("eye_l", 0.5, eyes), ("eye_r", 0.5, eyes), ("brow_l", 0.75, brows),
+                            ("brow_r", 0.75, brows)):
+        if k in vis and (covered := hair_share(vis[k], ink, rgb, alpha)) > limit:
+            skipped.append(f"{k}: covered by hair ({covered:.0%} of its box is the hair colour around it)")
+            group.remove(vis[k])
+    # Refining an eye against brow ink dragged its box (and hole) into the brow on a real run.
+    eyes = [refine(b, ink & ~_mask_of(brows, ink.shape)) for b in eyes]
+    tight_eyes = [_tight(b, ink, brows) for b in eyes]
+    tight_brows = [_tight(b, ink, eyes) for b in brows]
     eye_hole = np.zeros(alpha.shape, bool)
     for b in eyes:
         _rect(eye_hole, _pad(b, 0.18, 0.22, 2))
-    mx0, my0, mx1, my1 = refine(mouth, ink)
-    mw, mh = mx1 - mx0, my1 - my0
-    cx, cy = (mx0 + mx1) / 2, (my0 + my1) / 2 + 0.15 * mh
-    hw, hh = mw * 1.35 / 2 + 2, max(mh * 1.6, 0.55 * mw * 1.35) / 2 + 2
-    mouth_hole = np.zeros(alpha.shape, bool)
-    _rect(mouth_hole, (cx - hw, cy - hh, cx + hw, cy + hh))
+    brow_hole = np.zeros(alpha.shape, bool)
+    for b in brows:
+        _rect(brow_hole, _pad(b, 0.25, 0.4, 2))
+    rows = np.arange(alpha.shape[0])[:, None]
+    for bb in tight_brows:
+        for eb in tight_eyes:
+            x0, x1 = max(bb[0], eb[0]), min(bb[2], eb[2])
+            if x1 <= x0:
+                continue
+            split = (bb[3] + eb[1]) / 2
+            cols = np.zeros(alpha.shape[1], bool)
+            lo = int(max(0, min(bb[0], eb[0]) - 0.3 * (eb[2] - eb[0])))
+            cols[lo:int(max(bb[2], eb[2]) + 0.3 * (eb[2] - eb[0])) + 1] = True
+            brow_hole &= ~((rows >= split - SPLIT) & cols[None, :])
+            eye_hole &= ~((rows <= split + SPLIT) & cols[None, :])
+    brow_hole &= ~_dilate(eye_hole, 2)
 
-    holes = {"eyes": eye_hole & alpha}
-    out_boxes: dict[str, Any] = {"eyes": [list(map(float, b)) for b in eyes], "mouth": [float(v) for v in (mx0, my0, mx1, my1)]}
-    keep_off = _dilate(eye_hole, 2 * GROW + 4)
-    if boxes.get("brows_visible", True):
-        brows = [b for b in (_box(boxes.get("brow_l"), size), _box(boxes.get("brow_r"), size)) if b]
-        if brows:
-            brow_hole = np.zeros(alpha.shape, bool)
-            for b in brows:
-                _rect(brow_hole, _pad(b, 0.25, 0.4, 2))
-            brow_hole &= alpha & ~keep_off
-            if brow_hole.sum() >= 30:
-                holes["brow"] = brow_hole
-                out_boxes["brow"] = [list(map(float, b)) for b in brows]
-                keep_off |= _dilate(brow_hole, 2 * GROW + 4)
-    holes["mouth"] = mouth_hole & alpha & ~keep_off
-    if holes["mouth"].sum() < 30:
-        raise StepError("op_no_face", "the mouth area is too small or overlaps the eyes", detail={"boxes": boxes})
-    return holes, out_boxes
+    holes: dict[str, np.ndarray] = {}
+    keep: dict[str, np.ndarray] = {}
+    out_boxes: dict[str, Any] = {}
+
+    def settle(group: str, hole: np.ndarray, cores: list[tuple[float, ...]], block: np.ndarray, no_seed: np.ndarray,
+               hair_in_core: bool, kept_box: Any) -> None:
+        hole = hole & alpha & ~block
+        occ = occluder(hole, cores, ink, rgb, block | no_seed, blur, hair_in_core)
+        core = _mask_of(cores, alpha.shape) & alpha
+        left = hole & ~occ
+        shown = (core & left).sum() / max(1, core.sum())
+        if left.sum() < 30 or shown < 0.25:
+            why = "covered by hair" if (core & occ).sum() > (core & left).sum() else "no room beside the others"
+            skipped.append(f"{group}: {why} ({shown:.0%} of it left to repaint)")
+            return
+        holes[group] = left
+        out_boxes[group] = kept_box
+        if occ.any():
+            keep[group] = occ
+
+    none = np.zeros(alpha.shape, bool)
+    if eyes:
+        settle("eyes", eye_hole, tight_eyes, none, _dilate(brow_hole, 2), False, [list(map(float, b)) for b in eyes])
+    if brows:
+        settle("brow", brow_hole, tight_brows, none, _dilate(eye_hole, 2), True, [list(map(float, b)) for b in brows])
+    keep_off = none.copy()
+    for g in ("eyes", "brow"):
+        if g in holes:
+            keep_off |= _dilate(holes[g], 2 * GROW + 4)
+    if mouth:
+        mx0, my0, mx1, my1 = refine(mouth, ink)
+        mw, mh = mx1 - mx0, my1 - my0
+        cx, cy = (mx0 + mx1) / 2, (my0 + my1) / 2 + 0.15 * mh
+        hw, hh = mw * 1.35 / 2 + 2, max(mh * 1.6, 0.55 * mw * 1.35) / 2 + 2
+        mouth_hole = np.zeros(alpha.shape, bool)
+        _rect(mouth_hole, (cx - hw, cy - hh, cx + hw, cy + hh))
+        settle("mouth", mouth_hole, [(mx0, my0, mx1, my1)], keep_off, none, False,
+               [float(v) for v in (mx0, my0, mx1, my1)])
+    if not holes:
+        raise StepError("op_no_face", "every located feature is covered (" + "; ".join(skipped) + ")",
+                        detail={"boxes": boxes, "skipped": skipped})
+    if skipped:
+        out_boxes["skipped"] = skipped
+    return FaceHoles(holes, out_boxes, keep, ink, skipped)
 
 
-def inpaint_input(work: Image.Image, hole: np.ndarray, erase: bool) -> Image.Image:
+def _mask_of(boxes: list[tuple[float, ...]], shape: tuple[int, ...]) -> np.ndarray:
+    m = np.zeros(shape[:2], bool)
+    for b in boxes:
+        x0, y0, x1, y1 = (int(round(v)) for v in b)
+        m[max(0, y0):max(0, y1), max(0, x0):max(0, x1)] = True
+    return m
+
+
+def inpaint_input(work: Image.Image, hole: np.ndarray, erase: bool, ink: np.ndarray | None = None) -> Image.Image:
     """RGBA with alpha 0 over the hole (the Klein inpaint graph's mask). Erased holes are filled with the surrounding
     skin first: Klein redraws a closed eye or an open mouth far more reliably from bare skin than over the old
-    feature."""
+    feature. Line art / hair around the hole stays out of that colour (a fringe made a brow hole hair-brown)."""
     arr = np.asarray(work.convert("RGBA")).copy()
     if erase:
         ring = _dilate(hole, 6) & ~hole & (arr[..., 3] > 200)
+        if ink is not None and (ring & ~ink).sum() >= 10:
+            ring &= ~ink
         if ring.sum() >= 10:
             arr[hole, :3] = np.median(arr[ring, :3], 0).astype(np.uint8)
     arr[hole, 3] = 0
@@ -338,6 +482,16 @@ def work_layer(head: Image.Image, info: dict[str, Any]) -> Image.Image:
     return out
 
 
+def one_sided(what: str, count: int) -> str:
+    """The expression text for a face showing one eye / one brow (the other under hair or turned away)."""
+    if count != 1:
+        return what
+    for a, b in (("both eyes", "the visible eye"), ("both eyebrows", "the visible eyebrow"), ("each eye", "the eye"),
+                 ("each iris", "the iris"), ("their inner ends", "its inner end"), ("eyelids", "eyelid")):
+        what = what.replace(a, b)
+    return what
+
+
 def _located(raw: Any) -> dict[str, Any]:
     return (raw.get("boxes", raw) if isinstance(raw, dict) else None) or {}
 
@@ -345,7 +499,7 @@ def _located(raw: Any) -> dict[str, Any]:
 class SpineFacePlan(OpExecutor):
     """One Klein inpaint input + prompt per expression from the located features."""
     kind = "op.spine_face_plan"
-    version = "1"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         from .spine_ref import region_images
@@ -356,20 +510,25 @@ class SpineFacePlan(OpExecutor):
         if head is None:
             raise StepError("op_bad_input", f"atlas has no region {info['region']!r}")
         work = work_layer(head, info)
-        holes, located = await asyncio.to_thread(feature_holes, work, boxes)
-        variants = wanted_variants(parse_emotions(params.get("emotions", "happy,angry,sad")), set(holes))
+        fh = await asyncio.to_thread(feature_holes, work, boxes, float(info["scale"]))
+        variants = wanted_variants(parse_emotions(params.get("emotions", "happy,angry,sad")), set(fh.holes))
         on_white = Image.new("RGBA", work.size, (255, 255, 255, 255))
         on_white.alpha_composite(work)
         refs, prompts = [], []
         for v in variants:
-            img = await asyncio.to_thread(inpaint_input, on_white, holes[v.split("_")[0]], v != "eyes_half")
+            img = await asyncio.to_thread(inpaint_input, on_white, fh.holes[v.split("_")[0]], v != "eyes_half", fh.ink)
             refs.append(await _put_png(ctx, img, f"hole_{v}.png"))
-            prompts.append(PROMPT.format(what=WHAT[v]))
-        plan = {**info, "variants": variants, "located": boxes, "boxes": located}
+            prompts.append(PROMPT.format(what=one_sided(WHAT[v], len(fh.boxes.get(v.split("_")[0]) or []))))
+        plan = {**info, "variants": variants, "located": boxes, "boxes": fh.boxes}
+        if fh.skipped:
+            ctx.log("face features skipped: " + "; ".join(fh.skipped), "warning")
+        meta: dict[str, Any] = {"variants": variants, "groups": sorted(fh.holes)}
+        if fh.skipped:
+            meta["skipped"] = fh.skipped
         return StepResult(outputs={"holes": refs,
                                    "layout": [await _put_json(ctx, {"prompts": prompts}, "face_layout.json")],
                                    "plan": [await _put_json(ctx, plan, "face_plan.json")]},
-                          meta={"variants": variants, "groups": sorted(holes)})
+                          meta=meta)
 
 
 def tone_match(edit: Image.Image, work: Image.Image, hole: np.ndarray) -> Image.Image:
@@ -388,11 +547,14 @@ def tone_match(edit: Image.Image, work: Image.Image, hole: np.ndarray) -> Image.
     return Image.fromarray(np.clip(out + 0.5, 0, 255).astype(np.uint8), "RGB")
 
 
-def group_alpha(hole: np.ndarray, head_alpha: np.ndarray) -> np.ndarray:
-    """Fades across the hole's edge (half original there) so the seam Klein leaves along it does not show."""
+def group_alpha(hole: np.ndarray, head_alpha: np.ndarray, keep: np.ndarray | None = None) -> np.ndarray:
+    """Fades across the hole's edge (half original there) so the seam Klein leaves along it does not show. Hair
+    over the feature (`keep`) is fully the original, not faded: the feather there drew a blurred rim round a fringe."""
     m = _dilate(hole, 1).astype(np.float64)
     soft = np.asarray(Image.fromarray((m * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(FEATHER)),
                       np.float64) / 255
+    if keep is not None:
+        soft[keep] = 0
     return np.minimum(soft, head_alpha)
 
 
@@ -640,7 +802,7 @@ def placement_error(doc: dict[str, Any], plan: dict[str, Any], placed: dict[str,
 class SpineFaceBuild(OpExecutor):
     """Expression attachments cut from the inpaints, face slots + animations, the atlas page extended, QA sheet."""
     kind = "op.spine_face_build"
-    version = "1"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         from .spine import PLAYER_VERSION, compare, preview_html, validate_skeleton
@@ -742,11 +904,12 @@ class SpineFaceBuild(OpExecutor):
         wsize = tuple(plan["work"])
         work = work_layer(head, plan)
         head_alpha = np.asarray(work.getchannel("A"), np.float64) / 255
-        holes, _ = feature_holes(work, plan["located"])
+        fh = feature_holes(work, plan["located"], s)
+        holes = fh.holes
         alphas: dict[str, np.ndarray] = {}
         for g in GROUPS:
             if g in holes:
-                al = group_alpha(holes[g], head_alpha)
+                al = group_alpha(holes[g], head_alpha, fh.keep.get(g))
                 for prev in alphas.values():
                     al = al * (1 - prev)
                 alphas[g] = al
@@ -785,6 +948,8 @@ class SpineFaceBuild(OpExecutor):
         report["variants"] = {g: list(v) for g, v in placed.items()}
         report["head"] = {k: plan[k] for k in ("slot", "bone", "attachment", "skin", "region", "size")}
         report["boxes"] = {g: list(bx) for g, bx in boxes.items()}
+        if fh.skipped:
+            report["skipped"] = fh.skipped
         return new_doc, report, patches, boxes, a, b
 
 
@@ -797,7 +962,7 @@ def face_readme(path: Path, runtime: str) -> str | None:
     anims = (doc.get("animations") or {}) if isinstance(doc, dict) else {}
     slots = {s.get("name") for s in doc.get("slots") or []} if isinstance(doc, dict) else set()
     face = [n for n in ("blink", "talk", "happy", "angry", "sad") if n in anims]
-    if not face or not ({"eyes", "mouth"} & slots):
+    if not face or not ({"eyes", "brow", "mouth"} & slots):
         return None
     call = ('get_animation_state().set_animation("blink", true, 1)' if "godot" in runtime
             else 'AnimationState.SetAnimation(1, "blink", true)')
