@@ -19,7 +19,7 @@ from typing import Any, Callable
 from studio_core import __version__
 from studio_core.contracts import BlobStore, RunRow, StepRow, VersionRow
 from studio_core.export.sheet import CS_NAMESPACE, stable_hex
-from studio_core.store.bundle import BundleError, engine_ready, export_engine
+from studio_core.store.bundle import BundleError, _is_glb, engine_ready, export_engine
 from studio_core.store.export import safe_filename
 from studio_core.store.model_licenses import model_license, worst
 
@@ -59,6 +59,7 @@ class EngineOptions:
     shaders: list[Any] | None = None
     normal2d: Any = None
     mobile: bool = False
+    toon: Any = None
 
 
 @dataclass
@@ -645,10 +646,12 @@ def _export_one(a: PackAsset, blobs: BlobStore, staging: Path, folder: str, engi
     if not engine_ready(a.step, blobs):
         return None
     args = (a.step, a.siblings, blobs, staging, folder, engine, opts.ppu, opts.pixel, opts.collider(a))
+    # A pack mixes 2D and 3D assets: the toon material only goes on the ones that carry a model.
+    toon = opts.toon if opts.toon is not None and any(_is_glb(r) for rs in a.step.outputs.values() for r in rs)         else None
     try:
-        out = export_engine(*args, opts.shaders, opts.normal2d, opts.mobile)
+        out = export_engine(*args, opts.shaders, opts.normal2d, opts.mobile, toon=toon)
     except BundleError as e:
-        if not opts.shaders:
+        if not opts.shaders and toon is None:
             warnings.append(f"{folder} ({engine}): {e}; raw files packed instead")
             return None
         out = export_engine(*args, None, opts.normal2d, opts.mobile)

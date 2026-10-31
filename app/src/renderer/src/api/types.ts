@@ -885,6 +885,8 @@ export interface PackBody {
   /** One shared trimmed atlas of every 2D sprite, beside the per-asset exports. */
   atlas?: boolean
   atlas_max_size?: AtlasPageSize
+  /** Models only (2D assets are left alone): "toon" adds the banded-ramp material + inverted-hull outline. */
+  material_style?: 'pbr' | 'toon'
 }
 
 export type AtlasPageSize = 512 | 1024 | 2048 | 4096

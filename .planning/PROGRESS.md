@@ -1411,3 +1411,5 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 ## Phiên 2026-11-01 — chạy bù pytest lượt 8
 - Chủ nhân: chỉ pytest (CPU), không GPU/Blender/Unity/Godot; commit từng phần, không push.
 - [x] pytest toàn bộ lần đầu cho lượt 8: 6 fail → sửa. Lỗi thật: spine_unity2d file_id nhận int (TypeError) + transform part không có trong kids (KeyError) → xuất Unity #60 trước đây hỏng hoàn toàn; toon3d import MATERIAL_FILE_ID sai module (export.pbr) → xuất Unity toon #64 hỏng. Lỗi test: curve bezier Spine 4.2 phải tuyệt đối; bone thiếu length. Kết quả: 1289 pass / 5 skip.
+- [x] pack toon: PackBody material_style/toon (422 khi sai), EngineOptions.toon chỉ áp asset có GLB (2D giữ nguyên); app PackDialog ô 'Vật liệu toon 3D'; test pack toon pass; typecheck sạch.
+- [x] runner: map+map_param không item, không value → bỏ qua lane/boot ComfyUI (test fail trên code cũ, pass mới); commit c9a1f7c.

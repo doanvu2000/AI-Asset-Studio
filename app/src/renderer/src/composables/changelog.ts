@@ -23,7 +23,7 @@ export const CHANGELOG: Release[] = [
       'Bộ thẻ bài: bước Claude viết prompt art được phép lỗi, thẻ không có art vẫn ráp tiếp thay vì dừng cả lượt; bước đó hiện “Bỏ qua (lỗi cho phép)” kèm cảnh báo vàng ở chi tiết lượt chạy',
       'Vật lý Spine: áo choàng, tóc bớt vung quá tay',
       'Preview Godot thêm Presets3D, có ô toon_bands và edge_fix để chỉnh ngay',
-      'Xuất model 3D chọn material PBR hoặc Toon: số dải sáng 2–4, màu và độ dày viền, rim; áp cho Unity URP và Godot',
+      'Xuất model 3D chọn material PBR hoặc Toon: số dải sáng 2–4, màu và độ dày viền, rim; áp cho Unity URP và Godot. Đóng gói asset pack cũng có ô “Vật liệu toon 3D”, asset 2D giữ nguyên',
       'Frame data chiến đấu: hurtbox / hitbox và sự kiện đòn, bước chân suy từ clip idle, Claude chọn khung đánh trúng; Godot AnimationPlayer bật tắt vùng, Unity FrameData + AnimationEvent',
       'Thời tiết lặp liền: mưa, tuyết, sương, lá rơi, tro, đom đóm (CPU), xuất cho Godot và Unity',
       'Chuỗi LOD cho mesh: giảm mặt giữ UV, collision hộp / hull / nhiều hull, impostor 8 hướng tuỳ chọn; Unity LODGroup, Godot visibility range',

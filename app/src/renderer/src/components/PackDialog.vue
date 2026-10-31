@@ -51,6 +51,7 @@ const result = ref<PackResult | null>(null)
 const atlas = ref(false)
 const atlasSize = ref<AtlasPageSize>(2048)
 const mobile = ref(false)
+const toon = ref(false)
 const PAGE_SIZES: AtlasPageSize[] = [1024, 2048, 4096]
 const budgets = computed<MobileBudget[]>(() => Object.values(result.value?.mobile ?? {}).filter((b): b is MobileBudget => !!b))
 
@@ -126,7 +127,8 @@ async function build(): Promise<void> {
       out_dir: outDir.value ?? undefined,
       mobile: mobile.value || undefined,
       atlas: atlas.value || undefined,
-      atlas_max_size: atlas.value ? atlasSize.value : undefined
+      atlas_max_size: atlas.value ? atlasSize.value : undefined,
+      material_style: toon.value ? 'toon' : undefined
     })
     version.value = ''
     toasts.push(`Đã đóng gói bản ${result.value.version}`, 'success')
@@ -221,6 +223,9 @@ useEventListener(
                   </Transition>
                   <label class="chk" title="Unity: override Android + iOS ASTC theo loại ảnh, crunch tắt; Godot: .import VRAM + ETC2/ASTC, size_limit, mipmap tắt cho 2D. Kèm bảng RAM GPU trước/sau">
                     <input v-model="mobile" type="checkbox" /> Ngân sách mobile
+                  </label>
+                  <label class="chk" title="Chỉ asset 3D (GLB): vật liệu toon dải sáng + viền inverted hull (Unity URP / Godot). Asset 2D giữ nguyên">
+                    <input v-model="toon" type="checkbox" /> Vật liệu toon 3D
                   </label>
                 </div>
               </div>

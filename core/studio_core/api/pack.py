@@ -16,6 +16,7 @@ from studio_core.contracts import StepStatus, VersionRow, VersionStatus
 from studio_core.export.atlas import AtlasOptions
 from studio_core.export.collider import DEFAULT_TOLERANCE, ColliderOptions, default_enabled
 from studio_core.export.normal2d import Normal2DOptions
+from studio_core.export import toon3d
 from studio_core.export.shaders import ShaderError, resolve as resolve_shaders
 from studio_core.store import pack as pk
 from studio_core.store.bundle import engine_ready
@@ -49,6 +50,8 @@ class PackBody(BaseModel):
     normal2d_strength: float = Field(1.0, gt=0, le=10)
     normal2d_bevel: float | None = Field(None, gt=0, le=64)
     mobile: bool = False
+    material_style: Literal["pbr", "toon"] = "pbr"
+    toon: dict[str, float | int | str] | None = None
     atlas: bool = False
     atlas_max_size: Literal[512, 1024, 2048, 4096] = 2048
     atlas_padding: int = Field(2, ge=0, le=16)
@@ -108,8 +111,12 @@ def _engine_options(body: PackBody) -> pk.EngineOptions:
         return opts if on else None
 
     normal2d = Normal2DOptions(body.normal2d_strength, body.normal2d_bevel) if body.normal2d else None
+    try:
+        toon = toon3d.preset_from(body.toon) if body.material_style == "toon" else None
+    except ShaderError as e:
+        raise ApiError(422, "invalid", str(e)) from e
     return pk.EngineOptions(ppu=body.ppu, pixel=body.pixel, collider=collider, shaders=shaders, normal2d=normal2d,
-                            mobile=body.mobile)
+                            mobile=body.mobile, toon=toon)
 
 
 @router.get("/packs")

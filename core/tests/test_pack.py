@@ -345,3 +345,38 @@ def test_finalize_godot_keeps_differing_copies_apart(tmp_path: Path) -> None:
     assert 'script_class="PNpcData2"' in (addon / "B" / "B_npc.tres").read_text(encoding="utf-8")
     assert 'path="res://addons/p/scripts/npc_data_2.gd"' in (addon / "B" / "B_npc.tres").read_text(encoding="utf-8")
     assert 'script_class="PNpcData"' in (addon / "A" / "A_npc.tres").read_text(encoding="utf-8")
+
+
+async def test_pack_toon_material_only_on_model_assets(app_ctx, tmp_path: Path) -> None:  # noqa: F811
+    from test_r8_toon3d import _glb
+
+    app, client, _ = app_ctx
+    await _project(app)
+    await _sprite_run(app, "r1", "Hiệp sĩ", (200, 0, 0))
+    repo, blobs = app.state.repo, app.state.blobs
+    await repo.create_run(RunRow(id="r2", project_id="p1", recipe_id="icon-3d", recipe_hash="h", created_at=time.time()))
+    glb = await blobs.put_bytes(_glb(tmp_path / "rock.glb", (200, 60, 40)).read_bytes(), name="rock.glb",
+                                mime="model/gltf-binary")
+    step = StepRow(id="r2-mesh", run_id="r2", key="mesh", kind="op.mesh_fix", lane=Lane.CPU,
+                   status=StepStatus.SUCCEEDED, params={"asset": "Rock"}, outputs={"mesh": [glb]})
+    await repo.create_steps([step])
+    await repo.add_version(VersionRow(id="v-r2", project_id="p1", asset_name="Rock", run_id="r2", step_id=step.id,
+                                      blob=glb, status=VersionStatus.APPROVED, created_at=time.time()))
+
+    bad = await client.post("/api/projects/p1/pack", headers=AUTH, json={
+        "engines": ["godot"], "material_style": "toon", "toon": {"nope": 1}, "out_dir": str(tmp_path / "bad")})
+    assert bad.status_code == 422, bad.text
+
+    r = await client.post("/api/projects/p1/pack", headers=AUTH, json={
+        "engines": ["unity", "godot"], "material_style": "toon", "toon": {"bands": 3},
+        "out_dir": str(tmp_path / "out")})
+    assert r.status_code == 201, r.text
+    res = r.json()
+    root = Path(res["dir"])
+    pkg = next((root / "unity").iterdir())
+    assert (pkg / "Runtime" / "Rock" / "Shaders" / "Rock_toon3d.mat").is_file()
+    assert (pkg / "Runtime" / "Hiep_si" / "Hiep_si.prefab").is_file()
+    assert not list((pkg / "Runtime" / "Hiep_si").rglob("*toon3d*"))
+    addon = next((root / "godot" / "addons").iterdir())
+    assert (addon / "Rock" / "Shaders" / "Rock_toon3d.tres").is_file()
+    assert not list((addon / "Hiep_si").rglob("*toon3d*"))
