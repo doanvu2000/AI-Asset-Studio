@@ -4,6 +4,7 @@ sheet, plus a plain sprite AnimationClip for projects without the extras package
 from __future__ import annotations
 
 import json
+import struct
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,10 @@ ANIMATED_TILE_GUID = "13b75c95f34a00d4e8c04f76b73312e6"
 ASSET_FILE_ID = 11400000
 # RuleTile.TilingRuleOutput.OutputSprite: Single = 0, Random = 1, Animation = 2.
 RULE_OUTPUT_ANIMATION = 2
+DEMO_SINGLE = (8, 5)
+DEMO_BLOB = (12, 8)
+# Godot's default window: the demo camera zooms so the painted map fills most of it.
+GODOT_VIEW = (1152, 648)
 
 
 def tile_anim_set(step: StepRow, blobs: BlobStore) -> tuple[dict[str, Any] | None, Path | None]:
@@ -105,12 +110,50 @@ def godot_tileset(doc: dict[str, Any], atlas: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def tile_map_data(cells: list[tuple[int, int, int, int]]) -> str:
+    """TileMapLayer.tile_map_data (format 0): u16 version, then per cell i16 x, i16 y, u16 source, u16 atlas x,
+    u16 atlas y, u16 alternative."""
+    data = struct.pack("<H", 0) + b"".join(struct.pack("<hhHHHH", x, y, 0, ax, ay, 0) for x, y, ax, ay in cells)
+    return "PackedByteArray(" + ", ".join(str(b) for b in data) + ")"
+
+
+def demo_cells(doc: dict[str, Any]) -> tuple[list[tuple[int, int, int, int]], tuple[int, int]]:
+    """(x, y, atlas x, atlas y) painted in the demo: a field of the single tile, or for a blob-47 set the same blobby
+    A/B map the QA preview uses, each A cell on the tile of its neighbour mask."""
+    from studio_core.ops import autotile as at
+
+    if not _blob(doc):
+        w, h = DEMO_SINGLE
+        return [(x, y, 0, 0) for y in range(h) for x in range(w)], (w, h)
+    w, h = DEMO_BLOB
+    tiles = doc["autotile"]["tiles"]
+    by_mask = {e["mask"]: (e["col"], e["row"]) for e in tiles}
+    grid = at.random_cells(w, h, 1)
+    cells = [(x, y, *by_mask[at.mask_at(grid, y, x) if grid[y, x] else None]) for y in range(h) for x in range(w)]
+    return cells, (w, h)
+
+
+def godot_demo(doc: dict[str, Any], src: Source, tileset: str) -> str:
+    t = int(doc["tile_size"])
+    cells, (w, h) = demo_cells(doc)
+    zoom = round(min(GODOT_VIEW[0] / (w * t), GODOT_VIEW[1] / (h * t)) * 0.92, 3)
+    lines = ['[gd_scene load_steps=2 format=3]', '', f'[ext_resource type="TileSet" path="{tileset}" id="1_ts"]', '',
+             f'[node name="{src.asset}_demo" type="Node2D"]', '', '[node name="Tiles" type="TileMapLayer" parent="."]']
+    if doc.get("pixel"):
+        lines.append("texture_filter = 1")
+    lines += [f"tile_map_data = {tile_map_data(cells)}", 'tile_set = ExtResource("1_ts")', '',
+              '[node name="Camera2D" type="Camera2D" parent="."]', f"position = Vector2({w * t / 2:g}, {h * t / 2:g})",
+              f"zoom = Vector2({zoom:g}, {zoom:g})"]
+    return "\n".join(lines) + "\n"
+
+
 def godot_files(src: Source) -> tuple[Files, list[str]]:
     assert src.tile_anim is not None and src.tile_anim_sheet is not None
     doc = src.tile_anim
     tres = f"{src.asset}_tileset.tres"
+    demo = f"{src.asset}_demo.tscn"
     files: Files = [(_sheet(src), src.tile_anim_sheet), (f"TileAnim/{src.asset}_tile_anim.json", _json(src)),
-                    (tres, godot_tileset(doc, _sheet(src)).encode())]
+                    (tres, godot_tileset(doc, _sheet(src)).encode()), (demo, godot_demo(doc, src, tres).encode())]
     n, fps = int(doc["frames"]), _f(float(doc["fps"]))
     if _blob(doc):
         a, b = doc["autotile"]["terrains"]
@@ -120,8 +163,9 @@ def godot_files(src: Source) -> tuple[Files, list[str]]:
     else:
         note = (f"- {tres}: TileSet 1 ô động {n} frame ({fps} fps, dải ngang {_sheet(src)}). Gắn vào TileMapLayer "
                 "rồi tô ô (0, 0): mọi ô cùng nhịp, mép liền nhau.")
+    note += f" {demo}: TileMapLayer đã tô sẵn + Camera2D, mở rồi F6 là thấy tile chạy."
     if doc.get("pixel"):
-        note += " Pixel art: đặt Texture Filter = Nearest trên TileMapLayer."
+        note += " Pixel art: đặt Texture Filter = Nearest trên TileMapLayer (scene demo đã đặt)."
     return files, [note]
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +19,7 @@ from studio_core.engine.recipe import RecipeError, apply_rules, load_recipe_file
 from studio_core.export import godot, unity
 from studio_core.export.tile_anim import frame_cells
 from studio_core.ops import tile_anim as ta
-from studio_core.ops.tile import _seam_ratio, soft_blur
+from studio_core.ops.tile import _rgb, _seam_ratio, soft_blur, wrap_resize
 from studio_core.store.bundle import engine_ready, engine_source
 
 RECIPES = Path(__file__).resolve().parents[1] / "studio_core" / "recipes"
@@ -71,6 +72,40 @@ def test_seam_blend_rebuilds_edges_from_neighbours() -> None:
     assert out.shape == (224, 224, 3)
     assert max(_seam_ratio(out).values()) <= ta.SEAM_RATIO_MAX
     assert float(np.abs(out[60:160, 60:160] - centre[60:160, 60:160]).max()) < 1e-6
+
+
+def test_close_wrap_fixes_edge_tone_and_keeps_the_centre() -> None:
+    tile = _rgb(wrap_resize(ta._to_img(texture(64, seed=6)), 64, 48))
+    # A non-square tile (48×64) lit from the left, as Wan relights a neighbour cell: the x wrap breaks.
+    lit = np.clip(tile + np.linspace(0.25, 0, tile.shape[1], dtype=np.float32)[None, :, None], 0, 1)
+    assert _seam_ratio(lit)["x"] > ta.SEAM_RATIO_MAX
+    out = ta.close_wrap(lit)
+    assert out.shape == lit.shape and out.dtype == np.float32
+    assert max(_seam_ratio(out).values()) < 1.0
+    assert float(np.abs(out[12:36, 16:48] - lit[12:36, 16:48]).max()) < 1e-6
+    rgba = np.concatenate([lit, np.full((*lit.shape[:2], 1), 0.5, np.float32)], -1)
+    fixed = ta.close_wrap(rgba)
+    assert np.allclose(fixed[..., :3], out, atol=1e-6) and np.all(fixed[..., 3] == 0.5)
+    tiny = ta.close_wrap(texture(64)[:1, :5])
+    assert tiny.shape == (1, 5, 3)
+    # Already as smooth as the interior (a real mortar line may sit on the edge): untouched.
+    assert np.array_equal(ta.close_wrap(tile), tile)
+
+
+def test_match_edge_tone_steadies_the_border_only() -> None:
+    base = texture(64, seed=8)
+    # Odd frame count, each frame's border ring a different brightness.
+    frames = [np.clip(base + 0.15 * ta._edge_ring(64, 64, 0.2)[..., None] * math.sin(i), 0, 1).astype(np.float32)
+              for i in range(7)]
+    out = ta.match_edge_tone(frames)
+    ring = ta._edge_ring(64, 64, 0.2) > 0.5
+    spread = lambda fs: float(np.std([f[ring].mean() for f in fs]))
+    assert spread(out) < spread(frames) * 0.3
+    assert all(float(np.abs(a[24:40, 24:40] - b[24:40, 24:40]).max()) < 1e-6 for a, b in zip(out, frames))
+    one = ta.match_edge_tone(frames[:1])
+    assert np.array_equal(one[0], frames[0]) and one[0] is not frames[0]
+    rgba = [np.concatenate([f, np.full((64, 64, 1), 0.25, np.float32)], -1) for f in frames]
+    assert all(np.all(f[..., 3] == 0.25) for f in ta.match_edge_tone(rgba))
 
 
 def test_video_loop_finds_period_and_closes_it() -> None:
@@ -163,6 +198,9 @@ async def test_water_recipe_runs_cpu_and_exports(tmp_path: Path) -> None:
     tres = g["Water_tileset.tres"].decode()
     assert "0:0/animation_frames_count = 8" in tres and "0:0/animation_columns = 8" in tres
     assert "0:0/animation_speed = 6" in tres and "TileAnim/Water_tiles.png" in tres
+    demo = g["Water_demo.tscn"].decode()
+    assert 'path="Water_tileset.tres"' in demo and 'type="TileMapLayer"' in demo and 'type="Camera2D"' in demo
+    assert _map_cells(demo) == {(x, y, 0, 0) for x in range(8) for y in range(5)}
     u = dict(unity.export(src))
     tile = u["TileAnim/Water_tile.asset"].decode()
     assert tile.count("guid: ") >= 9 and ta_guid() in tile and "m_MinSpeed: 6" in tile
@@ -170,6 +208,16 @@ async def test_water_recipe_runs_cpu_and_exports(tmp_path: Path) -> None:
     assert meta.count("name: tile_f") == 8 and "spritePixelsToUnits: 64" in meta
     assert u["TileAnim/Water_tile.anim"].decode().count("    - time:") == 8
     assert "TileAnim/Water_tile.asset.meta" in u and b"AnimatedTile" in u["README.txt"]
+
+
+def _map_cells(scene: str) -> set[tuple[int, int, int, int]]:
+    import re
+    import struct
+
+    raw = bytes(int(b) for b in re.search(r"tile_map_data = PackedByteArray\(([^)]*)\)", scene).group(1).split(","))
+    assert struct.unpack_from("<H", raw)[0] == 0 and (len(raw) - 2) % 12 == 0
+    rows = [struct.unpack_from("<hhHHHH", raw, 2 + 12 * i) for i in range((len(raw) - 2) // 12)]
+    return {(x, y, ax, ay) for x, y, _, ax, ay, _ in rows}
 
 
 def ta_guid() -> str:
@@ -188,7 +236,7 @@ async def test_torch_recipe_runs_through_wan(tmp_path: Path) -> None:
     assert wan.params[0]["55.width"] == 672 and wan.params[0]["55.length"] == 49
     assert len(steps["candidates"].outputs["previews"]) == 2
     rep = json.loads(env.blobs.path(steps["anim"].outputs["json"][0].hash).read_bytes())
-    assert rep["video"]["period"] % 12 == 0
+    assert rep["video"]["period"] % 12 == 0 and set(rep["video"]["seam_before_edge_fix"]) == {"x", "y"}
     doc = _doc(env, steps["approve"])
     assert doc["frames"] == 6 and doc["tile_size"] == 48 and doc["check"]["passed"], doc["check"]
 
@@ -225,6 +273,10 @@ async def test_autotile_input_animates_the_whole_set(tmp_path: Path) -> None:
     src = engine_source(steps["approve"], list(steps.values()), env.blobs, "Shore")
     tres = dict(godot.export(src))["Shore_tileset.tres"].decode()
     assert tres.count("/animation_separation = Vector2i(0, 5)") == 48 and 'terrain_0/name = "grass"' in tres
+    painted = _map_cells(dict(godot.export(src))["Shore_demo.tscn"].decode())
+    frame0 = {(e["col"], e["row"]) for e in doc["autotile"]["tiles"]}
+    assert len(painted) == 12 * 8 and {(ax, ay) for _, _, ax, ay in painted} <= frame0
+    assert len({(ax, ay) for _, _, ax, ay in painted}) > 10
     u = dict(unity.export(src))
     rule = u["TileAnim/Shore_grass_rule.asset"].decode()
     assert rule.count("m_Output: 2") == 47 and rule.count("    - {fileID:") == 47 * 4

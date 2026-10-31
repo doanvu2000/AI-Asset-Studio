@@ -27,7 +27,7 @@ from .anim_video import (
 from .executors import OpExecutor, _images_in, _load, _put_png, _read_json
 from .keyart import FPS, frame_count
 from .rig import _put_json
-from .tile import _lum, _rgb, _seam_ratio, seamless, tile_report, wrap_resize
+from .tile import _lum, _rgb, _seam_ratio, box_blur, seamless, tile_report, wrap_resize
 
 TILE_ANIM_FILE = "tile_anim.json"
 TILE_ANIM_TYPE = "asset-studio/tile-animated"
@@ -164,12 +164,65 @@ def seam_blend(frame: np.ndarray, band: float = 0.25) -> np.ndarray:
     xs, ys = (w - 3 * c) // 2, (h - 3 * c) // 2
     cell = lambda r, k: frame[ys + r * c:ys + (r + 1) * c, xs + k * c:xs + (k + 1) * c]
     centre, right, below, corner = cell(1, 1), cell(1, 2), cell(2, 1), cell(2, 2)
-    b = max(2.0, band * c)
-    ramp = np.clip(1 - np.arange(c) / b, 0, 1)
-    ramp = ramp * ramp * (3 - 2 * ramp)
+    ramp = _ramp(c, max(2.0, band * c))
     wr, wb = ramp[None, :, None], ramp[:, None, None]
     return ((1 - wr) * (1 - wb) * centre + wr * (1 - wb) * right + (1 - wr) * wb * below + wr * wb * corner
             ).astype(np.float32)
+
+
+def _ramp(n: int, band: float) -> np.ndarray:
+    """1 at index 0 easing (smoothstep) to 0 at `band`."""
+    r = np.clip(1 - np.arange(n) / max(band, 1e-6), 0, 1)
+    return r * r * (3 - 2 * r)
+
+
+def _edge_ring(h: int, w: int, band: float) -> np.ndarray:
+    rx, ry = _ramp(w, max(1.0, band * w)), _ramp(h, max(1.0, band * h))
+    return np.maximum(np.maximum(rx, rx[::-1])[None, :], np.maximum(ry, ry[::-1])[:, None])
+
+
+def match_edge_tone(frames: list[np.ndarray], band: float = 0.2) -> list[np.ndarray]:
+    """Pulls each frame's border ring to the clip's mean colour statistics (per channel mean / spread), fading to
+    untouched inside: Wan relights the neighbouring cells differently frame to frame, so the rebuilt edges flicker in
+    tone while the centre motion is what was asked for. Alpha, if any, is left alone."""
+    if len(frames) < 2:
+        return [f.copy() for f in frames]
+    h, w = frames[0].shape[:2]
+    ring = _edge_ring(h, w, band)
+    mask = ring > 0.5
+    stats = [(f[..., :3][mask].mean(0), f[..., :3][mask].std(0) + 1e-4) for f in frames]
+    mu_ref, sd_ref = np.mean([s[0] for s in stats], 0), np.mean([s[1] for s in stats], 0)
+    out = []
+    for f, (mu, sd) in zip(frames, stats):
+        g = f.copy()
+        target = (f[..., :3] - mu) * np.clip(sd_ref / sd, 0.5, 2.0) + mu_ref
+        g[..., :3] = np.clip(f[..., :3] + ring[..., None] * (target - f[..., :3]), 0, 1)
+        out.append(g.astype(np.float32))
+    return out
+
+
+def close_wrap(frame: np.ndarray, band: float = 0.15, smooth: float = 1 / 16) -> np.ndarray:
+    """Closes the wrap of one tile: the colour step between the first and last column (then row), smoothed along the
+    edge so texture detail is not copied, is split between the two sides and faded out over `band` of the tile.
+    An edge that already steps no more than the interior lines is left alone: it may be a real mortar line."""
+    a = frame.astype(np.float32).copy()
+    ch = min(a.shape[2], 3)
+    if min(a.shape[:2]) < 2:
+        return a
+    for ax in (1, 0):
+        n, m = a.shape[ax], a.shape[1 - ax]
+        # Eased in from ratio 0.8 to full at 1.4, so neighbouring frames near the cut-off are treated alike.
+        weight = float(np.clip((_seam_ratio(a[..., :ch])["x" if ax == 1 else "y"] - 0.8) / 0.6, 0, 1))
+        if weight == 0:
+            continue
+        step = np.take(a[..., :ch], 0, axis=ax) - np.take(a[..., :ch], n - 1, axis=ax)
+        step = box_blur(step, max(1, round(m * smooth)), axes=(0,))
+        ramp = _ramp(n, max(2.0, band * n))
+        shape = [1, 1, 1]
+        shape[ax] = n
+        delta = np.expand_dims(step, ax) * 0.5 * weight * (ramp[::-1] - ramp).reshape(shape)
+        a[..., :ch] = np.clip(a[..., :ch] + delta, 0, 1)
+    return a
 
 
 def _desc(frames: list[np.ndarray], side: int = 48) -> np.ndarray:
@@ -449,7 +502,7 @@ class TileAnimCandidates(OpExecutor):
 
 class TileAnimate(OpExecutor):
     kind = "op.tile_animate"
-    version = "1"
+    version = "2"
 
     async def _clip(self, ctx: StepContext, inputs: Outputs) -> list[BlobRef]:
         picked = _images_in(inputs, "picked")[0]
@@ -501,7 +554,10 @@ class TileAnimate(OpExecutor):
             frames, vrep = await asyncio.to_thread(video_loop, clip, n, float(params.get("crossfade", 0.25)))
             th, tw = base.shape[:2]
             frames = [_rgb(wrap_resize(_to_img(f), tw, th, Image.Resampling.LANCZOS).convert("RGB")) for f in frames]
-            report["video"] = vrep
+            raw_seam = frame_check(frames)["seam_ratio"]
+            if _flag(params.get("edge_fix", True)):
+                frames = [close_wrap(f) for f in match_edge_tone(frames)]
+            report["video"] = vrep | {"seam_before_edge_fix": raw_seam}
         if pixel and doc is None and (pal := palette_of(base)) is not None:
             frames = [snap(f, pal) for f in frames]
         ctx.progress(0.6, 1.0, "check")
