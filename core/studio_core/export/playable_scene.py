@@ -113,10 +113,18 @@ PLAYER_GD = """extends CharacterBody2D
 @export var sideview := false
 @export var gravity := 0.0
 @export var jump_speed := 0.0
+@export var walk_clip := "walk"
+@export var idle_clip := "idle"
+## Without a walk clip the standing frame hops `bob` px every `bob_step` px travelled and leans ±`tilt` degrees.
+@export var bob := 0.0
+@export var bob_step := 32.0
+@export var tilt := 0.0
 var test_input := Vector2.ZERO
 var facing := Vector2.DOWN
+var step_phase := 0.0
 
 @onready var sprite: AnimatedSprite2D = get_node_or_null("Sprite")
+@onready var sprite_base: Vector2 = sprite.position if sprite != null else Vector2.ZERO
 
 
 func read_input() -> Vector2:
@@ -141,6 +149,7 @@ func _physics_process(delta: float) -> void:
 		velocity = dir * speed
 	move_and_slide()
 	_animate(Vector2(dir.x, 0.0) if sideview else dir)
+	_bob(delta)
 
 
 func _animate(dir: Vector2) -> void:
@@ -149,9 +158,26 @@ func _animate(dir: Vector2) -> void:
 	var moving := dir.length_squared() > 0.01
 	if moving:
 		facing = dir
-	var clip := "walk" if moving and sprite.sprite_frames.has_animation("walk_S") else "idle"
+	var clip := walk_clip if moving and walk_clip != "" else idle_clip
 	if sprite.has_method("face"):
 		sprite.face(clip, facing)
+	sprite.speed_scale = 0.0 if walk_clip != "" and clip == walk_clip and not moving else 1.0
+
+
+func _bob(delta: float) -> void:
+	if sprite == null or bob <= 0.0:
+		return
+	var v := get_real_velocity()
+	var ground_speed := absf(v.x) if sideview else v.length()
+	if sideview and not is_on_floor():
+		ground_speed = 0.0
+	if ground_speed > 1.0:
+		step_phase += ground_speed * delta / maxf(bob_step, 1.0) * PI
+	else:
+		step_phase = 0.0 if absf(sin(step_phase)) < 0.15 else step_phase + delta * 4.0 * PI
+	var s := sin(step_phase)
+	sprite.position = sprite_base + Vector2(0.0, -absf(s) * bob)
+	sprite.rotation_degrees = s * tilt
 """
 
 PLAYTEST_GD = """extends SceneTree
@@ -180,6 +206,8 @@ func _init() -> void:
 	var start: Vector2 = player.global_position
 	var last := start
 	var travel := 0.0
+	var bob := 0.0
+	var body: Node2D = player.get_node_or_null("Sprite")
 	for i in frames:
 		var dir := Vector2.RIGHT if i * 2 < frames else (Vector2.DOWN if not sideview else Vector2.LEFT)
 		if sideview and i * 4 >= frames and i * 4 < frames + 4:
@@ -188,15 +216,39 @@ func _init() -> void:
 		await physics_frame
 		travel += player.global_position.distance_to(last)
 		last = player.global_position
+		if body != null:
+			bob = maxf(bob, -body.position.y)
 	player.test_input = Vector2.ZERO
 	for i in 3:
 		await process_frame
 	var img := get_root().get_texture().get_image()
 	img.save_png(args[1])
-	print("PLAYTEST travel=%.2f dx=%.2f dy=%.2f floor=%s anim=%s" % [travel, last.x - start.x, last.y - start.y,
-		str(player.is_on_floor()), str(player.get_node("Sprite").animation) if player.has_node("Sprite") else ""])
+	print("PLAYTEST travel=%.2f dx=%.2f dy=%.2f floor=%s bob=%.2f anim=%s" % [travel, last.x - start.x,
+		last.y - start.y, str(player.is_on_floor()), bob, str(body.animation) if body is AnimatedSprite2D else ""])
 	quit(0)
 """
+
+
+def walk_clip(player: dict[str, Any]) -> str:
+    return player.get("walk_clip", "walk" if player.get("walk") else "")
+
+
+def walk_notes(doc: dict[str, Any]) -> list[str]:
+    pl = doc["player"]
+    bob = pl.get("bob") or {}
+    if pl.get("walk_clip") or not bob.get("px"):
+        return []
+    return [f"- Nhân vật {pl['name']} không có anim walk (chỉ '{pl.get('idle_clip', 'idle')}'): khi di chuyển giữ "
+            f"khung đứng, nhún {bob['px']:g}px mỗi {bob['step_px']:g}px quãng đường và nghiêng ±{bob['tilt']:g}° "
+            "cho khỏi trượt (chỉnh ở script Player: bob, bob_step / bobStep, tilt). Có sheet walk "
+            "(sprite-8dir-walk) thì xuất lại để có bước chân thật."]
+
+
+def depth_notes(doc: dict[str, Any]) -> list[str]:
+    if doc["style"] != "topdown":
+        return []
+    return ["- Tường top-down có chiều sâu: mặt trước (ô tường có sàn ngay dưới) tối dần + viền sáng mép trên, "
+            "đỉnh tường sáng hơn, layer Shadow (không va chạm) đổ bóng xuống 1 ô sàn ngay dưới tường."]
 
 
 def godot_files(src: Source) -> tuple[Files, list[str]]:
@@ -265,7 +317,11 @@ def godot_files(src: Source) -> tuple[Files, list[str]]:
     lines += ["", '[node name="Player" type="CharacterBody2D" parent="Actors"]', f"position = {_vec(*pl['pos'])}",
               'script = ExtResource("2_player")', f"speed = {_n(phys['speed'])}",
               f"sideview = {'true' if side else 'false'}", f"gravity = {_n(phys['gravity'])}",
-              f"jump_speed = {_n(phys['jump'])}"]
+              f"jump_speed = {_n(phys['jump'])}", f'walk_clip = "{walk_clip(pl)}"',
+              f'idle_clip = "{pl.get("idle_clip", "idle")}"']
+    bob = pl.get("bob") or {}
+    if bob.get("px"):
+        lines += [f"bob = {_n(bob['px'])}", f"bob_step = {_n(bob['step_px'])}", f"tilt = {_n(bob['tilt'])}"]
     if not side:
         lines.append("motion_mode = 1")
     lines += ["", '[node name="Sprite" parent="Actors/Player" instance=ExtResource("3_body")]',
@@ -280,8 +336,8 @@ def godot_files(src: Source) -> tuple[Files, list[str]]:
              f"player.gd, Camera2D bám theo) và prop StaticBody2D có CollisionPolygon2D vẽ theo alpha. "
              "Phím mũi tên / WASD, Space hoặc lên để nhảy (side-view). Đặt làm Main Scene rồi F5.",
              f"- Player/: nhân vật {pl['name']} (SpriteFrames 8 hướng + asset_studio_sprite.gd chọn hướng).",
-             f"- {a}_tileset.tres + Tiles/{a}_tiles.png: TileSet dùng chung cho cả hai layer, ô tường có polygon va "
-             "chạm (physics layer 0)."]
+             f"- {a}_tileset.tres + Tiles/{a}_tiles.png: TileSet dùng chung cho mọi layer, ô tường có polygon va "
+             "chạm (physics layer 0).", *depth_notes(doc), *walk_notes(doc)]
     if doc["background"]:
         notes.append("- Background/: Parallax2D theo thứ tự xa → gần (scroll_scale nhỏ = xa).")
     return files, notes
@@ -311,11 +367,19 @@ public class PlayerController : MonoBehaviour
     public float jumpSpeed = 14f;
     public Animator animator;
     public SpriteRenderer body;
-    public bool hasWalk;
+    public string walkClip = "walk";
+    public string idleClip = "idle";
+    // Without a walk clip the standing frame hops `bob` units every `bobStep` units travelled, leaning +-tilt degrees.
+    public float bob;
+    public float bobStep = 1f;
+    public float tilt;
     public Vector2 testInput;
     Rigidbody2D rb;
     Vector2 facing = Vector2.down;
     string clip = "";
+    float stepPhase;
+    Vector3 bodyBase;
+    bool bodyBaseSet;
     readonly RaycastHit2D[] hits = new RaycastHit2D[4];
 
     void Awake() { rb = GetComponent<Rigidbody2D>(); }
@@ -364,6 +428,24 @@ public class PlayerController : MonoBehaviour
             rb.linearVelocity = input * speed;
             Animate(input);
         }
+        Bob(Time.fixedDeltaTime);
+    }
+
+    void Bob(float dt)
+    {
+        if (body == null || bob <= 0f) return;
+        if (!bodyBaseSet)
+        {
+            bodyBase = body.transform.localPosition;
+            bodyBaseSet = true;
+        }
+        var v = rb.linearVelocity;
+        float groundSpeed = sideview ? (Grounded() ? Mathf.Abs(v.x) : 0f) : v.magnitude;
+        if (groundSpeed > 0.05f) stepPhase += groundSpeed * dt / Mathf.Max(bobStep, 0.01f) * Mathf.PI;
+        else stepPhase = Mathf.Abs(Mathf.Sin(stepPhase)) < 0.15f ? 0f : stepPhase + dt * 4f * Mathf.PI;
+        float s = Mathf.Sin(stepPhase);
+        body.transform.localPosition = bodyBase + new Vector3(0f, Mathf.Abs(s) * bob, 0f);
+        body.transform.localRotation = Quaternion.Euler(0f, 0f, -s * tilt);
     }
 
     void Animate(Vector2 dir)
@@ -373,12 +455,13 @@ public class PlayerController : MonoBehaviour
         if (moving) facing = dir.normalized;
         animator.SetFloat("MoveX", facing.x);
         animator.SetFloat("MoveY", facing.y);
-        var want = moving && hasWalk ? "walk" : "idle";
+        var want = moving && !string.IsNullOrEmpty(walkClip) ? walkClip : idleClip;
         if (want != clip && animator.HasState(0, Animator.StringToHash(want)))
         {
             animator.Play(want);
             clip = want;
         }
+        animator.speed = !moving && !string.IsNullOrEmpty(walkClip) && clip == walkClip ? 0f : 1f;
     }
 }
 """,
@@ -448,14 +531,14 @@ public class PlayableSceneBuilder__ID__ : AssetPostprocessor
 {
     const string Json = "playable___ID__.json";
 
-    [Serializable] class PlayerDoc { public string prefab; public float x, y, colW, colH, colY, speed, gravityScale, jump, scale; public bool walk; }
+    [Serializable] class PlayerDoc { public string prefab, walkClip, idleClip; public float x, y, colW, colH, colY, speed, gravityScale, jump, scale, bob, bobStep, tilt; }
     [Serializable] class PropDoc { public string sprite; public float x, y; public float[] poly; }
     [Serializable] class BgDoc { public string sprite; public float factor, scale, width; }
     [Serializable] class Doc
     {
         public string id, asset, style, tiles;
         public int cols, rows, tileCount, viewRows;
-        public int[] solid, ground, solidLayer;
+        public int[] solid, ground, shadowLayer, solidLayer;
         public PlayerDoc player;
         public PropDoc[] props;
         public BgDoc[] background;
@@ -547,7 +630,8 @@ public class PlayableSceneBuilder__ID__ : AssetPostprocessor
         grid.transform.SetParent(root.transform, false);
         grid.AddComponent<Grid>();
         Layer(grid.transform, "Ground", doc.ground, tiles, doc, side ? -5 : -1000, false);
-        Layer(grid.transform, "Solid", doc.solidLayer, tiles, doc, side ? 0 : -999, true);
+        Layer(grid.transform, "Shadow", doc.shadowLayer, tiles, doc, side ? -4 : -999, false);
+        Layer(grid.transform, "Solid", doc.solidLayer, tiles, doc, side ? 0 : -998, true);
         float levelW = doc.cols, levelH = doc.rows;
         for (int i = 0; i < doc.background.Length; i++)
         {
@@ -601,7 +685,11 @@ public class PlayableSceneBuilder__ID__ : AssetPostprocessor
         ctrl.speed = pd.speed;
         ctrl.sideview = side;
         ctrl.jumpSpeed = pd.jump;
-        ctrl.hasWalk = pd.walk;
+        ctrl.walkClip = pd.walkClip;
+        ctrl.idleClip = pd.idleClip;
+        ctrl.bob = pd.bob;
+        ctrl.bobStep = pd.bobStep;
+        ctrl.tilt = pd.tilt;
         var body = (GameObject)PrefabUtility.InstantiatePrefab(prefab, player.transform);
         body.name = "Body";
         body.transform.localScale = new Vector3(pd.scale, pd.scale, 1f);
@@ -631,7 +719,7 @@ public class PlayableSceneBuilder__ID__ : AssetPostprocessor
 
     static void Layer(Transform grid, string name, int[] ids, Tile[] tiles, Doc doc, int order, bool collide)
     {
-        if (ids.All(v => v < 0)) return;
+        if (ids == null || ids.All(v => v < 0)) return;
         var go = new GameObject(name);
         go.transform.SetParent(grid, false);
         var tm = go.AddComponent<Tilemap>();
@@ -641,7 +729,7 @@ public class PlayableSceneBuilder__ID__ : AssetPostprocessor
         if (collide) go.AddComponent<TilemapCollider2D>();
     }
 
-    [Serializable] class TestReport { public string id; public bool ok; public float travel, dx, dy; public int steps; }
+    [Serializable] class TestReport { public string id; public bool ok; public float travel, dx, dy, bob; public int steps; }
 
     // Edit-mode physics: drive the controller and step Physics2D by hand, as play mode would at 50 Hz.
     static void SelfTest(Doc doc, Runtime.PlayerController ctrl, Rigidbody2D rb)
@@ -654,7 +742,9 @@ public class PlayableSceneBuilder__ID__ : AssetPostprocessor
         for (int i = 0; i < 10; i++) Physics2D.Simulate(dt);
         var start = rb.position;
         var last = start;
-        float travel = 0f;
+        float travel = 0f, bob = 0f;
+        var bodyT = ctrl.body != null ? ctrl.body.transform : null;
+        var bodyPos = bodyT != null ? bodyT.localPosition : Vector3.zero;
         bool side = doc.style == "sideview";
         for (int i = 0; i < steps; i++)
         {
@@ -664,14 +754,20 @@ public class PlayableSceneBuilder__ID__ : AssetPostprocessor
             Physics2D.Simulate(dt);
             travel += (rb.position - last).magnitude;
             last = rb.position;
+            if (bodyT != null) bob = Mathf.Max(bob, bodyT.localPosition.y - bodyPos.y);
         }
         ctrl.testInput = Vector2.zero;
+        if (bodyT != null)
+        {
+            bodyT.localPosition = bodyPos;
+            bodyT.localRotation = Quaternion.identity;
+        }
         Physics2D.simulationMode = mode;
-        var rep = new TestReport { id = doc.id, ok = travel > 0.5f, travel = travel, dx = last.x - start.x, dy = last.y - start.y, steps = steps };
+        var rep = new TestReport { id = doc.id, ok = travel > 0.5f, travel = travel, dx = last.x - start.x, dy = last.y - start.y, bob = bob, steps = steps };
         var outDir = Path.Combine(Directory.GetCurrentDirectory(), "Logs");
         Directory.CreateDirectory(outDir);
         File.WriteAllText(Path.Combine(outDir, "asset_studio_playtest_" + doc.id + ".json"), JsonUtility.ToJson(rep));
-        if (rep.ok) Debug.Log("ASPLAY travel=" + travel.ToString("0.00") + " units");
+        if (rep.ok) Debug.Log("ASPLAY travel=" + travel.ToString("0.00") + " units, bob=" + bob.ToString("0.000"));
         else Debug.LogError("Asset Studio: player did not move in the self test (travel " + travel.ToString("0.00") + ")");
     }
 }
@@ -679,10 +775,13 @@ public class PlayableSceneBuilder__ID__ : AssetPostprocessor
 
 
 def unity_doc(src: Source) -> dict[str, Any]:
+    from studio_core.ops.playable_scene import layer_tiles
+
     doc = src.playable
     assert doc is not None
     t, rows = doc["tile"], doc["rows"]
     pl, col, phys = doc["player"], doc["player"]["collider"], doc["physics"]
+    bob = pl.get("bob") or {}
 
     def ux(x: float) -> float:
         return round(x / t, 4)
@@ -704,12 +803,15 @@ def unity_doc(src: Source) -> dict[str, Any]:
     return {"id": _uid(src), "asset": src.asset, "style": doc["style"], "tiles": f"Tiles/{src.asset}_tiles.png",
             "cols": doc["cols"], "rows": rows, "tileCount": doc["tileset"]["count"],
             "viewRows": doc["camera"]["view_rows"], "solid": doc["tileset"]["solid"],
-            "ground": doc["layers"][0]["tiles"], "solidLayer": doc["layers"][1]["tiles"],
+            "ground": layer_tiles(doc, "Ground"), "shadowLayer": layer_tiles(doc, "Shadow"),
+            "solidLayer": layer_tiles(doc, "Solid"),
             "player": {"prefab": f"Player/{pl['name']}.prefab", "x": ux(pl["pos"][0]), "y": uy(pl["pos"][1]),
                        "colW": round(col["w"] / t, 4), "colH": round(col["h"] / t, 4),
                        "colY": round(-col["y"] / t, 4), "speed": round(phys["speed"] / t, 4),
                        "gravityScale": round(phys["gravity"] / t / 9.81, 4), "jump": round(phys["jump"] / t, 4),
-                       "scale": 1.0, "walk": bool(pl.get("walk"))},
+                       "scale": 1.0, "walkClip": walk_clip(pl),
+                       "idleClip": pl.get("idle_clip", "idle"), "bob": round(bob.get("px", 0) / t, 4),
+                       "bobStep": round(bob.get("step_px", t) / t, 4), "tilt": bob.get("tilt", 0)},
             "props": props, "background": bgs}
 
 
@@ -763,7 +865,7 @@ def unity_files(src: Source) -> tuple[Files, list[str]]:
              f"PolygonCollider2D, Main Camera bám theo. Menu Asset Studio > Playable Scene {a} ({uid}) dựng lại và "
              "mở scene; bấm Play, phím mũi tên / WASD, Space nhảy (side-view).",
              f"- Scripts/: PlayerController, FollowCamera, ParallaxLayer (namespace {ns}, chạy cả Input Manager cũ "
-             "lẫn Input System)."]
+             "lẫn Input System).", *depth_notes(doc), *walk_notes(doc)]
     return files, notes
 
 
@@ -854,12 +956,12 @@ async def _check_godot(export_dir: Path, work: Path, exe: Path, cancel: asyncio.
                              "--script", "res://_asset_studio_playtest.gd", "--", res, str(shot), str(frames),
                              scene["style"]], project, None, PLAYTEST_TIMEOUT_S, cancel)
     errors, warnings = pv.godot_issues(run.output)
-    m = re.search(r"PLAYTEST travel=([-\d.]+) dx=([-\d.]+) dy=([-\d.]+) floor=(\w+)", run.output)
+    m = re.search(r"PLAYTEST travel=([-\d.]+) dx=([-\d.]+) dy=([-\d.]+) floor=(\w+) bob=([-\d.]+)", run.output)
     travel = float(m.group(1)) if m else 0.0
     out["errors"] = pv._dedupe(out["errors"] + errors + ([f"Godot playtest {run.stopped}"] if run.stopped else []))
     out["warnings"] = pv._dedupe(out["warnings"] + warnings)
     out["moved"] = {"travel_px": travel, "dx": float(m.group(2)) if m else 0.0, "dy": float(m.group(3)) if m else 0.0,
-                    "tiles": round(travel / scene["tile"], 2)}
+                    "tiles": round(travel / scene["tile"], 2), "bob_px": float(m.group(5)) if m else 0.0}
     if shot.is_file():
         out["images"].append((f"{scene['asset']}-godot-play.png", shot))
     out["ok"] = bool(m) and travel >= scene["tile"] and not out["errors"]
@@ -891,7 +993,7 @@ async def _check_unity(export_dir: Path, work: Path, settings: Any, cancel: asyn
         except ValueError:
             rep = {}
     out["moved"] = {"travel_units": rep.get("travel"), "dx": rep.get("dx"), "dy": rep.get("dy"),
-                    "tiles": round(float(rep.get("travel") or 0), 2)}
+                    "tiles": round(float(rep.get("travel") or 0), 2), "bob_units": rep.get("bob")}
     if not rep:
         out["errors"].append("Unity self test wrote no report")
         out["log_tail"] = res.log_tail

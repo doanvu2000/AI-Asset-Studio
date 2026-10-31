@@ -44,6 +44,12 @@ SIDE_GRAVITY = 30.0
 SIDE_JUMP_TILES = 3.5
 CHAR_HEIGHT_TILES = {"topdown": 1.7, "sideview": 1.8}
 PROP_MAX_TILES = 2.0
+# A sheet without a walk clip would slide: the idle frame hops BOB_TILES once per BOB_STEP_TILES travelled, leaning
+# ±BOB_TILT_DEG on alternate steps, so the motion reads as steps.
+BOB_TILES = 0.09
+BOB_STEP_TILES = 0.8
+BOB_TILT_DEG = 4.0
+WALK_CLIPS = ("walk", "run")
 ROLE_WORDS = {
     "wall": ("wall", "brick", "cliff", "rock", "fence", "hedge", "tường", "vách", "gạch"),
     "path": ("path", "road", "cobble", "paving", "pave", "street", "dirt", "trail", "plank", "floor tile", "đường",
@@ -135,6 +141,20 @@ def has_walk(meta: dict[str, Any], directional_rows: bool = False, clip_hint: st
     except (KeyError, TypeError, ValueError):
         return False
     return any(c in ("walk", "run") for c in lay.clips()) or (clip_hint in ("walk", "run") and lay.facing)
+
+
+def anim_clips(meta: dict[str, Any], directional_rows: bool = False, clip_hint: str = "anim") -> tuple[str, str]:
+    """(walk clip or "", standing clip) among the facing clips the engines export as <clip>_<dir> / states."""
+    from ..export.sheet import layout
+
+    try:
+        lay = layout(meta, clip_hint, directional_rows=directional_rows)
+    except (KeyError, TypeError, ValueError):
+        return "", "idle"
+    clips = list(dict.fromkeys(t.clip for t in lay.tracks if t.dir))
+    walk = next((c for c in WALK_CLIPS if c in clips), "")
+    idle = "idle" if "idle" in clips else next((c for c in clips if c != walk), walk or "idle")
+    return walk, idle
 
 
 def south_frame(sheet: Image.Image, meta: dict[str, Any], directional_rows: bool = False,
@@ -810,7 +830,9 @@ def build_atlas(blobs: Any, assets: dict[str, Any], tile: int, pixel: bool, styl
     if style == "topdown":
         at.add_block("floor", floor, False)
         at.add_block("path", path, False)
-        at.add_block("wall", wall, True)
+        at.add_block("wall", _tint(wall, (1.12, 1.12, 1.12), 6), True)
+        at.add_block("wall_face", wall_face(wall, tile), True)
+        at.add_tiles("shadow", [shadow_tile(tile)], False)
         auto = assets.get("autotile")
         if auto:
             at.add_tiles("auto", autotile_tiles(blobs, auto, tile, pixel), False)
@@ -826,6 +848,28 @@ def build_atlas(blobs: Any, assets: dict[str, Any], tile: int, pixel: bool, styl
     return at
 
 
+def wall_face(wall: Image.Image, tile: int) -> Image.Image:
+    """Front of a topdown wall (the side facing the camera): darker going down, a lit lip at the top edge and a dark
+    contact line at the foot, repeated per tile row of the block."""
+    v = np.linspace(0.0, 1.0, tile, dtype=np.float32)
+    k = 0.8 - 0.28 * v
+    lip = max(1, round(tile / 16))
+    k[:lip] = 1.3
+    k[lip:2 * lip] = 1.05
+    k[-lip:] = 0.38
+    a = np.asarray(wall.convert("RGBA")).astype(np.float32)
+    a[..., :3] *= np.tile(k, a.shape[0] // tile)[:, None, None]
+    return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), "RGBA")
+
+
+def shadow_tile(tile: int) -> Image.Image:
+    """Translucent black fading downwards: laid over the floor cell right below a wall, as if lit from above."""
+    v = np.clip(1.0 - np.arange(tile, dtype=np.float32) / (0.7 * tile), 0.0, 1.0) ** 1.6
+    a = np.zeros((tile, tile, 4), np.uint8)
+    a[..., 3] = (v * 120).astype(np.uint8)[:, None]
+    return Image.fromarray(a, "RGBA")
+
+
 def autotile_tiles(blobs: Any, doc: dict[str, Any], tile: int, pixel: bool) -> list[Image.Image]:
     with Image.open(blobs.path(str(doc["atlas"]["hash"]))) as im:
         atlas = im.convert("RGBA")
@@ -836,12 +880,14 @@ def autotile_tiles(blobs: Any, doc: dict[str, Any], tile: int, pixel: bool) -> l
 
 
 def tile_layers(layout: dict[str, Any], at: Atlas, autotile: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """Ground (walk-on, never collides) and Solid (collides) as flat id lists, row-major, -1 = empty."""
+    """Ground (walk-on, never collides), topdown Shadow (below each wall) and Solid (collides) in draw order as flat
+    id lists, row-major, -1 = empty. A topdown wall shows its face where the cell below is open, its top elsewhere
+    (the map edge counts as wall)."""
     from .autotile import mask_at
 
     cols, rows, style = layout["cols"], layout["rows"], layout["style"]
     grid = layout["grid"]
-    ground, solid = [-1] * (cols * rows), [-1] * (cols * rows)
+    ground, solid, shadow = [-1] * (cols * rows), [-1] * (cols * rows), [-1] * (cols * rows)
     by_mask = {}
     fill = None
     if autotile and "auto" in at.sets:
@@ -861,10 +907,20 @@ def tile_layers(layout: dict[str, Any], at: Atlas, autotile: dict[str, Any] | No
                 else:
                     ground[i] = at.at("path" if c == PATH else "floor", x, y)
                 if c == SOLID:
-                    solid[i] = at.at("wall", x, y)
+                    face = y + 1 < rows and grid[y + 1][x] != SOLID and "wall_face" in at.sets
+                    solid[i] = at.at("wall_face" if face else "wall", x, y)
+                elif y > 0 and grid[y - 1][x] == SOLID and "shadow" in at.sets:
+                    shadow[i] = at.sets["shadow"][0]
             elif c == SOLID:
                 solid[i] = at.at("top" if y == 0 or grid[y - 1][x] != SOLID else "wall", x, y)
-    return [{"name": "Ground", "collide": False, "tiles": ground}, {"name": "Solid", "collide": True, "tiles": solid}]
+    layers = [{"name": "Ground", "collide": False, "tiles": ground}]
+    if style == "topdown":
+        layers.append({"name": "Shadow", "collide": False, "tiles": shadow})
+    return [*layers, {"name": "Solid", "collide": True, "tiles": solid}]
+
+
+def layer_tiles(scene: dict[str, Any], name: str) -> list[int]:
+    return next((la["tiles"] for la in scene["layers"] if la["name"] == name), [])
 
 
 def player_setup(sheet: Image.Image, meta: dict[str, Any], tile: int, style: str, directional_rows: bool,
@@ -958,7 +1014,7 @@ def _paste(dst: Image.Image, img: Image.Image, xy: tuple[int, int]) -> None:
 
 class PlayableScene(OpExecutor):
     kind = "op.playable_scene"
-    version = "1"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         assets = await read_doc(ctx, inputs.get("assets") or [], ASSETS_TYPE, "assets")
@@ -985,7 +1041,8 @@ class PlayableScene(OpExecutor):
                                    "tiles": [refs["atlas"]]},
                           meta={"style": scene["style"], "tile": scene["tile"], "grid": [scene["cols"], scene["rows"]],
                                 "props": len(scene["props"]), "tiles": scene["tileset"]["count"],
-                                "planner": layout.get("planner"), "mockup": list(mockup.size)})
+                                "planner": layout.get("planner"), "mockup": list(mockup.size),
+                                "walk_clip": scene["player"]["walk_clip"] or None, "notes": scene["notes"]})
 
 
 def build_scene(blobs: Any, assets: dict[str, Any], layout: dict[str, Any], params: dict[str, Any], asset: str
@@ -1018,11 +1075,15 @@ def build_scene(blobs: Any, assets: dict[str, Any], layout: dict[str, Any], para
         prop_imgs.append(img)
     sx, sy = layout["spawn"]
     foot = (sy + 1) * tile - 1 if style == "sideview" else (sy + 0.6) * tile
+    walk_clip, idle_clip = anim_clips(smeta, ch.get("directional_rows", False), ch.get("clip_hint", "anim"))
+    bob_px = 0.0 if walk_clip else (max(1.0, round(BOB_TILES * tile)) if pixel else round(BOB_TILES * tile, 2))
     player = {"name": _ident(ch.get("name") or "Hero", "Hero"), "meta": smeta, "pos": [(sx + 0.5) * tile, foot],
               "collider": collider, "directional_rows": ch.get("directional_rows", False),
-              "clip_hint": ch.get("clip_hint", "anim"), "walk": has_walk(smeta, ch.get("directional_rows", False),
-                                                                        ch.get("clip_hint", "anim")),
-              "pixel": pixel}
+              "clip_hint": ch.get("clip_hint", "anim"), "walk": bool(walk_clip), "walk_clip": walk_clip,
+              "idle_clip": idle_clip, "pixel": pixel,
+              "bob": {"px": bob_px, "step_px": round(BOB_STEP_TILES * tile, 2),
+                      "tilt": BOB_TILT_DEG if bob_px else 0.0}}
+    notes = [] if walk_clip else [f"no walk clip: '{idle_clip}' frame bobs {bob_px:g}px per step instead of sliding"]
     props = [{"kind": p["prop"], "cell": [p["x"], p["y"]],
               "pos": [(p["x"] + 0.5) * tile, (p["y"] + (1 if style == "sideview" else 0.85)) * tile]}
              for p in layout["props"] if p["prop"] < len(kinds)]
@@ -1045,7 +1106,7 @@ def build_scene(blobs: Any, assets: dict[str, Any], layout: dict[str, Any], para
              "layers": layers, "player": player, "prop_kinds": kinds, "props": props, "background": background,
              "physics": {"speed": speed * tile, "gravity": gravity * tile,
                          "jump": round((2 * SIDE_GRAVITY * SIDE_JUMP_TILES) ** 0.5 * tile, 2) if gravity else 0.0},
-             "camera": {"view_rows": min(rows, 12 if style == "topdown" else 11)}}
+             "camera": {"view_rows": min(rows, 12 if style == "topdown" else 11)}, "notes": notes}
     atlas_img = at.image()
     mockup = render_mockup(scene, atlas_img, sheet, prop_imgs, bg_imgs)
     return scene, atlas_img, mockup, sheet, prop_imgs, tiled_tmx(scene, asset), ldtk_project(scene, asset)
@@ -1097,7 +1158,8 @@ def tiled_tmx(scene: dict[str, Any], asset: str) -> str:
         o = ET.SubElement(og, "object", {"id": str(oid), "name": k["name"], "type": "prop",
                                          "x": f"{p['pos'][0] - k['w'] / 2:g}", "y": f"{p['pos'][1] - k['h']:g}",
                                          "width": str(k["w"]), "height": str(k["h"])})
-        ET.SubElement(ET.SubElement(o, "properties"), "property", {"name": "image", "value": f"Props/{k['name']}.png"})
+        ET.SubElement(ET.SubElement(o, "properties"), "property", {"name": "sprite", "type": "file",
+                                                                    "value": f"Props/{k['name']}.png"})
     m.set("nextlayerid", str(lid + 1))
     m.set("nextobjectid", str(oid + 1))
     ET.indent(m, " ")
@@ -1155,28 +1217,30 @@ def _ldtk_layer(scene: dict[str, Any], ident: str, kind: str, def_uid: int, leve
 
 def ldtk_project(scene: dict[str, Any], asset: str) -> str:
     """One-level LDtk 1.5 project: Entities (player + props, pivot at the feet), an IntGrid `Collision` layer
-    (1 = solid) and the Solid / Ground tile layers on the same atlas the engines use."""
+    (1 = solid, drawn faint over the tiles) and the scene's tile layers (top first) on the atlas the engines use."""
     t, cols, rows = scene["tile"], scene["cols"], scene["rows"]
     count = scene["tileset"]["count"]
-    ts_uid, lvl_uid, ent_uid, col_uid, solid_uid, ground_uid = 1, 2, 3, 4, 5, 6
+    ts_uid, lvl_uid, ent_uid, col_uid = 1, 2, 3, 4
     player_def, prop_def, field_uid = 10, 11, 12
     rel = f"{asset}_tiles.png"
     tileset = {"__cWid": ATLAS_COLS, "__cHei": -(-count // ATLAS_COLS), "identifier": "Tiles", "uid": ts_uid,
                "relPath": rel, "embedAtlas": None, "pxWid": ATLAS_COLS * t, "pxHei": -(-count // ATLAS_COLS) * t,
                "tileGridSize": t, "spacing": 0, "padding": 0, "tags": [], "tagsSourceEnumUid": None, "enumTags": [],
                "customData": [], "savedSelections": [], "cachedPixelData": None}
-    layer_defs = [_ldtk_layer_def("Entities", "Entities", ent_uid, t),
-                  _ldtk_layer_def("Collision", "IntGrid", col_uid, t,
-                                  values=[{"value": 1, "identifier": "solid", "color": "#404040", "tile": None,
-                                           "groupUid": 0}]),
-                  _ldtk_layer_def("Solid", "Tiles", solid_uid, t, ts_uid),
-                  _ldtk_layer_def("Ground", "Tiles", ground_uid, t, ts_uid)]
+    tile_defs = [(la["name"], 5 + i) for i, la in enumerate(reversed(scene["layers"]))]
+    col_def = _ldtk_layer_def("Collision", "IntGrid", col_uid, t, values=[
+        {"value": 1, "identifier": "solid", "color": "#404040", "tile": None, "groupUid": 0}])
+    col_def["displayOpacity"] = 0.35
+    layer_defs = [_ldtk_layer_def("Entities", "Entities", ent_uid, t), col_def,
+                  *(_ldtk_layer_def(name, "Tiles", uid, t, ts_uid) for name, uid in tile_defs)]
     pl = scene["player"]
     entity_defs = [_ldtk_entity_def("Player", player_def, t, t * 2, "#3C8CFF", []),
                    _ldtk_entity_def("Prop", prop_def, t, t, "#BE823C", [_ldtk_field_def(field_uid)])]
+    # Prop instances keep their own size; a non-resizable def would make LDtk snap them back to t×t.
+    entity_defs[1].update(resizableX=True, resizableY=True)
     insts = {k: _ldtk_layer(scene, k, kind, uid, lvl_uid, (ts_uid, rel) if kind == "Tiles" else None)
              for k, kind, uid in (("Entities", "Entities", ent_uid), ("Collision", "IntGrid", col_uid),
-                                  ("Solid", "Tiles", solid_uid), ("Ground", "Tiles", ground_uid))}
+                                  *((name, "Tiles", uid) for name, uid in tile_defs))}
 
     def entity(ident: str, def_uid: int, x: float, y: float, w: int, h: int, n: int,
                image: str | None = None) -> dict[str, Any]:
@@ -1208,7 +1272,7 @@ def ldtk_project(scene: dict[str, Any], asset: str) -> str:
              "worldDepth": 0, "pxWid": cols * t, "pxHei": rows * t, "__bgColor": "#3A4254", "bgColor": None,
              "useAutoIdentifier": False, "bgRelPath": None, "bgPos": None, "bgPivotX": 0.5, "bgPivotY": 0.5,
              "__smartColor": "#ADADB5", "__bgPos": None, "externalRelPath": None, "fieldInstances": [],
-             "layerInstances": [insts[k] for k in ("Entities", "Collision", "Solid", "Ground")], "__neighbours": []}
+             "layerInstances": list(insts.values()), "__neighbours": []}
     doc = {"__header__": {"fileType": "LDtk Project JSON", "app": "LDtk", "doc": "https://ldtk.io/json",
                           "schema": "https://ldtk.io/files/JSON_SCHEMA.json", "appAuthor": "Sebastien 'deepnight' Benard",
                           "appVersion": "1.5.3", "url": "https://ldtk.io"},

@@ -191,11 +191,12 @@ async def test_build_scene_mockup_tiled_ldtk(tmp_path: Path, style: str):
     with Image.open(ctx.blobs.path(res.outputs["images"][0].hash)) as m:
         assert m.size == (24 * 32, 14 * 32), "mockup is exactly the grid"
     solid = set(scene["tileset"]["solid"])
+    solid_layer = ps.layer_tiles(scene, "Solid")
     for i, c in enumerate("".join(lay["grid"])):
-        assert (scene["layers"][1]["tiles"][i] >= 0) == (c == "#")
+        assert (solid_layer[i] >= 0) == (c == "#")
         if c == "#":
-            assert scene["layers"][1]["tiles"][i] in solid
-    assert not solid & {t for t in scene["layers"][0]["tiles"] if t >= 0}
+            assert solid_layer[i] in solid
+    assert not solid & {t for la in scene["layers"] if not la["collide"] for t in la["tiles"] if t >= 0}
     pl = scene["player"]
     assert pl["meta"]["frame_h"] < 96 and 0 < pl["collider"]["w"] <= 32
     tmx = load_source(ctx.blobs.path(res.outputs["tmx"][0].hash).read_bytes(), "x.tmx")
@@ -247,7 +248,7 @@ async def test_engine_exports(tmp_path: Path):
     assert src.playable and {"atlas", "sheet"} <= set(src.playable_files)
     g = dict(godot.export(src))
     tscn = g["TestLevel.tscn"].decode()
-    assert tscn.count('type="TileMapLayer"') == 2 and "collision_enabled = false" in tscn
+    assert tscn.count('type="TileMapLayer"') == 3 and tscn.count("collision_enabled = false") == 2
     assert 'type="CharacterBody2D"' in tscn and "motion_mode = 1" in tscn and "Camera2D" in tscn
     assert tscn.count('type="StaticBody2D"') == len(scene["props"]) == tscn.count("CollisionPolygon2D")
     assert 'path="Player/Hero.tscn"' in tscn and "Player/Hero.tres" in g and "player.gd" in g
@@ -259,7 +260,11 @@ async def test_engine_exports(tmp_path: Path):
     assert "namespace AssetStudio" in u[builder].decode() and f"playable_{uid}.json" in u[builder].decode()
     doc = json.loads(u[f"playable_{uid}.json"])
     assert doc["player"]["prefab"] == "Player/Hero.prefab" and "Player/Hero.prefab" in u
-    assert len(doc["ground"]) == 24 * 14 and doc["tileCount"] == scene["tileset"]["count"]
+    assert len(doc["ground"]) == len(doc["shadowLayer"]) == len(doc["solidLayer"]) == 24 * 14
+    assert doc["tileCount"] == scene["tileset"]["count"]
+    assert doc["player"]["walkClip"] == "" and doc["player"]["idleClip"] == "idle" and doc["player"]["bob"] > 0
+    assert 'idle_clip = "idle"' in tscn and "bob = " in tscn and "tilt = " in tscn
+    assert "nhún" in g["README.txt"].decode() and "layer Shadow" in u["README.txt"].decode()
     assert f"namespace AssetStudio.Playable{uid}" in u["Scripts/PlayerController.cs"].decode()
     sheet_meta_txt = u["Tiles/TestLevel_tiles.png.meta"].decode()
     assert sheet_meta_txt.count("name: tile_") == scene["tileset"]["count"]
@@ -408,3 +413,133 @@ async def test_gather_library_imported_files(tmp_path: Path):
     assert doc["character"]["hash"] == hero.hash, "the standing figure, not the chest, is the player"
     assert [p.get("sheet") for p in doc["props"]] == [chest.hash]
     assert [t["hash"] for t in doc["textures"]] == [grass.hash]
+
+
+def clip_meta(names: tuple[str, ...], dirs: int = 8, frames: int = 4) -> dict[str, Any]:
+    angles = [i * 360 / dirs for i in range(dirs)]
+    clips = [{"name": n, "row0": k * dirs, "rows": dirs, "frames": frames} for k, n in enumerate(names)]
+    n = dirs * len(names)
+    return {"frame_w": 64, "frame_h": 64, "cols": frames, "rows": n, "count": frames * n, "clips": clips,
+            "row_angles": angles * len(names)}
+
+
+def test_anim_clips_pick_walk_and_standing_clip():
+    assert ps.anim_clips(sheet_meta()) == ("", "idle")
+    assert ps.anim_clips(clip_meta(("idle", "walk"))) == ("walk", "idle")
+    assert ps.anim_clips(clip_meta(("run", "attack"))) == ("run", "attack")
+    assert ps.anim_clips(clip_meta(("walk",), dirs=4)) == ("walk", "walk")
+    assert ps.anim_clips(clip_meta(("attack",), dirs=4)) == ("", "attack")
+
+
+async def test_walking_sheet_keeps_its_walk_and_idle_sheet_bobs(tmp_path: Path):
+    from studio_core.export.playable_scene import walk_notes
+
+    ctx = FakeCtx(tmp_path)
+    _, _, res, scene = await build(ctx)
+    pl = scene["player"]
+    assert pl["walk_clip"] == "" and pl["idle_clip"] == "idle" and not pl["walk"]
+    assert pl["bob"]["px"] > 0 and pl["bob"]["tilt"] > 0 and scene["notes"] and res.meta["notes"]
+    assert walk_notes(scene) and "sprite-8dir-walk" in walk_notes(scene)[0]
+    assert walk_notes({**scene, "player": {**pl, "walk_clip": "walk", "bob": {"px": 0.0}}}) == []
+    frame = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+    ImageDraw.Draw(frame).rectangle((20, 8, 44, 60), fill=(200, 60, 60, 255))
+    img = Image.new("RGBA", (64 * 4, 64 * 16), (0, 0, 0, 0))
+    for r in range(16):
+        for c in range(4):
+            img.paste(frame, (c * 64, r * 64))
+    g = await ps.SceneGather(None).run(ctx, {"project": "none"}, {
+        "character": [await put(ctx, img, "knight.png"), await put(ctx, clip_meta(("idle", "walk")), "knight.json")]})
+    lay = ps.procedural_layout("topdown", 16, 10, 0, 1)
+    out = await ps.PlayableScene().run(ctx, {}, {"assets": g.outputs["assets"],
+                                                 "layout": [await put(ctx, lay, "l.json")]})
+    knight = json.loads(ctx.blobs.path(out.outputs["scene"][0].hash).read_bytes())
+    assert knight["player"]["walk_clip"] == "walk" and knight["player"]["bob"]["px"] == 0 and knight["notes"] == []
+
+
+async def test_topdown_walls_have_a_face_a_top_and_a_shadow(tmp_path: Path):
+    ctx = FakeCtx(tmp_path)
+    _, lay, res, scene = await build(ctx, planner_raw={"rows": ["." * 24] * 14, "spawn": [5, 4]})
+    grid, sets = lay["grid"], scene["tileset"]["sets"]
+    cols, rows = scene["cols"], scene["rows"]
+    solid, shadow = ps.layer_tiles(scene, "Solid"), ps.layer_tiles(scene, "Shadow")
+    face, top = set(sets["wall_face"]), set(sets["wall"])
+    assert face <= set(scene["tileset"]["solid"]) and not set(sets["shadow"]) & set(scene["tileset"]["solid"])
+    for y in range(rows):
+        for x in range(cols):
+            i, c = y * cols + x, grid[y][x]
+            if c == "#":
+                assert solid[i] in (face if y + 1 < rows and grid[y + 1][x] != "#" else top), (x, y)
+            assert (shadow[i] >= 0) == (c != "#" and y > 0 and grid[y - 1][x] == "#"), (x, y)
+    assert all(solid[(rows - 1) * cols + x] in top for x in range(cols)), "the bottom edge has no floor below"
+    assert all(solid[x] in face for x in range(1, cols - 1)), "the top edge faces the room"
+    atlas = Image.open(ctx.blobs.path(scene["tileset"]["hash"])).convert("RGBA")
+    t = scene["tile"]
+
+    def tile_px(tid: int) -> np.ndarray:
+        c, r = tid % ps.ATLAS_COLS, tid // ps.ATLAS_COLS
+        return np.asarray(atlas.crop((c * t, r * t, (c + 1) * t, (r + 1) * t)))
+
+    assert tile_px(sets["wall_face"][0])[..., :3].mean() < tile_px(sets["wall"][0])[..., :3].mean()
+    sh = tile_px(sets["shadow"][0])[..., 3]
+    assert sh[0].min() > 80 and sh[-1].max() == 0, "the shadow fades downwards"
+
+
+TMX_RESERVED = {"id", "name", "type", "class", "x", "y", "width", "height", "rotation", "gid", "visible", "template",
+                "image", "source"}
+
+
+@pytest.mark.parametrize("style", ["topdown", "sideview"])
+async def test_tiled_and_ldtk_files_follow_the_formats(tmp_path: Path, style: str):
+    import xml.etree.ElementTree as ET
+
+    ctx = FakeCtx(tmp_path)
+    _, _, res, scene = await build(ctx, style)
+    cols, rows, t, count = scene["cols"], scene["rows"], scene["tile"], scene["tileset"]["count"]
+    root = ET.fromstring(ctx.blobs.path(res.outputs["tmx"][0].hash).read_bytes())
+    ts = root.find("tileset")
+    img = ts.find("image")
+    assert int(img.get("width")) % t == 0 and int(img.get("height")) % t == 0
+    assert int(ts.get("tilecount")) == count <= int(img.get("width")) // t * int(img.get("height")) // t
+    layer_ids = [int(el.get("id")) for el in root if el.tag in ("layer", "imagelayer", "objectgroup")]
+    assert len(layer_ids) == len(set(layer_ids)) and int(root.get("nextlayerid")) > max(layer_ids)
+    assert [el.get("name") for el in root.findall("layer")] == [la["name"] for la in scene["layers"]]
+    for el in root.findall("layer"):
+        gids = [int(v) for v in el.find("data").text.replace("\n", "").split(",")]
+        assert len(gids) == cols * rows and all(0 <= g <= count for g in gids)
+    objs = root.find("objectgroup").findall("object")
+    assert int(root.get("nextobjectid")) > max(int(o.get("id")) for o in objs)
+    for o in objs:
+        for prop in o.iter("property"):
+            assert prop.get("name") not in TMX_RESERVED, "pytmx refuses object properties named like attributes"
+    doc = json.loads(ctx.blobs.path(res.outputs["ldtk"][0].hash).read_bytes())
+    defs = doc["defs"]
+    uids = [d["uid"] for k in ("layers", "entities", "tilesets") for d in defs[k]] + \
+        [f["uid"] for e in defs["entities"] for f in e["fieldDefs"]] + [lv["uid"] for lv in doc["levels"]]
+    assert len(uids) == len(set(uids)) and max(uids) < doc["nextUid"]
+    level = doc["levels"][0]
+    assert [li["layerDefUid"] for li in level["layerInstances"]] == [d["uid"] for d in defs["layers"]]
+    tcols = defs["tilesets"][0]["__cWid"]
+    for li in level["layerInstances"]:
+        assert (li["__cWid"], li["__cHei"], li["__gridSize"]) == (cols, rows, t)
+        for gt in li["gridTiles"]:
+            assert 0 <= gt["t"] < count
+            assert gt["src"] == [gt["t"] % tcols * t, gt["t"] // tcols * t]
+            assert gt["d"] == [gt["px"][1] // t * cols + gt["px"][0] // t]
+        if li["__type"] == "IntGrid":
+            assert len(li["intGridCsv"]) == cols * rows
+    ents = {e["uid"]: e for e in defs["entities"]}
+    for e in next(li for li in level["layerInstances"] if li["__type"] == "Entities")["entityInstances"]:
+        d = ents[e["defUid"]]
+        assert (e["width"], e["height"]) == (d["width"], d["height"]) or (d["resizableX"] and d["resizableY"])
+        assert 0 <= e["px"][0] <= level["pxWid"] and 0 <= e["px"][1] <= level["pxHei"]
+
+
+async def test_tmx_loads_in_pytmx(tmp_path: Path):
+    pytmx = pytest.importorskip("pytmx")
+    ctx = FakeCtx(tmp_path)
+    _, _, res, scene = await build(ctx)
+    path = tmp_path / "level.tmx"
+    path.write_bytes(ctx.blobs.path(res.outputs["tmx"][0].hash).read_bytes())
+    m = pytmx.TiledMap(str(path))
+    assert [la.name for la in m.layers][:3] == ["Ground", "Shadow", "Solid"]
+    assert len(m.objects_by_id) == 1 + len(scene["props"])
