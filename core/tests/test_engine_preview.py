@@ -67,6 +67,19 @@ def test_unity_log_issues_keep_own_folder_and_fatal_lines() -> None:
     assert errors == ["Failed to import Assets/AssetStudio/Knight/Knight.png: bad header",
                       "It looks like another Unity instance is running with this project open."]
     assert warnings == ["Assets/AssetStudio/Knight/Knight.prefab warning: missing script"]
+    # Live URP run: an offline curl failure was glued onto our import line and read as an import error.
+    glued = ("Start importing Assets/AssetStudio/Knight/K.png using Guid(d5a3) (TextureImporter)Curl error 35: "
+             "Recv failure: Connection was reset\n")
+    assert preview.unity_log_issues(glued, "Assets/AssetStudio/Knight") == ([], [])
+    assert preview.unity_log_issues("Curl error 7 ... error CS0103: x\n", "Assets/AssetStudio/Knight")[0]
+
+
+def test_godot_preview_script_frames_3d_particles() -> None:
+    gd = (preview.scripts_dir() / "preview.gd").read_text(encoding="utf-8")
+    # GPUParticles3D.get_aabb() is empty, so without visibility_aabb a particle scene got no camera (blank shot).
+    assert "n is GPUParticles3D" in gd and "n.visibility_aabb" in gd
+    assert gd.index("n is GPUParticles3D") < gd.index("n is VisualInstance3D")
+    assert "_particle_shot(particles)" in gd and "_content_rect(img)" in gd
 
 
 async def test_preview_godot_imports_then_renders(tmp_path: Path, monkeypatch) -> None:

@@ -34,8 +34,14 @@ func _init() -> void:
 		_frame_2d(node)
 	else:
 		_frame_3d(node, boxes)
-	for i in frames:
-		await process_frame
+	var particles := node.find_children("*", "GPUParticles3D", true, false)
+	if node is GPUParticles3D:
+		particles.append(node)
+	if particles.is_empty():
+		for i in frames:
+			await process_frame
+	else:
+		await _particle_shot(particles)
 	var img := get_root().get_texture().get_image()
 	var err := img.save_png(out)
 	if err != OK:
@@ -87,7 +93,11 @@ func _tile_demo(ts: TileSet) -> Node:
 
 
 func _aabbs(n: Node, acc: Array) -> void:
-	if n is VisualInstance3D and n.is_visible_in_tree():
+	if n is GPUParticles3D and n.is_visible_in_tree():
+		# GPUParticles3D.get_aabb() is always empty: its culling box is visibility_aabb.
+		if n.visibility_aabb.size.length() > 0.0:
+			acc.append(n.global_transform * n.visibility_aabb)
+	elif n is VisualInstance3D and n.is_visible_in_tree():
 		var a: AABB = n.get_aabb()
 		if a.size.length() > 0.0:
 			acc.append(n.global_transform * a)
@@ -139,6 +149,59 @@ func _frame_2d(node: Node) -> void:
 	cam.make_current()
 
 
+var _cam3d: Camera3D
+var _focus := 1.0
+
+
+# Particle FX: a fixed frame count catches a burst as a dot or after a short hit spark has died, so the shot waits
+# for ~30% of each one-shot layer's life (after its delay). The visibility box is a loose cube and capture_aabb() is
+# no tighter under gl_compatibility, so the camera then zooms onto the pixels that differ from the background.
+func _particle_shot(particles: Array) -> void:
+	var sum := 0.0
+	var n := 0
+	for p: GPUParticles3D in particles:
+		if p.one_shot or p.has_meta("delay"):
+			sum += float(p.get_meta("delay", 0.0)) + p.lifetime * 0.3
+			n += 1
+	var wait_ms := clampi(int(1000.0 * sum / maxi(n, 1)), 100, 1500)
+	var started := Time.get_ticks_msec()
+	var frames := 0
+	while frames < 3 or Time.get_ticks_msec() - started < wait_ms:
+		await process_frame
+		frames += 1
+	var img := get_root().get_texture().get_image()
+	img.convert(Image.FORMAT_RGB8)
+	var used := _content_rect(img)
+	var half := maxf(used.size.x, used.size.y) * 0.5 * 1.4
+	if used.size.x <= 0 or half > img.get_width() * 0.4:
+		return
+	var w := float(img.get_width())
+	var c := used.get_center() - Vector2(w, img.get_height()) * 0.5
+	var t := tan(deg_to_rad(_cam3d.fov * 0.5))
+	var k := maxf(half / (w * 0.5), 0.05)
+	_cam3d.h_offset = c.x / (w * 0.5) * _focus * t
+	_cam3d.v_offset = -c.y / (w * 0.5) * _focus * t
+	_cam3d.fov = rad_to_deg(2.0 * atan(t * k))
+	for i in 2:
+		await process_frame
+
+
+func _content_rect(img: Image) -> Rect2:
+	var bg := BG
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	var step := 2
+	for y in range(0, img.get_height(), step):
+		for x in range(0, img.get_width(), step):
+			var p := img.get_pixel(x, y)
+			if absf(p.r - bg.r) + absf(p.g - bg.g) + absf(p.b - bg.b) > 0.08:
+				lo = Vector2(minf(lo.x, x), minf(lo.y, y))
+				hi = Vector2(maxf(hi.x, x), maxf(hi.y, y))
+	if lo.x > hi.x:
+		return Rect2()
+	return Rect2(lo, hi - lo + Vector2(step, step))
+
+
 func _frame_3d(node: Node, boxes: Array) -> void:
 	var box: AABB = boxes[0]
 	for b in boxes:
@@ -150,10 +213,12 @@ func _frame_3d(node: Node, boxes: Array) -> void:
 	cam.near = radius * 0.01
 	cam.far = radius * 100.0
 	var dir := Vector3(0.8, 0.55, 1.0).normalized()
-	cam.position = center + dir * (radius / sin(deg_to_rad(cam.fov * 0.5)) * 1.05)
+	_focus = radius / sin(deg_to_rad(cam.fov * 0.5)) * 1.05
+	cam.position = center + dir * _focus
 	get_root().add_child(cam)
 	cam.look_at(center)
 	cam.make_current()
+	_cam3d = cam
 	if node.find_children("*", "Light3D", true, false).is_empty():
 		var sun := DirectionalLight3D.new()
 		sun.rotation_degrees = Vector3(-50, 35, 0)

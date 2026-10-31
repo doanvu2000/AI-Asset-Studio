@@ -208,6 +208,30 @@ async def test_decal_round_stain_gets_a_ragged_edge(tmp_path: Path) -> None:
     assert roundness(alb[..., 3] / 255) == pytest.approx(dirt["roundness"][1], abs=1e-3)
 
 
+def test_decal_hairline_crack_is_inked_and_thickened() -> None:
+    from studio_core.ops.decal import MIN_STROKE, make_decal
+
+    img = Image.new("RGB", (1024, 1024), (232, 233, 230))
+    d = ImageDraw.Draw(img)
+    d.line([(40, 500), (500, 520), (980, 490)], fill=(30, 28, 26), width=2)
+    d.line([(40, 503), (500, 523), (980, 493)], fill=(255, 255, 255), width=1)  # lit lip under the gap
+    d.line([(500, 520), (520, 700)], fill=(150, 150, 148), width=2)  # faint mid-grey branch
+    d.ellipse((200, 850, 202, 852), fill=(60, 60, 60))  # lone speck
+    alb, _, meta = make_decal(img, None, "key", 512, 0.06, 4.0, False, "wall cracks")
+    before, after = meta["stroke_px"]
+    assert before < 2 and after >= MIN_STROKE * 512 * 0.9 and meta["irregular"] == 0
+    # The speck is dropped, so the crop stays on the crack (with it the box would reach y=852: aspect ~0.42).
+    assert meta["aspect"][1] < 0.34
+    a = np.asarray(alb, np.float32)
+    solid = a[..., 3] > 128
+    # Every opaque pixel is dark ink: no white lip, no light-grey branch.
+    assert solid.sum() > 500 and a[solid][:, :3].max() < 140
+    plain, _, m2 = make_decal(img, None, "key", 512, 0.06, 4.0, False, "dirt stain")
+    assert m2["stroke_px"][0] == m2["stroke_px"][1]
+    blank, _, m3 = make_decal(Image.new("RGB", (256, 256), "white"), None, "key", 256, 0.06, 4.0, False, "crack")
+    assert m3["coverage"] == 0 and m3["stroke_px"] == [0.0, 0.0]
+
+
 def test_trim_strip_material_colour() -> None:
     from studio_core.ops.trim import fit_material_color, strip_material
 

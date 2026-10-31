@@ -192,6 +192,9 @@ def unity_log_issues(text: str, asset_dir: str) -> tuple[list[str], list[str]]:
         low = s.lower()
         if any(f.lower() in low for f in _UNITY_FATAL):
             errors.append(s)
+        elif "curl error" in low:
+            # Offline licensing/analytics curl failures get glued onto whatever line Unity prints (often our import).
+            continue
         elif needle in low and ("error" in low or "fail" in low or "exception" in low):
             errors.append(s)
         elif needle in low and "warning" in low:

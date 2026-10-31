@@ -2,7 +2,7 @@ id: decal-pack
 name: Bộ decal (nứt, rêu, bẩn, cháy, graffiti)
 description: >-
   Mỗi dòng 1 decal (vết nứt, rêu, vết bẩn, vết cháy, graffiti / logo sơn) → Z-Image vẽ trên nền trắng phẳng → tách
-  nền theo màu nền (giữ được vết nứt mảnh, bụi loang) hoặc BiRefNet (logo, sticker khối đặc) → màu khử nền trắng,
+  nền theo màu nền (vết nứt / vết xước: chỉ lấy nét tối, bỏ hạt lẻ, làm dày nét cho đọc được; bụi loang giữ nguyên) hoặc BiRefNet (logo, sticker khối đặc) → màu khử nền trắng,
   mép mờ dần để không lộ khung vuông → normal map (vết tối là lõm) → duyệt. Xuất Unity URP Decal Projector prefab
   + material Shader Graphs/Decal, Godot node Decal (.tscn) gắn sẵn albedo + normal.
 inputs:
@@ -20,6 +20,8 @@ steps:
     kind: comfy.t2i_zimage_turbo
     params:
       # Z-Image Turbo runs at cfg 1 (no negative prompt): naming a shape to avoid ("ring", "circle") draws it.
+      # One prompt serves every line: asking for bold/near-black marks turned stains into spiky blobs and holes, so
+      # thin cracks are fixed in op.decal_pack (ink key + thickening) instead.
       "57:27.text": "straight-on photo of ${inputs.prompt | lines} on a plain clean pure white wall, the mark lies flat in the surface like paint or a stain, lopsided asymmetric shape with ragged uneven edges and patchy density, spreading further to one side, dense in the middle, ${inputs.style}, orthographic, flat even lighting, the clean white wall fills the frame around the mark with a wide empty margin"
       "57:13.width": 1024
       "57:13.height": 1024
