@@ -253,15 +253,40 @@ def chain_mesh(att: dict[str, Any], corners: np.ndarray, root: np.ndarray, tip: 
 LINK_DAMPING = 0.015
 
 
+# Cloth links past the second ride on a moving parent: Unity (spine-unity 4.2.121) showed 3-4 bone capes swinging
+# >100° and ringing 5-7 s after a run-stop, while 2-bone cloth and hair were fine. Per extra link: less `inertia`
+# (the share of the host's motion kicked into the swing), stiffer `strength` (spring pulls back faster, ω² =
+# strength / mass), lower `damping` (velocity multiplier per 1/60 s, so a smaller number settles sooner) and a
+# lower `limit` (the cap, in skeleton units / s, on the per-frame displacement that feeds the rotation).
+CLOTH_TAPER = {"inertia": 0.1, "strength": 0.25, "damping": 0.02, "limit": 0.15}
+CLOTH_INERTIA_MIN = 0.5
+# `limit` scales with the bone (skeleton units are px): 6 bone lengths / s leaves a walk untouched and caps the kick
+# of a run-stop.
+CLOTH_LIMIT_LENGTHS = 6.0
+CLOTH_LIMIT_MIN = 0.25
+
+
+def link_params(kind: str, link: int) -> dict[str, float]:
+    """Multipliers / offsets of the preset for the `link`-th bone (0 = root) of a chain: neutral except for cloth."""
+    extra = max(0, link - 1) if kind == "cloth" else 0
+    return {"inertia": -CLOTH_TAPER["inertia"] * extra, "strength": 1 + CLOTH_TAPER["strength"] * extra,
+            "damping": -CLOTH_TAPER["damping"] * extra, "limit": max(CLOTH_LIMIT_MIN, 1 - CLOTH_TAPER["limit"] * extra)}
+
+
 def constraint(name: str, bone: str, kind: str, order: int, strength: float = 1.0, wind: float = 0.0,
-               gravity: float = 0.0, root: bool = False, link: int = 0) -> dict[str, Any]:
+               gravity: float = 0.0, root: bool = False, link: int = 0, length: float = 0.0) -> dict[str, Any]:
     p = PRESETS[kind]
+    t = link_params(kind, link)
+    cloth = kind == "cloth"
+    limit = round(CLOTH_LIMIT_LENGTHS * length * t["limit"], 3) if cloth and length > 0 else 5000
+    inertia = max(CLOTH_INERTIA_MIN if cloth else 0.0, p["inertia"] + t["inertia"])
     c: dict[str, Any] = {"name": name, "order": order, "bone": bone, "x": 0, "y": 0, "rotate": 1, "scaleX": 0,
-                         "shearX": 0, "limit": 5000, "fps": 60, "inertia": p["inertia"],
-                         "strength": round(p["strength"] * strength, 3),
-                         "damping": round(max(0.5, p["damping"] - LINK_DAMPING * link), 4), "mass": p["mass"],
-                         "wind": wind, "gravity": gravity, "mix": 1}
-    if root and kind == "cloth":
+                         "shearX": 0, "limit": limit, "fps": 60,
+                         "inertia": round(inertia, 4),
+                         "strength": round(p["strength"] * strength * t["strength"], 3),
+                         "damping": round(max(0.5, p["damping"] - LINK_DAMPING * link + t["damping"]), 4),
+                         "mass": p["mass"], "wind": wind, "gravity": gravity, "mix": 1}
+    if root and cloth:
         # A cape / skirt root also slides a little with the body, the hem lags; other kinds only swing.
         c["x"] = 0.3
     return c
@@ -351,11 +376,12 @@ def add_physics(doc: dict[str, Any], parts: list[str] | None = None, segments: i
     physics = list(doc.get("physics") or [])
     # Constraint names share one namespace in the editor and runtimes (Skeleton.findConstraint by name).
     used = {c.get("name") for key in ("ik", "transform", "path", "physics") for c in doc.get(key) or []}
+    blen = {b["name"]: float(b.get("length", 0) or 0) for b in doc["bones"]}
     for chain, k, origin in chains:
         preset = k if kind == "auto" else kind
         for j, b in enumerate(chain):
             physics.append(constraint(_unique(f"phys_{b}", used), b, preset, order, strength, wind, gravity,
-                                      root=j == 0, link=j))
+                                      root=j == 0, link=j, length=blen.get(b, 0.0)))
             order += 1
         report["chains"].append({"bones": chain, "preset": preset, "source": origin})
     report["constraints"] = sum(len(c) for c, _, _ in chains)
@@ -497,7 +523,7 @@ def _mesh_report(doc: dict[str, Any], meshed: list[list[str]]) -> list[str]:
 
 class SpinePhysics(OpExecutor):
     kind = "op.spine_physics"
-    version = "2"
+    version = "3"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         from . import spine_runtime as rt
