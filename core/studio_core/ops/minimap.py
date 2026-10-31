@@ -164,6 +164,8 @@ def _tmx(data: bytes) -> Loaded:
             for o in el.findall("object"):
                 ox, oy = float(o.get("x", 0)), float(o.get("y", 0))
                 ow, oh = float(o.get("width", 0)), float(o.get("height", 0))
+                if o.get("gid"):
+                    oy -= oh  # Tiled anchors tile objects at the bottom-left
                 name = o.get("name") or ""
                 pois.append(Poi(name or o.get("type", "") or o.get("class", "") or "poi",
                                 _poi_type(o.get("type") or o.get("class") or "", name), ox + ow / 2, oy + oh / 2))

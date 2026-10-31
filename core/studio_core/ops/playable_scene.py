@@ -845,6 +845,8 @@ def build_atlas(blobs: Any, assets: dict[str, Any], tile: int, pixel: bool, styl
             strip = floor.crop((0, j * tile, tile * VARIANTS, j * tile + band))
             top.paste(strip, (0, j * tile))
         at.add_block("top", top, True)
+        shadow = shadow_tile(tile)
+        at.add_tiles("shadow", [shadow, shadow.transpose(Image.Transpose.TRANSPOSE)], False)
     return at
 
 
@@ -880,7 +882,7 @@ def autotile_tiles(blobs: Any, doc: dict[str, Any], tile: int, pixel: bool) -> l
 
 
 def tile_layers(layout: dict[str, Any], at: Atlas, autotile: dict[str, Any] | None) -> list[dict[str, Any]]:
-    """Ground (walk-on, never collides), topdown Shadow (below each wall) and Solid (collides) in draw order as flat
+    """Ground (walk-on, never collides), Shadow (below each wall, sideview also beside it) and Solid (collides) in draw order as flat
     id lists, row-major, -1 = empty. A topdown wall shows its face where the cell below is open, its top elsewhere
     (the map edge counts as wall)."""
     from .autotile import mask_at
@@ -913,9 +915,15 @@ def tile_layers(layout: dict[str, Any], at: Atlas, autotile: dict[str, Any] | No
                     shadow[i] = at.sets["shadow"][0]
             elif c == SOLID:
                 solid[i] = at.at("top" if y == 0 or grid[y - 1][x] != SOLID else "wall", x, y)
-    layers = [{"name": "Ground", "collide": False, "tiles": ground}]
-    if style == "topdown":
-        layers.append({"name": "Shadow", "collide": False, "tiles": shadow})
+            elif "shadow" in at.sets:
+                # Light from the upper left: open cells under a block get the downward fade, those right of one the
+                # sideways fade, falling on the background behind the terrain.
+                if y > 0 and grid[y - 1][x] == SOLID:
+                    shadow[i] = at.sets["shadow"][0]
+                elif x > 0 and grid[y][x - 1] == SOLID:
+                    shadow[i] = at.sets["shadow"][1]
+    layers = [{"name": "Ground", "collide": False, "tiles": ground}, {"name": "Shadow", "collide": False,
+                                                                       "tiles": shadow}]
     return [*layers, {"name": "Solid", "collide": True, "tiles": solid}]
 
 
@@ -1129,6 +1137,18 @@ def tiled_tmx(scene: dict[str, Any], asset: str) -> str:
     for tid in scene["tileset"]["solid"]:
         el = ET.SubElement(ts, "tile", {"id": str(tid)})
         ET.SubElement(ET.SubElement(el, "properties"), "property", {"name": "solid", "type": "bool", "value": "true"})
+    kinds = scene["prop_kinds"]
+    prop_gid = count + 1
+    if kinds:
+        # columns=0 makes it an image-collection tileset: each prop keeps its own image and size.
+        pts = ET.SubElement(m, "tileset", {"firstgid": str(prop_gid), "name": f"{asset}_props",
+                                           "tilewidth": str(max(k["w"] for k in kinds)),
+                                           "tileheight": str(max(k["h"] for k in kinds)),
+                                           "tilecount": str(len(kinds)), "columns": "0"})
+        ET.SubElement(pts, "grid", {"orientation": "orthogonal", "width": "1", "height": "1"})
+        for i, k in enumerate(kinds):
+            ET.SubElement(ET.SubElement(pts, "tile", {"id": str(i)}), "image",
+                          {"source": f"Props/{k['name']}.png", "width": str(k["w"]), "height": str(k["h"])})
     lid = 1
     for b in scene["background"]:
         il = ET.SubElement(m, "imagelayer", {"id": str(lid), "name": b["name"], "parallaxx": str(b["factor"]),
@@ -1154,9 +1174,11 @@ def tiled_tmx(scene: dict[str, Any], asset: str) -> str:
                                                "x": f"{pl['pos'][0]:g}", "y": f"{pl['pos'][1]:g}"}), "point")
     for p in scene["props"]:
         oid += 1
-        k = scene["prop_kinds"][p["kind"]]
+        k = kinds[p["kind"]]
+        # Tiled anchors a tile object at its bottom-left corner, so y is the prop's foot.
         o = ET.SubElement(og, "object", {"id": str(oid), "name": k["name"], "type": "prop",
-                                         "x": f"{p['pos'][0] - k['w'] / 2:g}", "y": f"{p['pos'][1] - k['h']:g}",
+                                         "gid": str(prop_gid + p["kind"]),
+                                         "x": f"{p['pos'][0] - k['w'] / 2:g}", "y": f"{p['pos'][1]:g}",
                                          "width": str(k["w"]), "height": str(k["h"])})
         ET.SubElement(ET.SubElement(o, "properties"), "property", {"name": "sprite", "type": "file",
                                                                     "value": f"Props/{k['name']}.png"})

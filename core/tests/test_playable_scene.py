@@ -543,3 +543,95 @@ async def test_tmx_loads_in_pytmx(tmp_path: Path):
     m = pytmx.TiledMap(str(path))
     assert [la.name for la in m.layers][:3] == ["Ground", "Shadow", "Solid"]
     assert len(m.objects_by_id) == 1 + len(scene["props"])
+
+
+async def test_sideview_walls_cast_a_soft_shadow_on_the_background(tmp_path: Path):
+    ctx = FakeCtx(tmp_path)
+    _, lay, _, scene = await build(ctx, "sideview")
+    grid, sets = lay["grid"], scene["tileset"]["sets"]
+    cols, rows, t = scene["cols"], scene["rows"], scene["tile"]
+    assert [la["name"] for la in scene["layers"]] == ["Ground", "Shadow", "Solid"]
+    shadow = ps.layer_tiles(scene, "Shadow")
+    down, side = sets["shadow"]
+    assert not set(sets["shadow"]) & set(scene["tileset"]["solid"])
+    for y in range(rows):
+        for x in range(cols):
+            i, c = y * cols + x, grid[y][x]
+            if c == "#":
+                assert shadow[i] == -1
+            elif y > 0 and grid[y - 1][x] == "#":
+                assert shadow[i] == down, (x, y)
+            elif x > 0 and grid[y][x - 1] == "#":
+                assert shadow[i] == side, (x, y)
+            else:
+                assert shadow[i] == -1, (x, y)
+    assert any(v == down for v in shadow) and any(v == side for v in shadow)
+    atlas = Image.open(ctx.blobs.path(scene["tileset"]["hash"])).convert("RGBA")
+
+    def tile_px(tid: int) -> np.ndarray:
+        c, r = tid % ps.ATLAS_COLS, tid // ps.ATLAS_COLS
+        return np.asarray(atlas.crop((c * t, r * t, (c + 1) * t, (r + 1) * t)))
+
+    backdrop = Image.new("RGBA", (t, t), (200, 200, 200, 255))
+    for tid, near, far in ((down, (slice(0, 2), slice(None)), (slice(-2, None), slice(None))),
+                           (side, (slice(None), slice(0, 2)), (slice(None), slice(-2, None)))):
+        lit = backdrop.copy()
+        lit.alpha_composite(Image.fromarray(tile_px(tid), "RGBA"))
+        px = np.asarray(lit)[..., :3].astype(int)
+        assert px[near].mean() < 160 and px[far].mean() == 200, "the shadow darkens the backdrop and fades out"
+
+
+@pytest.mark.parametrize("style", ["topdown", "sideview"])
+async def test_tmx_props_are_tile_objects_on_an_image_collection(tmp_path: Path, style: str):
+    import xml.etree.ElementTree as ET
+
+    ctx = FakeCtx(tmp_path)
+    _, _, res, scene = await build(ctx, style)
+    root = ET.fromstring(ctx.blobs.path(res.outputs["tmx"][0].hash).read_bytes())
+    tilesets = root.findall("tileset")
+    atlas, coll = tilesets
+    first = int(coll.get("firstgid"))
+    assert int(atlas.get("firstgid")) == 1 and first == int(atlas.get("tilecount")) + 1
+    assert coll.get("columns") == "0" and int(coll.get("tilecount")) == len(scene["prop_kinds"])
+    tiles = coll.findall("tile")
+    assert [int(el.get("id")) for el in tiles] == list(range(len(scene["prop_kinds"])))
+    for el, k in zip(tiles, scene["prop_kinds"]):
+        im = el.find("image")
+        assert im.get("source") == f"Props/{k['name']}.png" and (int(im.get("width")), int(im.get("height"))) == (
+            k["w"], k["h"])
+    objs = [o for o in root.find("objectgroup").findall("object") if o.get("type") == "prop"]
+    assert len(objs) == len(scene["props"])
+    for o, p in zip(objs, scene["props"]):
+        k = scene["prop_kinds"][p["kind"]]
+        assert int(o.get("gid")) == first + p["kind"]
+        assert (int(o.get("width")), int(o.get("height"))) == (k["w"], k["h"])
+        assert float(o.get("y")) == pytest.approx(p["pos"][1], abs=0.01), "tile objects sit on their bottom edge"
+        assert float(o.get("x")) == pytest.approx(p["pos"][0] - k["w"] / 2, abs=0.01)
+        sprite = next(pr for pr in o.iter("property") if pr.get("name") == "sprite")
+        assert sprite.get("value") == f"Props/{k['name']}.png"
+
+
+async def test_tmx_without_props_has_no_prop_tileset(tmp_path: Path):
+    import xml.etree.ElementTree as ET
+
+    ctx = FakeCtx(tmp_path)
+    g = await ps.SceneGather(None).run(ctx, {"project": "none"}, {
+        "character": [await put(ctx, sheet_image(), "hero.png"), await put(ctx, sheet_meta(), "hero.json")]})
+    lay = ps.procedural_layout("topdown", 16, 10, 0, 1)
+    res = await ps.PlayableScene().run(ctx, {}, {"assets": g.outputs["assets"],
+                                                 "layout": [await put(ctx, lay, "l.json")]})
+    root = ET.fromstring(ctx.blobs.path(res.outputs["tmx"][0].hash).read_bytes())
+    assert len(root.findall("tileset")) == 1
+    assert all(o.get("gid") is None for o in root.find("objectgroup"))
+
+
+async def test_tmx_prop_tile_objects_load_in_pytmx(tmp_path: Path):
+    pytmx = pytest.importorskip("pytmx")
+    ctx = FakeCtx(tmp_path)
+    _, _, res, scene = await build(ctx, "sideview")
+    path = tmp_path / "level.tmx"
+    path.write_bytes(ctx.blobs.path(res.outputs["tmx"][0].hash).read_bytes())
+    m = pytmx.TiledMap(str(path))
+    props = [o for o in m.objects if o.type == "prop"]
+    assert len(props) == len(scene["props"]) and all(o.gid for o in props)
+    assert all(o.properties["sprite"].startswith("Props/") for o in props)
