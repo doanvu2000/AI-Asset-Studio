@@ -81,7 +81,7 @@ def test_meshed_cape_chain_of_four_gets_the_taper() -> None:
     new, rep = ph.add_physics(auto_rig(), segments=4)
     cs = new["physics"]
     assert len(cs) == 4 == rep["constraints"] and ph.validate_physics(new) == []
-    lengths = {b["name"]: b["length"] for b in new["bones"]}
+    lengths = {b["name"]: float(b.get("length", 0) or 0) for b in new["bones"]}
     assert cs[0]["limit"] == round(ph.CLOTH_LIMIT_LENGTHS * lengths[cs[0]["bone"]], 3)
     assert cs[0]["damping"] > cs[1]["damping"] > cs[2]["damping"] > cs[3]["damping"]
 

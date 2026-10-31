@@ -110,7 +110,7 @@ Animator:
 
 def prefab_text(rig: Rig, asset: str, sprs: list[Sprite], sprite_guids: list[str], ppu: float,
                 ctrl_guid: str | None) -> str:
-    fid = lambda *k: file_id("spine", asset, *k)  # noqa: E731
+    fid = lambda *k: file_id("spine", asset, *map(str, k))  # noqa: E731
     root_go, root_tr, an = fid("root", "go"), fid("root", "tr"), fid("root", "animator")
     kids: dict[int, list[int]] = {fid("bone", i, "tr"): [] for i in range(len(rig.bones))}
     kids[root_tr] = []
@@ -142,7 +142,7 @@ def prefab_text(rig: Rig, asset: str, sprs: list[Sprite], sprite_guids: list[str
     for d in docs:
         if isinstance(d, tuple):
             _, tr, go, pos, rot, scale, father = d
-            out.append(_xform(tr, go, pos, rot, scale, kids[tr], father))
+            out.append(_xform(tr, go, pos, rot, scale, kids.get(tr, []), father))
         else:
             out.append(d)
     if ctrl_guid:

@@ -1407,3 +1407,7 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [x] gen_agent_docs (parse đủ recipe mới OK) → commit 294d536.
 - [x] Kết đợt: 14 commit, chưa push; MỌI test lượt 8 chưa chạy (lệnh chủ nhân). Handoff: .planning/HANDOFF-2026-11-01-0424.md
 - [x] 04:24 Handoff mới: .planning/HANDOFF-2026-11-01-0424.md (đổi tên từ -r8, thêm đường dẫn tuyệt đối wp10).
+
+## Phiên 2026-11-01 — chạy bù pytest lượt 8
+- Chủ nhân: chỉ pytest (CPU), không GPU/Blender/Unity/Godot; commit từng phần, không push.
+- [x] pytest toàn bộ lần đầu cho lượt 8: 6 fail → sửa. Lỗi thật: spine_unity2d file_id nhận int (TypeError) + transform part không có trong kids (KeyError) → xuất Unity #60 trước đây hỏng hoàn toàn; toon3d import MATERIAL_FILE_ID sai module (export.pbr) → xuất Unity toon #64 hỏng. Lỗi test: curve bezier Spine 4.2 phải tuyệt đối; bone thiếu length. Kết quả: 1289 pass / 5 skip.

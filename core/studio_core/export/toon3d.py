@@ -296,7 +296,8 @@ def apply(files: Files, engine: str, src: Source, preset: ToonPreset | None = No
         out.append((mat, godot_material(t, info, Path(ramp_rel).name).encode()))
         out += [(f"{Path(n).stem}_toon.tscn", godot_scene(n, mat).encode()) for n, _ in src.glb]
     else:
-        from studio_core.export.unity import MATERIAL_FILE_ID, guid, native_meta, texture_meta
+        from studio_core.export.pbr import MATERIAL_FILE_ID
+        from studio_core.export.unity import guid, native_meta, texture_meta
         from studio_core.export.npc import script_meta
         from studio_core.export.shaders import shader_meta
 

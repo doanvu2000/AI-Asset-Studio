@@ -71,7 +71,7 @@ def make_doc() -> dict[str, Any]:
                   {"name": "alt", "attachments": {"cloth": {"cloth": cloth("cloth2")}}}],
         "animations": {
             "idle": {"bones": {
-                "hip": {"rotate": [{"time": 0, "value": 0}, {"time": 1, "value": 30, "curve": [0.25, 0, 0.75, 1]},
+                "hip": {"rotate": [{"time": 0, "value": 0}, {"time": 1, "value": 30, "curve": [1.25, 30, 1.75, 0]},
                                    {"time": 2, "value": 0}]},
                 "arm": {"translate": [{"time": 0}, {"time": 1, "x": 5, "y": -2, "curve": "stepped"}, {"time": 2}]}}},
             "pop": {"slots": {"hat": {"attachment": [{"time": 0.5, "name": "hat"}, {"time": 1, "name": None}]}}},
