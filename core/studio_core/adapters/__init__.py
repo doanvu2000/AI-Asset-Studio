@@ -10,6 +10,7 @@ from .blender import (BlenderAgentExecutor, BlenderAnimateDirsExecutor, BlenderC
                       BlenderRigExportExecutor, BlenderScriptExecutor, Procedural3DExecutor)
 from .blender.fracture import BlenderFractureExecutor
 from .blender.retexture import BlenderRetexApplyExecutor, BlenderViewsRenderExecutor
+from .blender.lod import BlenderLodExecutor
 from .blender.modular import BlenderModularKitExecutor
 from .claude import ClaudeBriefExecutor, ClaudeResource, ClaudeTaskExecutor
 from .codex import CodexImageExecutor, CodexResource
@@ -55,6 +56,7 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     registry.register(RetexPaintExecutor(registry.resolve, comfy))
     registry.register(UpscaleModelExecutor(registry.resolve, settings, comfy))
     registry.register(BlenderModularKitExecutor(settings, blender))
+    registry.register(BlenderLodExecutor(settings, blender))
     registry.register(TrimLayoutExecutor(settings))
     registry.register(TrimStripsExecutor(registry.resolve, comfy))
     registry.register(ClaudeBriefExecutor(settings))

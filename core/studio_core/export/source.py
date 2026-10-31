@@ -104,6 +104,9 @@ class Source:
     # `fbx` / `glb`, the trim material in `pbr`.
     modular: dict[str, Any] | None = None
     modular_obj: list[tuple[str, Path]] = field(default_factory=list)
+    # LOD chain (blender.lod): its lod.json and the impostor atlas path (key "impostor"); models are in `glb` / `fbx`.
+    lod: dict[str, Any] | None = None
+    lod_files: dict[str, Path] = field(default_factory=dict)
     # Animated tile (op.tile_animate): its tile_anim.json (frame layout, autotile table) and the frame sheet.
     tile_anim: dict[str, Any] | None = None
     tile_anim_sheet: Path | None = None

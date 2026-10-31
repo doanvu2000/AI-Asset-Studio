@@ -1,0 +1,37 @@
+id: lod-chain
+name: LOD 3D + collision (chuỗi LOD, hull, impostor)
+description: >-
+  Prop 3D tĩnh GLB / FBX / OBJ (vd kết quả Prop 3D, mảnh Modular kit, file từ Thư viện) → Blender giảm tam giác từng
+  LOD từ bản gốc (decimate collapse, giữ biên UV / seam / ranh giới material, weighted normal giữ độ mượt), bỏ LOD
+  trùng khi mesh đã nhẹ → collision box / convex hull / nhiều hull theo cụm voxel (auto: một hull, dày hơn 1.4× mesh
+  thì chia nhiều hull) → tuỳ chọn impostor billboard 8 góc cho LOD cuối → đo tam giác từng LOD, IoU hình bóng so LOD0,
+  tỉ lệ thể tích hull / mesh. Xuất GLB + FBX từng LOD, GLB collision, lod.json; Unity prefab LODGroup + MeshCollider
+  convex / BoxCollider (Editor script), Godot scene visibility_range + CollisionShape3D.
+inputs:
+  mesh: {type: mesh, ext: [glb, fbx, obj], label: "Mesh tĩnh (.glb / .fbx / .obj, không rig)"}
+  asset: {type: text, default: prop, label: Tên asset}
+  preset: {type: enum, default: pc, options: [pc, mobile], label: "Preset (pc: LOD0 giữ nguyên · mobile: LOD0 tối đa 5000 tam giác, chuyển LOD sớm hơn)"}
+  ratios: {type: text, required: false, default: "", label: "Tỉ lệ tam giác từng LOD (vd 1, 0.5, 0.25, 0.1; trống = theo preset)"}
+  targets: {type: text, required: false, default: "", label: "Hoặc số tam giác đích từng LOD (vd 8000, 4000, 1500, 500; ưu tiên hơn tỉ lệ)"}
+  collision: {type: enum, default: auto, options: [auto, box, hull, multi_hull, none], label: "Collision (auto = hull, nhiều hull khi hull dày hơn 1.4× mesh)"}
+  hulls: {type: int, default: 6, min: 2, max: 16, label: Số hull (multi_hull)}
+  impostor: {type: bool, default: false, label: Bake impostor billboard 8 góc cho LOD cuối}
+  impostor_res: {type: int, default: 256, options: [64, 128, 256, 512], label: Cỡ mỗi góc impostor (px)}
+  review: {type: bool, default: false, label: Duyệt trước khi xong}
+steps:
+  - id: lod
+    kind: blender.lod
+    in: {mesh: inputs.mesh}
+    params: {asset: "${inputs.asset}", preset: "${inputs.preset}", ratios: "${inputs.ratios}",
+             targets: "${inputs.targets}", collision: "${inputs.collision}", hulls: "${inputs.hulls}",
+             impostor: "${inputs.impostor}", impostor_res: "${inputs.impostor_res}"}
+  - id: approve
+    kind: gate.approve
+    in: {meshes: lod.meshes, fbx: lod.fbx, collision: lod.collision, impostor: lod.impostor, report: lod.report}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.meshes
+  fbx: approve.fbx
+  collision: approve.collision
+  impostor: approve.impostor
+  report: approve.report

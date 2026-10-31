@@ -249,6 +249,9 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
     src.trim = trim_doc(step, blobs)
     src.decals_doc, src.decals = decal_set(step, blobs)
     src.modular, src.modular_obj = modular_set(step, blobs)
+    from studio_core.export.lod import lod_set
+
+    src.lod, src.lod_files = lod_set(step, blobs)
     from studio_core.export.terrain import terrain_set
 
     src.terrain, src.terrain_files = terrain_set(step, blobs)

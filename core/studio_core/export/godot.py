@@ -472,6 +472,12 @@ def export(src: Source) -> Files:
         de_files, de_notes = destructible_files(src)
         files += de_files
         notes += de_notes
+    if src.lod:
+        from studio_core.export.lod import godot_files as lod_files
+
+        lo_files, lo_notes = lod_files(src)
+        files += lo_files
+        notes += lo_notes
     if src.trim or src.decals:
         from studio_core.export.trim import godot_files as trim_files
 
