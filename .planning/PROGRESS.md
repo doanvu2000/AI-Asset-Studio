@@ -1357,3 +1357,11 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [x] WP-9 Unity thật (6000.3.27f1 batchmode, bản copy đã xoá): plugin bridge compile 0 lỗi; CopyDir/SharedScripts 3 ca đạt (1 bản NpcData, ghi đè nội dung); card-set + ui-screen đổi Text→TMP đúng cỡ/màu/căn/AutoSize/outline theo màu, chữ Việt đủ glyph. Không sửa repo. Chưa kiểm: auto-convert qua delayCall trong Editor có UI (batchmode không chạy delayCall). Spine physics vẫn chặn (tải spine-unity bị classifier từ chối). QA: scratchpad 05e05f7d…/wp9/.
 - [~] 00:25 Chủ nhân đã clone L:/AI/spine-runtimes-4.2 (spine-unity 4.2.121) → giao WP-10 kiểm Spine physics #51 trong Unity thật (bản copy L:\AI\wp10-unity).
 - [x] WP-10 Spine physics #51 trong Unity 6000.3.27f1 + spine-unity 4.2.121 local (bản copy L:\AI\wp10-unity đã xoá): girl 19/19 constraint, hero 4/4; walk tóc 8.2–10.5°, áo choàng hero 40°; không NaN/quay vòng; tắt dần (tóc ~2s, cloth 3–4 xương 5–7s, vung >100° khi chuyển động mạnh — cân nhắc giảm preset cloth chuỗi dài). Không sửa repo. Log: scratchpad 05e05f7d…/wp10/result2.txt.
+
+## Phiên 2026-11-01 — spec lượt 8
+- [x] Soạn `.planning/PLAN-2026-11-01-r8.md`: nợ D1–D8 + tính năng #59–#65. Chủ nhân CHỐT, chưa cho chạy (đang cần máy). Lúc kiểm, VRAM đầy do gen-pose-line batch50.py (PID 50756), không phải ComfyUI.
+
+## Phiên 2026-11-01 — manager-work-agent (lượt 8)
+- Chủ nhân: "đọc handoff và làm đi", commit từng phần (không push). **Cấm chạy mọi test (kể cả pytest) + GPU/Blender/Unity/Godot live** vì chủ nhân đang dùng card → agent chỉ viết code + test, chỉ được ruff/py_compile. Nghiệm thu = review đọc code; test chạy bù khi chủ nhân rảnh máy.
+- Hoãn (cần live GPU để tinh chỉnh): D1 thác Wan, D3 mày sad/mũ, D4 nứt decal, D5 kit runes.
+- Đợt 1 CPU: D2, D6, D7 song song → D8 → tính năng #59, #64, #65 (code + test chưa chạy).
