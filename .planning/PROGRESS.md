@@ -1414,3 +1414,4 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [x] pack toon: PackBody material_style/toon (422 khi sai), EngineOptions.toon chỉ áp asset có GLB (2D giữ nguyên); app PackDialog ô 'Vật liệu toon 3D'; test pack toon pass; typecheck sạch.
 - [x] runner: map+map_param không item, không value → bỏ qua lane/boot ComfyUI (test fail trên code cũ, pass mới); commit c9a1f7c.
 - [x] room-kit WFC: propagate/collapse sang bitset int + memo support/entropy, entropy cập nhật theo ô đổi; output trùng 100% bản cũ (30 ca seed), 10 kiểu phòng 48x32: 13.6s → 1.3s; test room-kit 55 pass.
+- [x] Kết phiên chạy bù: pytest 1292 pass / 5 skip, gen_agent_docs --check OK. Handoff mới: .planning/HANDOFF-2026-11-01-1200.md
