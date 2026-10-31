@@ -302,6 +302,7 @@ def godot_files(src: Source) -> tuple[Files, list[str]]:
             "var npc: NpcData = load(\"res://.../" + f"{src.asset}_npc.tres\"); var l = npc.random_line(\"idle\", "
             "\"vi\"); $Portrait.texture = npc.portrait(l.expression); $Voice.stream = l.audio; "
             "$Label.text = npc.cue_at(l, $Voice.get_playback_position()). class_name là toàn cục: nhập nhiều NPC lẻ "
-            "vào một project thì giữ một npc_data.gd và trỏ các .tres về nó; asset pack (addon) đặt class_name có "
-            "tiền tố tên pack nên không trùng bản lẻ.")
+            "vào một project thì giữ một npc_data.gd và trỏ các .tres về nó — plugin Godot / export_to_engine tự "
+            "dùng lại bản đã có trong project và trỏ .tres về đó, chỉ khi kéo tay mới phải xoá bản thừa; asset pack "
+            "(addon) đặt class_name có tiền tố tên pack nên không trùng bản lẻ.")
     return files, [note]

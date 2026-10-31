@@ -236,6 +236,8 @@ func import_outputs(run_id: String, root := "res://asset_studio") -> Dictionary:
 	var run: Dictionary = r.data.get("run", {})
 	var base := root.path_join(safe(str(run.get("recipe_id", "")), "recipe"))
 	var dirs := []
+	var classes := global_scripts()
+	var reused := PackedStringArray()
 	for s in r.data.get("steps", []):
 		var meta = s.get("meta", {})
 		var spec = meta.get("spec", {}) if meta is Dictionary else {}
@@ -254,6 +256,9 @@ func import_outputs(run_id: String, root := "res://asset_studio") -> Dictionary:
 			var err := _copy_dir(str(ex.data.get("dir", "")), ProjectSettings.globalize_path(dest))
 			if err != "":
 				return {"ok": false, "error": err}
+			for p in reuse_global_scripts(dest, classes):
+				if not reused.has(p):
+					reused.append(p)
 			dirs.append(dest)
 			continue
 		var raw_dir := base.path_join("%s-%s" % [safe(str(s.get("key", ""))), step_id.left(8)])
@@ -275,7 +280,81 @@ func import_outputs(run_id: String, root := "res://asset_studio") -> Dictionary:
 				f.close()
 		if DirAccess.dir_exists_absolute(ProjectSettings.globalize_path(raw_dir)):
 			dirs.append(raw_dir)
-	return {"ok": true, "dirs": dirs, "error": ""}
+	return {"ok": true, "dirs": dirs, "reused": reused, "error": ""}
+
+
+## "<file name>|<class_name>" -> res:// path of the project's global script classes.
+static func global_scripts() -> Dictionary:
+	var out := {}
+	for c in ProjectSettings.get_global_class_list():
+		var path := str(c.get("path", ""))
+		out["%s|%s" % [path.get_file(), c.get("class", "")]] = path
+	return out
+
+
+## class_name is global: a script whose file name and class already exist elsewhere in the project (npc_data.gd /
+## NpcData from another NPC) is refreshed in place and this import's .tres/.tscn point at it, otherwise Godot
+## reports "Class X hides a global script class". Same rule as the core's copy_godot_export. Returns reused paths.
+static func reuse_global_scripts(dir: String, classes: Dictionary) -> PackedStringArray:
+	var class_re := RegEx.create_from_string("(?m)^\\s*class_name\\s+([A-Za-z_]\\w*)")
+	var moved := {}
+	for f in _files_under(dir, ["gd"]):
+		var text := FileAccess.get_file_as_string(f)
+		var m := class_re.search(text)
+		if m == null:
+			continue
+		var key := "%s|%s" % [f.get_file(), m.get_string(1)]
+		var have := str(classes.get(key, ""))
+		if have == "" or have.begins_with(dir + "/") or not FileAccess.file_exists(have):
+			classes[key] = f
+			continue
+		var out := FileAccess.open(have, FileAccess.WRITE)
+		if out == null:
+			continue
+		out.store_string(text)
+		out.close()
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(f + ".uid"))
+		moved[f] = have
+	if moved.is_empty():
+		return PackedStringArray()
+	var path_re := RegEx.create_from_string('path="([^"]*)"')
+	var uid_re := RegEx.create_from_string('\\s+uid="[^"]*"')
+	for f in _files_under(dir, ["tres", "tscn"]):
+		var lines := FileAccess.get_file_as_string(f).split("\n")
+		var changed := false
+		for i in lines.size():
+			if not lines[i].begins_with("[ext_resource"):
+				continue
+			var pm := path_re.search(lines[i])
+			if pm == null:
+				continue
+			var p := pm.get_string(1)
+			var abs_path: String = p.simplify_path() if p.begins_with("res://") else f.get_base_dir().path_join(p).simplify_path()
+			if not moved.has(abs_path):
+				continue
+			# The reused script keeps its own uid; a stale uid would win over the path.
+			var line := lines[i].substr(0, pm.get_start()) + 'path="%s"' % moved[abs_path] + lines[i].substr(pm.get_end())
+			lines[i] = uid_re.sub(line, "", true)
+			changed = true
+		if changed:
+			var w := FileAccess.open(f, FileAccess.WRITE)
+			w.store_string("\n".join(lines))
+			w.close()
+	return PackedStringArray(moved.values())
+
+
+static func _files_under(dir: String, exts: Array) -> PackedStringArray:
+	var out := PackedStringArray()
+	var d := DirAccess.open(dir)
+	if d == null:
+		return out
+	for f in d.get_files():
+		if f.get_extension().to_lower() in exts:
+			out.append(dir.path_join(f))
+	for sub in d.get_directories():
+		out.append_array(_files_under(dir.path_join(sub), exts))
+	return out
 
 
 ## Replaces an earlier import of the same step so stale files do not linger.

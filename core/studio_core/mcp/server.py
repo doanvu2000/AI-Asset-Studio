@@ -7,7 +7,6 @@ import logging
 import mimetypes
 import os
 import re
-import shutil
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -682,7 +681,11 @@ class StudioTools:
                 if reused:
                     res["reused_scripts"] = reused
             else:
-                await asyncio.to_thread(shutil.copytree, src, target, dirs_exist_ok=True)
+                from ..export.godot_copy import copy_godot_export
+
+                reused = await asyncio.to_thread(copy_godot_export, src, target, root)
+                if reused:
+                    res["reused_scripts"] = reused
             res["copied_to"] = str(target)
         return res
 
