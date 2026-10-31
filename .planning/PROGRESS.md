@@ -1365,3 +1365,44 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - Chủ nhân: "đọc handoff và làm đi", commit từng phần (không push). **Cấm chạy mọi test (kể cả pytest) + GPU/Blender/Unity/Godot live** vì chủ nhân đang dùng card → agent chỉ viết code + test, chỉ được ruff/py_compile. Nghiệm thu = review đọc code; test chạy bù khi chủ nhân rảnh máy.
 - Hoãn (cần live GPU để tinh chỉnh): D1 thác Wan, D3 mày sad/mũ, D4 nứt decal, D5 kit runes.
 - Đợt 1 CPU: D2, D6, D7 song song → D8 → tính năng #59, #64, #65 (code + test chưa chạy).
+- [~] D2 playable-scene (sonnet), D6 runner allow_fail (opus — engine lõi), D7 spine-physics damping (sonnet) giao, chạy nền.
+- [x] D2 playable-scene — bóng sideview (layer Shadow 2 tile dưới/phải), prop TMX = tile object (image collection, gid, y đáy); main sửa minimap POI y cho tile object. Test 4 mới CHƯA CHẠY (lệnh chủ nhân); review main đọc diff; commit 83165d4. Changelog: Màn chơi thử side-view có bóng mềm dưới/cạnh tường; .tmx xuất prop thành tile object chuẩn.
+- [~] D8 app preview Presets3D + edge_fix/toon_bands + pytmx dev dep giao (sonnet), chạy nền.
+- [x] D7 spine-physics PARTIAL — cloth link ≥2 taper inertia/strength/damping, limit 5000→6×độ dài xương (mọi cloth); main bump op version 2→3. Test 8 mới CHƯA CHẠY; số đo Unity chưa kiểm (chạy lại scratchpad 05e05f7d…/wp10 gen.py + PhysicsCheck.cs, chỉnh CLOTH_TAPER nếu chưa đạt ≤70°/≤3s/walk ≥5°); commit 590b3c4. Changelog: áo choàng/váy nhiều xương tắt nhanh hơn, bớt vung khi chạy-phanh.
+- [~] #64 toon/outline 3D giao (sonnet, chỉ file mới; nối recipe/kinds để main sau).
+- [x] D8 — preview Godot ưu tiên Presets3D, form icon-3d toon_bands + tile-animated edge_fix (main thêm kinds op.tile_animate edge_fix), pytmx dev dep + uv lock; test 2 mới CHƯA CHẠY; commit 577697f. Còn: gen_agent_docs (chạy cuối đợt). Changelog: preview Godot chọn đúng scene hạt 3D; form icon-3d có Số dải sáng toon, tile-animated có Sửa lệch tông + khép mép.
+- [~] #65 weather-overlay giao (sonnet, file mới; kinds/ops __init__ main chèn).
+- [x] D6 runner allow_fail — lỗi → SKIPPED + meta allowed_failure/warning, run $meta.warnings, input rỗng/None, retry được, cancel không nuốt; card-set art_text allow_fail; test ~8 mới CHƯA CHẠY; review main đọc runner diff; commit 5dd6de0. Còn: gen_agent_docs; tuỳ chọn app hiện 'Bỏ qua (lỗi cho phép)'. Changelog: bước Claude viết art của card-set lỗi không còn làm hỏng cả run.
+- [~] #59 combat-frame-data giao (sonnet, file mới; đăng ký main chèn).
+- [x] #64 toon/outline 3D module — export/toon3d.py + shader_templates (URP HLSL inverted hull, gdshader next_pass, editor apply), ramp từ ops.rarity; test CHƯA CHẠY; commit 6dcc97d. Live còn: render 3 asset, Unity compile shader.
+- [~] #64b nối recipe 3D (material_style) + public shaders helpers + dedupe .shader.meta GUID cố định — SendMessage cùng agent.
+- [x] #64b — export_engine/API StepExport material_style=toon + toon preset (422 khi sai), adapters/blender/toon_bands.py dùng chung (spec PyInstaller thêm datas), copy_unity_export dedupe *.shader.meta; test 1 mới CHƯA CHẠY; commit 18eae9b. Còn: pack.py chưa truyền toon; UI app chưa có field material_style/toon; live Blender icon-3d band không đổi.
+- [~] #61 lod-chain giao (sonnet, Blender code chưa chạy).
+- [~] #59 code xong (ops/frame_data, adapters/combat_active, export/frame_data, recipe, test chưa chạy); #59b chèn đăng ký 7 file chung — SendMessage cùng agent.
+- [~] #59b đăng ký xong (7 file chung); review độc lập (sonnet python-reviewer, chỉ đọc) đang chạy trước khi commit.
+- [~] #65 code xong (ops/export weather, recipe, test chưa chạy); chờ #59 commit xong mới cho chèn đăng ký (chung 6 file với #59b).
+- [~] #61 code xong (adapters/blender/lod*.py + lod_math, export/lod, recipe, spec datas, 17 test chưa chạy); hàng đợi chèn đăng ký: #59 → #65 → #61 (chung file).
+- [~] #60 spine-to-engine + #63 room-kit giao (sonnet, chỉ file mới; đăng ký sau).
+- [~] #59 review độc lập SẠCH luồng chính; 2 rủi ro phụ (components chậm >256px, hitfx mất OnHit khi xuất kèm frame_data) → #59c cùng agent sửa.
+- [x] #59 combat-frame-data — ops/adapters/export frame_data + claude.combat_active (allow_fail) + đăng ký 7 file; #59c label_sparse thay damage.components, hitfx _add_event nối m_Events; review sonnet SẠCH; test CHƯA CHẠY; commit 99f9e04. Changelog: recipe combat-frame-data (hurtbox/hitbox + sự kiện đánh, Godot/Unity).
+- [~] #65b chèn đăng ký weather (SendMessage cùng agent).
+- [~] #65b đăng ký xong (6 file); review độc lập sonnet đang chạy trước commit.
+- [x] #65 weather-overlay — ops/export weather + recipe + đăng ký 6 file; review sonnet: 1 lỗi test (#fff → #ffffff, main sửa); test CHƯA CHẠY; commit 30b72d2. Changelog: recipe weather-overlay (mưa/tuyết/sương/lá/tro/đom đóm loop liền, Godot/Unity).
+- [~] #61b chèn đăng ký lod (SendMessage cùng agent).
+- [~] #61b đăng ký xong (8 file); review độc lập sonnet đang chạy trước commit.
+- [~] #61 review: CẦN SỬA (weld trước pin seam, impostor URP Unlit, clip_start, lod0_max_tris=0) → #61c cùng agent sửa.
+- [x] #61 lod-chain — blender.lod (lod.py/lod_bpy.py/lod_math.py), export/lod (Unity AssetStudioLod.cs dựng LODGroup prefab, Godot visibility range), recipe, đăng ký 8 file; #61c weld trước pin, impostor URP Unlit, clip_start, lod0=0→preset; review sonnet; test CHƯA CHẠY, Blender chưa chạy; commit f0d8a87. Changelog: recipe lod-chain (LOD giữ UV, collision box/hull, impostor tuỳ chọn, Unity LODGroup / Godot visibility range).
+- [~] #60 spine-to-engine code xong (export spine_skeleton2d/spine_unity2d, op spine_convert, recipe, 15 test chưa chạy); main chèn kinds op.spine_convert + ops/__init__; review sonnet đang chạy.
+- [x] #60 spine-to-engine — Rig chung + Godot Skeleton2D/Bone2D/Polygon2D/AnimationPlayer, Unity prefab xương cutout + .anim; review sonnet SẠCH (yaml off đã quote); test 15 CHƯA CHẠY; commit 0c5c827. Live còn: girl Godot frame 0 ≤2px, Unity import. Changelog: recipe spine-to-engine (Spine 4.2 → Godot Skeleton2D / Unity prefab xương, không cần runtime Spine).
+- [~] #62 style-lock phần core giao (sonnet, file mới; app tab để sau).
+- [~] #62 core code xong (adapters/style_metrics, ops/style_audit, recipe style-lock, test chưa chạy); #62b chèn đăng ký (SendMessage).
+- [~] #63 room-kit code xong (adapters/wfc + room_rules, ops/export room_kit, recipe, test chưa chạy); chờ #62b xong mới chèn đăng ký.
+- [~] #62b đăng ký xong (kinds + ops/__init__); review sonnet đang chạy.
+- [x] #62 style-lock core — adapters/style_metrics (CIEDE2000, MAD), ops/style_audit (audit + finish), recipe (Klein restyle mặc định tắt); review sonnet SẠCH; test CHƯA CHẠY; commit aec802b. Còn: app tab báo cáo (schema style_lock.json trong báo cáo agent). Nợ: runner.py:608 step có map+map_param với input rỗng vẫn lấy lane GPU/boot ComfyUI (style-lock edit, minimap restyle) — không sửa mù vì bỏ điều kiện sẽ nuốt map_mismatch; comment style-lock.yaml:30 'never called' chưa đúng.
+- [~] #63b chèn đăng ký room-kit (SendMessage cùng agent).
+- [~] #63b đăng ký xong; review sonnet đang chạy.
+- [~] WP-APP giao (sonnet): nhãn format.ts, hiện lỗi-cho-phép + run warnings, export Toon, bảng style-lock, changelog 1.3.0; được typecheck.
+- [x] WP-APP — format.ts nhãn 9 kind, 'Bỏ qua (lỗi cho phép)' + run warnings, BundleMenu Toon (main/preload checkEngineOptions), StyleLockReport.vue, changelog 1.3.0 (11 dòng, APP_VERSION vẫn 1.2.0); typecheck sạch (agent chạy); commit 8be8f27. Chưa xem bằng mắt.
+- [x] #63 room-kit — wfc + room_rules (allow_fail) + ops/export room_kit, đăng ký 7 file; review sonnet: main sửa clamp w sideview cols=12 + bắt AttributeError; test CHƯA CHẠY; commit b8cbbba.
+- [x] gen_agent_docs (parse đủ recipe mới OK) → commit 294d536.
+- [x] Kết đợt: 14 commit, chưa push; MỌI test lượt 8 chưa chạy (lệnh chủ nhân). Handoff: .planning/HANDOFF-2026-11-01-r8.md
