@@ -144,4 +144,10 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(pl_cls())
     for pl_cls in SETTINGS_OPS:
         registry.register(pl_cls(settings))
+    from .style_audit import STYLE_AUDIT_OPS, STYLE_AUDIT_SETTINGS_OPS
+
+    for sa_cls in STYLE_AUDIT_OPS:
+        registry.register(sa_cls())
+    for sa_cls in STYLE_AUDIT_SETTINGS_OPS:
+        registry.register(sa_cls(settings))
     return []
