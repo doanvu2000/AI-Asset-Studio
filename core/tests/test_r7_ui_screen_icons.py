@@ -49,8 +49,8 @@ outputs:
 
 
 class FakeComfy:
-    def __init__(self, kind: str) -> None:
-        self.kind, self.lane, self.version, self.prompts = kind, Lane.GPU, "1", []
+    def __init__(self, kind: str, blank: bool = False) -> None:
+        self.kind, self.lane, self.version, self.prompts, self.blank = kind, Lane.GPU, "1", [], blank
 
     def cacheable(self, params: dict[str, Any]) -> bool:
         return False
@@ -60,7 +60,8 @@ class FakeComfy:
 
     async def run(self, ctx: Any, params: dict[str, Any], inputs: Any) -> StepResult:
         img = Image.new("RGBA", (256, 256), (255, 255, 255, 255 if self.kind.startswith("comfy.t2i") else 0))
-        ImageDraw.Draw(img).ellipse((40, 40, 216, 216), fill=(200, 60, 120, 255))
+        if not self.blank:
+            ImageDraw.Draw(img).ellipse((40, 40, 216, 216), fill=(200, 60, 120, 255))
         self.prompts.append(params.get("57:27.text"))
         buf = io.BytesIO()
         img.save(buf, "PNG")
@@ -79,14 +80,15 @@ def test_icons_to_draw_skips_pack_names() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("source", ["zimage", "placeholder"])
+@pytest.mark.parametrize("source", ["zimage", "placeholder", "blank"])
 async def test_generated_icons_replace_placeholders(tmp_path: Path, source: str) -> None:
     env = Env(tmp_path, [], {"ui-icons-mini": MINI})
     env.registry.register(ClaudeUiLayoutExecutor(env.settings, FakeQuery({})))
-    gen, rmbg = FakeComfy("comfy.t2i_zimage_turbo"), FakeComfy("comfy.remove_bg_birefnet")
+    gen, rmbg = FakeComfy("comfy.t2i_zimage_turbo"), FakeComfy("comfy.remove_bg_birefnet", blank=source == "blank")
     for e in (gen, rmbg, TrimPadResize(), *(c() for c in us.UI_SCREEN_OPS)):
         env.registry.register(e)
-    run_id = await env.engine.start_run("ui-icons-mini", {"icon_source": source})
+    run_id = await env.engine.start_run("ui-icons-mini", {"icon_source": "placeholder" if source == "placeholder"
+                                                          else "zimage"})
     await asyncio.wait_for(env.engine.wait_idle(run_id), 60)
     steps = env.steps(run_id)
     assert env.status(run_id) == RunStatus.SUCCEEDED, {k: s.error for k, s in steps.items() if s.error}
@@ -95,6 +97,9 @@ async def test_generated_icons_replace_placeholders(tmp_path: Path, source: str)
     if source == "zimage":
         assert layout["icon_names"] and len(gen.prompts) == len(layout["icon_names"])
         assert screen["placeholder_icons"] == []
+    elif source == "blank":
+        # Background removal ate every icon: keep the visible placeholders rather than empty slots.
+        assert gen.prompts and len(screen["placeholder_icons"]) == len(layout["icon_names"])
     else:
         assert layout["icon_prompts"] == [] and gen.prompts == []
         assert screen["placeholder_icons"]
@@ -103,6 +108,10 @@ async def test_generated_icons_replace_placeholders(tmp_path: Path, source: str)
 def test_prompt_recipe_wires_icon_steps() -> None:
     text = (RECIPES / "ui-screen-prompt.yaml").read_text(encoding="utf-8")
     assert "${steps.layout.json.icon_prompts}" in text and "gen_icons: icon_fit.images" in text
+    from studio_core.engine.recipe import load_recipe_file
+
+    icon_gen = next(s for s in load_recipe_file(RECIPES / "ui-screen-prompt.yaml").steps if s.id == "icon_gen")
+    assert icon_gen.params["57:13.width"] == icon_gen.params["57:13.height"] == 768
 
 
 def test_tmp_converter_script_is_per_asset_and_reflection_only() -> None:

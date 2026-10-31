@@ -46,6 +46,9 @@ steps:
     kind: comfy.t2i_zimage_turbo
     params:
       "57:27.text": ["${steps.layout.json.icon_prompts}"]
+      # Icons end at 128 px; 768² takes ~10 s per icon on a 12 GB card against ~20 s at 1024².
+      "57:13.width": 768
+      "57:13.height": 768
     map_param: "57:27.text"
   - id: icon_rmbg
     kind: comfy.remove_bg_birefnet

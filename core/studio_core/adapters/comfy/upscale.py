@@ -6,8 +6,11 @@ machine (it is an optional pack) and Real-ESRGAN otherwise."""
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Any, Callable
+
+from PIL import Image
 
 from ...config import Settings
 from ...contracts import Executor, Lane, Outputs, StepContext, StepError, StepResult
@@ -19,9 +22,31 @@ SEEDVR2_MODEL_DIR = "SEEDVR2"
 SEEDVR2_FACTOR_KEY = "5.expression"
 
 
+# Measured on a 12 GB RTX 5070 (3B fp8, VAE tiles 1024): 2560² 22 s / 9.3 GB, 2816² 24.5 s / 10.3 GB, 3072² 91 s
+# / 11.3 GB, 4096² 1351 s spilling into shared memory. Past ~8 MP it falls off a cliff, so stop with headroom.
+SEEDVR2_MAX_PIXELS = 2560 * 2560
+SEEDVR2_MAX_EDGE = 8192
+SEEDVR2_MIN_EDGE = 16
+
+
 def seedvr2_expression(scale: int) -> str:
-    # The upscaler node wants an even short edge.
-    return f"2 * round(min(a, b) * {scale} / 2)"
+    """Even target short edge: `scale` x the input, held under the pixel and edge budgets.
+
+    A t-pixel short edge makes a t*t*long/short output; past the budget the node runs out of VRAM (DiT activations
+    grow with area), so the model stops there and upscale_post Lanczos-resizes the rest of the way."""
+    short, long_ = "min(a, b)", "max(a, b)"
+    cap = (f"min({short} * {scale}, sqrt({SEEDVR2_MAX_PIXELS} * {short} / {long_}), "
+           f"{SEEDVR2_MAX_EDGE} * {short} / {long_})")
+    return f"max({SEEDVR2_MIN_EDGE}, 2 * floor({cap} / 2))"
+
+
+def seedvr2_target(w: int, h: int, scale: int) -> tuple[int, int]:
+    """Output size the model actually makes for a w x h input (mirrors `seedvr2_expression`)."""
+    short, long_ = min(w, h), max(w, h)
+    cap = min(short * scale, math.sqrt(SEEDVR2_MAX_PIXELS * short / long_), SEEDVR2_MAX_EDGE * short / long_)
+    t = max(SEEDVR2_MIN_EDGE, 2 * math.floor(cap / 2))
+    other = round(t * long_ / short)
+    return (t, other) if w <= h else (other, t)
 
 
 def seedvr2_models(workflows_dir: Path) -> list[str]:
@@ -93,6 +118,27 @@ class UpscaleModelExecutor:
         run_params = {**passthrough, SEEDVR2_FACTOR_KEY: seedvr2_expression(scale)} if engine == "seedvr2" \
             else passthrough
         ctx.log(f"upscale engine {engine} x{scale}")
-        res = await self._gen(engine).run(ctx, run_params, {"image": list(inputs.get("image") or [])})
+        images = list(inputs.get("image") or [])
+        note = self._capped_note(ctx, images, scale) if engine == "seedvr2" else ""
+        if note:
+            ctx.log(note)
+        res = await self._gen(engine).run(ctx, run_params, {"image": images})
         return StepResult(outputs={"images": res.outputs.get("images", [])},
-                          meta={**res.meta, "engine": engine, "scale": scale})
+                          meta={**res.meta, "engine": engine, "scale": scale, **({"note": note} if note else {})})
+
+    @staticmethod
+    def _capped_note(ctx: StepContext, images: list[Any], scale: int) -> str:
+        capped = []
+        for ref in images:
+            try:
+                with Image.open(ctx.blobs.path(ref.hash)) as im:
+                    w, h = im.size
+            except OSError:
+                continue
+            tw, th = seedvr2_target(w, h, scale)
+            if tw < w * scale or th < h * scale:
+                capped.append(f"{w}x{h} → SeedVR2 {tw}x{th} → Lanczos {w * scale}x{h * scale}")
+        if not capped:
+            return ""
+        return ("Ảnh lớn quá ngân sách VRAM của SeedVR2 (" + "; ".join(capped[:3]) + "). Cần nét đủ cỡ thì chọn "
+                "engine esrgan (chạy theo ô, không giới hạn cỡ).")

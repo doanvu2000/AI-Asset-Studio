@@ -894,10 +894,13 @@ class UiScreen(OpExecutor):
                 icon_pack[sp.name] = sp.img
         # Z-Image icons arrive in the order of the layout's icon_names (the recipe maps one prompt per name).
         gen = inputs.get("gen_icons") or []
-        if gen and len(gen) == len(drawn):
+        if gen and len(gen) != len(drawn):
+            ctx.log(f"{len(gen)} icon Z-Image cho {len(drawn)} tên icon: lệch thứ tự nên dùng icon tạm", "warning")
+        elif gen:
             for name, ref in zip(drawn, gen):
                 img = load(ref.hash)
-                if img is not None and name not in icon_pack:
+                # Background removal can eat a pale icon whole; an invisible icon is worse than the placeholder.
+                if img is not None and name not in icon_pack and img.getchannel("A").getbbox() is not None:
                     icon_pack[name] = img
         font_doc = await _json_in(ctx, inputs, "font")
         bmf = await asyncio.to_thread(_load_bitmap_font, font_doc, load) if font_doc is not None else None

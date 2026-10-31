@@ -192,8 +192,9 @@ async def test_upscale_model_routes_engine_and_sets_factor(tmp_path: Path):
     ex = UpscaleModelExecutor(gens.__getitem__, _seedvr2_settings(tmp_path / "s"))
     res = await ex.run(ctx, {"engine": "seedvr2", "scale": 2, "_timeout_s": 60}, {"image": [ref]})
     params, imgs = gens["comfy.upscale_seedvr2"].calls[0]
-    assert params[SEEDVR2_FACTOR_KEY] == "2 * round(min(a, b) * 2 / 2)" and params["_timeout_s"] == 60
+    assert "min(a, b) * 2" in params[SEEDVR2_FACTOR_KEY] and params["_timeout_s"] == 60
     assert imgs == [ref] and res.meta["engine"] == "seedvr2" and res.outputs["images"] == [ref]
+    assert "note" not in res.meta
     await ex.run(ctx, {"engine": "esrgan", "scale": 4}, {"image": [ref]})
     assert gens["comfy.upscale_esrgan"].calls[0][0] == {}
     assert ex.cache_material({"engine": "esrgan"}) != ex.cache_material({"engine": "seedvr2"})
@@ -213,10 +214,48 @@ def test_seedvr2_workflow_targets_the_short_edge():
     wf = json.loads((package_dir() / "workflows" / "upscale_seedvr2.api.json").read_text(encoding="utf-8"))
     up = wf["6"]["inputs"]
     assert up["resolution"] == ["5", 1] and up["batch_size"] == 1
+    from studio_core.adapters.comfy.upscale import seedvr2_target
+
+    assert _short(300, 513, 4) == 1200 and seedvr2_target(300, 513, 4) == (1200, 2052)
+    assert _short(257, 999, 2) == 514
+    assert _short(512, 512, 4) == 2048
+
+
+def _short(a: int, b: int, scale: int) -> int:
+    import math
+
     from studio_core.adapters.comfy.upscale import seedvr2_expression
-    a, b, s = 300, 513, 4
-    assert eval(seedvr2_expression(s), {"min": min, "round": round, "a": a, "b": b}) == 1200
-    assert eval(seedvr2_expression(2), {"min": min, "round": round, "a": 257, "b": 999}) == 514
+
+    fns = {"min": min, "max": max, "sqrt": math.sqrt, "floor": math.floor, "round": round}
+    return eval(seedvr2_expression(scale), {**fns, "a": a, "b": b})
+
+
+@pytest.mark.parametrize("w,h,scale", [(1536, 1536, 2), (1536, 1536, 4), (2048, 2048, 2), (2048, 2048, 4),
+                                       (2048, 1536, 4), (4000, 64, 4), (64, 6000, 2), (3, 5, 4), (1, 1, 2)])
+def test_seedvr2_target_stays_in_budget_and_matches_the_expression(w: int, h: int, scale: int):
+    from studio_core.adapters.comfy.upscale import (SEEDVR2_MAX_EDGE, SEEDVR2_MAX_PIXELS, SEEDVR2_MIN_EDGE,
+                                                    seedvr2_target)
+
+    tw, th = seedvr2_target(w, h, scale)
+    assert min(tw, th) == _short(w, h, scale) and min(tw, th) % 2 == 0
+    assert min(tw, th) >= SEEDVR2_MIN_EDGE
+    if min(w, h) * scale >= SEEDVR2_MIN_EDGE:
+        assert tw * th <= SEEDVR2_MAX_PIXELS * 1.01 and max(tw, th) <= SEEDVR2_MAX_EDGE + 2
+        assert tw <= w * scale and th <= h * scale
+    assert abs(tw / th - w / h) < 0.05 * w / h + 1 / min(tw, th)
+
+
+async def test_upscale_model_notes_when_seedvr2_is_capped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from studio_core.adapters.comfy import upscale as adapter
+
+    monkeypatch.setattr(adapter, "SEEDVR2_MAX_PIXELS", 64 * 64)
+    gens = {"comfy.upscale_seedvr2": FakeComfy()}
+    ctx = FakeCtx(tmp_path)
+    big = await put_img(ctx, Image.new("RGB", (48, 32), (90, 90, 90)), "big.png")
+    ex = adapter.UpscaleModelExecutor(gens.__getitem__, _seedvr2_settings(tmp_path / "s"))
+    res = await ex.run(ctx, {"engine": "seedvr2", "scale": 4}, {"image": [big]})
+    assert "48x32" in res.meta["note"] and "esrgan" in res.meta["note"]
+    assert _short(48, 32, 4) <= 64 and "4096" in gens["comfy.upscale_seedvr2"].calls[0][0][adapter.SEEDVR2_FACTOR_KEY]
 
 
 def test_seedvr2_stays_an_optional_pack_for_upscale():
