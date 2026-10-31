@@ -22,8 +22,10 @@ inputs:
   review: {type: bool, default: true, label: Duyệt trước khi xong}
 steps:
   # Claude writes English art prompts only for cards with an empty art column; none missing = no Claude call.
+  # If Claude still fails after its retry the run goes on: plan falls back to its default art prompts.
   - id: art_text
     kind: claude.card_art
+    allow_fail: true
     in: {cards: inputs.cards}
     params: {art: "${inputs.art}", model: opus, _auto_retry: 1}
   - id: plan

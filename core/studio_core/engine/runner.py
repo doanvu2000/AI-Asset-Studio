@@ -48,6 +48,8 @@ log = logging.getLogger(__name__)
 
 INTERRUPTED = "interrupted"
 META_KEY = "$meta"
+ALLOWED_FAILURE = "allowed_failure"  # step meta flag: an `allow_fail` step failed and the run went on without it
+WARNINGS = "warnings"  # run $meta: one line per allowed failure, set when the run succeeds
 NO_CACHE = "no_cache"  # run-level: execute every step, then refresh the cache with the new results
 _RUN_TERMINAL = {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}
 _ACTIVE = {StepStatus.READY, StepStatus.WAITING_RESOURCE, StepStatus.RUNNING}
@@ -116,6 +118,10 @@ def _fold(meta: dict[str, Any], spent: float) -> dict[str, Any]:
 def _live(meta: dict[str, Any]) -> float:
     v = meta.get(LIVE_COST)
     return float(v) if isinstance(v, (int, float)) else 0.0
+
+
+def _allowed_failure(step: StepRow) -> bool:
+    return step.status == StepStatus.SKIPPED and bool(step.meta.get(ALLOWED_FAILURE))
 
 
 def _spent_on(e: StepError) -> float:
@@ -332,7 +338,8 @@ class StudioEngine:
                 params=resolved, order=i,
                 meta={"spec": {"in": {k: str(v) for k, v in spec.bindings.items()}, "map": spec.map,
                                "map_param": spec.map_param, "publish": publish.get(spec.id, {}),
-                               "asset_name": title or recipe.name}},
+                               "asset_name": title or recipe.name,
+                               **({"allow_fail": True} if spec.allow_fail else {})}},
             ))
         await self.repo.create_run(run)
         await self.repo.create_steps(steps)
@@ -431,7 +438,14 @@ class StudioEngine:
                     await self.repo.add_version(v)
                     self.bus.publish("version.updated", v.model_dump(mode="json"), run_id=st.run.id, step_id=s.id)
                     made.append((v, s))
-        await self._set_run(st.run, status=RunStatus.SUCCEEDED, error=None, ended_at=_now())
+        warnings = [str(s.meta.get("warning") or s.key) for s in st.ordered() if _allowed_failure(s)]
+        old = st.run.params.get(META_KEY) or {}
+        extra: dict[str, Any] = {}
+        if warnings or WARNINGS in old:
+            # A retried allowed failure that now succeeds must clear the warning left by the earlier finish.
+            kept = {k: v for k, v in old.items() if k != WARNINGS}
+            extra["params"] = {**st.run.params, META_KEY: {**kept, WARNINGS: warnings} if warnings else kept}
+        await self._set_run(st.run, status=RunStatus.SUCCEEDED, error=None, ended_at=_now(), **extra)
         meta = st.run.params.get(META_KEY) or {}
         if meta.get(CHAIN_KEY) and CHAIN_RUNS not in meta:
             await self._start_chain(st.run, list(st.steps.values()))
@@ -557,6 +571,9 @@ class StudioEngine:
         for text, sid, oname, path in found:
             src = st.steps.get(sid)
             refs = src.outputs.get(oname, []) if src else []
+            if not refs and src is not None and _allowed_failure(src):
+                values[text] = None
+                continue
             if not refs:
                 raise StepError("ref_unresolved", f"{text}: step {sid} has no '{oname}' output")
             raw = await asyncio.to_thread(self.blobs.path(refs[0].hash).read_bytes)
@@ -623,12 +640,21 @@ class StudioEngine:
         except StepError as e:
             spent = _spent_on(e)
             extra = {"meta": _fold(step.meta, spent)} if spent or LIVE_COST in step.meta else {}
-            await self._set_step(step, status=StepStatus.FAILED, ended_at=_now(),
-                                 error=_err(e.code, e.message, e.detail, e.retryable), **extra)
+            await self._fail_step(st, step, _err(e.code, e.message, e.detail, e.retryable), extra)
         except Exception as e:
             log.exception("step %s (%s) crashed", step.key, step.kind)
-            await self._set_step(step, status=StepStatus.FAILED, ended_at=_now(),
-                                 error=_err("internal", f"{type(e).__name__}: {e}"))
+            await self._fail_step(st, step, _err("internal", f"{type(e).__name__}: {e}"), {})
+
+    async def _fail_step(self, st: _RunState, step: StepRow, error: dict[str, Any], extra: dict[str, Any]) -> None:
+        # A run being cancelled/stopped (st.closing) keeps its normal cancel/interrupt handling, never swallowed.
+        if not step.meta.get("spec", {}).get("allow_fail") or st.closing:
+            await self._set_step(step, status=StepStatus.FAILED, ended_at=_now(), error=error, **extra)
+            return
+        msg = f"{step.key} failed ({error['code']}: {error['message'][:200]}); continuing without its outputs"
+        log.warning("run %s: %s", step.run_id, msg)
+        self.bus.publish("step.log", {"level": "warning", "msg": msg}, run_id=step.run_id, step_id=step.id)
+        meta = {**extra.get("meta", step.meta), ALLOWED_FAILURE: True, "warning": msg}
+        await self._set_step(step, status=StepStatus.SKIPPED, ended_at=_now(), outputs={}, error=error, meta=meta)
 
     async def _blobs_present(self, outputs: Outputs) -> bool:
         # Blob files deleted by hand would turn a hit into a downstream blob_missing failure.
@@ -813,7 +839,7 @@ class StudioEngine:
         row = await self.repo.get_step(step_id)
         if row is None:
             raise NotFoundError(f"unknown step: {step_id}")
-        if row.status not in (*_RETRYABLE, *_REGENERABLE):
+        if row.status not in (*_RETRYABLE, *_REGENERABLE) and not _allowed_failure(row):
             raise EngineStateError(f"step {row.key} is {row.status.value}; only failed/cancelled steps can be retried")
         async with self._run_control(row.run_id):
             old = self._runs.get(row.run_id)
@@ -826,7 +852,7 @@ class StudioEngine:
                 # Re-running a finished step is only offered as "regenerate" for a gate still waiting on its output.
                 regen = target.status in _REGENERABLE and any(
                     st.steps[k].status == StepStatus.AWAITING_HUMAN and st.steps[k].kind in GATES for k in downstream)
-                if target.status not in _RETRYABLE and not regen:
+                if target.status not in _RETRYABLE and not regen and not _allowed_failure(target):
                     raise EngineStateError(f"step {target.key} is {target.status.value}; only failed/cancelled steps "
                                            "or the source of a waiting gate can be retried")
                 if regen and (keep or "_keep" in target.params):
@@ -834,8 +860,9 @@ class StudioEngine:
                     params = {k: v for k, v in target.params.items() if k != "_keep"}
                     await self._set_step(target, params={**params, "_keep": list(keep)} if keep else params)
                 for s in st.ordered():
-                    if s.key == target.key or s.key in downstream or s.status in (StepStatus.SKIPPED,
-                                                                                    StepStatus.CANCELLED):
+                    # Another step's allowed failure stays as is: its consumers already ran on the fallback.
+                    if s.key == target.key or s.key in downstream or (
+                            s.status in (StepStatus.SKIPPED, StepStatus.CANCELLED) and not _allowed_failure(s)):
                         if s.key in st.tasks:
                             continue
                         # The reset wipes meta; spend already paid for this step must still show in the stats.

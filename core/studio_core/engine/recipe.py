@@ -13,6 +13,7 @@ import yaml
 from blake3 import blake3
 
 from ..contracts import ExecutorRegistry, RecipeInfo
+from .gates import GATES
 
 log = logging.getLogger(__name__)
 
@@ -88,6 +89,8 @@ class StepSpec:
     map: str | None = None
     map_param: str | None = None
     refs: tuple[str, ...] = ()
+    # A failure leaves the step skipped with a warning and no outputs; consumers see empty `in:` / None refs.
+    allow_fail: bool = False
 
     @property
     def deps(self) -> list[str]:
@@ -144,7 +147,7 @@ class Recipe:
                 except KeyError:
                     pass
             steps.append({"id": s.id, "kind": s.kind, "lane": lane, "deps": s.deps, "map": s.map,
-                          "map_param": s.map_param})
+                          "map_param": s.map_param, **({"allow_fail": True} if s.allow_fail else {})})
         return RecipeInfo(id=self.id, name=self.name, description=self.description, inputs=self.inputs,
                           steps=steps, hash=self.hash)
 
@@ -460,7 +463,12 @@ def _parse_step(where: str, sid: str, kind: Any, rs: dict[str, Any], inputs: dic
     mpp = rs.get("map_param")
     _check_list_params(where, sid, params, mpp, inputs)
     refs = tuple(dict.fromkeys(r[1] for r in find_step_refs(params)))
-    return StepSpec(sid, kind, params, bindings, mp, mpp, refs)
+    allow_fail = rs.get("allow_fail", False)
+    if not isinstance(allow_fail, bool):
+        raise RecipeError(f"{where}: step {sid} allow_fail must be true or false")
+    if allow_fail and kind in GATES:
+        raise RecipeError(f"{where}: step {sid} is a gate; allow_fail is only for executor steps")
+    return StepSpec(sid, kind, params, bindings, mp, mpp, refs, allow_fail)
 
 
 def _check_step_links(where: str, s: StepSpec, inputs: dict[str, dict[str, Any]], seen: set[str]) -> None:

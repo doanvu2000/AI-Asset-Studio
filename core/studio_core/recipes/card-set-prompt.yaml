@@ -29,6 +29,7 @@ steps:
              types: "${inputs.types}", notes: "${inputs.notes}", model: opus, _auto_retry: 1}
   - id: art_text
     kind: claude.card_art
+    allow_fail: true
     in: {cards: list.json}
     params: {art: "${inputs.art}", model: opus, _auto_retry: 1}
   - id: plan

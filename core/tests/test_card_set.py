@@ -13,7 +13,7 @@ from PIL import Image
 from studio_core.adapters.card_list import (SCHEMA, ClaudeCardArtExecutor, ClaudeCardListExecutor, build_art_prompt,
                                             build_prompt, to_art_map, to_card_list)
 from studio_core.adapters.claude import ClaudeReply
-from studio_core.contracts import Lane, RunStatus, StepResult
+from studio_core.contracts import Lane, RunStatus, StepError, StepResult, StepStatus
 from studio_core.engine.kinds import CATALOG
 from studio_core.engine.library import validate
 from studio_core.engine.recipe import load_recipe_file
@@ -309,3 +309,30 @@ async def test_card_set_prompt_uses_claude_list(tmp_path: Path) -> None:
     doc = json.loads(env.blobs.path(steps["render"].outputs["cards"][0].hash).read_bytes())
     assert [c["rarity"] for c in doc["cards"]][:5] == ["common", "uncommon", "rare", "epic", "legendary"]
     assert steps["approve"].outputs["list"]
+
+
+class FailingQuery(FakeQuery):
+    async def __call__(self, content: list[dict[str, Any]], options: Any) -> ClaudeReply:
+        self.calls.append((content, options))
+        raise StepError("claude_error", "overloaded", retryable=True)
+
+
+@pytest.mark.asyncio
+async def test_card_set_goes_on_when_claude_art_fails(tmp_path: Path) -> None:
+    env, z, _ = _env(tmp_path, "card-set")
+    env.art_query = FailingQuery({})
+    env.registry.register(ClaudeCardArtExecutor(env.settings, env.art_query))
+    cards = await _put(env, CSV.encode("utf-8"), "set.csv", "text/csv")
+    run_id = await env.engine.start_run("card-set", {"cards": cards, "art": "zimage", "back": "none", "width": 378,
+                                                     "review": False})
+    await asyncio.wait_for(env.engine.wait_idle(run_id), 120)
+    steps = env.steps(run_id)
+    assert env.status(run_id) == RunStatus.SUCCEEDED, {k: s.error for k, s in steps.items() if s.error}
+    # _auto_retry: 1 in the recipe, then the allowed failure.
+    assert len(env.art_query.calls) == 2
+    art = steps["art_text"]
+    assert art.status == StepStatus.SKIPPED and art.error["code"] == "claude_error" and art.meta["allowed_failure"]
+    assert env.repo.runs[run_id].params["$meta"]["warnings"] == [art.meta["warning"]]
+    # Fallback = the plan before claude.card_art: cards without an art column are painted from name + rules.
+    assert steps["plan"].meta["claude_art"] == [] and len(z.prompts) == 6
+    assert any("Rút một thẻ" in p for p in z.prompts) and any("ancient fire dragon" in p for p in z.prompts)

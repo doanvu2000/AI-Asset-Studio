@@ -634,3 +634,172 @@ async def test_concurrent_retries_start_one_driver(tmp_path: Path) -> None:
     await asyncio.sleep(0.05)
     assert env.status(run_id) == RunStatus.SUCCEEDED
     assert len(bad.calls) == 2
+
+
+class ParamExec(FakeExec):
+    def __init__(self, kind: str, **kw: Any):
+        super().__init__(kind, **kw)
+        self.params: list[dict[str, Any]] = []
+
+    async def run(self, ctx: Any, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        self.params.append(params)
+        return await super().run(ctx, params, inputs)
+
+
+ALLOW = """
+id: allow
+steps:
+  - {id: a, kind: t.op, params: {count: 1}}
+  - {id: b, kind: t.bad, in: {images: a.images}, allow_fail: true}
+  - {id: c, kind: t.tail, in: {images: b.images}}
+  - {id: d, kind: t.ref, params: {prompt: "${steps.b.images}", count: 1}}
+outputs:
+  final: c.images
+"""
+
+
+async def test_allow_fail_step_failure_keeps_run_going(tmp_path: Path) -> None:
+    bad = FakeExec("t.bad", fail=lambda n: StepError("boom", "it broke", retryable=True))
+    tail, ref = FakeExec("t.tail"), ParamExec("t.ref")
+    env = Env(tmp_path, [FakeExec("t.op"), bad, tail, ref], {"allow": ALLOW})
+    run_id = await env.run("allow")
+    steps = env.steps(run_id)
+    assert env.status(run_id) == RunStatus.SUCCEEDED and env.repo.runs[run_id].error is None
+    b = steps["b"]
+    assert b.status == StepStatus.SKIPPED and b.error["code"] == "boom" and b.outputs == {}
+    assert b.meta["allowed_failure"] and "it broke" in b.meta["warning"]
+    assert env.repo.runs[run_id].params["$meta"]["warnings"] == [b.meta["warning"]]
+    assert any(e.data["level"] == "warning" and e.step_id == b.id for e in env.bus.of("step.log"))
+    # Fallbacks: an `in:` binding to the failed step is empty, a `${steps.…}` ref to it is None.
+    assert tail.calls == [{"images": []}] and steps["c"].status == StepStatus.SUCCEEDED
+    assert ref.params[0]["prompt"] is None
+    assert len(env.repo.versions) == 1
+
+
+async def test_allow_fail_does_not_cover_other_steps(tmp_path: Path) -> None:
+    recipe = """
+id: mixed
+steps:
+  - {id: a, kind: t.op, params: {count: 1}, allow_fail: true}
+  - {id: b, kind: t.bad, in: {images: a.images}}
+"""
+    env = Env(tmp_path, [FakeExec("t.op"), FakeExec("t.bad", fail=lambda n: StepError("boom", "it broke"))],
+              {"mixed": recipe})
+    run_id = await env.run("mixed")
+    steps = env.steps(run_id)
+    assert env.status(run_id) == RunStatus.FAILED
+    assert steps["a"].status == StepStatus.SUCCEEDED and steps["b"].status == StepStatus.FAILED
+    assert "warnings" not in (env.repo.runs[run_id].params.get("$meta") or {})
+
+
+class CancelToError(FakeExec):
+    """Turns its cancellation into a StepError, as some adapters do."""
+
+    async def run(self, ctx: Any, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        try:
+            return await super().run(ctx, params, inputs)
+        except asyncio.CancelledError:
+            raise StepError("cancelled", "stopped") from None
+
+
+@pytest.mark.parametrize("cls", [FakeExec, CancelToError])
+async def test_allow_fail_does_not_swallow_cancel(tmp_path: Path, cls: type[FakeExec]) -> None:
+    recipe = """
+id: slowallow
+steps:
+  - {id: s, kind: t.slow, params: {count: 1}, allow_fail: true}
+  - {id: t, kind: t.op, in: {images: s.images}}
+"""
+    slow = cls("t.slow", Lane.GPU, delay=5.0)
+    env = Env(tmp_path, [slow, FakeExec("t.op")], {"slowallow": recipe})
+    run_id = await env.engine.start_run("slowallow", {})
+    await until(lambda: env.steps(run_id)["s"].status == StepStatus.RUNNING)
+    await asyncio.wait_for(env.engine.cancel_run(run_id), 2)
+    steps = env.steps(run_id)
+    assert env.status(run_id) == RunStatus.CANCELLED
+    expected = StepStatus.CANCELLED if cls is FakeExec else StepStatus.FAILED
+    assert steps["s"].status == expected and not steps["s"].meta.get("allowed_failure")
+    assert steps["t"].status == StepStatus.SKIPPED
+
+
+async def test_retry_allowed_failure_reruns_it_and_consumers(tmp_path: Path) -> None:
+    bad = FakeExec("t.bad", fail=lambda n: StepError("flaky", "first time") if n == 1 else None)
+    tail = FakeExec("t.tail")
+    env = Env(tmp_path, [FakeExec("t.op"), bad, tail, ParamExec("t.ref")], {"allow": ALLOW})
+    run_id = await env.run("allow")
+    assert env.status(run_id) == RunStatus.SUCCEEDED
+    await env.engine.retry_step(env.steps(run_id)["b"].id)
+    await asyncio.wait_for(env.engine.wait_idle(run_id), 5)
+    steps = env.steps(run_id)
+    assert env.status(run_id) == RunStatus.SUCCEEDED
+    assert steps["b"].status == StepStatus.SUCCEEDED and steps["b"].attempt == 2 and steps["b"].error is None
+    assert not steps["b"].meta.get("allowed_failure")
+    assert steps["c"].attempt == 2 and tail.calls[-1]["images"] == steps["b"].outputs["images"]
+    assert steps["a"].attempt == 1
+
+
+async def test_consecutive_allowed_failures(tmp_path: Path) -> None:
+    recipe = """
+id: chain2
+steps:
+  - {id: a1, kind: t.bad, params: {count: 1}, allow_fail: true}
+  - {id: a2, kind: t.bad2, in: {images: a1.images}, allow_fail: true}
+  - {id: c, kind: t.tail, in: {x: a1.images, y: a2.images}}
+"""
+    bad2 = FakeExec("t.bad2", fail=lambda n: RuntimeError("oops"))
+    tail = FakeExec("t.tail")
+    env = Env(tmp_path, [FakeExec("t.bad", fail=lambda n: StepError("boom", "it broke")), bad2, tail],
+              {"chain2": recipe})
+    run_id = await env.run("chain2")
+    steps = env.steps(run_id)
+    assert env.status(run_id) == RunStatus.SUCCEEDED
+    assert bad2.calls == [{"images": []}] and steps["a2"].error["code"] == "internal"
+    assert {steps["a1"].status, steps["a2"].status} == {StepStatus.SKIPPED}
+    assert tail.calls == [{"x": [], "y": []}]
+    assert len(env.repo.runs[run_id].params["$meta"]["warnings"]) == 2
+
+
+async def test_allowed_failure_survives_restart_and_is_not_rerun(tmp_path: Path) -> None:
+    recipe = """
+id: crash
+steps:
+  - {id: b, kind: t.bad, params: {count: 1}, allow_fail: true}
+  - {id: s, kind: t.gen, params: {count: 1}}
+  - {id: c, kind: t.op, in: {x: b.images, y: s.images}}
+"""
+    bad = FakeExec("t.bad", fail=lambda n: StepError("boom", "it broke"))
+    slow = FakeExec("t.gen", Lane.GPU, delay=5.0)
+    env = Env(tmp_path, [bad, slow, FakeExec("t.op")], {"crash": recipe})
+    run_id = await env.engine.start_run("crash", {})
+    await until(lambda: env.steps(run_id)["b"].status == StepStatus.SKIPPED
+                and env.steps(run_id)["s"].status == StepStatus.RUNNING)
+    st = env.engine._runs[run_id]
+    st.driver.cancel()
+    for t in list(st.tasks.values()):
+        t.cancel()
+    await asyncio.sleep(0.05)
+
+    slow.delay = 0.0
+    env2 = env.restart()
+    await env2.engine.recover()
+    assert env2.status(run_id) == RunStatus.INTERRUPTED
+    assert env2.steps(run_id)["b"].status == StepStatus.SKIPPED
+    await env2.engine.retry_step(env2.steps(run_id)["s"].id)
+    await asyncio.wait_for(env2.engine.wait_idle(run_id), 5)
+    steps = env2.steps(run_id)
+    assert env2.status(run_id) == RunStatus.SUCCEEDED
+    assert steps["b"].status == StepStatus.SKIPPED and steps["b"].attempt == 1 and len(bad.calls) == 1
+    assert len(env2.repo.runs[run_id].params["$meta"]["warnings"]) == 1
+
+
+def test_recipe_allow_fail_validation() -> None:
+    from studio_core.engine import RecipeError, parse_recipe
+
+    ok = parse_recipe(b"id: r\nsteps:\n  - {id: a, kind: t.op, allow_fail: true}\n  - {id: b, kind: t.op}\n")
+    assert ok.step("a").allow_fail and not ok.step("b").allow_fail
+    assert ok.info().steps[0]["allow_fail"] is True and "allow_fail" not in ok.info().steps[1]
+    with pytest.raises(RecipeError, match="allow_fail"):
+        parse_recipe(b"id: r\nsteps:\n  - {id: a, kind: t.op, allow_fail: yes please}\n")
+    with pytest.raises(RecipeError, match="gate"):
+        parse_recipe(b"id: r\nsteps:\n  - {id: a, kind: t.op}\n"
+                     b"  - {id: g, kind: gate.approve, in: {images: a.images}, allow_fail: true}\n")
