@@ -20,6 +20,15 @@ ANGLES = {"iso34": (45.0, 30.0), "front": (0.0, 8.0), "top": (0.0, 89.9)}
 ISO_ELEVATION = 30.0
 ISO_AZIMUTH = 45.0
 ISO_DIRS = (("sw", 0), ("se", 90), ("ne", 180), ("nw", 270))
+# Band greys are picked as display (sRGB) values: 0.4 linear showed as 0.66 on screen and the bands melted.
+TOON_SHADOW = 0.5
+TOON_KEY = 0.9
+TOON_FILL = 0.3
+TOON_AMBIENT = 0.0
+TOON_AO = 0.7
+TOON_AO_DISTANCE = 0.08
+TOON_RIM_EDGE = 0.72
+TOON_RIM = 0.45
 
 
 def reset():
@@ -108,8 +117,59 @@ def view_rotation(azimuth, elevation):
     return (-to_cam).to_track_quat("-Z", "Y"), to_cam
 
 
-def toonify(meshes, bands):
-    """Cel shading that keeps textures: diffuse light -> Shader to RGB -> constant ramp, times the base colour."""
+def srgb_to_linear(c):
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _math(nodes, links, op, a, b):
+    n = nodes.new("ShaderNodeMath")
+    n.operation = op
+    for sock, v in zip(n.inputs, (a, b)):
+        if isinstance(v, (int, float)):
+            sock.default_value = v
+        else:
+            links.new(v, sock)
+    return n.outputs[0]
+
+
+def _feed(links, src, dst):
+    if src.is_linked:
+        links.new(src.links[0].from_socket, dst)
+    else:
+        dst.default_value = src.default_value
+
+
+def ensure_materials(meshes):
+    """Meshes imported without any material get a plain grey Principled one, so toon / AO apply to them too."""
+    mat = None
+    for o in meshes:
+        if any(s.material for s in o.material_slots):
+            continue
+        if mat is None:
+            mat = bpy.data.materials.new("icon_default")
+            mat.use_nodes = True
+            bsdf = next(n for n in mat.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+            bsdf.inputs["Base Color"].default_value = (0.62, 0.62, 0.64, 1.0)
+        if o.material_slots:
+            for s in o.material_slots:
+                s.material = mat
+        else:
+            o.data.materials.append(mat)
+    return mat is not None
+
+
+def _lambert(nodes, links, n_out, to_light):
+    dot = nodes.new("ShaderNodeVectorMath")
+    dot.operation = "DOT_PRODUCT"
+    links.new(n_out, dot.inputs[0])
+    dot.inputs[1].default_value = to_light
+    return _math(nodes, links, "MAXIMUM", dot.outputs["Value"], 0.0)
+
+
+def toonify(meshes, bands, size, key, fill):
+    """Cel shading that keeps textures: N.L of the camera-tied key / fill lights (through the material's normal map,
+    so baked TRELLIS detail still breaks the bands) darkened by AO -> constant ramp, times the base colour, plus a
+    lit rim. `key` / `fill` are world-space directions towards the lights."""
     done = set()
     for o in meshes:
         for slot in o.material_slots:
@@ -123,37 +183,56 @@ def toonify(meshes, bands):
             if bsdf is None or out is None:
                 continue
             base = bsdf.inputs["Base Color"]
-            diffuse = nodes.new("ShaderNodeBsdfDiffuse")
-            to_rgb = nodes.new("ShaderNodeShaderToRGB")
+            normal = bsdf.inputs["Normal"]
+            n_out = (normal.links[0].from_socket if normal.is_linked
+                     else nodes.new("ShaderNodeNewGeometry").outputs["Normal"])
+            ao = nodes.new("ShaderNodeAmbientOcclusion")
+            ao.inputs["Distance"].default_value = size * TOON_AO_DISTANCE
+            rim_w = nodes.new("ShaderNodeLayerWeight")
+            rim_w.inputs["Blend"].default_value = 0.5
+            links.new(n_out, ao.inputs["Normal"])
+            links.new(n_out, rim_w.inputs["Normal"])
             ramp = nodes.new("ShaderNodeValToRGB")
             ramp.color_ramp.interpolation = "CONSTANT"
             els = ramp.color_ramp.elements
+            # Ramp elements re-sort on every position change, so a held element reference can end up on another band:
+            # add them all at 1.0 first, then set positions in ascending index order (keeps the order stable).
+            while len(els) < bands:
+                els.new(1.0)
+            while len(els) > max(1, bands):
+                els.remove(els[-1])
             for i in range(bands):
-                e = els[i] if i < len(els) else els.new(0.0)
+                e = els[i]
                 e.position = i / bands
-                e.color = (0.45 + 0.55 * i / max(1, bands - 1),) * 3 + (1,)
+                e.color = (srgb_to_linear(TOON_SHADOW + (1 - TOON_SHADOW) * i / max(1, bands - 1)),) * 3 + (1,)
+            # Shader to RGB irradiance saturated the ramp (sun 4 + fill 1.6 + world 1.6 never drops below the middle
+            # band), so the bands come from N.L directly: independent of light energy, full 0..1 range.
+            light = _math(nodes, links, "MULTIPLY_ADD", _lambert(nodes, links, n_out, key), TOON_KEY)
+            light.node.inputs[2].default_value = TOON_AMBIENT
+            light = _math(nodes, links, "ADD", light,
+                          _math(nodes, links, "MULTIPLY", _lambert(nodes, links, n_out, fill), TOON_FILL))
+            occl = _math(nodes, links, "MULTIPLY_ADD", ao.outputs["AO"], TOON_AO)
+            occl.node.inputs[2].default_value = 1 - TOON_AO
+            lit = _math(nodes, links, "MULTIPLY", light, occl)
+            links.new(lit, ramp.inputs[0])
             mul = nodes.new("ShaderNodeMix")
             mul.data_type = "RGBA"
             mul.blend_type = "MULTIPLY"
             mul.inputs[0].default_value = 1.0
+            _feed(links, base, mul.inputs[6])
+            links.new(ramp.outputs[0], mul.inputs[7])
+            # Rim only where the surface turns away from the camera AND is in light, so it reads as a back-light edge.
+            edge = _math(nodes, links, "GREATER_THAN", rim_w.outputs["Facing"], TOON_RIM_EDGE)
+            lit_side = _math(nodes, links, "GREATER_THAN", lit, 0.5)
+            rim = _math(nodes, links, "MULTIPLY", _math(nodes, links, "MULTIPLY", edge, lit_side), TOON_RIM)
+            screen = nodes.new("ShaderNodeMix")
+            screen.data_type = "RGBA"
+            screen.blend_type = "SCREEN"
+            links.new(rim, screen.inputs[0])
+            links.new(mul.outputs[2], screen.inputs[6])
+            screen.inputs[7].default_value = (1.0, 0.97, 0.9, 1.0)
             emit = nodes.new("ShaderNodeEmission")
-            # Shader to RGB returns raw irradiance (sun key 4 + fill + world 1.6 peaks near 3.4); scale it into the
-            # ramp's 0..1 so the bands fall across the form instead of saturating to the top band.
-            scale = nodes.new("ShaderNodeMath")
-            scale.operation = "MULTIPLY"
-            scale.inputs[1].default_value = 0.3
-            bw = nodes.new("ShaderNodeRGBToBW")
-            links.new(diffuse.outputs[0], to_rgb.inputs[0])
-            links.new(to_rgb.outputs[0], bw.inputs[0])
-            links.new(bw.outputs[0], scale.inputs[0])
-            links.new(scale.outputs[0], ramp.inputs[0])
-            a_in, b_in = mul.inputs[6], mul.inputs[7]
-            if base.is_linked:
-                links.new(base.links[0].from_socket, a_in)
-            else:
-                a_in.default_value = base.default_value
-            links.new(ramp.outputs[0], b_in)
-            links.new(mul.outputs[2], emit.inputs[0])
+            links.new(screen.outputs[2], emit.inputs[0])
             alpha = bsdf.inputs.get("Alpha")
             if alpha is not None and (alpha.is_linked or alpha.default_value < 0.999):
                 transp = nodes.new("ShaderNodeBsdfTransparent")
@@ -170,6 +249,10 @@ def toonify(meshes, bands):
     return len(done)
 
 
+def toon_lights(rot):
+    return tuple(tuple(rot @ -Vector(CAMERA_LIGHTS[k][0]).normalized()) for k in ("key", "fill"))
+
+
 def render(scene, path):
     scene.render.filepath = path
     bpy.ops.render.render(write_still=True)
@@ -182,12 +265,21 @@ def run_icons(params):
     azimuth, elevation = ANGLES[params.get("angle", "iso34")]
     res = int(params.get("res", 512))
     fill = float(params.get("fill", 0.86))
-    entries = []
+    entries, failed = [], []
     for i, item in enumerate(params["meshes"]):
         reset()
         scene = bpy.context.scene
-        _, meshes = import_any(item["path"])
-        v = world_verts(meshes)
+        try:
+            _, meshes = import_any(item["path"])
+            v = world_verts(meshes)
+            if not len(v) or not np.isfinite(v).all():
+                raise RuntimeError("mesh has no usable vertices")
+            if float(np.ptp(v, 0).max()) < 1e-6:
+                raise RuntimeError("mesh has zero size")
+        except Exception as e:  # one broken file must not sink the whole set
+            failed.append({"name": item["name"], "error": " ".join(str(e).split())[:200]})
+            print(f"icon {i + 1}/{len(params['meshes'])} {item['name']} FAILED: {e}", flush=True)
+            continue
         rot, to_cam = view_rotation(azimuth, elevation)
         right, up = rot @ Vector((1, 0, 0)), rot @ Vector((0, 1, 0))
         sx, sy = v @ np.array(right), v @ np.array(up)
@@ -200,7 +292,10 @@ def run_icons(params):
         cam.location = right * cx + up * cy + to_cam * (radius * 2 + 10)
         add_world(scene)
         configure(scene, res, res)
-        toon = toonify(meshes, int(params.get("toon_bands", 3))) if params.get("toon") else 0
+        toon = 0
+        if params.get("toon"):
+            ensure_materials(meshes)
+            toon = toonify(meshes, int(params.get("toon_bands", 3)), extent, *toon_lights(rot))
         path = os.path.join(out_dir, f"icon_{i:03d}.png")
         t = time.perf_counter()
         render(scene, path)
@@ -208,7 +303,7 @@ def run_icons(params):
                         "ortho_scale": round(extent / fill, 5), "render_s": round(time.perf_counter() - t, 3)})
         print(f"icon {i + 1}/{len(params['meshes'])} {item['name']}", flush=True)
     report = {"angle": params.get("angle", "iso34"), "azimuth": azimuth, "elevation": elevation, "res": res,
-              "fill": fill, "engine": bpy.context.scene.render.engine, "icons": entries,
+              "fill": fill, "engine": bpy.context.scene.render.engine, "icons": entries, "failed": failed,
               "total_s": round(time.perf_counter() - t0, 2)}
     with open(params["report"], "w", encoding="utf-8") as f:
         json.dump(report, f)

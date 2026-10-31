@@ -6,8 +6,10 @@ description: >-
   cho cả bộ (thu nhỏ premultiplied, không viền đen) → viền, nền trong / ô độ hiếm / khung icon → PNG từng icon (tên =
   tên mesh) + atlas + báo cáo tâm, độ lấp đầy → duyệt. Xuất Unity Sprite, Godot texture.
 inputs:
-  meshes: {type: mesh, ext: [glb, fbx, obj], siblings: multi, label: "Mesh (GLB / FBX / OBJ, chọn nhiều)"}
-  folder: {type: text, path: dir, required: false, default: "", label: "Thêm mesh từ thư mục (tuỳ chọn)"}
+  meshes: {type: mesh, ext: [glb, fbx, obj], siblings: multi, required: false,
+           label: "Mesh (GLB / FBX / OBJ, chọn nhiều; để trống nếu lấy từ thư mục)"}
+  folder: {type: text, path: dir, required: false, default: "",
+           label: "Thêm mesh từ thư mục (cần mesh hoặc thư mục, ít nhất một)"}
   angle: {type: enum, default: iso34, options: [iso34, front, top], label: "Góc (iso34 = 3/4 nhìn xuống 30°)"}
   size: {type: int, default: 256, options: [128, 256, 512], label: Cỡ icon (px)}
   padding: {type: float, default: 0.08, min: 0, max: 0.3, label: Lề}

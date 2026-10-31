@@ -82,8 +82,9 @@ async def test_icon_compose_executor(tmp_path: Path) -> None:
 class FakeBlender:
     version = "fake"
 
-    def __init__(self, mode: str) -> None:
+    def __init__(self, mode: str, fail: tuple[str, ...] = ()) -> None:
         self.mode = mode
+        self.fail = fail
         self.req: dict[str, Any] = {}
 
     async def call(self, cmd: str, params: dict[str, Any], on_event=None, timeout: float = 0) -> dict[str, Any]:
@@ -93,13 +94,16 @@ class FakeBlender:
         out = Path(p["out_dir"])
         out.mkdir(parents=True, exist_ok=True)
         if p["mode"] == "icons":
-            icons = []
+            icons, failed = [], []
             for i, m in enumerate(p["meshes"]):
                 assert Path(m["path"]).is_file()
+                if m["name"] in self.fail:
+                    failed.append({"name": m["name"], "error": "no mesh in file"})
+                    continue
                 f = out / f"icon_{i:03d}.png"
                 blob_render(150 + 30 * i, 200).save(f)
                 icons.append({"name": m["name"], "file": str(f)})
-            rep: dict[str, Any] = {"icons": icons, "total_s": 1.0}
+            rep: dict[str, Any] = {"icons": icons, "failed": failed, "total_s": 1.0}
         else:
             frames = []
             for name, deg in (("sw", 0), ("se", 90), ("ne", 180), ("nw", 270)):
@@ -142,10 +146,42 @@ async def test_icon_render_executor_stages_names_and_folder(tmp_path: Path) -> N
     assert p["meshes"][2]["path"].endswith(".fbx")
     assert [r.name for r in res.outputs["images"]] == ["axe.png", "axe_2.png", "Potion.png"]
     assert not ex.cacheable({"folder": str(folder)}) and ex.cacheable({})
+    assert res.meta["skipped"] == ["notes.txt"] and "notes.txt" in res.meta["warnings"][0]
     with pytest.raises(StepError, match="angle"):
         await ex.run(ctx, {"angle": "side"}, {"mesh": meshes})
-    with pytest.raises(StepError, match="no meshes"):
+    with pytest.raises(StepError, match="không có mesh hợp lệ"):
         await ex.run(ctx, {}, {"mesh": []})
+
+
+async def test_icon_render_folder_only_and_bad_files(tmp_path: Path) -> None:
+    from studio_core.adapters.blender.icon3d import BlenderIconRenderExecutor
+
+    ctx = FakeCtx(tmp_path)
+    folder = tmp_path / "in"
+    folder.mkdir()
+    fake = FakeBlender("icons", fail=("broken",))
+    ex = BlenderIconRenderExecutor(Settings(data_dir=tmp_path / "d"), fake)  # type: ignore[arg-type]
+    for p in ({}, {"folder": str(folder)}):
+        with pytest.raises(StepError, match="không có mesh hợp lệ") as e:
+            await ex.run(ctx, p, {"mesh": []})
+        assert e.value.code == "blender_bad_input"
+    (folder / "readme.txt").write_text("x")
+    (folder / "empty.glb").write_bytes(b"")
+    (folder / ".hidden.glb").write_bytes(b"glTF")
+    with pytest.raises(StepError, match=r"bỏ qua: empty\.glb, readme\.txt"):
+        await ex.run(ctx, {"folder": str(folder)}, {"mesh": []})
+    with pytest.raises(StepError, match="không thấy thư mục"):
+        await ex.run(ctx, {"folder": str(tmp_path / "nope")}, {"mesh": []})
+    (folder / "Gem.obj").write_bytes(b"v 0 0 0")
+    (folder / "broken.glb").write_bytes(b"glTF")
+    stray = await ctx.blobs.put_bytes(b"x", name="list.txt", mime="text/plain")
+    res = await ex.run(ctx, {"folder": str(folder), "toon": True}, {"mesh": [stray]})
+    assert [r.name for r in res.outputs["images"]] == ["Gem.png"]
+    assert res.meta["failed"] == ["broken (no mesh in file)"] and "list.txt" in res.meta["skipped"]
+    assert len(res.meta["warnings"]) == 2
+    fake.fail = ("broken", "Gem")
+    with pytest.raises(StepError, match="không render được mesh nào"):
+        await ex.run(ctx, {"folder": str(folder)}, {"mesh": []})
 
 
 def test_iso_tiles_partition_and_seams() -> None:
@@ -256,6 +292,16 @@ async def _wait(env: Env, recipe: str, inputs: dict[str, Any]) -> dict[str, Any]
     steps = env.steps(run_id)
     assert env.status(run_id) == RunStatus.SUCCEEDED, {k: s.error for k, s in steps.items() if s.error}
     return steps
+
+
+async def test_icon_recipe_folder_only(tmp_path: Path) -> None:
+    folder = tmp_path / "loot"
+    folder.mkdir()
+    for n in ("ring.glb", "helm.obj"):
+        (folder / n).write_bytes(b"glTF")
+    env = _env(tmp_path)
+    steps = await _wait(env, "icon-3d", {"folder": str(folder), "size": 128, "review": False})
+    assert sorted(r.name for r in steps["approve"].outputs["images"]) == ["helm.png", "ring.png"]
 
 
 async def test_recipes_run_and_export(tmp_path: Path) -> None:

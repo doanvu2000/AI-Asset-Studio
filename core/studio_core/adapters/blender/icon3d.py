@@ -48,19 +48,35 @@ def unique_names(names: list[str]) -> list[str]:
     return out
 
 
-def folder_meshes(folder: str, limit: int = 256) -> list[Path]:
+def folder_meshes(folder: str) -> tuple[list[Path], list[str]]:
+    """Mesh files under `folder` (recursive) and the names of the files left out (other types, empty files)."""
     root = Path(folder).expanduser()
     if not root.is_dir():
-        raise StepError("blender_bad_input", f"mesh folder not found: {folder}")
-    found = sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() in MESH_EXT)
-    return found[:limit]
+        raise StepError("blender_bad_input", f"không thấy thư mục mesh: {folder}")
+    found, skipped = [], []
+    for p in sorted(p for p in root.rglob("*") if p.is_file() and not p.name.startswith(".")):
+        if p.suffix.lower() in MESH_EXT and p.stat().st_size > 0:
+            found.append(p)
+        else:
+            skipped.append(p.relative_to(root).as_posix())
+    return found, skipped
+
+
+def _is_mesh_name(name: str | None) -> bool:
+    # Unnamed blobs keep the old .glb assumption; a name with another extension is a stray file (e.g. via MCP).
+    suffix = Path(name or "").suffix.lower()
+    return not suffix or suffix in MESH_EXT
+
+
+def _skip_note(skipped: list[str]) -> str:
+    head = ", ".join(skipped[:5])
+    return f"{head} (+{len(skipped) - 5})" if len(skipped) > 5 else head
 
 
 async def _stage(ctx: StepContext, refs: list[BlobRef], extra: list[Path], work: Path) -> list[dict[str, Any]]:
     names = unique_names([mesh_stem(r.name, i) for i, r in enumerate(refs)]
                          + [p.stem for p in extra])
     srcs = [(ctx.blobs.path(r.hash), Path(r.name or "m.glb").suffix.lower() or ".glb") for r in refs]
-    srcs += [(p, p.suffix.lower()) for p in extra]
 
     def copy() -> list[dict[str, Any]]:
         work.mkdir(parents=True, exist_ok=True)
@@ -70,6 +86,8 @@ async def _stage(ctx: StepContext, refs: list[BlobRef], extra: list[Path], work:
             dst = work / f"in_{i:03d}{ext}"
             shutil.copyfile(src, dst)
             items.append({"name": name, "path": str(dst)})
+        # Folder files are read in place: a .gltf / .obj / .fbx copied alone would lose its .bin / .mtl / textures.
+        items += [{"name": name, "path": str(p)} for p, name in zip(extra, names[len(refs):])]
         return items
 
     return await asyncio.to_thread(copy)
@@ -98,12 +116,20 @@ class BlenderIconRenderExecutor(_Base):
         angle = str(params.get("angle") or "iso34")
         if angle not in ANGLES:
             raise StepError("blender_bad_params", f"angle must be one of {', '.join(ANGLES)}")
-        refs = list(inputs.get("mesh") or [])
-        extra = await asyncio.to_thread(folder_meshes, str(params["folder"])) if params.get("folder") else []
+        given = list(inputs.get("mesh") or [])
+        refs = [r for r in given if _is_mesh_name(r.name)]
+        skipped = [r.name or r.hash[:12] for r in given if not _is_mesh_name(r.name)]
+        extra: list[Path] = []
+        if params.get("folder"):
+            extra, other = await asyncio.to_thread(folder_meshes, str(params["folder"]))
+            skipped += other
         if not refs and not extra:
-            raise StepError("blender_bad_input", "no meshes (drop GLB/FBX/OBJ files or give a folder)")
+            where = f" trong thư mục {params['folder']}" if params.get("folder") else ""
+            note = f"; đã bỏ qua: {_skip_note(skipped)}" if skipped else ""
+            raise StepError("blender_bad_input", f"không có mesh hợp lệ{where} — cần file GLB / GLTF / FBX / "
+                                                 f"OBJ (thả file hoặc chọn thư mục chứa mesh){note}")
         if len(refs) + len(extra) > 256:
-            raise StepError("blender_bad_input", "at most 256 meshes per run")
+            raise StepError("blender_bad_input", "tối đa 256 mesh mỗi lần chạy")
         t0 = time.perf_counter()
         work = ctx.job_dir / "icons"
         items = await _stage(ctx, refs, extra, work / "in")
@@ -118,6 +144,14 @@ class BlenderIconRenderExecutor(_Base):
         if not report_path.exists():
             raise StepError("blender_no_output", "icon render did not write its report")
         rep = json.loads(await asyncio.to_thread(report_path.read_text, encoding="utf-8"))
+        failed = [f"{e['name']} ({e['error']})" for e in rep.get("failed") or []]
+        if not rep["icons"]:
+            raise StepError("blender_bad_input", "không render được mesh nào: " + _skip_note(failed))
+        warnings = []
+        if failed:
+            warnings.append(f"không mở được {len(failed)} mesh: {_skip_note(failed)}")
+        if skipped:
+            warnings.append(f"bỏ qua {len(skipped)} file không phải mesh: {_skip_note(skipped)}")
         images = []
         for e in rep["icons"]:
             f = Path(e["file"])
@@ -130,7 +164,7 @@ class BlenderIconRenderExecutor(_Base):
         return StepResult(outputs={"images": images, "meta": [meta_ref]}, meta={
             "icons": len(images), "angle": angle, "res": res, "toon": bool(params.get("toon")),
             "render_s": rep.get("total_s"), "seconds": round(time.perf_counter() - t0, 2),
-            "blender_version": self.blender.version})
+            "blender_version": self.blender.version, "skipped": skipped, "failed": failed, "warnings": warnings})
 
 
 class BlenderIsoRenderExecutor(_Base):
