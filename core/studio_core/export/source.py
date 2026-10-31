@@ -120,6 +120,9 @@ class Source:
     # Playable scene (op.playable_scene): its playable_scene.json and paths by key (atlas, sheet, prop:<n>, bg:<n>).
     playable: dict[str, Any] | None = None
     playable_files: dict[str, Path] = field(default_factory=dict)
+    # Room kit (op.room_kit): its room_kit.json and paths by key (atlas, prop:<name>).
+    room_kit: dict[str, Any] | None = None
+    room_kit_files: dict[str, Path] = field(default_factory=dict)
     # Set when the export asked for traced 2D colliders + foot pivot on the sprite sheet (export/collider.py).
     collider: Any = None
     # Combat frame data (op.frame_data): its frame_data.json doc (sheet meta inlined as `sheet_meta`); the sheet is `sheet`.

@@ -32,6 +32,7 @@ from .parallax import PARALLAX_OPS
 from .rarity import RARITY_OPS
 from .restyle import register_restyle
 from .rig import RIG_OPS
+from .room_kit import ROOM_KIT_OPS
 from .soundscape import SOUNDSCAPE_OPS
 from .spine_convert import SPINE_CONVERT_OPS
 from .spine_physics import SPINE_PHYSICS_OPS
@@ -74,6 +75,8 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(npc_cls())
     for fd_cls in FRAME_DATA_OPS:
         registry.register(fd_cls())
+    for rk_cls in ROOM_KIT_OPS:
+        registry.register(rk_cls())
     for sc_cls in SPINE_CONVERT_OPS:
         registry.register(sc_cls())
     for loc_cls in LOCALIZE_OPS:

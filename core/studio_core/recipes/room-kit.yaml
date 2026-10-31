@@ -1,0 +1,51 @@
+id: room-kit
+name: Bộ phòng thủ tục (roguelike / dungeon, cửa khớp, generator Godot / Unity)
+description: >-
+  Màn chơi thử (playable_scene.json từ recipe playable-scene: atlas ô + prop; thêm autotile.json nếu có) → Claude đề xuất
+  loại phòng (start, combat, corridor, treasure, boss) và quy tắc cửa (số cửa, hành lang thẳng, dáng bên trong, prop,
+  độ hiếm; lỗi thì dùng bộ quy tắc mặc định) → CPU sinh N phòng mẫu cùng cỡ, cửa đặt cố định giữa cạnh nên phòng nào
+  cũng ghép được: ruột phòng do wave function collapse tô (seed ổn định, lỗi thì dùng grammar), chỉ giữ phòng mà đi bộ
+  (top-down) hoặc nhảy tối đa N ô (side-view) nối được mọi cửa → mỗi phòng một Tiled .tmx + LDtk .ldtk, bản đồ một seed,
+  bảng phòng → duyệt. Xuất Godot (Rooms/*.tscn + RoomGenerator.gd ghép phòng theo cửa từ seed, không chồng, không cửa
+  cụt) và Unity (Rooms/*.prefab Grid + Tilemap + RoomGenerator.cs / RoomData.cs).
+inputs:
+  scene: {type: file, ext: [json],
+          label: "playable_scene.json (output scene của recipe playable-scene: atlas ô + prop)"}
+  autotile: {type: file, ext: [json], required: false, label: "autotile.json (tuỳ chọn: viền đường top-down)"}
+  style: {type: enum, options: [auto, topdown, sideview], default: auto,
+          label: "Thể loại (auto = theo màn chơi thử: top-down dungeon | side-view platformer)"}
+  rooms: {type: int, default: 20, min: 5, max: 64, label: Số phòng mẫu}
+  cols: {type: int, default: 20, min: 12, max: 48, label: "Số cột mỗi phòng (làm tròn xuống số chẵn)"}
+  rows: {type: int, default: 14, min: 10, max: 32, label: "Số hàng mỗi phòng (làm tròn xuống số chẵn)"}
+  jump: {type: int, default: 3, min: 1, max: 5, label: "Nhảy cao tối đa (ô, side-view: kiểm đi được từ cửa tới cửa)"}
+  map_rooms: {type: int, default: 10, min: 3, max: 40, label: Số phòng trên bản đồ xem trước}
+  seed: {type: int, default: 0, min: 0, label: Seed}
+  brief: {type: text, required: false, default: "", multiline: true,
+          label: "Chủ đề / ý muốn về phòng (tuỳ chọn)", placeholder: "hầm ngục cũ, phòng boss rộng, kho báu ở ngõ cụt"}
+  claude: {type: bool, default: true, label: Claude đề xuất loại phòng và quy tắc cửa}
+  asset: {type: text, default: RoomKit, label: Tên asset}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  # If Claude still fails after its retry (or `claude` is off) the run goes on: op.room_kit uses its default rules.
+  - id: rules
+    kind: claude.room_rules
+    allow_fail: true
+    in: {scene: inputs.scene}
+    params: {claude: "${inputs.claude}", rooms: "${inputs.rooms}", brief: "${inputs.brief}", model: opus,
+             _auto_retry: 1}
+  - id: kit
+    kind: op.room_kit
+    in: {scene: inputs.scene, autotile: inputs.autotile, rules: rules.json}
+    params: {style: "${inputs.style}", rooms: "${inputs.rooms}", cols: "${inputs.cols}", rows: "${inputs.rows}",
+             jump: "${inputs.jump}", map_rooms: "${inputs.map_rooms}", seed: "${inputs.seed}",
+             asset: "${inputs.asset}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: kit.preview, images: kit.images, rooms: kit.rooms, tmx: kit.tmx, ldtk: kit.ldtk}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  rooms: approve.rooms
+  tmx: approve.tmx
+  ldtk: approve.ldtk

@@ -279,6 +279,9 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
     from studio_core.export.playable_scene import playable_set
 
     src.playable, src.playable_files = playable_set(step, blobs)
+    from studio_core.export.room_kit import room_kit_set
+
+    src.room_kit, src.room_kit_files = room_kit_set(step, blobs)
     return src
 
 
@@ -426,7 +429,7 @@ def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
             or bool(src.parallax) or bool(src.image_layers) or bool(src.localized) or bool(src.npc)
             or bool(src.autotile) or bool(src.font) or bool(src.skybox) or bool(src.decals) or bool(src.terrain)
             or bool(src.vfx) or bool(src.weather) or bool(src.minimap) or bool(src.tile_anim) or bool(src.cards)
-            or bool(src.iso) or bool(src.playable))
+            or bool(src.iso) or bool(src.playable) or bool(src.room_kit))
 
 
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,

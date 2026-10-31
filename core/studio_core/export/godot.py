@@ -550,6 +550,12 @@ def export(src: Source) -> Files:
         pl_files, pl_notes = playable_files(src)
         files += pl_files + extra_files(src)
         notes += pl_notes
+    if src.room_kit and src.room_kit_files:
+        from studio_core.export.room_kit import extra_files as room_kit_extra, godot_files as room_kit_files
+
+        rk_files, rk_notes = room_kit_files(src)
+        files += rk_files + room_kit_extra(src)
+        notes += rk_notes
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))
