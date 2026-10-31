@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { realpath } from 'node:fs/promises'
 import { isAbsolute, join, relative } from 'node:path'
 import type { CoreSupervisor } from './core'
-import type { BundleEngine, BundleOptions, EngineExportOptions, ExportedAsset, ExportedBundle, HitBinding, MobileTotals } from '../preload/types'
+import type { BundleEngine, BundleOptions, EngineExportOptions, ExportedAsset, ExportedBundle, HitBinding, MobileTotals, ToonOptions } from '../preload/types'
 
 const HASH_RE = /^[0-9a-f]{64}$/
 const STEP_RE = /^[\w-]{1,80}$/
@@ -86,6 +86,39 @@ export function checkEngineOptions(v: unknown): EngineExportOptions {
   }
   const { hits } = v as Record<string, unknown>
   if (hits !== undefined && hits !== null) out.hits = checkHits(hits)
+  const { material_style: style, toon } = v as Record<string, unknown>
+  if (style !== undefined && style !== null) {
+    if (style !== 'pbr' && style !== 'toon') throw new Error('invalid material style')
+    out.material_style = style
+  }
+  if (toon !== undefined && toon !== null) out.toon = checkToon(toon)
+  return out
+}
+
+const HEX_RE = /^#[0-9a-fA-F]{6}$/
+function checkToon(v: unknown): ToonOptions {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) throw new Error('invalid toon options')
+  const o = v as Record<string, unknown>
+  const out: ToonOptions = {}
+  const range = (k: 'outline_width' | 'rim' | 'smooth_normals', max: number): void => {
+    const x = o[k]
+    if (x === undefined || x === null) return
+    if (typeof x !== 'number' || !Number.isFinite(x) || x < 0 || x > max) throw new Error(`invalid toon ${k}`)
+    out[k] = x
+  }
+  if (o.bands !== undefined && o.bands !== null) {
+    if (typeof o.bands !== 'number' || !Number.isInteger(o.bands) || o.bands < 2 || o.bands > 4) throw new Error('invalid toon bands')
+    out.bands = o.bands
+  }
+  for (const k of ['outline_color', 'rim_color'] as const) {
+    const x = o[k]
+    if (x === undefined || x === null) continue
+    if (typeof x !== 'string' || !HEX_RE.test(x)) throw new Error(`invalid toon ${k}`)
+    out[k] = x
+  }
+  range('outline_width', 0.1)
+  range('rim', 1)
+  range('smooth_normals', 1)
   return out
 }
 const NAME_MAX = 200

@@ -5,6 +5,8 @@ import { Boxes, ChevronDown, FolderDown, FolderOpen, LoaderCircle, Swords } from
 import type { BundleEngine, BundleOptions, EngineExportOptions, ShaderPresetInfo } from '../../../preload/types'
 import { useAssetFile } from '@/composables/assetFile'
 import { usePresets } from '@/stores/catalog'
+import { useRuns } from '@/stores/runs'
+import { isGlb } from './viewers/detect'
 import { hitExportOption, savedHit } from '@/composables/hitFx'
 import HitFxDialog from './HitFxDialog.vue'
 
@@ -12,6 +14,7 @@ const props = defineProps<{ stepId: string; name?: string; compact?: boolean }>(
 
 const file = useAssetFile()
 const presets = usePresets()
+const runs = useRuns()
 const uid = useId()
 const opts = ref<BundleOptions | null>(null)
 const collider = ref<boolean | null>(null)
@@ -123,12 +126,46 @@ function shaderOpts(): Pick<EngineExportOptions, 'shaders' | 'shader_params'> {
 const MOBILE_KEY = 'export:mobile'
 const mobile = ref(readPref(MOBILE_KEY) === 'on')
 watch(mobile, (v) => writePref(MOBILE_KEY, v ? 'on' : 'off'))
+// The export-options endpoint has no mesh flag, so ask the step's own outputs; unloaded step falls back to its kind.
+const isMesh = computed(() => {
+  const s = runs.steps.get(props.stepId)
+  if (s) return Object.values(s.outputs).some((list) => list.some(isGlb))
+  return /^(blender|mesh)\./.test(opts.value?.kind ?? '')
+})
+type MatStyle = 'pbr' | 'toon'
+const MAT_KEY = 'export:material'
+const TOON_KEY = 'export:toon'
+const MAT_STYLES: { id: MatStyle; label: string }[] = [
+  { id: 'pbr', label: 'PBR' },
+  { id: 'toon', label: 'Toon' }
+]
+const BANDS = [2, 3, 4]
+const matStyle = ref<MatStyle>(readPref(MAT_KEY) === 'toon' ? 'toon' : 'pbr')
+const toon = ref({ bands: 3, outlineColor: '#0d0d12', outlinePct: 1.2, rim: 0.35, ...readJson<Record<string, unknown>>(TOON_KEY, {}) })
+const outlineOk = computed(() => Number.isFinite(toon.value.outlinePct) && toon.value.outlinePct >= 0 && toon.value.outlinePct <= 10)
+const rimOk = computed(() => Number.isFinite(toon.value.rim) && toon.value.rim >= 0 && toon.value.rim <= 1)
+watch(matStyle, (v) => writePref(MAT_KEY, v))
+watch(toon, (v) => writePref(TOON_KEY, JSON.stringify(v)), { deep: true })
+function materialOpts(): Pick<EngineExportOptions, 'material_style' | 'toon'> {
+  if (!isMesh.value || matStyle.value !== 'toon') return {}
+  const t = toon.value
+  return {
+    material_style: 'toon',
+    toon: {
+      bands: BANDS.includes(t.bands) ? t.bands : 3,
+      outline_color: /^#[0-9a-fA-F]{6}$/.test(t.outlineColor) ? t.outlineColor : '#0d0d12',
+      outline_width: outlineOk.value ? t.outlinePct / 100 : 0.012,
+      rim: rimOk.value ? t.rim : 0.35
+    }
+  }
+}
 function engineOpts(): EngineExportOptions {
   const hits = opts.value?.hits ? hitExportOption(props.stepId) : undefined
   const base = {
     ppu: ppuValid.value ? ppu.value : 100,
     pixel: pixelMode.value === 'auto' ? null : pixelMode.value === 'on',
     ...shaderOpts(),
+    ...materialOpts(),
     ...(hits ? { hits } : {}),
     ...(mobile.value ? { mobile: true } : {})
   }
@@ -360,6 +397,67 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
                 <span class="b-hit-name">{{ hitBound ?? 'Chọn…' }}</span>
               </button>
             </div>
+            <div v-if="isMesh" class="b-shaders">
+              <div class="b-opt" role="radiogroup" aria-label="Material cho model 3D">
+                <span class="b-opt-label" title="PBR giữ nguyên material trong GLB; Toon đổi sang dải sáng tối + viền đen (Godot ShaderMaterial, Unity URP)">Material</span>
+                <div class="b-seg">
+                  <button
+                    v-for="m in MAT_STYLES"
+                    :key="m.id"
+                    type="button"
+                    role="radio"
+                    :aria-checked="matStyle === m.id"
+                    :class="{ on: matStyle === m.id }"
+                    @click="matStyle = m.id"
+                  >
+                    {{ m.label }}
+                  </button>
+                </div>
+              </div>
+              <template v-if="matStyle === 'toon'">
+                <div class="b-opt" role="radiogroup" aria-label="Số dải sáng toon">
+                  <span class="b-opt-label" title="Số mức sáng tối của ramp toon">Số dải</span>
+                  <div class="b-seg">
+                    <button v-for="n in BANDS" :key="n" type="button" role="radio" :aria-checked="toon.bands === n" :class="{ on: toon.bands === n }" @click="toon.bands = n">
+                      {{ n }}
+                    </button>
+                  </div>
+                </div>
+                <div class="b-opt">
+                  <span class="b-opt-label" title="Màu và độ dày viền, tính theo % cạnh lớn nhất của model (0 = không viền)">Viền</span>
+                  <span class="b-pair">
+                    <input v-model="toon.outlineColor" type="color" class="b-color" aria-label="Màu viền" />
+                    <input
+                      v-model.number="toon.outlinePct"
+                      class="field num b-speed"
+                      :class="{ bad: !outlineOk }"
+                      type="number"
+                      min="0"
+                      max="10"
+                      step="0.1"
+                      title="Độ dày viền (% kích thước model), 0 đến 10"
+                      aria-label="Độ dày viền (%)"
+                      :aria-invalid="!outlineOk"
+                    />
+                  </span>
+                </div>
+                <div class="b-opt">
+                  <span class="b-opt-label" title="Viền sáng ở mép model, 0 = tắt">Rim</span>
+                  <input
+                    v-model.number="toon.rim"
+                    class="field num b-speed"
+                    :class="{ bad: !rimOk }"
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    title="Độ mạnh viền sáng rim, 0 đến 1"
+                    aria-label="Độ mạnh rim"
+                    :aria-invalid="!rimOk"
+                  />
+                </div>
+              </template>
+            </div>
             <div v-if="shaderList.length" class="b-shaders">
               <span class="b-opt-label" title="Shader viết tay, đã kiểm biên dịch trên Godot 4 và Unity URP 2D; mỗi preset kèm một material">Shader</span>
               <div class="b-chips" role="group" aria-label="Shader preset cho sprite">
@@ -552,6 +650,11 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
 }
 .b-shaders {
   display: grid;
+  gap: 6px;
+}
+.b-pair {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
 }
 .b-chips {

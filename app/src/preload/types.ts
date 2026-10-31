@@ -186,6 +186,22 @@ export interface EngineExportOptions {
   /** Also write aseprite/<asset>.aseprite + Aseprite JSON array sheet + PNG (clips as tags, layers kept). */
   aseprite?: boolean
   hits?: HitBinding
+  /** GLB steps only: "toon" re-skins the model with a banded-ramp material + inverted-hull outline. */
+  material_style?: MaterialStyle
+  toon?: ToonOptions
+}
+
+export type MaterialStyle = 'pbr' | 'toon'
+
+export interface ToonOptions {
+  /** Light bands, 2-4. */
+  bands?: number
+  outline_color?: string
+  /** Fraction of the model size, 0-0.1. */
+  outline_width?: number
+  rim?: number
+  rim_color?: string
+  smooth_normals?: number
 }
 
 export interface ShaderPresetInfo {

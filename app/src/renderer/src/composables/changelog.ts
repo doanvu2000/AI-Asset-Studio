@@ -16,6 +16,23 @@ export const whatsNewOpen = ref(false)
 // Summaries of `git log <prev tag>..<tag>` and the matching .planning plans; newest first.
 export const CHANGELOG: Release[] = [
   {
+    version: '1.3.0',
+    date: '2026-11-01',
+    items: [
+      'Màn chơi thử sideview: tường có bóng đổ; prop xuất ra Tiled .tmx thành tile object đặt đúng chỗ',
+      'Bộ thẻ bài: bước Claude viết prompt art được phép lỗi, thẻ không có art vẫn ráp tiếp thay vì dừng cả lượt; bước đó hiện “Bỏ qua (lỗi cho phép)” kèm cảnh báo vàng ở chi tiết lượt chạy',
+      'Vật lý Spine: áo choàng, tóc bớt vung quá tay',
+      'Preview Godot thêm Presets3D, có ô toon_bands và edge_fix để chỉnh ngay',
+      'Xuất model 3D chọn material PBR hoặc Toon: số dải sáng 2–4, màu và độ dày viền, rim; áp cho Unity URP và Godot',
+      'Frame data chiến đấu: hurtbox / hitbox và sự kiện đòn, bước chân suy từ clip idle, Claude chọn khung đánh trúng; Godot AnimationPlayer bật tắt vùng, Unity FrameData + AnimationEvent',
+      'Thời tiết lặp liền: mưa, tuyết, sương, lá rơi, tro, đom đóm (CPU), xuất cho Godot và Unity',
+      'Chuỗi LOD cho mesh: giảm mặt giữ UV, collision hộp / hull / nhiều hull, impostor 8 hướng tuỳ chọn; Unity LODGroup, Godot visibility range',
+      'Spine sang engine: đổi rig Spine 4.2 thành scene Skeleton2D của Godot hoặc prefab bone Unity kèm animation clip',
+      'Style-lock: chấm asset đã duyệt so với ảnh mỏ neo (bảng màu ΔE, tương phản, bão hoà, viền, CLIP tuỳ chọn), bảng xếp hạng lệch ngay trong chi tiết bước; tự chỉnh màu bằng LUT hoặc vẽ lại bằng Klein khi bạn bật',
+      'Bộ phòng ghép tự động: Claude lập luật ghép, thuật toán WFC xếp phòng liền mạch; xuất cho Godot và Unity',
+    ]
+  },
+  {
     version: '1.2.0',
     date: '2026-10-30',
     items: [

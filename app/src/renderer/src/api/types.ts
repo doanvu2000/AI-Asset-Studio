@@ -56,6 +56,9 @@ export interface RunRow {
 
 export interface StepMeta {
   waiting_for?: Lane | string
+  /** `allow_fail` step that failed on purpose: status is skipped, `warning` says why. */
+  allowed_failure?: boolean
+  warning?: string
   [k: string]: unknown
 }
 

@@ -5,7 +5,7 @@ import { CircleAlert, Repeat, TriangleAlert } from '@lucide/vue'
 import type { StepNodeData } from '@/composables/graph'
 import { NEW_PORT } from '@/composables/graph'
 import { useRuns } from '@/stores/runs'
-import { kindName, STEP_LABEL, waitingLabel } from '@/composables/format'
+import { ALLOWED_FAILURE_LABEL, allowedFailure, kindName, STEP_LABEL, waitingLabel } from '@/composables/format'
 import LaneTag from '../LaneTag.vue'
 import StatusGlyph from '../StatusGlyph.vue'
 import ElapsedTimer from '../ElapsedTimer.vue'
@@ -33,12 +33,14 @@ const fraction = computed(() => {
   const s = step.value
   return s?.status === 'succeeded' || s?.status === 'cached' ? 1 : null
 })
+const skipWarning = computed(() => (step.value ? allowedFailure(step.value) || undefined : undefined))
 const detail = computed(() => {
   const s = step.value
   if (!s) return ''
   if (s.status === 'running') return progress.value?.label || progress.value?.node || LANE_RUNNING[s.lane] || 'Đang chạy'
   if (s.status === 'waiting_resource') return waitingLabel(s.meta.waiting_for)
   if (s.status === 'failed') return s.error?.message ?? 'Lỗi'
+  if (s.status === 'skipped' && allowedFailure(s) !== null) return ALLOWED_FAILURE_LABEL
   return STEP_LABEL[s.status]
 })
 </script>
@@ -90,7 +92,7 @@ const detail = computed(() => {
       <Handle id="o:out" type="source" :position="Position.Right" class="h h-run" :connectable="false" />
       <div class="run">
         <Transition name="swap" mode="out-in">
-          <span :key="`${step?.status}:${progress?.label ?? ''}`" class="detail" :class="{ err: step?.status === 'failed' }">{{ detail }}</span>
+          <span :key="`${step?.status}:${progress?.label ?? ''}`" class="detail" :class="{ err: step?.status === 'failed' }" :title="skipWarning">{{ detail }}</span>
         </Transition>
         <span v-if="step?.status === 'running'" class="metrics num">
           <span v-if="fraction !== null" class="pct"><TweenNumber :value="fraction * 100" />%</span>

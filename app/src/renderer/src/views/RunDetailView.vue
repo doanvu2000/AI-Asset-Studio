@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { onClickOutside, onKeyStroke } from '@vueuse/core'
 import { AnimatePresence, motion } from 'motion-v'
-import { ArrowLeft, CircleAlert, CircleCheck, CircleStop, Copy, Ellipsis, FolderKanban, Hourglass, Inbox, List, LoaderCircle, Library, RotateCcw, Workflow } from '@lucide/vue'
+import { ArrowLeft, CircleAlert, CircleCheck, CircleStop, Copy, Ellipsis, FolderKanban, Hourglass, Inbox, List, LoaderCircle, Library, RotateCcw, TriangleAlert, Workflow } from '@lucide/vue'
 import type { BlobRef, StepRow } from '@/api/types'
 import { NO_PROJECT, RUN_ACTIVE, STEP_DONE_OK } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
@@ -16,6 +16,7 @@ import AssetActions from '@/components/AssetActions.vue'
 import OpenInEngine from '@/components/OpenInEngine.vue'
 import ViewsReport from '@/components/ViewsReport.vue'
 import MeshReport from '@/components/MeshReport.vue'
+import StyleLockReport from '@/components/StyleLockReport.vue'
 import { featuredAsset, isImage, isNormalBlob, outputBlobs, sameSize, viewsFor, type AssetView } from '@/components/viewers/detect'
 import Lightbox from '@/components/Lightbox.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
@@ -36,7 +37,7 @@ import { gateFromStep, useGates } from '@/stores/gates'
 import { exportName, useVersions } from '@/stores/versions'
 import ResizeHandle from '@/components/ResizeHandle.vue'
 import { usePaneWidth } from '@/composables/paneSize'
-import { absoluteTime, humanDuration, kindName, STEP_LABEL, stepName, waitingHint, waitingLabel } from '@/composables/format'
+import { absoluteTime, ALLOWED_FAILURE_LABEL, allowedFailure, humanDuration, kindName, STEP_LABEL, stepName, waitingHint, waitingLabel } from '@/composables/format'
 import { flyFromOrigin, takeOrigin, useReducedMotion, type SharedOrigin } from '@/composables/motion'
 
 const props = defineProps<{ id: string }>()
@@ -207,7 +208,7 @@ const selMeta = computed(() => {
 })
 const selAwaiting = computed(() => sel.value?.status === 'awaiting_human')
 // These kinds render their report as a readable block below; the raw JSON tile would only duplicate it.
-const REPORT_KINDS = new Set(['views.qwen_checked', 'mesh.checked'])
+const REPORT_KINDS = new Set(['views.qwen_checked', 'mesh.checked', 'op.style_audit'])
 const selOutputs = computed(() =>
   sel.value
     ? Object.entries(sel.value.outputs).filter(([k, v]) => v.length && !(k === 'report' && REPORT_KINDS.has(sel.value!.kind)))
@@ -376,8 +377,14 @@ watch(
 )
 
 function segTitle(s: StepRow): string {
-  return `${stepName(s)}: ${STEP_LABEL[s.status]}`
+  return `${stepName(s)}: ${allowedFailure(s) === null ? STEP_LABEL[s.status] : ALLOWED_FAILURE_LABEL}`
 }
+
+const runWarnings = computed(() => {
+  const w = (run.value?.params?.$meta as { warnings?: unknown } | undefined)?.warnings
+  return Array.isArray(w) ? w.filter((x): x is string => typeof x === 'string' && x.trim() !== '') : []
+})
+const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : null))
 </script>
 
 <template>
@@ -467,6 +474,13 @@ function segTitle(s: StepRow): string {
     </div>
 
     <AgentRunBanner :run-id="id" />
+
+    <div v-if="runWarnings.length" class="note warn run-warn" role="status">
+      <TriangleAlert :size="16" />
+      <ul>
+        <li v-for="(w, i) in runWarnings" :key="i" class="selectable">{{ w }}</li>
+      </ul>
+    </div>
 
     <EmptyState v-if="loadError && !run" :icon="CircleAlert" title="Không mở được lượt chạy" :text="loadError">
       <button class="btn" @click="load">Thử lại</button>
@@ -610,6 +624,15 @@ function segTitle(s: StepRow): string {
               </div>
             </div>
 
+            <div v-else-if="selSkipWarning !== null" class="note warn" role="status">
+              <TriangleAlert :size="16" />
+              <span>
+                <strong>{{ ALLOWED_FAILURE_LABEL }}</strong>
+                <template v-if="selSkipWarning"> — {{ selSkipWarning }}</template>
+                <template v-else-if="sel.error"> — {{ sel.error.message }}</template>
+              </span>
+            </div>
+
             <p v-else class="caption">{{ STEP_LABEL[sel.status] }}</p>
 
             <div v-if="selFeatured" class="feature card">
@@ -627,6 +650,8 @@ function segTitle(s: StepRow): string {
 
             <ViewsReport v-if="sel.kind === 'views.qwen_checked' && sel.outputs.report?.[0]" :report="sel.outputs.report[0]" />
             <MeshReport v-if="(sel.kind === 'mesh.checked' || sel.outputs.report?.[0]?.name === 'mesh_report.json') && sel.outputs.report?.[0]" :report="sel.outputs.report[0]" />
+
+            <StyleLockReport v-if="sel.kind === 'op.style_audit' && sel.outputs.report?.[0]" :report="sel.outputs.report[0]" />
 
             <div v-for="[name, list] in selInputs" :key="`i-${name}`" class="group">
               <h3 class="section-label">{{ portName(name) }} đầu vào</h3>
@@ -1015,6 +1040,27 @@ function segTitle(s: StepRow): string {
 .note.wait svg,
 .note.wait strong {
   color: var(--st-waiting);
+}
+
+.note.warn {
+  background: var(--st-waiting-soft);
+  color: var(--text);
+}
+.note.warn svg,
+.note.warn strong {
+  color: var(--st-waiting);
+}
+.run-warn {
+  flex: none;
+  margin: 6px var(--sp-6) 0;
+}
+.run-warn ul {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
 }
 
 .gate-inline {

@@ -1,4 +1,4 @@
-import type { Lane, RunStatus, StepStatus } from '@/api/types'
+import type { Lane, RunStatus, StepMeta, StepStatus } from '@/api/types'
 
 export function clockDuration(sec: number): string {
   const s = Math.max(0, Math.floor(sec))
@@ -50,6 +50,14 @@ export const STEP_LABEL: Record<StepStatus, string> = {
   cancelled: 'Đã huỷ',
   cached: 'Dùng lại',
   skipped: 'Bỏ qua'
+}
+
+export const ALLOWED_FAILURE_LABEL = 'Bỏ qua (lỗi cho phép)'
+
+/** Warning text of a step the runner skipped on purpose (`allow_fail`); null when the step is not one. */
+export function allowedFailure(s: { status: StepStatus; meta?: StepMeta }): string | null {
+  if (s.status !== 'skipped' || s.meta?.allowed_failure !== true) return null
+  return typeof s.meta?.warning === 'string' ? s.meta.warning : ''
 }
 
 export const RUN_LABEL: Record<RunStatus, string> = {
@@ -157,6 +165,15 @@ const KIND_NAMES: Record<string, string> = {
   'claude.card_art': 'Claude viết prompt art cho thẻ thiếu art',
   'op.card_plan': 'Đọc danh sách thẻ + prompt art',
   'op.card_set': 'Ráp thẻ: khung theo độ hiếm, chữ tự co, atlas',
+  'claude.combat_active': 'Claude chọn khung đánh trúng + bước chân',
+  'op.frame_data': 'Hurtbox / hitbox + sự kiện đòn từ clip',
+  'op.weather_overlay': 'Lớp thời tiết lặp liền: mưa, tuyết, sương, lá, tro, đom đóm',
+  'blender.lod': 'Chuỗi LOD + collision + impostor',
+  'op.spine_convert': 'Spine → scene Godot / prefab Unity',
+  'op.style_audit': 'Chấm độ lệch style của asset đã duyệt',
+  'op.style_lock_finish': 'Gộp bản sửa style-lock vào project',
+  'claude.room_rules': 'Claude lập luật ghép phòng',
+  'op.room_kit': 'Bộ phòng ghép tự động (WFC)',
   'op.store_prep': 'Đặt ảnh lên khung icon + key art',
   'op.store_kit': 'Xuất bộ icon app + capsule store',
   'op.lut_prep': 'Chuẩn bị ảnh cho Klein',
@@ -310,6 +327,15 @@ const KIND_SHORT: Record<string, string> = {
   'claude.card_art': 'Prompt art',
   'op.card_plan': 'Danh sách thẻ',
   'op.card_set': 'Ráp thẻ',
+  'claude.combat_active': 'Khung đánh trúng',
+  'op.frame_data': 'Frame data chiến đấu',
+  'op.weather_overlay': 'Thời tiết lặp',
+  'blender.lod': 'Chuỗi LOD',
+  'op.spine_convert': 'Spine → engine',
+  'op.style_audit': 'Chấm style',
+  'op.style_lock_finish': 'Gộp sửa style',
+  'claude.room_rules': 'Luật ghép phòng',
+  'op.room_kit': 'Bộ phòng WFC',
   'op.store_prep': 'Chuẩn bị khung',
   'op.store_kit': 'Xuất bộ store',
   'op.lut_prep': 'Chuẩn bị ảnh',

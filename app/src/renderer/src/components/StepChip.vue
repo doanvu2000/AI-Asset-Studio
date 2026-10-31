@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { ProgressData, StepRow } from '@/api/types'
-import { humanDuration, kindName, STEP_LABEL, stepName, waitingLabel } from '@/composables/format'
+import { ALLOWED_FAILURE_LABEL, allowedFailure, humanDuration, kindName, STEP_LABEL, stepName, waitingLabel } from '@/composables/format'
 import { errorAdvice } from '@/composables/errorAdvice'
 import StatusGlyph from './StatusGlyph.vue'
 import LaneTag from './LaneTag.vue'
@@ -45,12 +45,15 @@ const detail = computed(() => {
       return 'Kết quả cũ, không chạy lại'
     case 'failed':
       return errorAdvice(st.error).title
+    case 'skipped':
+      return allowedFailure(st) === null ? STEP_LABEL.skipped : ALLOWED_FAILURE_LABEL
     case 'running':
       return nodeLabel.value ?? 'Đang chạy'
     default:
       return STEP_LABEL[st.status]
   }
 })
+const skipWarning = computed(() => allowedFailure(props.step) || '')
 const detailKey = computed(() => (props.step.status === 'running' ? `running:${props.progress?.node ?? ''}` : props.step.status))
 
 const shake = ref(false)
@@ -73,7 +76,8 @@ watch(
     tabindex="0"
     :aria-pressed="selected"
     :aria-label="`${stepName(step)}: ${STEP_LABEL[step.status]}`"
-    :title="`${kindName(step.kind)} · ${step.key}`"
+    :title="`${kindName(step.kind)} · ${step.key}${skipWarning ? `
+${skipWarning}` : ''}`"
     @click="emit('select')"
     @keydown.enter.prevent="emit('select')"
     @keydown.space.prevent="emit('select')"
