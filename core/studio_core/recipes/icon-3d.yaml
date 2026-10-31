@@ -1,0 +1,48 @@
+id: icon-3d
+name: Icon từ mesh 3D (Blender)
+description: >-
+  Nhiều mesh GLB / FBX / OBJ (thả cùng lúc, thêm thư mục tuỳ chọn) → Blender render ortho cùng góc (3/4 nhìn xuống,
+  trước, trên xuống), đèn 3 điểm gắn camera, phơi sáng cố định, toon tuỳ chọn → căn khối vào giữa ô, cùng độ lấp đầy
+  cho cả bộ (thu nhỏ premultiplied, không viền đen) → viền, nền trong / ô độ hiếm / khung icon → PNG từng icon (tên =
+  tên mesh) + atlas + báo cáo tâm, độ lấp đầy → duyệt. Xuất Unity Sprite, Godot texture.
+inputs:
+  meshes: {type: mesh, ext: [glb, fbx, obj], siblings: multi, label: "Mesh (GLB / FBX / OBJ, chọn nhiều)"}
+  folder: {type: text, path: dir, required: false, default: "", label: "Thêm mesh từ thư mục (tuỳ chọn)"}
+  angle: {type: enum, default: iso34, options: [iso34, front, top], label: "Góc (iso34 = 3/4 nhìn xuống 30°)"}
+  size: {type: int, default: 256, options: [128, 256, 512], label: Cỡ icon (px)}
+  padding: {type: float, default: 0.08, min: 0, max: 0.3, label: Lề}
+  outline: {type: int, default: 0, min: 0, max: 16, label: "Viền ngoài (px, 0 = tắt)"}
+  outline_color: {type: text, default: "#1b1420", label: Màu viền}
+  toon: {type: bool, default: false, label: Toon (cel shading)}
+  background: {type: enum, default: transparent, options: [transparent, rarity, frame],
+               label: "Nền (trong suốt / ô độ hiếm / khung icon)"}
+  tier: {type: int, default: 3, min: 1, max: 5, label: "Bậc độ hiếm 1–5 (nền rarity)"}
+  asset: {type: text, default: icons, label: Tên bộ icon}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: render
+    kind: blender.icon_render
+    in: {mesh: inputs.meshes}
+    params: {angle: "${inputs.angle}", size: "${inputs.size}", toon: "${inputs.toon}", folder: "${inputs.folder}"}
+  - id: compose
+    kind: op.icon_compose
+    in: {images: render.images}
+    params: {asset: "${inputs.asset}", size: "${inputs.size}", padding: "${inputs.padding}",
+             outline: "${inputs.outline}", outline_color: "${inputs.outline_color}",
+             background: "${inputs.background}", tier: "${inputs.tier}"}
+  - id: icons
+    kind: op.nine_slice
+    in: {images: compose.images}
+    params: {slice: false, states: none}
+  - id: approve
+    kind: gate.approve
+    in: {images: icons.images, slices: icons.slices, preview: compose.preview, atlas: compose.atlas,
+         atlas_json: compose.atlas_json, report: compose.report}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  slices: approve.slices
+  preview: approve.preview
+  atlas: approve.atlas
+  atlas_json: approve.atlas_json
+  report: approve.report

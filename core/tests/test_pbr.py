@@ -118,6 +118,16 @@ async def test_export_unity_mat_and_godot_tres(tmp_path: Path):
     packed = Image.open(__import__("io").BytesIO(u["PBR/Stone_metallic_smoothness.png"]))
     assert packed.mode == "RGBA" and np.asarray(packed)[..., 0].max() == 0
     assert "PBR/Stone.mat" in u["README.txt"].decode()
+    # Built-in RP projects would draw the URP Lit material pink: an Editor script swaps the shader by pipeline, in a
+    # namespace of its own per export so two exports in one project never clash.
+    from studio_core.export.pbr import PIPELINE_FILE
+
+    cs = u[f"Editor/{PIPELINE_FILE}"].decode()
+    assert "namespace AssetStudio.Pbr" in cs and 'Shader.Find("Standard")' in cs and "public static void BuildAll()" in cs
+    assert "GraphicsSettings.currentRenderPipeline" in cs and "'\\\\'" in cs
+    other = dict(unity.export(engine_source(step, [], ctx.blobs, "Rock")))[f"Editor/{PIPELINE_FILE}"].decode()
+    assert other.split("namespace ")[1].split("\n")[0] != cs.split("namespace ")[1].split("\n")[0]
+    assert f"Editor/{PIPELINE_FILE}.meta" in u
 
     g = dict(godot.export(src))
     tres = g["PBR/Stone.tres"].decode()

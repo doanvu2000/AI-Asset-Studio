@@ -57,6 +57,13 @@ FIX_TYPES = ("mobile_preset", "max_size", "drop_alpha")
 # TextureImporterType cookie, lightmap, single channel, directional lightmap, shadowmask: data, not art.
 DATA_TEXTURE_TYPES = {4, 6, 10, 11, 12}
 MAX_NEAR_DUP = 3000
+# CLIP on CPU runs ~20 ms per image; past this many candidates the scan would stall, so pHash alone decides.
+MAX_CLIP_DUP = 1500
+CLIP_EMBED_CHUNK = 64
+# Measured on a Unity UI kit: different panels of one kit sit at cosine 0.95-0.97, so CLIP alone needs a higher
+# bar than the Library's "find similar" (0.95); pHash-close pairs only need CLIP not to disagree (recolours).
+CLIP_CONFIRM = 0.9
+CLIP_ONLY = 0.985
 BINARY_CAPABLE = (".unity", ".prefab", ".asset", ".mat", ".controller", ".anim", ".playable", ".mixer",
                   ".spriteatlas", ".spriteatlasv2", ".terrainlayer", ".lighting")
 HIGH_DEPTH_MODES = ("I;16", "I;16B", "I;16L", "I", "F")
@@ -426,8 +433,30 @@ def _ref_kind(name: str) -> str | None:
     return None
 
 
-def _dup_groups(tex: list[dict[str, Any]], probes: dict[str, dict[str, Any]], hashes: dict[str, str]
-                ) -> list[dict[str, Any]]:
+def _clip_vectors(proj: Path, rels: list[str], embedder: Any) -> dict[str, np.ndarray] | None:
+    if embedder is None or not rels or len(rels) > MAX_CLIP_DUP or not embedder.available():
+        return None
+    vecs: dict[str, np.ndarray] = {}
+    for i in range(0, len(rels), CLIP_EMBED_CHUNK):
+        chunk, imgs = [], []
+        for r in rels[i:i + CLIP_EMBED_CHUNK]:
+            try:
+                with Image.open(proj / r) as im:
+                    im.draft("RGB", (448, 448))
+                    imgs.append(im.convert("RGBA") if im.mode in ("P", "PA", "LA") else im.copy())
+                chunk.append(r)
+            except (OSError, ValueError, Image.DecompressionBombError):
+                continue
+        if imgs:
+            arr = embedder.embed_images(imgs)
+            vecs.update(zip(chunk, arr))
+    return vecs
+
+
+def _dup_groups(tex: list[dict[str, Any]], probes: dict[str, dict[str, Any]], hashes: dict[str, str],
+                proj: Path | None = None, embedder: Any = None) -> tuple[list[dict[str, Any]], str]:
+    """Exact (same bytes) and near-duplicate groups. With the CLIP model a pHash-close pair must also agree in
+    embedding, and an almost identical embedding counts on its own (crop / padding changes); else pHash + dHash."""
     from studio_core.engine.similar import hamming
 
     groups: list[dict[str, Any]] = []
@@ -441,6 +470,13 @@ def _dup_groups(tex: list[dict[str, Any]], probes: dict[str, dict[str, Any]], ha
             groups.append({"kind": "exact", "files": rels, "wasted_bytes": sum(size[r] for r in rels[1:])})
             exact_member.update(rels[1:])
     cands = [t["rel"] for t in tex if t["rel"] not in exact_member and probes[t["rel"]].get("phash")][:MAX_NEAR_DUP]
+    vecs = None
+    if proj is not None and embedder is not None:
+        try:
+            vecs = _clip_vectors(proj, [r for r in cands if not probes[r].get("data")], embedder)
+        except Exception:  # noqa: BLE001 - a broken model must not fail the whole audit
+            vecs = None
+    method = "clip" if vecs else "phash"
     parent = {r: r for r in cands}
 
     def find(r: str) -> str:
@@ -456,7 +492,9 @@ def _dup_groups(tex: list[dict[str, Any]], probes: dict[str, dict[str, Any]], ha
             if hashes[a] == hashes[b]:
                 continue
             hp, hd = hamming(pa["phash"], pb["phash"]), hamming(pa["dhash"], pb["dhash"])
-            if hp is not None and hd is not None and hp <= NEAR_PHASH and hd <= NEAR_DHASH:
+            close = hp is not None and hd is not None and hp <= NEAR_PHASH and hd <= NEAR_DHASH
+            cos = float(np.dot(vecs[a], vecs[b])) if vecs and a in vecs and b in vecs else None
+            if (close and (cos is None or cos >= CLIP_CONFIRM)) or (cos is not None and cos >= CLIP_ONLY):
                 parent[find(a)] = find(b)
     near: dict[str, list[str]] = {}
     for r in cands:
@@ -464,9 +502,10 @@ def _dup_groups(tex: list[dict[str, Any]], probes: dict[str, dict[str, Any]], ha
     for rels in near.values():
         if len(rels) > 1:
             rels.sort(key=lambda r: -size[r])
-            groups.append({"kind": "near", "files": rels, "wasted_bytes": sum(size[r] for r in rels[1:])})
+            groups.append({"kind": "near", "files": rels, "wasted_bytes": sum(size[r] for r in rels[1:]),
+                           "method": "clip" if vecs and all(r in vecs for r in rels) else "phash"})
     groups.sort(key=lambda g: -g["wasted_bytes"])
-    return groups
+    return groups, method
 
 
 def _audio_unity(meta: dict[str, Any], secs: float | None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -498,8 +537,9 @@ def _rel_inside(root: Path, p: Path) -> str:
 
 
 def scan(path: str | Path, engine: str = "auto", tri_budget: int = DEFAULT_TRI_BUDGET, duplicates: bool = True,
-         max_files: int = MAX_FILES) -> dict[str, Any]:
-    """Read-only audit of `path` (a folder inside a Unity or Godot project; references are checked project-wide)."""
+         max_files: int = MAX_FILES, embedder: Any = None) -> dict[str, Any]:
+    """Read-only audit of `path` (a folder inside a Unity or Godot project; references are checked project-wide).
+    `embedder` (adapters.embedder.ClipEmbedder) makes near-duplicates use CLIP when its model is installed."""
     folder = Path(str(path or "")).expanduser()
     if not str(path or "").strip() or not folder.is_absolute():
         raise AuditError("path must be an absolute folder path")
@@ -587,7 +627,7 @@ def scan(path: str | Path, engine: str = "auto", tri_budget: int = DEFAULT_TRI_B
                 uid_of[rel] = uid
 
     unreferenced = _unreferenced(engine, proj, targets, ref_files, guid_of, uid_of, notes)
-    dups = _dup_groups(textures, probes, hashes) if duplicates else []
+    dups, dup_method = _dup_groups(textures, probes, hashes, proj, embedder) if duplicates else ([], "off")
     for g in dups:
         for r in g["files"]:
             t = next(t for t in textures if t["rel"] == r)
@@ -617,6 +657,7 @@ def scan(path: str | Path, engine: str = "auto", tri_budget: int = DEFAULT_TRI_B
             "gpu_before": int(gpu_before), "gpu_after": int(gpu_after),
             "fixable": sum(1 for t in textures if any(i.get("fix") for i in t["issues"])),
             "duplicate_groups": len(dups), "duplicate_bytes": sum(g["wasted_bytes"] for g in dups),
+            "duplicate_method": dup_method,
             "unreferenced": len(unreferenced), "unreferenced_bytes": sum(u["bytes"] for u in unreferenced),
             "meshes": len(meshes), "meshes_over": len(over), "audio": len(audio), "issues": issue_counts,
         },

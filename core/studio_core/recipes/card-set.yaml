@@ -1,0 +1,72 @@
+id: card-set
+name: Bộ thẻ bài (khung theo độ hiếm + art + chữ tự co)
+description: >-
+  Danh sách thẻ CSV / JSON (tên, mô tả, chi phí, công / máu, độ hiếm, loại, prompt art) → art từng thẻ bằng Z-Image
+  theo style dự án, hoặc Flux.2 Klein theo ảnh style tham chiếu → CPU vẽ khung theo độ hiếm (5 bậc màu, bậc cao có
+  ngọc + viền sáng) và loại (sinh vật, phép, trang bị, bẫy, anh hùng: đổi màu nền + dáng ô art), chữ tiếng Việt có
+  dấu tự co / xuống dòng vừa ô, mặt sau chung → thẻ 63×88 + atlas + card_set.json → duyệt. Xuất Unity (prefab UGUI
+  từng thẻ + ScriptableObject) và Godot (scene Control từng thẻ + Resource).
+inputs:
+  cards: {type: file, ext: [csv, json],
+          label: "Danh sách thẻ .csv / .json (tên, mô tả, chi phí, công, máu, độ hiếm, loại, art)"}
+  style: {type: text, required: false, default: "", label: "Phong cách art (trống = theo dự án / mặc định)",
+          placeholder: "painterly dark fantasy, rich colours, dramatic rim light"}
+  image: {type: image, required: false, label: "Ảnh style tham chiếu (tuỳ chọn → Klein vẽ theo nét này)"}
+  art: {type: enum, default: auto, options: [auto, zimage, klein, none],
+        label: "Vẽ art (auto = Klein nếu có ảnh style, không thì Z-Image; none = art tạm CPU)"}
+  back: {type: text, required: false, default: "ornate symmetrical card back, central glowing emblem, intricate filigree border pattern",
+         label: "Mặt sau (mô tả; none = hoa văn CPU)"}
+  width: {type: int, default: 756, min: 252, max: 2016, label: "Rộng thẻ (px; cao = rộng × 88 / 63)"}
+  colors: {type: text, default: auto, label: "Màu 5 bậc hiếm (auto | #hex, #hex…)"}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: plan
+    kind: op.card_plan
+    in: {cards: inputs.cards, ref: inputs.image}
+    params: {style: "${inputs.style}", art: "${inputs.art}", back: "${inputs.back}"}
+  # Each GPU step runs once per prompt the plan wrote for its engine: the other engine's lists are empty, so it never
+  # starts ComfyUI.
+  - id: art_z
+    kind: comfy.t2i_zimage_turbo
+    params:
+      "57:27.text": ["${steps.plan.plan.prompts_z}"]
+      "57:13.width": 1024
+      "57:13.height": 768
+      "57:13.batch_size": 1
+    map_param: "57:27.text"
+  - id: back_z
+    kind: comfy.t2i_zimage_turbo
+    params:
+      "57:27.text": ["${steps.plan.plan.back_z}"]
+      "57:13.width": 768
+      "57:13.height": 1024
+      "57:13.batch_size": 1
+    map_param: "57:27.text"
+  - id: art_k
+    kind: comfy.edit_flux2_klein4b
+    in: {image: plan.ref_cards}
+    map: image
+    params:
+      "75:74.text": ["${steps.plan.plan.prompts_k}"]
+    map_param: "75:74.text"
+  - id: back_k
+    kind: comfy.edit_flux2_klein4b
+    in: {image: plan.ref_back}
+    map: image
+    params:
+      "75:74.text": ["${steps.plan.plan.back_k}"]
+    map_param: "75:74.text"
+  - id: render
+    kind: op.card_set
+    in: {plan: plan.plan, art: [art_z.images, art_k.images], back: [back_z.images, back_k.images]}
+    params: {width: "${inputs.width}", colors: "${inputs.colors}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: render.preview, images: render.images, cards: render.cards, frames: render.frames,
+         art: render.art, atlas: render.atlas}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  cards: approve.cards
+  atlas: approve.atlas

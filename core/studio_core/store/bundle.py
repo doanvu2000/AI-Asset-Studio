@@ -255,6 +255,18 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
     from studio_core.export.minimap import minimap_set
 
     src.minimap, src.minimap_files = minimap_set(step, blobs)
+    from studio_core.export.card_set import card_set
+
+    src.cards, src.cards_files = card_set(step, blobs)
+    from studio_core.export.tile_anim import tile_anim_set
+
+    src.tile_anim, src.tile_anim_sheet = tile_anim_set(step, blobs)
+    from studio_core.export.iso import iso_set
+
+    src.iso, src.iso_files = iso_set(step, blobs)
+    from studio_core.export.playable_scene import playable_set
+
+    src.playable, src.playable_files = playable_set(step, blobs)
     return src
 
 
@@ -401,7 +413,8 @@ def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
             or bool(src.rarity) or bool(src.luts) or bool(src.damage_states)
             or bool(src.parallax) or bool(src.image_layers) or bool(src.localized) or bool(src.npc)
             or bool(src.autotile) or bool(src.font) or bool(src.skybox) or bool(src.decals) or bool(src.terrain)
-            or bool(src.vfx) or bool(src.minimap))
+            or bool(src.vfx) or bool(src.minimap) or bool(src.tile_anim) or bool(src.cards)
+            or bool(src.iso) or bool(src.playable))
 
 
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,

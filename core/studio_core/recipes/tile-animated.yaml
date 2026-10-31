@@ -1,0 +1,74 @@
+id: tile-animated
+name: Tile động (nước, dung nham, cỏ gió, đuốc, thác)
+description: >-
+  1 tile (hoặc autotile 47 ô kèm autotile.json) + kiểu chuyển động → vòng lặp 4–16 frame. water / lava / grass_wind
+  chạy CPU: nhiễu tuần hoàn theo cả không gian lẫn thời gian bẻ cong texture, mép trái-phải, trên-dưới liền tuyệt đối,
+  frame cuối nối frame đầu đúng nhịp. torch / waterfall / custom: lát 3×3 → Wan 2.2 TI2V sinh video → chọn ứng viên →
+  cắt ô giữa, dựng lại mép từ ô kề → tìm đoạn lặp + crossfade. Autotile: cả 48 ô vẽ lại mỗi frame cùng một chuyển
+  động. Đo mép + vòng lặp theo ngưỡng texture-seamless → duyệt. Xuất Godot TileSet (tile có animation frames) và Unity
+  AnimatedTile / RuleTile động (cần 2D Tilemap Extras, kèm AnimationClip dự phòng).
+inputs:
+  image: {type: image, label: "Tile (ảnh vuông liền mạch; autotile: ảnh atlas 8×6)"}
+  autotile: {type: file, ext: [json], required: false, label: "autotile.json từ autotile-terrain (tuỳ chọn → bộ 47 ô động)"}
+  kind: {type: enum, default: water, options: [water, lava, grass_wind, torch, waterfall, custom],
+         label: "Kiểu (water / lava / grass_wind chạy CPU; torch / waterfall / custom dùng Wan video)"}
+  prompt: {type: text, required: false, default: "", multiline: true, label: "Mô tả chuyển động (custom bắt buộc)",
+           placeholder: "crystals pulse with a soft blue glow"}
+  layer: {type: enum, default: auto, options: [auto, a, b, both], label: "Autotile: địa hình chuyển động (auto = theo tên)"}
+  frames: {type: int, default: 8, options: [4, 6, 8, 12, 16], label: Số frame}
+  fps: {type: int, default: 8, min: 2, max: 30, label: FPS}
+  size: {type: int, default: 0, options: [0, 16, 32, 64, 128, 256], label: "Cỡ ô (px, 0 = giữ nguyên)"}
+  strength: {type: float, default: 1.0, min: 0.2, max: 2.5, label: Độ mạnh chuyển động}
+  scroll: {type: enum, default: none, options: [none, down, up, right, left], label: "Trôi theo hướng (CPU, 1 ô mỗi vòng)"}
+  seed: {type: int, default: 0, min: 0, max: 99999, label: Seed chuyển động}
+  candidates: {type: int, default: 2, min: 1, max: 4, label: Số ứng viên video (kiểu Wan)}
+  seconds: {type: int, default: 2, options: [2, 3, 4], label: Độ dài video sinh (giây, kiểu Wan)}
+  sampler_steps: {type: int, default: 20, min: 8, max: 40, label: Số bước khử nhiễu (kiểu Wan)}
+  review: {type: bool, default: true, label: Chọn ứng viên + duyệt trước khi xong}
+rules:
+  - when: {kind: custom}
+    min_items: {lines: prompt, min: 1}
+    message: "Kiểu custom cần mô tả chuyển động"
+steps:
+  - id: prep
+    kind: op.tile_anim_prep
+    in: {images: inputs.image, autotile: inputs.autotile}
+    params: {kind: "${inputs.kind}", prompt: "${inputs.prompt}", layer: "${inputs.layer}", resolution: 480p,
+             seconds: "${inputs.seconds}", candidates: "${inputs.candidates}", review: "${inputs.review}"}
+  # CPU kinds hand over no start image, so this maps over nothing and never touches the GPU.
+  - id: gen
+    kind: comfy.keyart_wan22_ti2v
+    in: {image: prep.starts}
+    map: image
+    params:
+      "6.text": "${steps.prep.json.prompt}"
+      "55.width": "${steps.prep.json.width}"
+      "55.height": "${steps.prep.json.height}"
+      "55.length": "${steps.prep.json.length}"
+      "3.steps": "${inputs.sampler_steps}"
+      _free_before: true
+      _timeout_s: 3600
+  - id: candidates
+    kind: op.tile_anim_candidates
+    in: {frames: gen.images, json: prep.json, image: prep.image}
+  - id: pick
+    kind: gate.pick
+    in: {images: candidates.previews}
+    params: {k: 1, enabled: "${steps.prep.json.pick}"}
+  - id: anim
+    kind: op.tile_animate
+    in: {picked: pick.images, candidates: candidates.json, image: prep.image, json: prep.json,
+         autotile: inputs.autotile}
+    params: {kind: "${inputs.kind}", frames: "${inputs.frames}", fps: "${inputs.fps}", size: "${inputs.size}",
+             strength: "${inputs.strength}", scroll: "${inputs.scroll}", seed: "${inputs.seed}"}
+  - id: approve
+    kind: gate.approve
+    in: {sheet: anim.sheet, preview: anim.gif, qa: anim.qa, frames: anim.images, tile_anim: anim.tile_anim,
+         report: anim.json}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.sheet
+  preview: approve.preview
+  qa: approve.qa
+  frames: approve.frames
+  tile_anim: approve.tile_anim

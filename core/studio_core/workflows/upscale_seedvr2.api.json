@@ -1,0 +1,122 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "example.png"
+    },
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "2": {
+    "class_type": "SeedVR2LoadDiTModel",
+    "inputs": {
+      "model": "seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+      "device": "cuda:0",
+      "blocks_to_swap": 0,
+      "swap_io_components": false,
+      "offload_device": "cpu",
+      "cache_model": false,
+      "attention_mode": "sdpa"
+    },
+    "_meta": {
+      "title": "SeedVR2 Load DiT Model"
+    }
+  },
+  "3": {
+    "class_type": "SeedVR2LoadVAEModel",
+    "inputs": {
+      "model": "ema_vae_fp16.safetensors",
+      "device": "cuda:0",
+      "encode_tiled": true,
+      "encode_tile_size": 1024,
+      "encode_tile_overlap": 128,
+      "decode_tiled": true,
+      "decode_tile_size": 1024,
+      "decode_tile_overlap": 128,
+      "tile_debug": "false",
+      "offload_device": "cpu",
+      "cache_model": false
+    },
+    "_meta": {
+      "title": "SeedVR2 Load VAE Model"
+    }
+  },
+  "4": {
+    "class_type": "GetImageSize",
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "5": {
+    "class_type": "ComfyMathExpression",
+    "inputs": {
+      "expression": "2 * round(min(a, b) * 4 / 2)",
+      "values.a": [
+        "4",
+        0
+      ],
+      "values.b": [
+        "4",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "Target short edge"
+    }
+  },
+  "6": {
+    "class_type": "SeedVR2VideoUpscaler",
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ],
+      "dit": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ],
+      "seed": 42,
+      "resolution": [
+        "5",
+        1
+      ],
+      "max_resolution": 0,
+      "batch_size": 1,
+      "uniform_batch_size": false,
+      "temporal_overlap": 0,
+      "prepend_frames": 0,
+      "color_correction": "lab",
+      "input_noise_scale": 0.0,
+      "latent_noise_scale": 0.0,
+      "offload_device": "cpu",
+      "enable_debug": false
+    },
+    "_meta": {
+      "title": "SeedVR2 Video Upscaler"
+    }
+  },
+  "save": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "6",
+        0
+      ],
+      "filename_prefix": "upscale/seedvr2"
+    },
+    "_meta": {
+      "title": "Save Image"
+    }
+  }
+}

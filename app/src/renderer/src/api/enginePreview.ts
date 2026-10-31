@@ -32,6 +32,16 @@ export interface EnginePreviewJob {
   log_tail: string
 }
 
+/** POST /api/steps/{id}/open-in-engine (playable scene): where it was staged and whether the editor was started. */
+export interface OpenInEngineResult {
+  engine: PreviewEngine
+  project: string
+  scene: string
+  launched: boolean
+  note: string
+  export_dir: string
+}
+
 export interface EnginePreviewBody {
   engine: PreviewEngine
   name?: string

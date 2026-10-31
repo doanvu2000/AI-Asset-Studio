@@ -202,13 +202,51 @@ namespace AssetStudio.Bridge
         {
             if (string.IsNullOrEmpty(src) || !Directory.Exists(src)) throw new StudioException(0, "export_missing", $"export folder not found: {src}");
             if (Directory.Exists(dest)) Directory.Delete(dest, true);
+            var shared = SharedScripts(src, dest);
             foreach (var file in Directory.GetFiles(src, "*", SearchOption.AllDirectories))
             {
+                if (shared.TryGetValue(Path.GetFullPath(file), out var have))
+                {
+                    if (file.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)) File.Copy(file, have, true);
+                    continue;
+                }
                 var rel = file.Substring(src.Length).TrimStart('\\', '/');
                 var to = Path.Combine(dest, rel);
                 Directory.CreateDirectory(Path.GetDirectoryName(to)!);
                 File.Copy(file, to, true);
             }
+        }
+
+        static readonly Regex MetaGuid = new(@"^guid: ([0-9a-f]{32})\s*$", RegexOptions.Multiline);
+
+        static string GuidOf(string meta)
+        {
+            try { var m = MetaGuid.Match(File.ReadAllText(meta)); return m.Success ? m.Groups[1].Value : null; }
+            catch (IOException) { return null; }
+        }
+
+        /// <summary>
+        /// Shared fixed-GUID scripts (NpcData.cs, AssetStudioParallax.cs...) that another import already put in Assets/
+        /// map to that copy (export file -> existing file, for the .cs and its .meta): a second copy would be CS0101
+        /// plus a GUID clash, so the existing one is refreshed in place instead.
+        /// </summary>
+        static Dictionary<string, string> SharedScripts(string src, string dest)
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var wanted = new Dictionary<string, string>();
+            foreach (var meta in Directory.GetFiles(src, "*.cs.meta", SearchOption.AllDirectories))
+                if (GuidOf(meta) is { } g) wanted[g] = Path.GetFullPath(meta);
+            if (wanted.Count == 0 || !Directory.Exists("Assets")) return map;
+            var destFull = Path.GetFullPath(dest).TrimEnd('\\', '/') + Path.DirectorySeparatorChar;
+            foreach (var meta in Directory.GetFiles("Assets", "*.cs.meta", SearchOption.AllDirectories))
+            {
+                var full = Path.GetFullPath(meta);
+                if (full.StartsWith(destFull, StringComparison.OrdinalIgnoreCase)) continue;
+                if (GuidOf(meta) is not { } g || !wanted.TryGetValue(g, out var mine) || map.ContainsKey(mine)) continue;
+                map[mine] = full;
+                map[mine.Substring(0, mine.Length - 5)] = full.Substring(0, full.Length - 5);
+            }
+            return map;
         }
 
         public static object ParseValue(object spec, string text)

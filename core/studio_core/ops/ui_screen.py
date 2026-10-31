@@ -469,11 +469,42 @@ def placeholder_icon(name: str, size: int = 128) -> Image.Image:
     return img
 
 
+ICON_SUBJECTS = {"back": "a bold left-pointing arrow", "close": "a bold X cross mark", "settings": "a gear cog",
+                 "play": "a play triangle", "home": "a small house", "pause": "two thick vertical pause bars",
+                 "music": "a music note", "sound": "a speaker", "lock": "a padlock", "info": "a letter i in a circle",
+                 "plus": "a bold plus sign", "retry": "a circular arrow", "restart": "a circular arrow",
+                 "next": "a bold right-pointing arrow", "menu": "three horizontal bars"}
+
+
+def icon_names(layout: dict[str, Any]) -> list[str]:
+    seen: list[str] = []
+    for n in layout.get("nodes") or []:
+        name = str(n.get("icon") or "").strip()
+        if name and name not in seen:
+            seen.append(name)
+    return seen
+
+
+def icon_prompt(name: str, style: str) -> str:
+    words = " ".join(re.split(r"[^A-Za-z0-9]+", name)).strip().lower()
+    subject = next((v for k, v in ICON_SUBJECTS.items() if k in words.split()), f"a {words}")
+    style = " ".join(style.split())[:300]
+    return (f"A single game UI icon of {subject}, {style}. One icon centered, filling most of the image, on a plain "
+            "pure white background, no frame, no text, no letters.")
+
+
+def icons_to_draw(layout: dict[str, Any], style: str, have: list[str]) -> tuple[list[str], list[str]]:
+    """Icon names the layout uses that `have` (an icon-pack's names) cannot cover, and a Z-Image prompt for each."""
+    pack = dict.fromkeys(have)
+    names = [n for n in icon_names(layout) if match_icon(n, pack) is None]  # type: ignore[arg-type]
+    return names, [icon_prompt(n, style) for n in names]
+
+
 def _tokens(s: str) -> set[str]:
     return {t for t in re.split(r"[^a-z0-9]+", s.lower()) if t and t not in ("icon", "a", "the", "of")}
 
 
-def match_icon(name: str, icons: dict[str, Image.Image]) -> str | None:
+def match_icon(name: str, icons: dict[str, Any]) -> str | None:
     want = _tokens(name)
     best, score = None, 0.0
     for k in icons:
@@ -843,6 +874,7 @@ class UiScreen(OpExecutor):
         raw = await _json_in(ctx, inputs, "layout")
         if raw is None:
             raw = template(screen, str(params.get("title") or ""))
+        drawn = [str(v) for v in raw.get("icon_names") or []] if isinstance(raw, dict) else []
         layout = normalize_layout(raw, screen if screen in SCREENS else str(raw.get("screen") or screen), orientation)
 
         def load(h: str) -> Image.Image | None:
@@ -860,6 +892,13 @@ class UiScreen(OpExecutor):
         if icon_doc is not None:
             for sp in [s for ss in (await asyncio.to_thread(kit_from_slices, icon_doc, load)).values() for s in ss]:
                 icon_pack[sp.name] = sp.img
+        # Z-Image icons arrive in the order of the layout's icon_names (the recipe maps one prompt per name).
+        gen = inputs.get("gen_icons") or []
+        if gen and len(gen) == len(drawn):
+            for name, ref in zip(drawn, gen):
+                img = load(ref.hash)
+                if img is not None and name not in icon_pack:
+                    icon_pack[name] = img
         font_doc = await _json_in(ctx, inputs, "font")
         bmf = await asyncio.to_thread(_load_bitmap_font, font_doc, load) if font_doc is not None else None
         bg = await _load(ctx, inputs["background"][0]) if inputs.get("background") else None

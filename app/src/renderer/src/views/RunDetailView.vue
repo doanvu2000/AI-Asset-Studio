@@ -13,6 +13,7 @@ import ElapsedTimer from '@/components/ElapsedTimer.vue'
 import BlobThumb from '@/components/BlobThumb.vue'
 import AssetViewer from '@/components/viewers/AssetViewer.vue'
 import AssetActions from '@/components/AssetActions.vue'
+import OpenInEngine from '@/components/OpenInEngine.vue'
 import ViewsReport from '@/components/ViewsReport.vue'
 import MeshReport from '@/components/MeshReport.vue'
 import { featuredAsset, isImage, isNormalBlob, outputBlobs, sameSize, viewsFor, type AssetView } from '@/components/viewers/detect'
@@ -535,6 +536,7 @@ function segTitle(s: StepRow): string {
               :version-id="heroVersion?.id"
               :step-id="heroBundleId"
             />
+            <OpenInEngine v-if="heroBundleId" :step-id="heroBundleId" :outputs="steps.find((s) => s.id === heroBundleId)?.outputs" />
             <span class="spacer" />
             <Transition name="fade" mode="out-in">
               <span v-if="inLibrary" key="in" class="in-lib"><CircleCheck :size="16" /> Đã có trong thư viện</span>

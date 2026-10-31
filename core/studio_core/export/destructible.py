@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from studio_core.contracts import BlobStore, StepRow
-from studio_core.export.sheet import cs_namespace
+from studio_core.export.sheet import SHARED_SCRIPT_NOTE, cs_namespace
 from studio_core.export.source import Files, Source
 
 REPORT_FILE = "destructible.json"
@@ -109,7 +109,7 @@ def unity_files(src: Source) -> tuple[Files, list[str]]:
             "AssetStudioFracturedPieces cho mảnh bỏ qua va chạm với nhau vì hull convex của mảnh lõm chồng lên mảnh bên "
             "cạnh — bật piecesCollide nếu prop toàn mảnh lồi); chạy lại: menu "
             f"Asset Studio > Build Destructible Prefabs. {_budget_note(doc)} Nhập nhiều prop vào một project thì giữ "
-            f"một bản Destructible/{SWAP_FILE} và Editor/{EDITOR_FILE} (cùng GUID).")
+            f"một bản Destructible/{SWAP_FILE} và Editor/{EDITOR_FILE} (cùng GUID)" + SHARED_SCRIPT_NOTE + ".")
     return files, [note]
 
 

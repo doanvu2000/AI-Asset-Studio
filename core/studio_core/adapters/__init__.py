@@ -25,8 +25,10 @@ from .store_layout import ClaudeStoreLayoutExecutor
 from .ui_layout import ClaudeUiLayoutExecutor
 from .spine_review import SpineReviewLoopExecutor
 from .terrain import ClaudeTerrainPlanExecutor
+from .card_list import ClaudeCardListExecutor
 from .comfy import CheckedMeshExecutor, CheckedViewsExecutor, ComfyExecutor, ComfyResource
 from .comfy.retexture import RetexPaintExecutor
+from .comfy.upscale import UpscaleModelExecutor
 from .trim import TrimLayoutExecutor, TrimStripsExecutor
 
 
@@ -50,6 +52,7 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     registry.register(BlenderViewsRenderExecutor(settings, blender))
     registry.register(BlenderRetexApplyExecutor(settings, blender))
     registry.register(RetexPaintExecutor(registry.resolve, comfy))
+    registry.register(UpscaleModelExecutor(registry.resolve, settings, comfy))
     registry.register(BlenderModularKitExecutor(settings, blender))
     registry.register(TrimLayoutExecutor(settings))
     registry.register(TrimStripsExecutor(registry.resolve, comfy))
@@ -70,7 +73,15 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     registry.register(ClaudeLayersNamesExecutor(settings))
     registry.register(SpineReviewLoopExecutor(settings))
     registry.register(ClaudeTerrainPlanExecutor(settings))
+    registry.register(ClaudeCardListExecutor(settings))
     registry.register(BlenderScriptExecutor(settings, blender))
     registry.register(Procedural3DExecutor(settings, blender))
     registry.register(BlenderAgentExecutor(settings))
+    from .blender.icon3d import BlenderIconRenderExecutor, BlenderIsoRenderExecutor
+
+    registry.register(BlenderIconRenderExecutor(settings, blender))
+    registry.register(BlenderIsoRenderExecutor(settings, blender))
+    from .scene_layout import ClaudeSceneLayoutExecutor
+
+    registry.register(ClaudeSceneLayoutExecutor(settings))
     return [comfy, blender, codex, claude]

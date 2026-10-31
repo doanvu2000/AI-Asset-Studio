@@ -24,6 +24,36 @@ export function fits(spec: RecipeInputSpec, b: BlobRef): boolean {
   }
 }
 
+// Recipes whose input type matches almost any image but only make sense for some: offered only when the clicked
+// output passes. Python twin: GATES in core/studio_core/mcp/followup.py.
+const MAP_FILE_EXT = ['tmx', 'tmj', 'ldtk']
+const MAP_SOURCE_RECIPE = /^(tileset|autotile|parallax|playable|terrain|minimap|iso-tiles|tile-)/
+const MAP_NAME = /(^|[^a-z])(level|stage|world|room|dungeon|arena|overworld|tilemap|tiled|screenshot|map)([^a-z]|$)/i
+const TEXTURE_MAP_NAME = /(normal|height|rough(ness)?|metal(lic|ness)?|spec(ular)?|bump|disp(lacement)?|light|shadow|splat|mask|uv|ao|occlusion)[_ -]?map/i
+
+export function looksLikeLevel(b: BlobRef, fromRecipe?: string | null): boolean {
+  if (MAP_FILE_EXT.includes(extOf(b.name))) return true
+  if (!b.mime.startsWith('image/')) return false
+  if (fromRecipe && MAP_SOURCE_RECIPE.test(fromRecipe)) return true
+  const name = b.name ?? ''
+  return MAP_NAME.test(name) && !TEXTURE_MAP_NAME.test(name)
+}
+
+const TILE_SOURCE_RECIPE = /^(texture-seamless|tileset|autotile|trim-sheet|iso-tiles|pbr-material|upscale)/
+const TILE_NAME = /(tile|texture|seamless|autotile|wang|ground|terrain|water|lava|grass)/i
+
+export function looksLikeTile(b: BlobRef, fromRecipe?: string | null): boolean {
+  if (!b.mime.startsWith('image/')) return false
+  return (!!fromRecipe && TILE_SOURCE_RECIPE.test(fromRecipe)) || TILE_NAME.test(b.name ?? '')
+}
+
+export const FOLLOW_UP_GATES: Record<string, (clicked: BlobRef, fromRecipe?: string | null) => boolean> = {
+  'tile-animated': looksLikeTile,
+  'iso-tiles-image': looksLikeTile,
+  'card-set': (b) => extOf(b.name) === 'csv' || (extOf(b.name) === 'json' && /card/i.test(b.name ?? '')),
+  minimap: looksLikeLevel
+}
+
 export interface FollowUp {
   recipe: RecipeInfo
   /** Blob input name → hashes, in the order the input expects them. */
@@ -36,11 +66,13 @@ export interface FollowUp {
  * Recipes the clicked output can feed, built from each recipe's declared inputs. Other outputs of the same step
  * fill the remaining file inputs, so a Spine preview offers skin/anim recipes with skeleton + atlas already set.
  */
-export function followUps(recipes: RecipeInfo[], clicked: BlobRef, siblings: Outputs = {}): FollowUp[] {
+export function followUps(recipes: RecipeInfo[], clicked: BlobRef, siblings: Outputs = {}, fromRecipe?: string | null): FollowUp[] {
   const pool = uniq([clicked, ...Object.values(siblings).flat()])
   const pages = PAGE_KEYS.map((k) => siblings[k]).find((l) => l?.length) ?? []
   const out: FollowUp[] = []
   for (const recipe of recipes) {
+    const gate = FOLLOW_UP_GATES[recipe.id]
+    if (gate && !gate(clicked, fromRecipe)) continue
     const blobInputs = Object.entries(recipe.inputs).filter(([, s]) => BLOB_TYPES.has(s.type))
     const required = blobInputs.filter(([, s]) => s.required !== false)
     if (!required.length) continue

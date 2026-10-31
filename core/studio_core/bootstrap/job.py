@@ -17,8 +17,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from studio_core.bootstrap.plan import (comfy_ready, detect_gpu, download_path, free_bytes, manifest, model_path,
-                                        model_present, pack_models, workflows_dir)
+from studio_core.bootstrap.plan import (comfy_ready, custom_node_present, detect_gpu, download_path, free_bytes,
+                                        manifest, model_path, model_present, pack_models, workflows_dir)
 from studio_core.config import Settings, save_overrides
 
 CHUNK = 1 << 20
@@ -74,6 +74,7 @@ class SetupJob:
         self.comfy_dir = self.comfy_python = self.blender_exe = self.claude_exe = None
         self.models = [m for m in pack_models(self.req.packs) if not model_present(self.req.models_dir, m)]
         self.pack_files: dict[str, list[dict[str, Any]]] = {}
+        self.pack_nodes: dict[str, list[dict[str, Any]]] = {}
         taken: set[str] = set()
         self.items = [Item("comfyui", "ComfyUI + Python + PyTorch")]
         for p in manifest()["packs"]:
@@ -82,8 +83,11 @@ class SetupJob:
             names = {m["name"] for m in pack_models([p["id"]])} - taken
             files = [m for m in self.models if m["name"] in names]
             taken |= names
-            if files:
+            nodes = [n for n in p.get("custom_nodes") or [] if not custom_node_present(self.settings.comfy_dir, n)]
+            if files or nodes:
                 self.pack_files[p["id"]] = files
+                if nodes:
+                    self.pack_nodes[p["id"]] = nodes
                 self.items.append(Item(f"pack:{p['id']}", f"Gói {p['label']} ({len(files)} file)",
                                        total=sum(m["size"] for m in files)))
         self._active: dict[str, dict[str, list[int]]] = {}
@@ -229,7 +233,10 @@ class SetupJob:
         return str(exe)
 
     def _models(self, item: Item) -> None:
-        files = self.pack_files[item.id.split(":", 1)[1]]
+        pack = item.id.split(":", 1)[1]
+        for node in self.pack_nodes.get(pack, []):
+            self._custom_node(item, node)
+        files = self.pack_files[pack]
         active = self._active.setdefault(item.id, {})
 
         def one(m: dict[str, Any]) -> None:
@@ -254,6 +261,26 @@ class SetupJob:
             for f in [pool.submit(one, m) for m in files]:
                 f.result()
         self._set(item, detail="Đủ model")
+
+    def _custom_node(self, item: Item, node: dict[str, Any]) -> None:
+        comfy = self.comfy_dir or (self.settings.comfy_dir if comfy_ready(self.settings) else None)
+        python = self.comfy_python or self.settings.comfy_python
+        if comfy is None:
+            raise SetupError(f"Cần ComfyUI trước khi cài node {node['name']}")
+        target = comfy / "custom_nodes" / node["name"]
+        if not custom_node_present(comfy, node):
+            self._set(item, detail=f"Tải node {node['name']}")
+            archive = self.req.tools_dir / "downloads" / f"{node['name']}.zip"
+            self._fetch(node["url"], archive, None)
+            _extract_single_root(archive, target)
+            archive.unlink(missing_ok=True)
+        if node.get("pip"):
+            uv = self._uv(item)
+            env = {**os.environ, "UV_CACHE_DIR": str(self.req.tools_dir / "uv" / "cache"), "UV_LINK_MODE": "copy"}
+            # Named deps only, never the node's requirements.txt: it lists bare torch, which pip could swap for a
+            # CPU or different-CUDA build under ComfyUI.
+            self._exec(item, [uv, "pip", "install", "--python", str(python), *node["pip"]], env,
+                       f"Cài thư viện node {node['name']}")
 
     def _blender(self, item: Item) -> None:
         cfg = manifest()["blender"]
@@ -402,6 +429,10 @@ def _extract_single_root(archive: Path, target: Path) -> None:
     tmp = target.with_name(target.name + ".unzip")
     shutil.rmtree(tmp, ignore_errors=True)
     with zipfile.ZipFile(archive) as z:
+        for n in z.namelist():
+            p = Path(n.replace("\\", "/"))
+            if p.is_absolute() or p.drive or ".." in p.parts:
+                raise SetupError(f"{archive.name}: unsafe path in archive: {n}")
         z.extractall(tmp)
     roots = list(tmp.iterdir())
     src = roots[0] if len(roots) == 1 and roots[0].is_dir() else tmp

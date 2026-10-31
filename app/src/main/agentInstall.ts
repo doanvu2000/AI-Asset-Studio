@@ -1,6 +1,6 @@
 import { execFile } from 'child_process'
 import { existsSync } from 'fs'
-import { copyFile, cp, mkdir, readFile, rm, writeFile } from 'fs/promises'
+import { copyFile, cp, mkdir, readdir, readFile, rm, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
 import type { AgentInstallResult, AgentStatus, AgentTarget, AgentTargetStatus } from '../preload/types'
@@ -12,6 +12,7 @@ const SERVER = 'asset-studio'
 const CLI_TIMEOUT_MS = 120_000
 // Codex ends a tool call after 60 s by default; wait_run/generate legitimately block for many minutes.
 const CODEX_TOOL_TIMEOUT_S = 1900
+const BACKUPS_KEPT = 5
 
 export interface AgentPaths {
   launch: CoreLaunch
@@ -61,7 +62,18 @@ async function backup(src: string, workDir: string, label: string): Promise<stri
   await mkdir(dir, { recursive: true })
   const dst = join(dir, `${label}-${stamp()}`)
   await copyFile(src, dst)
+  await pruneBackups(dir, label)
   return dst
+}
+
+export async function pruneBackups(dir: string, label: string, keep = BACKUPS_KEPT): Promise<string[]> {
+  const prefix = `${label}-`
+  const isStamp = (n: string): boolean => n.startsWith(prefix) && /^\d{4}-\d{2}-\d{2}T[\d-]+$/.test(n.slice(prefix.length))
+  // The ISO stamp sorts chronologically as text; ~/.claude.json backups can be MBs each, so old ones must go.
+  const mine = (await readdir(dir).catch(() => [] as string[])).filter(isStamp).sort()
+  const stale = mine.slice(0, Math.max(0, mine.length - keep))
+  await Promise.all(stale.map((n) => rm(join(dir, n), { force: true })))
+  return stale
 }
 
 async function claudeStatus(): Promise<AgentTargetStatus> {

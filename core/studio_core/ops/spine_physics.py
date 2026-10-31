@@ -27,7 +27,9 @@ from .spine_weld import _deformed
 # mass 1, wind 0, gravity 0, mix 1, limit 5000, fps 60). Damping multiplies velocity every 1/60 s, so < 1 settles.
 PRESETS: dict[str, dict[str, float]] = {
     "hair": {"inertia": 0.5, "strength": 160.0, "damping": 0.85, "mass": 1.0},
-    "cloth": {"inertia": 1.0, "strength": 50.0, "damping": 0.9, "mass": 1.0},
+    # Measured with spine-core 4.2.43 on a 2-bone spine-character cape during walk: 50 / 0.9 swung the hem 5°,
+    # 35 / 0.95 (with LINK_DAMPING) 10° and it still settles within ~2 s of idle.
+    "cloth": {"inertia": 1.0, "strength": 35.0, "damping": 0.95, "mass": 1.0},
     "tail": {"inertia": 0.6, "strength": 120.0, "damping": 0.88, "mass": 1.5},
     "rope": {"inertia": 0.9, "strength": 60.0, "damping": 0.92, "mass": 3.0},
     "ear": {"inertia": 0.4, "strength": 220.0, "damping": 0.8, "mass": 0.8},
@@ -246,12 +248,18 @@ def chain_mesh(att: dict[str, Any], corners: np.ndarray, root: np.ndarray, tip: 
     return mesh
 
 
+# Each link rides on its parent's swing, so a 4-bone cape at the 2-bone damping spun round in spine-core (tip 270°);
+# 0.015 less damping-factor per link kept it at 42° on walk while a 2-bone cape still swings 10°.
+LINK_DAMPING = 0.015
+
+
 def constraint(name: str, bone: str, kind: str, order: int, strength: float = 1.0, wind: float = 0.0,
-               gravity: float = 0.0, root: bool = False) -> dict[str, Any]:
+               gravity: float = 0.0, root: bool = False, link: int = 0) -> dict[str, Any]:
     p = PRESETS[kind]
     c: dict[str, Any] = {"name": name, "order": order, "bone": bone, "x": 0, "y": 0, "rotate": 1, "scaleX": 0,
                          "shearX": 0, "limit": 5000, "fps": 60, "inertia": p["inertia"],
-                         "strength": round(p["strength"] * strength, 3), "damping": p["damping"], "mass": p["mass"],
+                         "strength": round(p["strength"] * strength, 3),
+                         "damping": round(max(0.5, p["damping"] - LINK_DAMPING * link), 4), "mass": p["mass"],
                          "wind": wind, "gravity": gravity, "mix": 1}
     if root and kind == "cloth":
         # A cape / skirt root also slides a little with the body, the hem lags; other kinds only swing.
@@ -347,7 +355,7 @@ def add_physics(doc: dict[str, Any], parts: list[str] | None = None, segments: i
         preset = k if kind == "auto" else kind
         for j, b in enumerate(chain):
             physics.append(constraint(_unique(f"phys_{b}", used), b, preset, order, strength, wind, gravity,
-                                      root=j == 0))
+                                      root=j == 0, link=j))
             order += 1
         report["chains"].append({"bones": chain, "preset": preset, "source": origin})
     report["constraints"] = sum(len(c) for c, _, _ in chains)
@@ -489,7 +497,7 @@ def _mesh_report(doc: dict[str, Any], meshed: list[list[str]]) -> list[str]:
 
 class SpinePhysics(OpExecutor):
     kind = "op.spine_physics"
-    version = "1"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         from . import spine_runtime as rt

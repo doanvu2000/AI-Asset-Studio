@@ -54,6 +54,9 @@ MODELS: dict[str, tuple[str, str, str]] = {
     # Community int8 ConvRot repack (Winnougan/Qwen-Image-INT8) of the Apache-2.0 base; the LoRA card lists MIT.
     "qwen_image_2512_int8_convrot.safetensors": ("Apache-2.0", "yes", "Qwen/Qwen-Image-2512"),
     "qwen-360-diffusion-2512-int8-bf16-v2.safetensors": ("MIT", "yes", "ProGamerGov/qwen-360-diffusion"),
+    # fp8 repack by the ComfyUI node author (numz/SeedVR2_comfyUI) of ByteDance-Seed/SeedVR2-3B, both Apache-2.0.
+    "seedvr2_ema_3b_fp8_e4m3fn.safetensors": ("Apache-2.0", "yes", "ByteDance-Seed/SeedVR2-3B"),
+    "ema_vae_fp16.safetensors": ("Apache-2.0", "yes", "ByteDance-Seed/SeedVR2-3B"),
 }
 
 # Hosted generators: their output terms, not a weights license.

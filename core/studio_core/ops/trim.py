@@ -66,6 +66,65 @@ PRESETS: dict[str, list[tuple[str, int, str]]] = {
 }
 
 
+# Strips whose material has a colour of its own: (keywords, prompt cue, mean albedo at that material's look). The
+# global style often names another material ("grey stone and dark oak"), which pulls a wood strip grey otherwise.
+MATERIALS: dict[str, tuple[tuple[str, ...], str, tuple[float, float, float]]] = {
+    "wood": (("wood", "wooden", "plank", "planks", "oak", "timber", "beam", "beams", "log", "pine", "walnut",
+              "mahogany", "bamboo", "driftwood", "parquet", "lumber"),
+             "natural brown wood colour with visible wood grain", (0.46, 0.31, 0.19)),
+    "brick": (("brick", "bricks", "terracotta", "clay"), "red-brown fired clay colour", (0.55, 0.30, 0.22)),
+    "brass": (("brass", "gold", "golden", "bronze", "gilded"), "warm yellow brass metal colour", (0.70, 0.55, 0.28)),
+    "copper": (("copper",), "orange-brown copper colour", (0.62, 0.38, 0.24)),
+    "rust": (("rust", "rusty", "rusted"), "orange-brown rust colour", (0.52, 0.30, 0.18)),
+    "moss": (("moss", "mossy", "grass", "ivy", "vine", "vines", "leaf", "leaves"), "green vegetation colour",
+             (0.30, 0.42, 0.20)),
+}
+# Chromaticity gap (per channel, at equal luminance) under which a strip already reads as its material.
+TINT_OK = 0.12
+
+
+# Materials whose look is grey or whatever the model draws: naming one first means "leave the colour alone".
+NEUTRAL = ("stone", "stones", "iron", "steel", "metal", "concrete", "marble", "slate", "granite", "ashlar", "flagstone",
+           "cobble", "cobblestone", "plaster", "rope", "tile", "tiles", "rock", "glass", "chrome", "silver")
+# Usually an accent on another surface ("stone with moss traces", "iron with rust streaks"): only a strip named
+# after them gets their colour.
+ACCENT = ("moss", "rust")
+
+
+def strip_material(name: str, prompt: str) -> str | None:
+    """Colour material by the first material word in the strip's name, else in its prompt; a neutral material
+    word first (stone, iron…) means none."""
+    for text, accents in ((name, True), (prompt, False)):
+        words = re.findall(r"[a-z]+", text.lower())
+        hits = [(words.index(k), m) for m, (keys, _, _) in MATERIALS.items() for k in keys
+                if k in words and (accents or m not in ACCENT)]
+        hits += [(words.index(k), None) for k in NEUTRAL if k in words]
+        if hits:
+            return min(hits, key=lambda h: h[0])[1]
+    return None
+
+
+def _lum(c: np.ndarray) -> np.ndarray:
+    return c[..., 0] * 0.2126 + c[..., 1] * 0.7152 + c[..., 2] * 0.0722
+
+
+def fit_material_color(band: np.ndarray, material: str | None) -> tuple[np.ndarray, float]:
+    """Per-channel gain that moves the strip's mean colour to its material's hue at the same brightness, so the
+    grain and shading stay and a grey 'oak' turns brown. Returns the band and how much was applied (0..1)."""
+    if material not in MATERIALS:
+        return band, 0.0
+    target = np.array(MATERIALS[material][2], np.float32)
+    mean = band.reshape(-1, 3).mean(0)
+    cm = mean / max(float(_lum(mean)), 1e-4)
+    ct = target / float(_lum(target))
+    gap = float(np.abs(cm - ct).max())
+    if gap < TINT_OK:
+        return band, 0.0
+    s = min(1.0, (gap - TINT_OK) / 0.25)
+    gain = 1 + s * (ct / np.maximum(cm, 1e-3) - 1)
+    return np.clip(band * gain, 0, 1).astype(np.float32), round(s, 3)
+
+
 def slug(text: Any, fallback: str = "strip") -> str:
     return re.sub(r"[^a-z0-9]+", "_", str(text or "").lower()).strip("_")[:24] or fallback
 
@@ -116,6 +175,8 @@ def normalize_layout(raw: Any, style: str = "") -> dict[str, Any]:
         taken.add(name)
         prompt = " ".join(str(s.get("prompt") or s.get("name") or name).split()).rstrip(" .,")
         strip: dict[str, Any] = {"name": name, "px": snap_height(s.get("px")), "prompt": prompt}
+        if str(s.get("material") or "") in MATERIALS:
+            strip["material"] = s["material"]
         try:
             if s.get("aspect"):
                 strip["aspect"] = round(min(8.0, max(0.25, float(s["aspect"]))), 4)
@@ -130,7 +191,13 @@ def normalize_layout(raw: Any, style: str = "") -> dict[str, Any]:
     strips = strips[:len(heights)]
     for s, h in zip(strips, heights):
         s["px"] = h
-        s["gen_prompt"] = ", ".join(p for p in (s["prompt"], style.strip().rstrip(" .,"), STRIP_SUFFIX) if p)
+        mat = s.get("material") if s.get("material") in MATERIALS else strip_material(s["name"], s["prompt"])
+        if mat:
+            s["material"] = mat
+        else:
+            s.pop("material", None)
+        cue = MATERIALS[mat][1] if mat else ""
+        s["gen_prompt"] = ", ".join(p for p in (s["prompt"], cue, style.strip().rstrip(" .,"), STRIP_SUFFIX) if p)
     return {"type": LAYOUT_TYPE, "style": style.strip(), "base": BASE, "strips": strips}
 
 
@@ -279,6 +346,7 @@ class TrimSheet(OpExecutor):
             src = await _load(ctx, ref)
             h = max(1, round(s["px"] * scale))
             band, meta = await asyncio.to_thread(make_strip, src, size, h, overlap, 3, flatten, s.get("aspect"))
+            band, meta["tint"] = await asyncio.to_thread(fit_material_color, band, s.get("material"))
             maps.append(await asyncio.to_thread(strip_maps, band, pbr))
             info.append(meta)
         sheet = await asyncio.to_thread(assemble, maps, size)
@@ -286,6 +354,8 @@ class TrimSheet(OpExecutor):
         scores = [m["seam"]["score"] for m in info]
         for r, s, m in zip(ranges, strips, info):
             r.update({"prompt": s["prompt"], "repeats": m["repeats"], "seam": m["seam"]["score"]})
+            if s.get("material"):
+                r.update({"material": s["material"], "tint": m["tint"]})
         maps_out: list[BlobRef] = []
         entry: dict[str, Any] = {"name": asset, "size": [size, size], "maps": {}}
         for role in ROLES:

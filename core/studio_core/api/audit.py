@@ -74,9 +74,24 @@ def _project_of(path: str) -> str:
     return str(proj)
 
 
+def _embedder(request: Request) -> Any:
+    st = request.app.state
+    index = getattr(st, "image_index", None)
+    if index is not None and index.embedder is not None:
+        return index.embedder
+    emb = getattr(st, "similar_embedder", None)
+    if emb is None:
+        from studio_core.adapters.embedder import ClipEmbedder, model_dir
+
+        emb = st.similar_embedder = ClipEmbedder(model_dir(st.settings))
+    return emb
+
+
 async def _scan(request: Request, body: ScanBody) -> dict[str, Any]:
+    embedder = _embedder(request) if body.duplicates else None
     try:
-        doc = await asyncio.to_thread(au.scan, body.path, body.engine, body.tri_budget, body.duplicates)
+        doc = await asyncio.to_thread(au.scan, body.path, body.engine, body.tri_budget, body.duplicates,
+                                      au.MAX_FILES, embedder)
     except au.AuditError as e:
         raise ApiError(422, "bad_folder", str(e)) from e
     doc["options"] = {"engine": body.engine, "tri_budget": body.tri_budget, "duplicates": body.duplicates}

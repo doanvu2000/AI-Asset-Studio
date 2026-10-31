@@ -320,7 +320,7 @@ function reveal(p: string): void {
 
             <ul v-else-if="tab === 'duplicates'" class="list">
               <li v-for="(g, k) in report.duplicates" :key="k" class="item">
-                <span class="caption">{{ g.kind === 'exact' ? 'Trùng hệt' : 'Gần giống' }} · lãng phí {{ mb(g.wasted_bytes) }}</span>
+                <span class="caption">{{ g.kind === 'exact' ? 'Trùng hệt' : g.method === 'clip' ? 'Gần giống (CLIP)' : 'Gần giống' }} · lãng phí {{ mb(g.wasted_bytes) }}</span>
                 <span v-for="f in g.files" :key="f" class="mono rel">{{ f }}</span>
               </li>
               <li v-if="!report.duplicates.length" class="caption">Không có ảnh trùng.</li>

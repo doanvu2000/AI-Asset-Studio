@@ -2,7 +2,7 @@ import { ApiError, type ListRunsQuery, type RecipeBody, type StudioApi, type Ver
 import { FrameBatcher, type EventSink, type EventStream } from '../ws'
 import type { CoreDiagnostics } from '../../../../preload/types'
 import type { AgentActivitySnapshot } from '../types'
-import type { EnginePreviewJob, PreviewEngines } from '../enginePreview'
+import type { EnginePreviewJob, OpenInEngineResult, PreviewEngines } from '../enginePreview'
 import type { HitVfx, StepHits } from '../hitFx'
 import {
   STEP_DONE_OK,
@@ -1976,5 +1976,9 @@ export class MockCore implements StudioApi, EventStream {
 
   async cancelEnginePreview(jobId: string): Promise<EnginePreviewJob> {
     return this.enginePreviewJob(jobId)
+  }
+
+  async openInEngine(): Promise<OpenInEngineResult> {
+    throw new ApiError('engine_unavailable', 'Bản xem thử không chạy được engine thật', 409)
   }
 }

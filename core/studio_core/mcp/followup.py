@@ -2,6 +2,7 @@
 with their file inputs prefilled by blob hash. Keep the two in step."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 VIDEO_EXT = ("mp4", "webm", "mov", "mkv")
@@ -13,8 +14,47 @@ ANIM = "sprite-anim-video"
 ANIM_ACTIONS = ("idle", "walk", "run", "slash", "jump", "hit", "cast")
 
 
+MAP_FILE_EXT = ("tmx", "tmj", "ldtk")
+MAP_SOURCE_RECIPE = re.compile(r"^(tileset|autotile|parallax|playable|terrain|minimap|iso-tiles|tile-)")
+MAP_NAME = re.compile(r"(^|[^a-z])(level|stage|world|room|dungeon|arena|overworld|tilemap|tiled|screenshot|map)"
+                      r"([^a-z]|$)", re.I)
+TEXTURE_MAP_NAME = re.compile(r"(normal|height|rough(ness)?|metal(lic|ness)?|spec(ular)?|bump|disp(lacement)?|light"
+                              r"|shadow|splat|mask|uv|ao|occlusion)[_ -]?map", re.I)
+
+
 def ext_of(name: str | None) -> str:
     return name.lower().rsplit(".", 1)[-1] if name and "." in name else ""
+
+
+def looks_like_level(b: dict[str, Any], from_recipe: str | None = None) -> bool:
+    if ext_of(b.get("name")) in MAP_FILE_EXT:
+        return True
+    if not str(b.get("mime") or "").startswith("image/"):
+        return False
+    if from_recipe and MAP_SOURCE_RECIPE.match(from_recipe):
+        return True
+    name = b.get("name") or ""
+    return bool(MAP_NAME.search(name)) and not TEXTURE_MAP_NAME.search(name)
+
+
+TILE_SOURCE_RECIPE = re.compile(r"^(texture-seamless|tileset|autotile|trim-sheet|iso-tiles|pbr-material|upscale)")
+TILE_NAME = re.compile(r"(tile|texture|seamless|autotile|wang|ground|terrain|water|lava|grass)", re.I)
+
+
+def looks_like_tile(b: dict[str, Any], from_recipe: str | None = None) -> bool:
+    if not str(b.get("mime") or "").startswith("image/"):
+        return False
+    return bool(from_recipe and TILE_SOURCE_RECIPE.match(from_recipe)) or bool(TILE_NAME.search(b.get("name") or ""))
+
+
+def looks_like_card_list(b: dict[str, Any], from_recipe: str | None = None) -> bool:
+    ext = ext_of(b.get("name"))
+    return ext == "csv" or (ext == "json" and "card" in str(b.get("name") or "").lower())
+
+
+# Recipes whose input type matches almost any image but only make sense for some outputs. TS twin: FOLLOW_UP_GATES.
+GATES = {"minimap": looks_like_level, "tile-animated": looks_like_tile, "iso-tiles-image": looks_like_tile,
+         "card-set": looks_like_card_list}
 
 
 def fits(spec: dict[str, Any], b: dict[str, Any]) -> bool:
@@ -41,12 +81,16 @@ def _uniq(blobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def follow_ups(recipes: list[dict[str, Any]], clicked: dict[str, Any],
-               siblings: dict[str, list[dict[str, Any]]] | None = None) -> list[dict[str, Any]]:
+               siblings: dict[str, list[dict[str, Any]]] | None = None,
+               from_recipe: str | None = None) -> list[dict[str, Any]]:
     siblings = siblings or {}
     pool = _uniq([clicked, *(b for refs in siblings.values() for b in refs)])
     pages = next((siblings[k] for k in PAGE_KEYS if siblings.get(k)), [])
     out = []
     for r in recipes:
+        gate = GATES.get(r["id"])
+        if gate and not gate(clicked, from_recipe):
+            continue
         blob_inputs = [(n, s) for n, s in (r.get("inputs") or {}).items() if s.get("type") in BLOB_TYPES]
         required = [(n, s) for n, s in blob_inputs if s.get("required") is not False]
         if not required:

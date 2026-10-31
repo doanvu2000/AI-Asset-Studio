@@ -57,6 +57,46 @@ def test_heightmap_is_continuous_and_splat_sums_to_one() -> None:
     assert np.array_equal(again["h16"], h16)
 
 
+CRATER: dict[str, Any] = {
+    "base": 0.15, "water_level": 0.1,
+    "regions": [{"type": "mountains", "label": "volcano", "x": 0.5, "y": 0.45, "rx": 0.3, "ry": 0.3, "height": 0.9},
+                {"type": "lake", "label": "crater lake", "x": 0.5, "y": 0.45, "rx": 0.07, "ry": 0.07, "height": 0.2},
+                {"type": "sea", "x": 0.5, "y": 1.1, "rx": 0.9, "ry": 0.2, "height": 0.6}],
+    "rivers": [{"points": [[0.62, 0.62], [0.66, 0.8], [0.7, 0.98]], "width": 0.012, "depth": 0.03}],
+}
+
+
+def test_crater_lake_sits_under_its_rim_and_rivers_get_water() -> None:
+    from studio_core.ops.terrain import WATER_RES, dilate_surface, read_water_raw, water_raw
+
+    res = build_height(CRATER, HeightParams(size=257, world_m=512, height_m=120, erosion=0.4, seed=3))
+    lakes, surf, sea = res["lakes"], res["surface"], res["water"]
+    assert [lk["label"] for lk in lakes] == ["crater lake"]
+    level = lakes[0]["level"]
+    # Perched far above the sea, never at the shared water level the lake used to drop to.
+    assert level > sea + 0.2 and lakes[0]["area"] > 0.002
+    assert surf.shape == (WATER_RES, WATER_RES)
+    lake_cells = np.isclose(surf, level, atol=1e-6)
+    h = res["h01"][::(257 - 1) // (WATER_RES - 1), ::(257 - 1) // (WATER_RES - 1)]
+    assert lake_cells.any() and (h[lake_cells] < level + 1e-3).all()
+    # The rim around the lake is higher than the water: nothing spills down the mountainside.
+    ring = (np.hypot(*(np.mgrid[0:WATER_RES, 0:WATER_RES] / (WATER_RES - 1) - np.array([0.45, 0.5])[:, None, None]))
+            > 0.12)
+    assert not (lake_cells & ring).any()
+    river = ~np.isnan(surf) & ~lake_cells
+    assert river.any() and (surf[river] > sea).all()
+    back = read_water_raw(water_raw(dilate_surface(surf)), WATER_RES)
+    assert np.allclose(np.nan_to_num(back, nan=-1)[lake_cells], level, atol=2e-5)
+    assert (~np.isnan(back)).sum() > (~np.isnan(surf)).sum()
+
+
+def test_lake_at_sea_level_has_no_perched_water() -> None:
+    plan = {**CRATER, "base": 0.1, "regions": [{"type": "lake", "label": "lagoon", "x": 0.5, "y": 0.5, "rx": 0.15,
+                                                "ry": 0.1, "height": 0.3}], "rivers": []}
+    res = build_height(plan, HeightParams(size=129, world_m=256, height_m=60, seed=1))
+    assert res["lakes"] == [] and np.isnan(res["surface"]).all()
+
+
 def test_histogram_flags_terraces() -> None:
     ramp = np.linspace(0, 1, 512 * 512, dtype=np.float32).reshape(512, 512)
     smooth = histogram_report(quantize16(ramp, np.random.default_rng(0)))
@@ -106,10 +146,11 @@ def _texture(seed: int, color: tuple[int, int, int]) -> Image.Image:
     return Image.fromarray(a.astype(np.uint8), "RGB")
 
 
-async def _pack(ctx: FakeCtx, sky: bool = False) -> tuple[StepResult, StepResult, StepResult, StepResult]:
+async def _pack(ctx: FakeCtx, sky: bool = False, reply: dict[str, Any] | None = None
+                ) -> tuple[StepResult, StepResult, StepResult, StepResult]:
     from studio_core.ops.pbr import Pbr
 
-    plan = normalize_plan(REPLY, idea="island")
+    plan = normalize_plan(reply or REPLY, idea="island")
     plan_ref = await ctx.blobs.put_bytes(json.dumps(plan).encode(), name="terrain_plan.json", mime="application/json")
     hmap = await TerrainHeight().run(ctx, {"size": 129, "world": 256, "height": 60, "asset": "Đảo"},
                                      {"plan": [plan_ref]})
@@ -203,6 +244,37 @@ async def test_export_unity_and_godot(tmp_path: Path) -> None:
     assert 'path="Terrain/asset_studio_terrain.gd"' in scene and 'heightmap_file = "Isle_height.r32"' in scene
     assert "resolution = 129" in scene and 'name="Water"' in scene and "ProceduralSkyMaterial" in scene
     assert "HeightMapShape3D" in g["Terrain/asset_studio_terrain.gd"].decode()
+
+
+async def test_export_water_bodies_and_per_export_namespace(tmp_path: Path) -> None:
+    from studio_core.export import godot, unity
+    from studio_core.export.terrain import unity_script
+    from studio_core.store.bundle import engine_source
+
+    ctx = FakeCtx(tmp_path)
+    hmap, mat, pack, _ = await _pack(ctx, reply={**REPLY, "regions": CRATER["regions"], "rivers": CRATER["rivers"]})
+    assert hmap.outputs["water"][0].name == "dao_water.raw"
+    doc = json.loads(ctx.blobs.path(pack.outputs["terrain"][0].hash).read_bytes())
+    wb = doc["water_bodies"]
+    assert wb["resolution"] == 257 and wb["lakes"][0]["label"] == "crater lake" and wb["lakes"][0]["level_m"] > 10
+    step = _approve_row(ctx, hmap, mat, pack)
+    src = engine_source(step, [], ctx.blobs, "Isle")
+    assert "water" in src.terrain_files
+    u = dict(unity.export(src))
+    info = json.loads(u["Terrain/Isle_terrain.json"])
+    assert info["water_raw"] == "Isle_water.raw" and info["water_res"] == 257
+    assert Path(u["Terrain/Isle_water.raw"]).stat().st_size == 257 * 257 * 2
+    cs = u["Editor/AssetStudioTerrain.cs"].decode()
+    assert "namespace AssetStudio.Terrain" in cs and "WaterBodies" in cs and 'JsonName = "Isle_terrain.json"' in cs
+    assert "Build Terrain (Isle)" in cs and "__" not in cs and "Editor/AssetStudioTerrain.cs.meta" in u
+    other = engine_source(step, [], ctx.blobs, "Coast")
+    assert unity_script(other)[1] != unity_script(src)[1]
+    g = dict(godot.export(src))
+    scene = g["Isle_terrain.tscn"].decode()
+    assert 'water_file = "Isle_water.raw"' in scene and "water_resolution = 257" in scene
+    assert 'path="Terrain/Isle_water_material.tres"' in scene and "StandardMaterial3D_water" not in scene
+    assert "Terrain/asset_studio_water.gdshader" in g and "Terrain/Isle_water.raw" in g
+    assert "_build_water" in g["Terrain/asset_studio_terrain.gd"].decode()
 
 
 async def test_export_with_skybox_uses_its_environment(tmp_path: Path) -> None:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from typing import Any, Callable
 
@@ -122,7 +123,10 @@ class ComfyResource:
         t0 = time.perf_counter()
         try:
             self.proc, self.job = await spawn_in_job(args, cwd=s.comfy_dir, stdin=asyncio.subprocess.DEVNULL,
-                                                     stdout=self._log_file, stderr=asyncio.subprocess.STDOUT)
+                                                     stdout=self._log_file, stderr=asyncio.subprocess.STDOUT,
+                                                     # Custom nodes (SeedVR2) print emoji; with stdout on a file the
+                                                     # cp1252 default makes that a crash at import time.
+                                                     env={**os.environ, "PYTHONIOENCODING": "utf-8"})
         except asyncio.CancelledError:
             self._kill()
             self._set("down")

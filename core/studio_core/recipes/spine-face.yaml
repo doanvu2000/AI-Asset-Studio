@@ -1,0 +1,71 @@
+id: spine-face
+name: Biểu cảm mặt Spine (mắt, mày, miệng)
+description: >-
+  Skeleton Spine (từ spine-character* hoặc có sẵn) + atlas → tìm attachment đầu → Claude khoanh mắt / mày / miệng →
+  Flux.2 Klein vẽ lại từng vùng (mắt nhắm / khép hờ / cười, miệng A / O / M / cười / giận / buồn, mày giận / buồn),
+  ngoài vùng giữ nguyên → mỗi bộ phận thành slot riêng trên đầu (eyes, brow, mouth), attachment cắt đúng lưới texel của
+  đầu → anim blink (chớp 3–5 s), talk (A/O/M), happy / angry / sad cho track 1 → atlas thêm vùng mặt → duyệt.
+inputs:
+  skeleton: {type: file, ext: [json], label: Skeleton JSON (Spine 4.x)}
+  atlas: {type: file, ext: [atlas, txt], siblings: atlas_pages, label: "Atlas (các trang png cùng thư mục tự đi kèm)"}
+  head: {type: text, default: auto, label: "Slot đầu (auto = theo tên head / face)"}
+  emotions: {type: text, default: "happy,angry,sad", label: "Cảm xúc (happy, angry, sad | none)"}
+  seed: {type: int, default: 7, min: 0, label: Seed nhịp chớp mắt / nói}
+  skin_parts: {type: text, default: auto, label: "Skin ghép (auto = skin đầu mỗi nhóm | skin,skin)"}
+steps:
+  - id: prep
+    kind: op.spine_face_prep
+    in: {skeleton: inputs.skeleton, atlas: inputs.atlas}
+    params: {head: "${inputs.head}", skin: "${inputs.skin_parts}"}
+  - id: locate
+    kind: claude.task
+    in: {images: [prep.head, prep.grid]}
+    params:
+      model: opus
+      max_turns: 2
+      _auto_retry: 1
+      system: You locate facial features on a 2D cartoon game character's head for a cutout rig. Coordinates are image pixels, origin top-left, x right, y down. The character's left side (suffix _l) is on the IMAGE RIGHT.
+      prompt: |
+        Image 1 is the character's head on white, image 2 is the same image with a pixel grid (labels every 64 px).
+        Image size [width, height]: ${steps.prep.info.work}.
+        Return a tight box [x0, y0, x1, y1] around each eye (lashes and outline included), each eyebrow and the mouth.
+        Set face_visible false when the face is hidden (helmet, mask, back of the head). Set brows_visible false when
+        the eyebrows are hidden under hair or absent; give your best guess for their boxes anyway.
+      schema:
+        type: object
+        properties:
+          face_visible: {type: boolean}
+          brows_visible: {type: boolean}
+          eye_l: {type: array, items: {type: number}, minItems: 4, maxItems: 4}
+          eye_r: {type: array, items: {type: number}, minItems: 4, maxItems: 4}
+          brow_l: {type: array, items: {type: number}, minItems: 4, maxItems: 4}
+          brow_r: {type: array, items: {type: number}, minItems: 4, maxItems: 4}
+          mouth: {type: array, items: {type: number}, minItems: 4, maxItems: 4}
+          notes: {type: string}
+        required: [face_visible, brows_visible, eye_l, eye_r, brow_l, brow_r, mouth, notes]
+  - id: plan
+    kind: op.spine_face_plan
+    in: {info: prep.info, boxes: locate.json, atlas: inputs.atlas}
+    params: {emotions: "${inputs.emotions}"}
+  - id: paint
+    kind: comfy.inpaint_flux2_klein4b
+    in: {image: plan.holes}
+    map: image
+    params:
+      "14.text": ["${steps.plan.layout.prompts}"]
+    map_param: "14.text"
+  - id: build
+    kind: op.spine_face_build
+    in: {skeleton: inputs.skeleton, atlas: inputs.atlas, plan: plan.plan, edits: paint.images}
+    params: {emotions: "${inputs.emotions}", seed: "${inputs.seed}", skin: "${inputs.skin_parts}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: build.preview, skeleton: build.skeleton, atlas: build.atlas, texture: build.texture,
+         html: build.html, report: build.report}
+outputs:
+  final: approve.skeleton
+  skeleton: approve.skeleton
+  atlas: approve.atlas
+  texture: approve.texture
+  preview: approve.preview
+  html: approve.html

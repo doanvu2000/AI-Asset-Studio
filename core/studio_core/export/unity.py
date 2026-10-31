@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import hashlib
+import re
+import shutil
 from pathlib import Path
 
 from studio_core.export.collider import for_sheet, unity_physics_shape
@@ -21,6 +23,46 @@ SPRITE_LIT_MAT = "{fileID: 2100000, guid: a97c105638bdf8b4a8650670310a4cd3, type
 def guid(uid: str, asset: str, rel: str) -> str:
     """Seeded by the source step id too: two runs exporting the same asset name must not share GUIDs in one project."""
     return stable_hex("unity", uid, asset, rel) if uid else stable_hex("unity", asset, rel)
+
+
+_META_GUID = re.compile(r"^guid: ([0-9a-f]{32})\s*$", re.M)
+
+
+def _meta_guid(meta: Path) -> str | None:
+    try:
+        m = _META_GUID.search(meta.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+    return m[1] if m else None
+
+
+def copy_unity_export(src: Path, target: Path, assets: Path) -> list[str]:
+    """Copies an export folder into <project>/Assets. Shared fixed-GUID scripts (NpcData.cs, AssetStudioParallax.cs,
+    ...) that another export already placed in the project are refreshed where they are instead of copied again:
+    a second copy is CS0101 plus a GUID clash Unity resolves by re-keying one of them. Returns the reused paths."""
+    shared = {g: m for m in src.rglob("*.cs.meta") if (g := _meta_guid(m))}
+    elsewhere: dict[str, Path] = {}
+    if shared:
+        for m in assets.rglob("*.cs.meta"):
+            if not m.is_relative_to(target) and (g := _meta_guid(m)) in shared:
+                elsewhere.setdefault(g, m)
+    skip: dict[Path, Path] = {}
+    for g, m in shared.items():
+        if have := elsewhere.get(g):
+            skip[m] = have
+            skip[m.with_name(m.name[:-5])] = have.with_name(have.name[:-5])
+    for p in sorted(src.rglob("*"), key=lambda q: q.as_posix()):
+        if not p.is_file():
+            continue
+        to = target / p.relative_to(src)
+        if (have := skip.get(p)) is not None:
+            if p.suffix == ".cs":
+                shutil.copyfile(p, have)
+            to.unlink(missing_ok=True)
+            continue
+        to.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(p, to)
+    return sorted(q.relative_to(assets.parent).as_posix() for q in skip.values() if q.suffix == ".cs")
 
 
 def file_id(*parts: str) -> int:
@@ -610,6 +652,10 @@ def export(src: Source) -> Files:
 
         if note := physics_readme(src.spine_json[1], "spine-unity"):
             notes.append(note)
+        from studio_core.ops.spine_face import face_readme
+
+        if note := face_readme(src.spine_json[1], "spine-unity"):
+            notes.append(note)
     from studio_core.export import rig3d
 
     rig_files, rig_notes = rig3d.unity_files(src, lambda rel: guid(u, a, rel))
@@ -787,6 +833,30 @@ def export(src: Source) -> Files:
         mm_files, mm_notes = minimap_files(src)
         files += mm_files
         notes += mm_notes
+    if src.tile_anim and src.tile_anim_sheet:
+        from studio_core.export.tile_anim import unity_files as tile_anim_files
+
+        ta_files, ta_notes = tile_anim_files(src)
+        files += ta_files
+        notes += ta_notes
+    if src.cards and src.cards_files:
+        from studio_core.export.card_set import unity_files as card_files
+
+        cs_files, cs_notes = card_files(src)
+        files += cs_files
+        notes += cs_notes
+    if src.iso and src.iso_files:
+        from studio_core.export.iso import unity_files as iso_files
+
+        is_files, is_notes = iso_files(src)
+        files += is_files
+        notes += is_notes
+    if src.playable and src.playable_files:
+        from studio_core.export.playable_scene import extra_files, unity_files as playable_files
+
+        pl_files, pl_notes = playable_files(src)
+        files += pl_files + extra_files(src)
+        notes += pl_notes
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

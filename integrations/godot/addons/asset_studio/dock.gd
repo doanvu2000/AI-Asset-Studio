@@ -85,7 +85,7 @@ func _build_ui() -> void:
 	_add_box = VBoxContainer.new()
 	_main.add_child(_add_box)
 	_add_label = _label(true, _add_box)
-	_project_opt = OptionButton.new()
+	_project_opt = _option()
 	_project_opt.item_selected.connect(func(i): project_id = str(_project_opt.get_item_metadata(i)))
 	_main.add_child(_row("Dự án", _project_opt))
 	var add_hint := _label(true, _add_box)
@@ -105,14 +105,14 @@ func _build_ui() -> void:
 	add_row.add_child(_style_btn)
 	add_row.add_child(cancel)
 	_add_box.add_child(add_row)
-	_recipe_opt = OptionButton.new()
+	_recipe_opt = _option()
 	_recipe_opt.item_selected.connect(_on_recipe_selected)
 	_main.add_child(_row("Quy trình", _recipe_opt))
 	_desc = _label(true, _main)
 	_title = LineEdit.new()
 	_main.add_child(_row("Tiêu đề", _title))
 	_form = GridContainer.new()
-	_form.columns = 2
+	_form.columns = 1
 	_main.add_child(_form)
 	_auto_import = CheckBox.new()
 	_auto_import.text = "Tự nhận output vào res://asset_studio"
@@ -152,6 +152,16 @@ func _label(wrap: bool, parent: Node = self) -> Label:
 		l.custom_minimum_size.x = 200
 	parent.add_child(l)
 	return l
+
+
+# By default an OptionButton is as wide as its longest item; long recipe names then force the whole dock wider
+# than the editor column and push its tab out of view.
+func _option() -> OptionButton:
+	var ob := OptionButton.new()
+	ob.fit_to_longest_item = false
+	ob.clip_text = true
+	ob.custom_minimum_size.x = 80
+	return ob
 
 
 func _row(caption: String, field: Control) -> HBoxContainer:
@@ -275,12 +285,19 @@ func _build_form(specs: Dictionary) -> void:
 		c.queue_free()
 	for key in specs:
 		var spec: Dictionary = specs[key]
-		var lab := Label.new()
-		var text := str(spec.get("label", key))
-		lab.text = (text.left(40) + "…" if text.length() > 42 else text) + (" *" if _required(spec) else "")
-		lab.tooltip_text = text
-		_form.add_child(lab)
-		_form.add_child(_field(key, spec))
+		var text := str(spec.get("label", key)) + (" *" if _required(spec) else "")
+		var field := _field(key, spec)
+		# Label above its field: a two-column grid sized the label column to the longest label and squeezed fields.
+		if field is CheckBox:
+			field.text = text
+			field.tooltip_text = text
+		else:
+			var lab := _label(true, _form)
+			lab.custom_minimum_size.x = 0
+			lab.text = text
+			lab.modulate.a = 0.75
+		field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_form.add_child(field)
 
 
 func _field(key: String, spec: Dictionary) -> Control:
@@ -288,7 +305,7 @@ func _field(key: String, spec: Dictionary) -> Control:
 	var type := str(spec.get("type", "text"))
 	var options = spec.get("options")
 	if options is Array and options.size() > 0:
-		var ob := OptionButton.new()
+		var ob := _option()
 		for o in options:
 			var s := str(int(o)) if (o is float and type == "int") else str(o)
 			ob.add_item(s)

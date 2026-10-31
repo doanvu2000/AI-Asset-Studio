@@ -389,7 +389,7 @@ namespace AssetStudio.Bridge
             DrawProjectPopup(true);
             runTitle = EditorGUILayout.TextField("Tiêu đề", runTitle);
             foreach (var kv in J.Obj(r, "inputs") ?? new Dictionary<string, object>()) DrawInput(kv.Key, kv.Value);
-            autoImport = EditorGUILayout.Toggle("Tự nhận output vào Assets", autoImport);
+            autoImport = EditorGUILayout.ToggleLeft("Tự nhận output vào Assets", autoImport);
             var running = run != null && !StudioRuns.IsTerminal(J.Str(run, "status"));
             using (new EditorGUI.DisabledScope(busy || running))
                 if (GUILayout.Button("Chạy", GUILayout.Height(26))) _ = StartAsync();
@@ -398,11 +398,21 @@ namespace AssetStudio.Bridge
         void DrawInput(string name, object spec)
         {
             var label = J.Str(spec, "label", name);
-            if (label.Length > 48) label = label.Substring(0, 46) + "…";
-            var content = new GUIContent(label + (StudioRuns.Required(spec) ? " *" : ""), J.Str(spec, "label", name));
+            var content = new GUIContent(label + (StudioRuns.Required(spec) ? " *" : ""), label);
             values.TryGetValue(name, out var v);
             v ??= "";
             var type = J.Str(spec, "type", "text");
+            if (type == "bool")
+            {
+                values[name] = EditorGUILayout.ToggleLeft(content, v == "true") ? "true" : "false";
+                return;
+            }
+            // The fixed label column cut long labels mid-word; those go on their own wrapped line above the field.
+            if (EditorStyles.label.CalcSize(content).x > EditorGUIUtility.labelWidth - 4)
+            {
+                EditorGUILayout.LabelField(content, EditorStyles.wordWrappedMiniLabel);
+                content = GUIContent.none;
+            }
             var options = J.Arr(spec, "options");
             if (options != null && options.Count > 0)
             {
@@ -413,9 +423,6 @@ namespace AssetStudio.Bridge
             }
             switch (type)
             {
-                case "bool":
-                    values[name] = EditorGUILayout.Toggle(content, v == "true") ? "true" : "false";
-                    return;
                 case "image":
                 case "mesh":
                 case "file":

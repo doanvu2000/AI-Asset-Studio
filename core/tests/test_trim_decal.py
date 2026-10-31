@@ -42,7 +42,9 @@ def test_layout_heights_always_sum_to_sheet() -> None:
                                        {"name": "brick wall", "px": 40}, {"name": "", "px": "x"}]}, "castle")
     names = [s["name"] for s in lay["strips"]]
     assert names[:3] == ["brick_wall", "brick_wall_2", "strip_3"] and sum(s["px"] for s in lay["strips"]) == BASE
-    assert lay["strips"][0]["gen_prompt"].startswith("red brick, castle, seamless horizontally tileable")
+    assert lay["strips"][0]["gen_prompt"].startswith("red brick, red-brown fired clay colour, castle, seamless "
+                                                     "horizontally tileable")
+    assert lay["strips"][2]["gen_prompt"].startswith("strip_3, castle, seamless")
     with pytest.raises(ValueError):
         normalize_layout({"strips": [{"name": "a", "px": 64}]})
     mod = preset_layout("modular", "stone", 2, 0)
@@ -129,7 +131,8 @@ async def test_strips_then_sheet(tmp_path: Path) -> None:
     assert [c["57:3.seed"] for c in gen.calls] == [7, 8, 9, 10] and "_free_before" not in gen.calls[1]
     assert (gen.calls[0]["57:13.width"], gen.calls[0]["57:13.height"]) == gen_size(1.0)
     assert (gen.calls[1]["57:13.width"], gen.calls[1]["57:13.height"]) == (1536, 512)
-    assert gen.calls[0]["57:27.text"].startswith("brick, stone, seamless horizontally")
+    assert gen.calls[0]["57:27.text"].startswith("brick, red-brown fired clay colour, stone, seamless horizontally")
+    assert gen.calls[1]["57:27.text"].startswith("molding, stone, seamless")
 
     out = await TrimSheet().run(ctx, {"size": 1024, "asset": "Castle Trim"},
                                 {"images": res.outputs["images"], "layout": [ref]})
@@ -182,6 +185,55 @@ async def test_decal_pack_keys_thin_marks_and_fades_edges(tmp_path: Path) -> Non
     assert json.loads(ctx.blobs.path(res.outputs["decals"][0].hash).read_bytes())["decals"][0]["aspect"] == [1, 1]
 
 
+async def test_decal_round_stain_gets_a_ragged_edge(tmp_path: Path) -> None:
+    from studio_core.ops.decal import ROUND_LIMIT, roundness
+
+    ctx = FakeCtx(tmp_path)
+    img = Image.new("RGB", (512, 512), (250, 250, 248))
+    ImageDraw.Draw(img).ellipse((140, 140, 370, 370), fill=(70, 55, 40))
+    ref = await ctx.blobs.put_bytes(_png(img), name="s.png", mime="image/png")
+    res = await DecalPack().run(ctx, {"names": "dirt stain\nround logo", "size": 256},
+                                {"images": [ref, ref], "cutout": []})
+    dirt, logo = json.loads(ctx.blobs.path(res.outputs["decals"][0].hash).read_bytes())["decals"]
+    assert dirt["roundness"][0] > ROUND_LIMIT and dirt["irregular"] > 0 and dirt["roundness"][1] < 0.75
+    # A keyed near-disc is broken up even without an organic name; a fixed 0 keeps it.
+    assert logo["irregular"] > 0
+    kept = await DecalPack().run(ctx, {"names": "dirt", "size": 256, "irregular": 0}, {"images": [ref], "cutout": []})
+    k = json.loads(ctx.blobs.path(kept.outputs["decals"][0].hash).read_bytes())["decals"][0]
+    assert k["irregular"] == 0 and k["roundness"][1] > ROUND_LIMIT
+    alb = np.asarray(Image.open(ctx.blobs.path(res.outputs["images"][0].hash)))
+    # Warped colour follows the warped alpha: no white key colour shows where the stain is opaque.
+    solid = alb[..., 3] > 200
+    assert solid.any() and alb[solid][:, :3].mean() < 120
+    assert roundness(alb[..., 3] / 255) == pytest.approx(dirt["roundness"][1], abs=1e-3)
+
+
+def test_trim_strip_material_colour() -> None:
+    from studio_core.ops.trim import fit_material_color, strip_material
+
+    assert strip_material("frame", "carved dark oak frame") == "wood"
+    assert strip_material("planks", "grey stone slabs") == "wood"
+    assert strip_material("metal", "riveted iron band") is None
+    # Live layout (r7): accents and neutral materials must not tint a stone or iron strip.
+    assert strip_material("stone_wall", "grey rubble stone wall with moss traces and soot stains") is None
+    assert strip_material("iron_band", "black wrought iron strap with rust streaks") is None
+    assert strip_material("trim", "strip with moss and rust") is None and strip_material("moss", "x") == "moss"
+    assert strip_material("oak_beam", "heavy dark oak timber beam") == "wood"
+    lay = normalize_layout([{"name": "beam", "px": 512, "prompt": "weathered beam"},
+                            {"name": "wall", "px": 512, "prompt": "cut stone"}], "grey stone and dark oak")
+    beam, wall = lay["strips"][:2]
+    assert beam["material"] == "wood" and "material" not in wall
+    assert beam["gen_prompt"].startswith("weathered beam, natural brown wood colour")
+    grey = np.full((64, 256, 3), 0.4, np.float32) + np.random.default_rng(0).normal(0, 0.05, (64, 256, 3))
+    out, s = fit_material_color(np.clip(grey, 0, 1).astype(np.float32), "wood")
+    m = out.reshape(-1, 3).mean(0)
+    assert s == 1.0 and m[0] > m[1] > m[2] and abs(float(m @ [0.2126, 0.7152, 0.0722]) - 0.4) < 0.02
+    # Detail survives: the per-pixel variation is kept, only scaled per channel.
+    assert out[..., 1].std() > 0.03
+    brown = np.full((8, 8, 3), (0.46, 0.31, 0.19), np.float32)
+    assert fit_material_color(brown, "wood")[1] == 0.0 and fit_material_color(grey, None)[1] == 0.0
+
+
 def _png(img: Image.Image) -> bytes:
     import io
 
@@ -212,7 +264,8 @@ async def test_export_trim_and_decals(tmp_path: Path) -> None:
     assert {"castle_trim.json", "PBR/castle.tres"} <= set(g)
 
     crack = await ctx.blobs.put_bytes(_png(_crack_image()), name="c.png", mime="image/png")
-    dec = await DecalPack().run(ctx, {"names": "crack\nmoss", "size": 256}, {"images": [crack, crack]})
+    dec = await DecalPack().run(ctx, {"names": "crack\nmoss", "size": 256, "irregular": 0},
+                                {"images": [crack, crack]})
     step = _row("approve", "gate.approve", {"images": dec.outputs["images"], "normals": dec.outputs["normals"],
                                             "decals": dec.outputs["decals"], "preview": dec.outputs["preview"]})
     assert engine_ready(step, ctx.blobs)

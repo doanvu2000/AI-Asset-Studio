@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from studio_core.contracts import BlobStore, StepRow
-from studio_core.export.sheet import cs_namespace, ident
+from studio_core.export.sheet import SHARED_SCRIPT_NOTE, cs_namespace, ident
 from studio_core.export.source import Files, Source
 
 # Fixed, so a second exported background in the same Unity project shares one script identity: deleting the
@@ -166,7 +166,8 @@ def unity_files(src: Source) -> tuple[Files, list[str]]:
             f"{src.asset}_parallax.prefab vào scene: mỗi lớp là SpriteRenderer Draw Mode = Tiled rộng 3 lần ảnh + "
             f"{SCRIPT_FILE} (scroll: 0 = đứng yên theo camera, 1 = chạy theo thế giới, > 1 = tiền cảnh, Sorting "
             f"Order 100). Tốc độ: {scrolls}. Đáy các lớp ở y = 0; camera mặc định Camera.main (đổi ở Target). Xuất "
-            f"nhiều nền vào cùng project: giữ 1 file {SCRIPT_FILE}, xoá bản trùng (cùng guid nên prefab vẫn chạy).")
+            f"nhiều nền vào cùng project: giữ 1 file {SCRIPT_FILE}, xoá bản trùng (cùng guid nên prefab vẫn chạy)"
+            + SHARED_SCRIPT_NOTE + ".")
     return files, [note]
 
 

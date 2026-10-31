@@ -2,7 +2,8 @@ id: ui-screen-prompt
 name: Màn UI game từ chủ đề (Z-Image kit + Claude bố cục)
 description: >-
   Chủ đề → Z-Image vẽ sheet ui-kit (nút, khung, thanh, ô; không chữ) → chọn → tách phần tử + viền 9-slice + trạng
-  thái nút → Claude nhìn bộ kit bố cục màn (home, shop, chọn màn, tạm dừng, thắng, thua, cài đặt) → CPU ráp mockup
+  thái nút → Claude nhìn bộ kit bố cục màn (home, shop, chọn màn, tạm dừng, thắng, thua, cài đặt) → Z-Image vẽ icon
+  màn cần (cùng chủ đề, tách nền) → CPU ráp mockup
   16:9 / 20:9 / 4:3, kiểm safe area → duyệt. Xuất Unity UGUI prefab + UXML/USS, Godot Control .tscn + Theme .tres.
 inputs:
   prompt: {type: text, label: Chủ đề UI, placeholder: "cute candy puzzle game, glossy pastel buttons with white rims"}
@@ -15,6 +16,8 @@ inputs:
   count: {type: int, default: 2, min: 1, max: 4, label: Số sheet kit để chọn}
   font: {type: file, ext: [json], required: false, label: "font.json của bitmap-font (tuỳ chọn)"}
   icons: {type: file, ext: [json], required: false, label: "ui_slices.json của icon-pack (tuỳ chọn)"}
+  icon_source: {type: enum, default: zimage, options: [zimage, placeholder],
+                label: "Icon chưa có trong icon-pack: Z-Image vẽ theo chủ đề | icon tạm CPU"}
   review: {type: bool, default: true, label: Duyệt trước khi xong}
 steps:
   - id: gen
@@ -34,12 +37,27 @@ steps:
     in: {images: split.images}
   - id: layout
     kind: claude.ui_layout
-    in: {kit: slice.slices, images: slice.preview}
+    in: {kit: slice.slices, images: slice.preview, icons: inputs.icons}
     params: {screen: "${inputs.screen}", orientation: "${inputs.orientation}", planner: "${inputs.planner}",
-             title: "${inputs.title}", brief: "${inputs.prompt}. ${inputs.brief}", model: opus, _auto_retry: 1}
+             title: "${inputs.title}", brief: "${inputs.prompt}. ${inputs.brief}", model: opus, _auto_retry: 1,
+             icon_style: "${inputs.prompt}", icon_source: "${inputs.icon_source}"}
+  # One prompt per icon the layout uses that the icon-pack lacks; an empty list never calls ComfyUI.
+  - id: icon_gen
+    kind: comfy.t2i_zimage_turbo
+    params:
+      "57:27.text": ["${steps.layout.json.icon_prompts}"]
+    map_param: "57:27.text"
+  - id: icon_rmbg
+    kind: comfy.remove_bg_birefnet
+    in: {image: icon_gen.images}
+    map: image
+  - id: icon_fit
+    kind: op.trim_pad_resize
+    in: {images: icon_rmbg.images}
+    params: {size: 128, pad: 0.04, optional: true}
   - id: screen
     kind: op.ui_screen
-    in: {layout: layout.json, kit: slice.slices, icons: inputs.icons, font: inputs.font}
+    in: {layout: layout.json, kit: slice.slices, icons: inputs.icons, font: inputs.font, gen_icons: icon_fit.images}
     params: {screen: "${inputs.screen}", orientation: "${inputs.orientation}", title: "${inputs.title}"}
   - id: approve
     kind: gate.approve

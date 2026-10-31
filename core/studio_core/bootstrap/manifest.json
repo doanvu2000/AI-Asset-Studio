@@ -100,6 +100,35 @@
    ]
   },
   {
+   "id": "seedvr2",
+   "label": "Phóng to SeedVR2",
+   "detail": "Engine phóng to nét hơn Real-ESRGAN (SeedVR2 3B fp8, Apache-2.0, ≈3.9 GB + custom node), chậm hơn; chọn engine seedvr2 trong quy trình Phóng to HD.",
+   "required": false,
+   "workflows": [
+    "upscale_seedvr2"
+   ],
+   "custom_nodes": [
+    {
+     "name": "seedvr2_videoupscaler",
+     "url": "https://codeload.github.com/numz/ComfyUI-SeedVR2_VideoUpscaler/zip/4490bd1f482e026674543386bb2a4d176da245b9",
+     "pip": [
+      "safetensors",
+      "numpy",
+      "tqdm",
+      "psutil",
+      "einops",
+      "omegaconf>=2.3.0",
+      "diffusers>=0.33.1",
+      "peft>=0.17.0",
+      "rotary_embedding_torch>=0.5.3",
+      "opencv-python",
+      "gguf",
+      "matplotlib"
+     ]
+    }
+   ]
+  },
+  {
    "id": "keyart_video",
    "label": "Key art động",
    "detail": "Key art → teaser 5 giây lặp liền (Wan 2.2 TI2V 5B, Apache-2.0), xuất MP4 + WebM + GIF.",
@@ -539,6 +568,24 @@
    "size": 755039336,
    "sha256": "11065421c2a4c8f503ee1be5d6dc0320a9ffb5bfaded2490813046fd2312578d",
    "license": "MIT",
+   "commercial": "yes"
+  },
+  {
+   "name": "seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+   "dir": "SEEDVR2",
+   "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+   "size": 3391544696,
+   "sha256": "3bf1e43ebedd570e7e7a0b1b60d6a02e105978f505c8128a241cde99a8240cff",
+   "license": "Apache-2.0",
+   "commercial": "yes"
+  },
+  {
+   "name": "ema_vae_fp16.safetensors",
+   "dir": "SEEDVR2",
+   "url": "https://huggingface.co/numz/SeedVR2_comfyUI/resolve/main/ema_vae_fp16.safetensors",
+   "size": 501324814,
+   "sha256": "20678548f420d98d26f11442d3528f8b8c94e57ee046ef93dbb7633da8612ca1",
+   "license": "Apache-2.0",
    "commercial": "yes"
   }
  ]

@@ -1,6 +1,6 @@
-"""`op.upscale_prep` / `op.upscale_post` around the `comfy.upscale_esrgan` model pass.
+"""`op.upscale_prep` / `op.upscale_post` around the `upscale.model` pass (Real-ESRGAN or SeedVR2).
 
-ESRGAN only sees RGB, so prep fills the colour under transparent pixels from their visible neighbours (black there
+The model only sees RGB, so prep fills the colour under transparent pixels from their visible neighbours (black there
 would bleed a dark fringe into every edge) and post resizes the source alpha on its own and puts it back. Pixel art
 skips the model and takes a nearest-neighbour integer scale, which keeps its hard pixels. An atlas (Spine/libgdx)
 upscales page by page and its coordinates are rewritten to match, so it still drops in beside the same skeleton."""
@@ -201,8 +201,20 @@ class UpscalePost(OpExecutor):
     kind = "op.upscale_post"
     version = "1"
 
+    def __init__(self, settings: Any = None):
+        self.settings = settings
+
+    def _model(self, engine: Any) -> str:
+        e = str(engine or "esrgan").lower()
+        if e != "auto" or self.settings is None:
+            return e
+        from ..adapters.comfy.upscale import resolve_engine
+
+        return resolve_engine(e, self.settings)
+
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         scale, mode = _params(params)
+        model = self._model(params.get("engine"))
         sources, atlas_text, pma = _sources(ctx, inputs)
         upscaled = list(inputs.get("upscaled") or [])
         want = sum(_use_model(img, mode) for _, img in sources)
@@ -227,7 +239,7 @@ class UpscalePost(OpExecutor):
             (pages if atlas_page else images).append(out_ref)
             previews.append(await _put_png(ctx, await asyncio.to_thread(compare, img, res), f"{stem}_compare.png"))
             plan.append({"name": name, "from": list(img.size), "to": list(res.size),
-                         "method": "esrgan" if ai else "nearest"})
+                         "method": model if ai else "nearest"})
         outputs: dict[str, list[BlobRef]] = {"images": images, "previews": previews}
         if atlas_text is not None:
             atlas_ref = inputs["atlas"][0]
@@ -236,6 +248,3 @@ class UpscalePost(OpExecutor):
                                                   name=f"{stem}.atlas", mime="text/plain")
             outputs["atlas"] = [atlas_out, *pages]
         return StepResult(outputs=outputs, meta={"scale": scale, "mode": mode, "results": plan})
-
-
-UPSCALE_OPS = (UpscalePrep, UpscalePost)

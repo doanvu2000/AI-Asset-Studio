@@ -1,0 +1,61 @@
+id: playable-scene
+name: Màn chơi thử (Godot / Unity / Tiled / LDtk)
+description: >-
+  Gom asset của dự án (nhân vật 8 hướng, texture nền / đường / tường hoặc autotile blob-47, prop, lớp parallax) —
+  hoặc file đưa vào — → Claude vẽ màn nhỏ ~32×20 ô (top-down hoặc side-view: tường, đường, prop, điểm xuất phát;
+  procedural nếu không dùng Claude) → atlas ô liền mạch + mockup toàn màn + Tiled .tmx + LDtk .ldtk → mở trong
+  Godot (và/hoặc Unity) chạy thử: nhân vật đi được, chụp ảnh màn và góc camera người chơi → duyệt. Xuất Godot
+  (TileMapLayer + CharacterBody2D + Camera2D + Parallax2D) và Unity (Tilemap + Rigidbody2D + Animator + camera
+  bám theo), nút "Mở trong Godot / Unity".
+inputs:
+  character: {type: file, ext: [png, json], required: false,
+              label: "Nhân vật 8 hướng: sheet PNG + sheet .json (trống = lấy từ dự án)"}
+  tiles: {type: image, required: false,
+          label: "Texture ô liền mạch: nền, đường, tường (tên file có wall/path… để gán vai; trống = lấy từ dự án)"}
+  autotile: {type: file, ext: [json], required: false, label: "autotile.json (autotile-terrain, tuỳ chọn: viền đường)"}
+  props: {type: image, required: false, label: "Prop nền trong suốt (trống = lấy từ dự án)"}
+  background: {type: image, required: false, label: "Lớp parallax xa → gần (tuỳ chọn)"}
+  project: {type: text, required: false, default: "",
+            label: "Dự án lấy asset (trống = dự án của run, none = chỉ dùng file đưa vào)"}
+  style: {type: enum, options: [topdown, sideview], default: topdown, label: "Kiểu màn"}
+  cols: {type: int, default: 32, min: 12, max: 96, label: Số cột}
+  rows: {type: int, default: 20, min: 8, max: 64, label: Số hàng}
+  tile: {type: int, default: 0, min: 0, max: 64, label: "Cỡ ô px (0 = tự động: 16 pixel art, 32 thường)"}
+  planner: {type: enum, options: [claude, procedural], default: claude, label: "Bố cục (Claude | procedural)"}
+  brief: {type: text, required: false, default: "", multiline: true,
+          label: "Chủ đề màn (tuỳ chọn)", placeholder: "làng nhỏ bên rừng, có quảng trường và đường mòn ra cổng"}
+  seed: {type: int, default: 0, min: 0, label: "Seed (procedural)"}
+  engine: {type: enum, options: [godot, unity, both, none], default: godot, label: "Chạy thử trong engine"}
+  asset: {type: text, default: PlayableScene, label: Tên asset}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: gather
+    kind: op.scene_gather
+    in: {character: inputs.character, tiles: inputs.tiles, autotile: inputs.autotile, props: inputs.props,
+         background: inputs.background}
+    params: {style: "${inputs.style}", project: "${inputs.project}"}
+  - id: layout
+    kind: claude.scene_layout
+    in: {assets: gather.assets, images: gather.preview}
+    params: {style: "${inputs.style}", cols: "${inputs.cols}", rows: "${inputs.rows}", planner: "${inputs.planner}",
+             brief: "${inputs.brief}", seed: "${inputs.seed}", model: opus, _auto_retry: 1}
+  - id: scene
+    kind: op.playable_scene
+    in: {assets: gather.assets, layout: layout.json}
+    params: {tile: "${inputs.tile}", asset: "${inputs.asset}"}
+  - id: check
+    kind: op.scene_engine_check
+    in: {scene: scene.scene}
+    params: {engine: "${inputs.engine}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: scene.preview, images: scene.images, scene: scene.scene, tmx: scene.tmx, ldtk: scene.ldtk,
+         tiles: scene.tiles, engine: check.images, report: check.report}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  scene: approve.scene
+  tmx: approve.tmx
+  ldtk: approve.ldtk
+  engine: approve.engine

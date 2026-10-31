@@ -594,7 +594,7 @@ class StudioTools:
                             f"(status {run['status']})")
         recipes = await self._call("GET", "/api/recipes")
         options = [{**f, "inputs": {k: v[0] if len(v) == 1 else v for k, v in f["inputs"].items()}}
-                   for f in follow_ups(recipes, clicked, step.get("outputs") or {})]
+                   for f in follow_ups(recipes, clicked, step.get("outputs") or {}, run.get("recipe_id"))]
         out: dict[str, Any] = {
             "run_id": run["id"], "project_id": run.get("project_id"),
             "output": {"hash": clicked["hash"], "name": clicked.get("name"), "mime": clicked.get("mime"),
@@ -675,7 +675,14 @@ class StudioTools:
         if dest is not None:
             src = Path(out["dir"])
             target = dest / src.name
-            await asyncio.to_thread(shutil.copytree, src, target, dirs_exist_ok=True)
+            if engine == "unity":
+                from ..export.unity import copy_unity_export
+
+                reused = await asyncio.to_thread(copy_unity_export, src, target, root / "Assets")
+                if reused:
+                    res["reused_scripts"] = reused
+            else:
+                await asyncio.to_thread(shutil.copytree, src, target, dirs_exist_ok=True)
             res["copied_to"] = str(target)
         return res
 

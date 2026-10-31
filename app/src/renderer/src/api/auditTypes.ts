@@ -47,6 +47,7 @@ export interface AuditReport {
     fixable: number
     duplicate_groups: number
     duplicate_bytes: number
+    duplicate_method?: 'clip' | 'phash' | 'off'
     unreferenced: number
     unreferenced_bytes: number
     meshes: number
@@ -55,7 +56,7 @@ export interface AuditReport {
     issues: Record<string, number>
   }
   textures: AuditTexture[]
-  duplicates: { kind: 'exact' | 'near'; files: string[]; wasted_bytes: number }[]
+  duplicates: { kind: 'exact' | 'near'; files: string[]; wasted_bytes: number; method?: 'clip' | 'phash' }[]
   unreferenced: { rel: string; kind: string; bytes: number }[]
   meshes: { rel: string; bytes: number; tris: number | null; over: boolean; error?: string }[]
   audio: { rel: string; bytes: number; seconds: number | null; issues: AuditIssue[] }[]

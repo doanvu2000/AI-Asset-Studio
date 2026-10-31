@@ -1,8 +1,10 @@
 import asyncio
 import io
 import json
+import os
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from studio_core.export import preview
@@ -224,3 +226,13 @@ async def test_api_cancel_stops_running_engine(app_ctx, tmp_path: Path, monkeypa
     assert r.status_code == 200
     assert (await _wait(client, job["id"]))["status"] == "cancelled"
     assert (await client.get("/api/engine-preview/jobs/nope", headers=AUTH)).status_code == 404
+
+
+def test_unity_env_restores_programdata(monkeypatch: pytest.MonkeyPatch) -> None:
+    from studio_core.export.preview import unity_env
+
+    for k in ("ProgramData", "PROGRAMDATA", "ALLUSERSPROFILE"):
+        monkeypatch.delenv(k, raising=False)
+    env = unity_env()
+    if os.name == "nt":
+        assert env["ProgramData"].endswith("ProgramData")

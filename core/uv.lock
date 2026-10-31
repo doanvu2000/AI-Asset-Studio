@@ -905,7 +905,6 @@ wheels = [
 
 [[package]]
 name = "studio-core"
-version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },

@@ -1,0 +1,42 @@
+id: iso-tiles
+name: Tile mặt đất isometric 2:1 (Z-Image)
+description: >-
+  Prompt vật liệu → N ảnh Z-Image nhìn thẳng từ trên → chọn → làm liền mạch → chiếu lên hình thoi 2:1 (64×32 /
+  128×64 / 256×128), một chu kỳ texture đúng một ô nên lát lưới iso liền mép → 4–8 biến thể chỉ đổi phần giữa, dải mép
+  giữ nguyên → kiểm ghép 4×4 (không hở, không chồng, mép khớp) → duyệt. Xuất Godot TileSet isometric y-sort, Unity
+  Tilemap Isometric (ô 1×0.5) + Tile từng biến thể.
+inputs:
+  prompt: {type: text, label: Vật liệu mặt đất, placeholder: "lush green grass with small clovers"}
+  count: {type: int, default: 4, min: 1, max: 8, label: Số ảnh để chọn}
+  tile: {type: int, default: 128, options: [64, 128, 256], label: "Bề ngang ô (px, cao = ½)"}
+  variants: {type: int, default: 6, min: 1, max: 8, label: Số biến thể}
+  flatten: {type: float, default: 0.5, min: 0, max: 1, label: San phẳng ánh sáng}
+  asset: {type: text, default: ground, label: Tên asset}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: gen
+    kind: comfy.t2i_zimage_turbo
+    params: {"57:27.text": "${inputs.prompt}, seamless tileable texture, one continuous ground surface photographed straight down from directly above, orthographic, no perspective, no vanishing point, flat even diffuse lighting, no shadows, no vignette, natural irregular variation, small-scale detail, no tile grid, no seams, no borders, fills the whole frame, game texture",
+             "57:13.batch_size": "${inputs.count}", "57:13.width": 1024, "57:13.height": 1024}
+  - id: pick
+    kind: gate.pick
+    in: {images: gen.images}
+    params: {k: 1}
+  - id: seam
+    kind: op.seamless
+    in: {images: pick.images}
+    params: {flatten: "${inputs.flatten}"}
+  - id: tiles
+    kind: op.iso_tiles
+    in: {images: seam.images}
+    params: {asset: "${inputs.asset}", tile: "${inputs.tile}", variants: "${inputs.variants}"}
+  - id: approve
+    kind: gate.approve
+    in: {images: tiles.images, preview: tiles.preview, grid: tiles.grid, atlas: tiles.atlas, iso: tiles.iso}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  grid: approve.grid
+  atlas: approve.atlas
+  iso: approve.iso

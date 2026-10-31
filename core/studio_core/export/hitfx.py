@@ -13,7 +13,8 @@ from typing import Any
 
 import numpy as np
 
-from studio_core.export.sheet import Cell, Layout, Track, cs_namespace, direction_vector, ident, layout
+from studio_core.export.sheet import (SHARED_SCRIPT_NOTE, Cell, Layout, Track, cs_namespace, direction_vector, ident,
+                                      layout)
 from studio_core.export.source import Files, Source
 
 HITS_TYPE = "asset-studio/hits"
@@ -509,7 +510,7 @@ def _unity(files: Files, src: Source, lay: Layout, hits: list[Hit], opts: HitOpt
             f"(mỗi hướng một khung/điểm, xem {json_rel}); {a}.prefab gắn {SCRIPT_FILE} — sinh flipbook {vfx_rel} tại "
             "điểm trúng (theo flipX), xong tự huỷ, và phát sự kiện C# Hit(tên, điểm thế giới) để gameplay trừ máu/rung "
             f"camera. Muốn VFX khác: kéo sprite khác vào effects. Xuất nhiều nhân vật vào cùng project: giữ 1 file "
-            f"{SCRIPT_FILE}.")
+            f"{SCRIPT_FILE}" + SHARED_SCRIPT_NOTE + ".")
     return out, note
 
 

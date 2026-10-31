@@ -197,6 +197,39 @@ async def test_export_godot(tmp_path: Path):
     assert "func play()" in g["VFX/asset_studio_vfx.gd"].decode()
 
 
+async def test_export_godot_delay_player_and_3d_stretch(tmp_path: Path):
+    from studio_core.export import godot
+    from studio_core.export.vfx_particles import STRETCH_MAX
+    from studio_core.store.bundle import engine_source
+
+    ctx, step = await _approve_step(tmp_path)
+    g = dict(godot.export(engine_source(step, [], ctx.blobs, "Spells")))
+    ex = g["VFX/Presets/Spells_explosion.tscn"].decode()
+    # The delayed smoke is switched on by an autoplaying AnimationPlayer, not only by the script's timers.
+    assert 'type="AnimationPlayer"' in ex and 'autoplay = &"play"' in ex
+    assert 'NodePath("smoke:emitting")' in ex and '"times": PackedFloat32Array(0, 0.1)' in ex
+    assert ex.index("[sub_resource") < ex.index('[sub_resource type="Animation"') < ex.index("[node ")
+    assert "scale_over_velocity_curve" in ex and f"Vector2(1, {STRETCH_MAX:g})" in ex
+    assert 'type="AnimationPlayer"' not in g["VFX/Presets/Spells_heal.tscn"].decode()
+    d3 = g["VFX/Presets3D/Spells_explosion_3d.tscn"].decode()
+    assert 'path="../asset_studio_vfx_stretch_add.gdshader"' in d3 and 'shader = ExtResource("stretch_add")' in d3
+    shader = g["VFX/asset_studio_vfx_stretch_add.gdshader"].decode()
+    assert "blend_add" in shader and "MODEL_MATRIX[1]" in shader and "POSITION =" in shader
+    assert "billboard_mode = 3" in d3
+    assert 'get_node_or_null("Delays")' in g["VFX/asset_studio_vfx.gd"].decode()
+
+
+async def test_export_unity_stretched_billboard_scales_with_speed(tmp_path: Path):
+    from studio_core.export import unity
+    from studio_core.export.vfx_particles import STRETCH_VELOCITY
+    from studio_core.store.bundle import engine_source
+
+    ctx, step = await _approve_step(tmp_path)
+    u = dict(unity.export(engine_source(step, [], ctx.blobs, "Spells")))
+    ex = u["VFX/Prefabs/Spells_explosion.prefab"].decode()
+    assert f"m_VelocityScale: {STRETCH_VELOCITY:g}" in ex and ex.count("m_VelocityScale: 0\n") == 4
+
+
 class FakeZImage(FakeExec):
     def __init__(self) -> None:
         super().__init__("comfy.t2i_zimage_turbo")

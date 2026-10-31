@@ -101,6 +101,19 @@ class Source:
     # `fbx` / `glb`, the trim material in `pbr`.
     modular: dict[str, Any] | None = None
     modular_obj: list[tuple[str, Path]] = field(default_factory=list)
+    # Animated tile (op.tile_animate): its tile_anim.json (frame layout, autotile table) and the frame sheet.
+    tile_anim: dict[str, Any] | None = None
+    tile_anim_sheet: Path | None = None
+    # Card set (op.card_set): its card_set.json and image paths by key (front:<id>, art:<id>, frame:<key>, back).
+    cards: dict[str, Any] | None = None
+    cards_files: dict[str, Path] = field(default_factory=dict)
+    # Isometric 2:1 tiles / prop (op.iso_tiles, op.iso_prop): its iso_tiles.json or iso_prop.json and image paths by
+    # sprite name plus "atlas" (the strip every engine slices).
+    iso: dict[str, Any] | None = None
+    iso_files: dict[str, Path] = field(default_factory=dict)
+    # Playable scene (op.playable_scene): its playable_scene.json and paths by key (atlas, sheet, prop:<n>, bg:<n>).
+    playable: dict[str, Any] | None = None
+    playable_files: dict[str, Path] = field(default_factory=dict)
     # Set when the export asked for traced 2D colliders + foot pivot on the sprite sheet (export/collider.py).
     collider: Any = None
 

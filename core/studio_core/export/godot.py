@@ -321,6 +321,10 @@ def export(src: Source) -> Files:
 
         if note := physics_readme(src.spine_json[1], "spine-godot"):
             notes.append(note)
+        from studio_core.ops.spine_face import face_readme
+
+        if note := face_readme(src.spine_json[1], "spine-godot"):
+            notes.append(note)
     for n, p in src.glb:
         files.append((f"Models/{n}", p))
     if src.glb:
@@ -504,6 +508,30 @@ def export(src: Source) -> Files:
         mm_files, mm_notes = minimap_files(src)
         files += mm_files
         notes += mm_notes
+    if src.tile_anim and src.tile_anim_sheet:
+        from studio_core.export.tile_anim import godot_files as tile_anim_files
+
+        ta_files, ta_notes = tile_anim_files(src)
+        files += ta_files
+        notes += ta_notes
+    if src.cards and src.cards_files:
+        from studio_core.export.card_set import godot_files as card_files
+
+        cs_files, cs_notes = card_files(src)
+        files += cs_files
+        notes += cs_notes
+    if src.iso and src.iso_files:
+        from studio_core.export.iso import godot_files as iso_files
+
+        is_files, is_notes = iso_files(src)
+        files += is_files
+        notes += is_notes
+    if src.playable and src.playable_files:
+        from studio_core.export.playable_scene import extra_files, godot_files as playable_files
+
+        pl_files, pl_notes = playable_files(src)
+        files += pl_files + extra_files(src)
+        notes += pl_notes
     if not files:
         return files
     files.append(("README.txt", (README_HEAD.format(asset=a) + "\n".join(notes) + "\n").encode()))

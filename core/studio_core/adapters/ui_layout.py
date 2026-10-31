@@ -130,9 +130,23 @@ class ClaudeUiLayoutExecutor:
             meta.update(reply.meta)
         layout = us.normalize_layout(raw, screen, orientation)
         layout["reason"] = reason
+        style = str(params.get("icon_style") or "").strip()
+        names: list[str] = []
+        prompts: list[str] = []
+        if style and str(params.get("icon_source") or "zimage") == "zimage":
+            have: list[str] = []
+            if inputs.get("icons"):
+                try:
+                    pack = json.loads(await asyncio.to_thread(ctx.blobs.path(inputs["icons"][0].hash).read_bytes))
+                    have = [str(e.get("name")) for e in pack.get("elements") or [] if not e.get("state")]
+                except (OSError, ValueError, AttributeError):
+                    have = []
+            names, prompts = us.icons_to_draw(layout, style, have)
+        # Always present: the recipe maps `${steps.layout.json.icon_prompts}` and an empty list skips Z-Image.
+        layout["icon_names"], layout["icon_prompts"] = names, prompts
         ctx.progress(1, 1, "layout")
         summary = f"{screen} ({orientation}): {len(layout['nodes'])} nodes — {reason}"
         return StepResult(outputs={"json": [await put_json(ctx, layout, us.LAYOUT_FILE)],
                                    "text": [await ctx.blobs.put_bytes(summary.encode("utf-8"), name="ui_layout.txt",
                                                                       mime="text/plain")]},
-                          meta={**meta, "nodes": len(layout["nodes"])})
+                          meta={**meta, "nodes": len(layout["nodes"]), "icons_to_draw": len(names)})

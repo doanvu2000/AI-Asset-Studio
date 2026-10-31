@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from studio_core.contracts import BlobStore, StepRow
-from studio_core.export.sheet import Layout, cs_namespace, ident, layout
+from studio_core.export.sheet import SHARED_SCRIPT_NOTE, Layout, cs_namespace, ident, layout
 from studio_core.export.source import Files, Source
 
 # Fixed so several exported characters in one Unity project share one script identity.
@@ -291,7 +291,7 @@ def unity_files(src: Source) -> tuple[Files, list[str]]:
             "theo order của khung, dời các Transform Sockets/<socket> (hand_r, hand_l, head, chest; rot đã đổi sang "
             "trục Unity). Tắt/bật GameObject con để bỏ/mặc đồ; đổi món khác (sheet cắt giống thân) bằng "
             "SetLayerSprites(\"weapon\", sprites); gắn vật 2D riêng vào Sockets/hand_r. Xuất nhiều nhân vật "
-            f"vào cùng project: giữ 1 file {SCRIPT_FILE}.")
+            f"vào cùng project: giữ 1 file {SCRIPT_FILE}" + SHARED_SCRIPT_NOTE + ".")
     return files, [note]
 
 

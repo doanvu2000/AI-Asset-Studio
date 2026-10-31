@@ -564,5 +564,24 @@
         "class": "SaveImage"
       }
     ]
+  },
+  "upscale_seedvr2": {
+    "file": "upscale_seedvr2.api.json",
+    "template": "SeedVR2 3B fp8 (numz/ComfyUI-SeedVR2_VideoUpscaler)",
+    "images": [
+      {
+        "key": "1.image",
+        "title": "Load Image",
+        "default": "example.png"
+      }
+    ],
+    "texts": [],
+    "seeds": [],
+    "outputs": [
+      {
+        "node": "save",
+        "class": "SaveImage"
+      }
+    ]
   }
 }

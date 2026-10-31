@@ -28,6 +28,15 @@ export const CHANGELOG: Release[] = [
       'Màn UI game: Claude bố cục từ ui-kit, mockup 16:9 / 20:9 / 4:3 trong vùng an toàn, xuất prefab UGUI + UXML và scene Godot + Theme',
       'Vật phẩm xoay vòng, UI động shine / glow / nhún / lấp lánh, vật lý Spine 4.2 cho tóc, áo choàng, đuôi',
       'Minimap từ ảnh màn, Tiled hoặc LDtk, có icon điểm đánh dấu và mặt nạ tròn',
+      'Màn chơi thử: gom nhân vật, ô nền, prop của dự án → Claude xếp màn → chạy thử trong Godot / Unity, xuất thêm Tiled .tmx và LDtk, nút “Mở trong Godot / Unity”',
+      'Tile động lặp liền mép: nước, dung nham, cỏ gió (CPU) hoặc đuốc, thác (Wan), nhận cả autotile 47 ô; TileSet Godot, AnimatedTile / RuleTile Unity',
+      'Icon kho đồ từ mesh 3D: cả bộ cùng góc, đèn, độ lấp đầy, có viền / nền độ hiếm + atlas',
+      'Isometric 2:1: tile mặt đất liền mép có biến thể, prop 4 hướng đứng đúng ô; Tilemap Isometric Unity, TileSet y-sort Godot',
+      'Bộ thẻ bài từ CSV hoặc chủ đề: khung theo độ hiếm và loại, chữ tiếng Việt tự co vừa ô, mặt sau, prefab UGUI và scene Godot',
+      'Biểu cảm mặt Spine: mắt, miệng, mày thành slot riêng, anim chớp mắt, nói, vui, giận, buồn; áo choàng lắc tự nhiên hơn',
+      'Phóng to HD thêm engine SeedVR2 (tuỳ chọn, cài 1 chạm): nét và giàu chi tiết hơn Real-ESRGAN, giữ nền trong',
+      'Màn UI tự dùng TextMeshPro và vẽ icon theo chủ đề; Kiểm tra project bắt ảnh gần giống bằng CLIP',
+      'Sửa: preview Unity không còn hồng, terrain có mặt nước hồ / sông, decal hết ra vòng tròn, trim đúng màu gỗ, VFX trễ / kéo dài theo vận tốc, nhiều bản xuất chung một project Unity không trùng script',
       'Chạy nhanh hơn: bước Claude và bước tất định dùng lại kết quả khi đầu vào y hệt (tuỳ chọn “Bỏ qua kết quả cũ”)',
       'Trang Quy trình dùng hết bề ngang khi màn hình rộng'
     ]

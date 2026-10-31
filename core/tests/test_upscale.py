@@ -135,3 +135,120 @@ async def test_prep_needs_some_input(tmp_path: Path):
 def test_recipe_loads():
     r = load_recipe_file(RECIPES / "upscale.yaml")
     assert [s.id for s in r.steps] == ["prep", "gen", "post", "approve"]
+
+
+class FakeComfy:
+    def __init__(self) -> None:
+        self.calls: list[tuple[dict, list]] = []
+
+    def cache_material(self, params: dict) -> str:
+        return "wf"
+
+    async def run(self, ctx, params, inputs):
+        from studio_core.contracts import StepResult
+        self.calls.append((params, inputs["image"]))
+        return StepResult(outputs={"images": list(inputs["image"])}, meta={"seconds": 1.0})
+
+
+def _seedvr2_settings(tmp_path: Path, node: bool = True, models: bool = True):
+    from studio_core.adapters.comfy.upscale import seedvr2_models
+    from studio_core.config import Settings
+    from studio_core.paths import package_dir
+
+    comfy, mdir = tmp_path / "comfy", tmp_path / "models"
+    (comfy / "custom_nodes").mkdir(parents=True)
+    if node:
+        (comfy / "custom_nodes" / "ComfyUI-SeedVR2_VideoUpscaler").mkdir()
+    wf = package_dir() / "workflows"
+    if models:
+        for m in seedvr2_models(wf):
+            (mdir / "SEEDVR2").mkdir(parents=True, exist_ok=True)
+            (mdir / "SEEDVR2" / m).write_bytes(b"x")
+    return Settings(data_dir=tmp_path / "data", comfy_dir=comfy, comfy_models_dir=mdir, comfy_workflows_dir=wf)
+
+
+def test_seedvr2_detection_and_auto_engine(tmp_path: Path):
+    from studio_core.adapters.comfy.upscale import resolve_engine, seedvr2_installed, seedvr2_models
+    from studio_core.paths import package_dir
+
+    assert set(seedvr2_models(package_dir() / "workflows")) == {"seedvr2_ema_3b_fp8_e4m3fn.safetensors",
+                                                                "ema_vae_fp16.safetensors"}
+    ok = _seedvr2_settings(tmp_path / "a")
+    assert seedvr2_installed(ok) and resolve_engine("auto", ok) == "seedvr2"
+    no_models = _seedvr2_settings(tmp_path / "b", models=False)
+    assert not seedvr2_installed(no_models) and resolve_engine("auto", no_models) == "esrgan"
+    assert not seedvr2_installed(_seedvr2_settings(tmp_path / "c", node=False))
+    assert resolve_engine(None, no_models) == "esrgan" and resolve_engine("ESRGAN", ok) == "esrgan"
+    with pytest.raises(StepError):
+        resolve_engine("waifu2x", ok)
+
+
+async def test_upscale_model_routes_engine_and_sets_factor(tmp_path: Path):
+    from studio_core.adapters.comfy.upscale import SEEDVR2_FACTOR_KEY, UpscaleModelExecutor
+
+    gens = {"comfy.upscale_esrgan": FakeComfy(), "comfy.upscale_seedvr2": FakeComfy()}
+    ctx = FakeCtx(tmp_path)
+    ref = await put_img(ctx, disc(), "a.png")
+    ex = UpscaleModelExecutor(gens.__getitem__, _seedvr2_settings(tmp_path / "s"))
+    res = await ex.run(ctx, {"engine": "seedvr2", "scale": 2, "_timeout_s": 60}, {"image": [ref]})
+    params, imgs = gens["comfy.upscale_seedvr2"].calls[0]
+    assert params[SEEDVR2_FACTOR_KEY] == "2 * round(min(a, b) * 2 / 2)" and params["_timeout_s"] == 60
+    assert imgs == [ref] and res.meta["engine"] == "seedvr2" and res.outputs["images"] == [ref]
+    await ex.run(ctx, {"engine": "esrgan", "scale": 4}, {"image": [ref]})
+    assert gens["comfy.upscale_esrgan"].calls[0][0] == {}
+    assert ex.cache_material({"engine": "esrgan"}) != ex.cache_material({"engine": "seedvr2"})
+
+    bare = UpscaleModelExecutor(gens.__getitem__, _seedvr2_settings(tmp_path / "n", node=False))
+    with pytest.raises(StepError, match="SeedVR2 is not installed"):
+        await bare.run(ctx, {"engine": "seedvr2"}, {"image": [ref]})
+    with pytest.raises(StepError, match="scale"):
+        await ex.run(ctx, {"engine": "esrgan", "scale": 3}, {"image": [ref]})
+
+
+def test_seedvr2_workflow_targets_the_short_edge():
+    import json
+
+    from studio_core.paths import package_dir
+
+    wf = json.loads((package_dir() / "workflows" / "upscale_seedvr2.api.json").read_text(encoding="utf-8"))
+    up = wf["6"]["inputs"]
+    assert up["resolution"] == ["5", 1] and up["batch_size"] == 1
+    from studio_core.adapters.comfy.upscale import seedvr2_expression
+    a, b, s = 300, 513, 4
+    assert eval(seedvr2_expression(s), {"min": min, "round": round, "a": a, "b": b}) == 1200
+    assert eval(seedvr2_expression(2), {"min": min, "round": round, "a": 257, "b": 999}) == 514
+
+
+def test_seedvr2_stays_an_optional_pack_for_upscale():
+    from studio_core.bootstrap import plan
+
+    text = (RECIPES / "upscale.yaml").read_text(encoding="utf-8")
+    assert plan.recipe_packs(text) == {"upscale"}
+    seed = next(p for p in plan.manifest()["packs"] if p["id"] == "seedvr2")
+    assert not seed["required"] and seed["custom_nodes"][0]["name"] == "seedvr2_videoupscaler"
+    assert not any(d.startswith("torch") for d in seed["custom_nodes"][0]["pip"])
+    from studio_core.store.model_licenses import model_license
+    assert model_license("seedvr2_ema_3b_fp8_e4m3fn.safetensors")["license"] == "Apache-2.0"
+
+
+async def test_post_labels_the_engine(tmp_path: Path):
+    ctx = FakeCtx(tmp_path)
+    smooth = await put_img(ctx, disc(), "orb.png")
+    prep = await UpscalePrep().run(ctx, {}, {"images": [smooth]})
+    up = await put_img(ctx, fake_model(Image.open(ctx.blobs.path(prep.outputs["rgb"][0].hash))), "u.png")
+    post = await UpscalePost().run(ctx, {"scale": 4, "engine": "seedvr2"}, {"images": [smooth], "upscaled": [up]})
+    assert post.meta["results"][0]["method"] == "seedvr2"
+
+
+async def test_post_records_the_engine_auto_resolved_to(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from studio_core.adapters.comfy import upscale as adapter
+
+    ctx = FakeCtx(tmp_path)
+    src = await put_img(ctx, disc(), "orb.png")
+    prep = await UpscalePrep().run(ctx, {"mode": "ai"}, {"images": [src]})
+    up = await put_img(ctx, fake_model(Image.open(ctx.blobs.path(prep.outputs["rgb"][0].hash))), "u.png")
+    for installed, want in ((True, "seedvr2"), (False, "esrgan")):
+        monkeypatch.setattr(adapter, "seedvr2_installed", lambda _s, v=installed: v)
+        post = await UpscalePost(object()).run(ctx, {"scale": 4, "mode": "ai", "engine": "auto"},
+                                               {"images": [src], "upscaled": [up]})
+        assert [r["method"] for r in post.meta["results"]] == [want]

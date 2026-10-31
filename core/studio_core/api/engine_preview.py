@@ -77,3 +77,42 @@ async def cancel_preview(request: Request, job_id: str) -> Response:
     job = _job(request, job_id)
     _manager(request).cancel(job)
     return OrjsonResponse(job.view())
+
+
+class OpenBody(BaseModel):
+    engine: Literal["unity", "godot"]
+    name: str | None = None
+
+
+@router.post("/steps/{step_id}/open-in-engine")
+async def open_in_engine(request: Request, step_id: str, body: OpenBody) -> Response:
+    """Playable scene only: export it and open it in the engine's editor (Godot project / staged Unity project)."""
+    from studio_core.export.playable_scene import open_project
+
+    repo = request.app.state.repo
+    step = await repo.get_step(step_id)
+    if step is None:
+        raise ApiError(404, "not_found", f"unknown step: {step_id}")
+    if step.status not in (StepStatus.SUCCEEDED, StepStatus.CACHED) or not step.outputs:
+        raise ApiError(409, "not_exportable", "step has no finished outputs")
+    settings = request.app.state.settings
+    blobs = request.app.state.blobs
+    from studio_core.store.bundle import engine_source
+
+    src = await asyncio.to_thread(engine_source, step, [], blobs, "x")
+    if not src.playable:
+        raise ApiError(422, "not_exportable", "step has no playable scene")
+    root = getattr(settings, "app_exports_dir", None) or Path(settings.data_dir) / "exports" / "app"
+    siblings = await repo.get_steps(step.run_id)
+    name = body.name or str(src.playable.get("asset") or "") or None
+    try:
+        out = await asyncio.to_thread(export_engine, step, siblings, blobs, Path(root), name, body.engine)
+        from studio_core.export.sheet import ident
+
+        info = await asyncio.to_thread(open_project, settings, Path(out["dir"]), body.engine,
+                                       ident(out["name"], "asset"))
+    except BundleError as e:
+        raise ApiError(422, "not_exportable", str(e)) from e
+    except (RuntimeError, ValueError, OSError) as e:
+        raise ApiError(409, "engine_unavailable", str(e)) from e
+    return OrjsonResponse({**info, "export_dir": out["dir"]})

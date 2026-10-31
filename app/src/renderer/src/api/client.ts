@@ -55,7 +55,7 @@ import type {
 } from './types'
 import type { CoreDiagnostics } from '../../../preload/types'
 import type { AgentActivitySnapshot } from './types'
-import type { EnginePreviewBody, EnginePreviewJob, PreviewEngines } from './enginePreview'
+import type { EnginePreviewBody, EnginePreviewJob, OpenInEngineResult, PreviewEngine, PreviewEngines } from './enginePreview'
 import type { HitVfx, StepHits } from './hitFx'
 import { devlog } from '@/composables/devlog'
 
@@ -166,6 +166,8 @@ export interface StudioApi {
   startEnginePreview(stepId: string, body: EnginePreviewBody): Promise<EnginePreviewJob>
   enginePreviewJob(jobId: string): Promise<EnginePreviewJob>
   cancelEnginePreview(jobId: string): Promise<EnginePreviewJob>
+  /** Playable scene: export it and open the engine's editor on it (Godot project / staged Unity project). */
+  openInEngine(stepId: string, engine: PreviewEngine): Promise<OpenInEngineResult>
   /** Library assets most like a blob or version (the query itself is left out). */
   similarAssets(target: { blob?: string; version_id?: string }, q?: SimilarQuery): Promise<SimilarResult>
   /** Same search from an image file or a text description (text needs the CLIP model). */
@@ -337,6 +339,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     startEnginePreview: (stepId, body) => call('POST', `/api/steps/${enc(stepId)}/engine-preview`, body, SLOW_TIMEOUT_MS),
     enginePreviewJob: (jobId) => call('GET', `/api/engine-preview/jobs/${enc(jobId)}`),
     cancelEnginePreview: (jobId) => call('POST', `/api/engine-preview/jobs/${enc(jobId)}/cancel`),
+    openInEngine: (stepId, engine) => call('POST', `/api/steps/${enc(stepId)}/open-in-engine`, { engine }, SLOW_TIMEOUT_MS),
     similarAssets: (target, q = {}) =>
       call(
         'GET',

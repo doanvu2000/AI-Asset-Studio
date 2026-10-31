@@ -31,6 +31,7 @@ def direction_vector(angle: float) -> tuple[float, float]:
 
 
 CS_NAMESPACE = "AssetStudio"
+SHARED_SCRIPT_NOTE = " — plugin Unity / export_to_engine tự dùng lại bản đã có trong project, chỉ khi kéo tay mới phải xoá"
 
 
 def cs_namespace(src: str, ns: str = CS_NAMESPACE) -> str:

@@ -64,7 +64,26 @@ func _spawn(res: Resource) -> Node:
 		var m := MeshInstance3D.new()
 		m.mesh = res
 		return m
+	if res is TileSet:
+		return _tile_demo(res)
 	return null
+
+
+# A TileSet with no scene of its own (animated tile) previews as a small painted TileMapLayer.
+func _tile_demo(ts: TileSet) -> Node:
+	if ts.get_source_count() == 0:
+		return null
+	var sid := ts.get_source_id(0)
+	var src := ts.get_source(sid) as TileSetAtlasSource
+	if src == null or src.get_tiles_count() == 0:
+		return null
+	var layer := TileMapLayer.new()
+	layer.tile_set = ts
+	var n := src.get_tiles_count()
+	var side := 4 if n == 1 else ceili(sqrt(float(n)))
+	for i in side * side:
+		layer.set_cell(Vector2i(i % side, floori(float(i) / side)), sid, src.get_tile_id(i % n))
+	return layer
 
 
 func _aabbs(n: Node, acc: Array) -> void:

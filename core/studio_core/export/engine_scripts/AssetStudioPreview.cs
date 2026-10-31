@@ -72,7 +72,8 @@ namespace AssetStudio
             {
                 try { return a.GetTypes(); }
                 catch (System.Reflection.ReflectionTypeLoadException e) { return e.Types.Where(t => t != null); }
-            }).Where(t => t.Namespace == "AssetStudio" && typeof(AssetPostprocessor).IsAssignableFrom(t));
+            }).Where(t => t.Namespace != null && t.Namespace.StartsWith("AssetStudio")
+                && typeof(AssetPostprocessor).IsAssignableFrom(t));
             foreach (var t in builders)
             {
                 var m = t.GetMethod("BuildAll", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
@@ -287,8 +288,18 @@ namespace AssetStudio
         {
             var json = Directory.GetFiles(dir, "*_terrain.json", SearchOption.AllDirectories).FirstOrDefault();
             if (json == null) return null;
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("AssetStudio.AssetStudioTerrain"))
-                .FirstOrDefault(t => t != null);
+            // Each export puts its builder in a namespace of its own (AssetStudio.Terrain<hash>); older ones used AssetStudio.
+            var name = Path.GetFileName(json);
+            var type = AppDomain.CurrentDomain.GetAssemblies().SelectMany(a =>
+                {
+                    try { return a.GetTypes(); }
+                    catch (System.Reflection.ReflectionTypeLoadException e) { return e.Types.Where(t => t != null); }
+                }).Where(t => t.Name == "AssetStudioTerrain" && t.Namespace != null && t.Namespace.StartsWith("AssetStudio"))
+                .OrderBy(t =>
+                {
+                    var f = t.GetField("JsonName", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                    return f != null && (string)f.GetValue(null) == name ? 0 : 1;
+                }).FirstOrDefault();
             if (type == null)
             {
                 report.warnings.Add("terrain json without its AssetStudioTerrain editor script");
@@ -322,7 +333,7 @@ namespace AssetStudio
                 if (renderers.Length == 0 && t == terrains[0]) b = tb;
                 else b.Encapsulate(tb);
             }
-            bool flat = terrains.Length == 0 && (renderers.Length == 0 || renderers.All(r => r is SpriteRenderer) || b.size.z < 1e-4f || particles);
+            bool flat = terrains.Length == 0 && (renderers.Length == 0 || renderers.All(r => r is SpriteRenderer || r.GetType().Name == "TilemapRenderer") || b.size.z < 1e-4f || particles);
             var cam = new GameObject("PreviewCamera").AddComponent<Camera>();
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = Bg;

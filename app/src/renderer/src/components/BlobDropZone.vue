@@ -19,7 +19,7 @@ const VIDEO_EXT = ['mp4', 'webm', 'gif', 'mov', 'mkv']
 const atlasPages = computed(() => props.kind === 'file' && props.siblings === 'atlas_pages')
 const aseSheet = computed(() => props.kind === 'file' && props.siblings === 'aseprite_sheet')
 const withPng = computed(() => atlasPages.value || aseSheet.value)
-const multiple = computed(() => props.kind === 'images' || withPng.value)
+const multiple = computed(() => props.kind === 'images' || props.siblings === 'multi' || withPng.value)
 const extOf = (name: string): string => name.toLowerCase().split('.').pop() ?? ''
 const fileExts = computed(() => (props.kind === 'video' ? VIDEO_EXT : (props.ext ?? [])))
 const meshExts = computed(() => (props.kind === 'mesh' && props.ext?.length ? props.ext : ['glb']))

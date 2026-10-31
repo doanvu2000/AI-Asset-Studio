@@ -19,7 +19,8 @@ steps:
   - id: gen
     kind: comfy.t2i_zimage_turbo
     params:
-      "57:27.text": "flat top-down photo of ${inputs.prompt | lines} on a plain clean pure white surface, the mark lies flat in the surface like paint or a stain, irregular natural organic outline, filled in, never a ring or a circle outline, ${inputs.style}, orthographic, flat even lighting, no cast shadow, no 3D object, no frame, no border, no text, centered with a wide empty white margin around it"
+      # Z-Image Turbo runs at cfg 1 (no negative prompt): naming a shape to avoid ("ring", "circle") draws it.
+      "57:27.text": "straight-on photo of ${inputs.prompt | lines} on a plain clean pure white wall, the mark lies flat in the surface like paint or a stain, lopsided asymmetric shape with ragged uneven edges and patchy density, spreading further to one side, dense in the middle, ${inputs.style}, orthographic, flat even lighting, the clean white wall fills the frame around the mark with a wide empty margin"
       "57:13.width": 1024
       "57:13.height": 1024
     map_param: "57:27.text"

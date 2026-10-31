@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import zlib
 from typing import Any
 
 import numpy as np
@@ -35,6 +36,57 @@ def key_alpha(rgb: np.ndarray, lo: float = 0.04, hi: float = 0.22) -> tuple[np.n
     dist = np.abs(rgb - bg).max(-1)
     t = np.clip((dist - lo) / (hi - lo), 0, 1)
     return (t * t * (3 - 2 * t)).astype(np.float32), bg.astype(np.float32)
+
+
+ORGANIC = ("dirt", "stain", "scorch", "burn", "soot", "mud", "grime", "moss", "splat", "blood", "rust", "leak",
+           "puddle", "oil", "ash", "char", "smudge", "spill", "mold", "mould", "lichen", "dust", "wet")
+IRREGULAR_AUTO = 0.6
+# 4πA/P² on the pixel outline: a filled disc scores ~0.9 here, organic splotches stay under ~0.5.
+ROUND_LIMIT = 0.7
+
+
+def _noise(shape: tuple[int, int], freq: int, rng: np.random.Generator) -> np.ndarray:
+    h, w = shape
+    lat = rng.random((freq + 1, freq + 1)).astype(np.float32)
+    return np.asarray(Image.fromarray(lat, "F").resize((w, h), Image.Resampling.BICUBIC), np.float32)
+
+
+def roundness(alpha: np.ndarray) -> float:
+    m = alpha > 0.5
+    area = int(m.sum())
+    if area < 16:
+        return 0.0
+    inner = m.copy()
+    inner[1:] &= m[:-1]
+    inner[:-1] &= m[1:]
+    inner[:, 1:] &= m[:, :-1]
+    inner[:, :-1] &= m[:, 1:]
+    perim = int((m & ~inner).sum()) * 1.12
+    return float(min(1.0, 4 * np.pi * area / max(perim * perim, 1.0)))
+
+
+def irregular_edge(color: np.ndarray, alpha: np.ndarray, amount: float, seed: int
+                   ) -> tuple[np.ndarray, np.ndarray]:
+    """Bends the outline with a low-frequency warp and eats into it with noise (big lobes + grainy fringe), so a
+    stain the model drew as a disc gets a ragged, uncertain border; the solid middle stays."""
+    if amount <= 0:
+        return color, alpha
+    rng = np.random.default_rng(seed)
+    h, w = alpha.shape
+    # Domain warp first: low-frequency displacement bends a circle into a blob; the erosion below adds the fringe.
+    amp = min(amount, 0.8) * 0.12 * min(h, w)
+    dy = (_noise(alpha.shape, 3, rng) - 0.5) * 2 * amp
+    dx = (_noise(alpha.shape, 3, rng) - 0.5) * 2 * amp
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    sy = np.clip(np.round(yy + dy), 0, h - 1).astype(np.int32)
+    sx = np.clip(np.round(xx + dx), 0, w - 1).astype(np.int32)
+    alpha, color = alpha[sy, sx], color[sy, sx]
+    soft = soft_blur(alpha, max(2, round(min(h, w) * 0.08)), wrap=False)
+    n = 0.6 * _noise(alpha.shape, 4, rng) + 0.3 * _noise(alpha.shape, 11, rng) + 0.1 * _noise(alpha.shape, 48, rng)
+    n = (n - n.min()) / max(float(n.max() - n.min()), 1e-6)
+    t = soft + min(amount, 0.8) * (n - 0.5) * 1.6
+    keep = np.clip((t - 0.35) / 0.25, 0, 1)
+    return color, (alpha * keep * keep * (3 - 2 * keep)).astype(np.float32)
 
 
 def unpremultiply(rgb: np.ndarray, alpha: np.ndarray, bg: np.ndarray) -> np.ndarray:
@@ -93,8 +145,20 @@ def decal_normal(rgba: Image.Image, strength: float, invert: bool) -> Image.Imag
     return Image.fromarray(np.concatenate([rgb, np.round(alpha * 255).astype(np.uint8)[..., None]], -1), "RGBA")
 
 
+def irregular_amount(setting: Any, name: str, mode: str, round_score: float) -> float:
+    """'auto': organic marks (by name) or anything keyed out as a near-disc get a ragged edge; logos and stickers cut
+    by BiRefNet keep theirs. A number forces that amount."""
+    if setting in (None, "", "auto"):
+        if mode == "birefnet":
+            return 0.0
+        organic = any(k in name.lower() for k in ORGANIC)
+        return IRREGULAR_AUTO if organic or round_score > ROUND_LIMIT else 0.0
+    return min(0.8, max(0.0, float(setting)))
+
+
 def make_decal(src: Image.Image, cut: Image.Image | None, mode: str, size: int, fade: float, strength: float,
-               invert: bool) -> tuple[Image.Image, Image.Image, dict[str, Any]]:
+               invert: bool, name: str = "", irregular: Any = "auto", seed: int = 0
+               ) -> tuple[Image.Image, Image.Image, dict[str, Any]]:
     rgb = np.asarray(src.convert("RGB"), np.float32) / 255
     alpha, bg = key_alpha(rgb)
     if mode == "birefnet" and cut is not None:
@@ -105,12 +169,17 @@ def make_decal(src: Image.Image, cut: Image.Image | None, mode: str, size: int, 
         color = rgb
     else:
         color = unpremultiply(rgb, alpha, bg)
+    before = roundness(alpha)
+    amount = irregular_amount(irregular, name, mode, before)
+    color, alpha = irregular_edge(color, alpha, amount, seed)
     alpha = alpha * edge_fade(alpha.shape, fade)
     albedo, (aw, ah) = fit_square(np.concatenate([color, alpha[..., None]], -1), size)
     normal = decal_normal(albedo, strength, invert)
-    cov = float((np.asarray(albedo)[..., 3] > 128).mean())
+    a8 = np.asarray(albedo)[..., 3]
+    cov = float((a8 > 128).mean())
     return albedo, normal, {"aspect": [aw, ah], "coverage": round(cov, 4),
-                            "background": [round(float(v), 3) for v in bg]}
+                            "background": [round(float(v), 3) for v in bg], "irregular": amount,
+                            "roundness": [round(before, 3), round(roundness(a8 / 255), 3)]}
 
 
 def sheet(decals: list[tuple[str, Image.Image]], cell: int = 256) -> Image.Image:
@@ -141,6 +210,9 @@ class DecalPack(OpExecutor):
             fade = float(params.get("fade", 0.06))
             strength = float(params.get("normal_strength", 4.0))
             width_m = float(params.get("width_m", 1.0))
+            irregular = params.get("irregular", "auto")
+            if irregular not in (None, "", "auto"):
+                irregular = float(irregular)
         except (TypeError, ValueError) as e:
             raise StepError("op_bad_params", str(e)) from e
         if mode not in ALPHA_MODES or size not in SIZES or not 0 <= fade <= 0.3 or width_m <= 0:
@@ -165,7 +237,8 @@ class DecalPack(OpExecutor):
             taken.add(name)
             src = await _load(ctx, ref)
             cut = await _load(ctx, cuts[i]) if mode == "birefnet" else None
-            albedo, normal, meta = await asyncio.to_thread(make_decal, src, cut, mode, size, fade, strength, invert)
+            albedo, normal, meta = await asyncio.to_thread(make_decal, src, cut, mode, size, fade, strength, invert,
+                                                           name, irregular, zlib.crc32(name.encode()))
             a_ref = await _put_png(ctx, albedo, f"{name}.png")
             n_ref = await _put_png(ctx, normal, f"{name}_normal.png")
             out.append(a_ref)
@@ -185,7 +258,8 @@ class DecalPack(OpExecutor):
                                    "preview": [await _put_png(ctx, await asyncio.to_thread(sheet, shown),
                                                               "decal_preview.png")]},
                           meta={"decals": len(entries), "alpha": mode,
-                                "coverage": {e["name"]: e["coverage"] for e in entries}})
+                                "coverage": {e["name"]: e["coverage"] for e in entries},
+                                "roundness": {e["name"]: e["roundness"] for e in entries}})
 
 
 DECAL_OPS = (DecalPack,)

@@ -210,6 +210,16 @@ def project_locked(project: Path) -> bool:
         return True
 
 
+def unity_env() -> dict[str, str]:
+    """os.environ plus ProgramData: an MCP client may start the core with a trimmed environment (the MCP SDK's
+    default keeps ~12 variables), and without ProgramData Unity's Package Manager server never comes up."""
+    env = dict(os.environ)
+    if os.name == "nt" and not env.get("ProgramData") and not env.get("PROGRAMDATA"):
+        pd = env.get("ALLUSERSPROFILE") or f"{env.get('SystemDrive') or env.get('SYSTEMDRIVE') or 'C:'}\\ProgramData"
+        env["ProgramData"] = env["ALLUSERSPROFILE"] = pd
+    return env
+
+
 def _unity_stage(export_dir: Path, project: Path) -> str:
     script_dir = project / "Assets" / UNITY_SCRIPT_DIR
     script_dir.mkdir(parents=True, exist_ok=True)
@@ -223,8 +233,9 @@ def _unity_stage(export_dir: Path, project: Path) -> str:
     target = project / "Assets" / UNITY_FOLDER / export_dir.name
     if target.exists():
         shutil.rmtree(target)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(export_dir, target)
+    from studio_core.export.unity import copy_unity_export
+
+    copy_unity_export(export_dir, target, project / "Assets")
     return f"Assets/{UNITY_FOLDER}/{export_dir.name}"
 
 
@@ -235,7 +246,7 @@ async def preview_unity(export_dir: Path, work: Path, exe: Path, project: Path, 
     work.mkdir(parents=True, exist_ok=True)
     asset_dir = await asyncio.to_thread(_unity_stage, export_dir, project)
     png, report, log_file = work / "preview.png", work / "report.json", work / "unity.log"
-    env = {**os.environ, "ASSET_STUDIO_PREVIEW_DIR": asset_dir, "ASSET_STUDIO_PREVIEW_OUT": str(png),
+    env = {**unity_env(), "ASSET_STUDIO_PREVIEW_DIR": asset_dir, "ASSET_STUDIO_PREVIEW_OUT": str(png),
            "ASSET_STUDIO_PREVIEW_REPORT": str(report), "ASSET_STUDIO_PREVIEW_SIZE": str(SIZE)}
     # No -nographics: Camera.Render needs a graphics device. No -quit: the method calls EditorApplication.Exit.
     run = await run_proc([str(exe), "-batchmode", "-projectPath", str(project), "-executeMethod",

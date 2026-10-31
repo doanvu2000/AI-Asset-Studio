@@ -52,7 +52,7 @@ type Item = { id: string; label: string; hint?: string; kit?: boolean; anim?: bo
 const items = computed<Item[]>(() => {
   const list: Item[] = kitOk.value ? [{ id: 'kit', label: 'Bộ nhân vật', hint: '8 hướng → Spine', kit: true }] : []
   if (clicked.value) {
-    const all = followUps(recipes.list, clicked.value, siblings.value)
+    const all = followUps(recipes.list, clicked.value, siblings.value, run.value?.recipe_id)
     const anim = all.find((f) => f.recipe.id === ANIM && !f.missing.length)
     if (anim) list.push({ id: ANIM, label: 'Hoạt ảnh sprite', hint: 'video AI → sheet', anim: true, follow: anim })
     for (const f of all)

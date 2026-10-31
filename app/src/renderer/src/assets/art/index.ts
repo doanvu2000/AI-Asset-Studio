@@ -50,19 +50,33 @@ import modularKit from './recipe-modular-kit.webp'
 import itemSpin from './recipe-item-spin.webp'
 import uiJuice from './recipe-ui-juice.webp'
 import spinePhysics from './recipe-spine-physics.webp'
+import spineFace from './recipe-spine-face.webp'
 import vfxParticles from './recipe-vfx-particles.webp'
 import terrain3d from './recipe-terrain-3d.webp'
 import minimap from './recipe-minimap.webp'
+import tileAnimated from './recipe-tile-animated.webp'
 import libraryImport from './recipe-library-import.webp'
+import playableScene from './recipe-playable-scene.webp'
+import cardSet from './recipe-card-set.webp'
+import cardSetPrompt from './recipe-card-set-prompt.webp'
 
+import icon3d from './recipe-icon-3d.webp'
+import isoTiles from './recipe-iso-tiles.webp'
+import isoProp from './recipe-iso-prop.webp'
 export const ART = { appIcon, appLogo, emptyRuns, emptyGates, emptyGallery, coreDisconnected, gettingStarted } as const
 
 const RECIPE_ART: Record<string, string> = {
+  'icon-3d': icon3d,
+  'iso-tiles': isoTiles,
+  'iso-tiles-image': isoTiles,
+  'iso-prop': isoProp,
   'item-spin': itemSpin,
   'item-spin-image': itemSpin,
   'ui-juice': uiJuice,
   minimap,
+  'tile-animated': tileAnimated,
   'spine-physics': spinePhysics,
+  'spine-face': spineFace,
   'concept-2d': concept2d,
   'concept-2d-codex': concept2dCodex,
   'concept-2d-brief': concept2dBrief,
@@ -111,7 +125,10 @@ const RECIPE_ART: Record<string, string> = {
   'modular-kit': modularKit,
   'skybox-360': skybox360,
   'terrain-3d': terrain3d,
-  'library-import': libraryImport
+  'library-import': libraryImport,
+  'playable-scene': playableScene,
+  'card-set': cardSet,
+  'card-set-prompt': cardSetPrompt
 }
 
 export function recipeArt(id: string): string | undefined {
@@ -120,11 +137,20 @@ export function recipeArt(id: string): string | undefined {
 
 // What a card promises, in the user's words; the step list stays in the tooltip-level detail.
 const RECIPE_PITCH: Record<string, string> = {
+  'icon-3d': 'Nhiều mesh GLB / FBX / OBJ → bộ icon cùng góc, cùng ánh sáng, cùng độ lấp đầy, viền / nền độ hiếm / khung + atlas, sprite Unity / Godot',
+  'iso-tiles': 'Prompt vật liệu → tile mặt đất isometric 2:1 liền mép + 4–8 biến thể, TileSet Godot / Tilemap Isometric Unity',
+  'iso-tiles-image': 'Texture có sẵn → tile isometric 2:1 liền mép + biến thể, chạy CPU',
+  'iso-prop': 'Mesh GLB → sprite isometric 4 hướng đúng góc 2:1, chân đứng đúng ô, Tile Unity / TileSet Godot y-sort',
+  'card-set': 'Danh sách thẻ CSV / JSON → art Z-Image / Klein theo style dự án, khung theo độ hiếm + loại, chữ Việt có dấu tự co vừa ô, mặt sau, atlas, prefab Unity / scene Godot',
+  'card-set-prompt': 'Chủ đề game → Claude soạn bộ thẻ cân bằng (tên, luật, chỉ số, độ hiếm) → art, khung, chữ tự co, atlas, prefab Unity / scene Godot',
   'item-spin': 'Mesh vật phẩm GLB → Blender quay vòng 12/16/24 frame, trục ở tâm ô → sheet lặp liền + GIF / WebP, clip Unity / Godot',
+  'playable-scene': 'Asset của dự án → Claude vẽ màn ~32×20 ô → chạy thử trong Godot / Unity: nhân vật 8 hướng đi được, va chạm tường + prop, kèm Tiled .tmx, LDtk',
   minimap: 'Ảnh màn / bản đồ Tiled, LDtk → minimap tròn gọn nét hoặc giấy cũ / vẽ tay, icon POI đúng chỗ + JSON toạ độ, prefab Unity / scene Godot',
+  'tile-animated': 'Tile / autotile 47 ô → nước, dung nham, cỏ gió (CPU) hoặc đuốc, thác (Wan) lặp liền mép + liền nhịp, TileSet Godot / AnimatedTile Unity',
   'item-spin-image': 'Ảnh đồng xu / huy hiệu phẳng → xoay vòng giả 3D (mặt sau, viền dày) → sheet lặp liền + GIF / WebP, chạy CPU',
   'ui-juice': 'Nút / icon → vòng lặp dải sáng quét, quầng sáng phập phồng, nhún, sao lấp lánh → sheet + GIF / WebP, chạy CPU',
   'spine-physics': 'Nhân vật Spine 4.2 → tóc, áo choàng, váy, đuôi tự lắc theo physics constraint, phần ảnh cứng chia chuỗi xương + mesh',
+  'spine-face': 'Nhân vật Spine → mắt, mày, miệng thành slot riêng (Klein vẽ nhắm mắt, A / O / M, vui, giận, buồn) + anim chớp mắt, nói, cảm xúc cho track 1',
   'concept-2d': 'Prompt → ảnh PNG nền trong suốt',
   'concept-2d-codex': 'Prompt → ảnh PNG nền trong suốt, không cần GPU',
   'concept-2d-brief': 'Ý tưởng ngắn → Claude viết prompt → ảnh PNG nền trong suốt',

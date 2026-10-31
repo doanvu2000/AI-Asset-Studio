@@ -33,6 +33,10 @@ SIZES = (129, 257, 513, 1025, 2049, 4097)
 ERODE_RES = 513
 # Slope (rise over run) where rock starts / fully takes over: tan 30° and tan 42°, roughly where soil stops holding.
 CLIFF_SLOPE = (0.58, 0.9)
+# Plan units a perched lake's surface stays under its rim.
+LAKE_FREEBOARD = 0.015
+WATER_RES = 257
+WATER_FILE_SUFFIX = "_water.raw"
 
 
 @dataclass
@@ -166,8 +170,11 @@ def _region_masks(r: dict[str, Any], u: np.ndarray, v: np.ndarray) -> np.ndarray
 ORDER = {"mountains": 0, "hills": 0, "valley": 1, "plateau": 2, "plain": 3, "lake": 4, "sea": 4}
 
 
-def compose(plan: dict[str, Any], n: int, rng: np.random.Generator) -> np.ndarray:
-    """Relief before erosion, in plan units (0 = sea floor-ish, 1 = tallest peak)."""
+def compose(plan: dict[str, Any], n: int, rng: np.random.Generator,
+            lakes: list[dict[str, Any]] | None = None) -> np.ndarray:
+    """Relief before erosion, in plan units (0 = sea floor-ish, 1 = tallest peak). A lake sits at the global water
+    level unless the ground around it is higher (a crater or mountain lake): then its surface is just under its rim,
+    and `lakes` (when given) collects those perched lakes with their level."""
     vv, uu = np.mgrid[0:n, 0:n].astype(np.float32) / (n - 1)
     wx, wy = fbm(n, 3, 4, rng), fbm(n, 3, 4, rng)
     # Domain warp: region outlines and ridges bend like real coasts and ranges instead of perfect ellipses.
@@ -196,6 +203,14 @@ def compose(plan: dict[str, Any], n: int, rng: np.random.Generator) -> np.ndarra
             h = h * (1 - f) + (plan["base"] + top * 0.3 + 0.015 * rough) * f
         else:
             level = wl if wl is not None else plan["base"]
+            if t == "lake":
+                rim = (d > 1.0) & (d < 1.35)
+                if rim.any():
+                    local = float(np.percentile(h[rim], 20)) - LAKE_FREEBOARD
+                    if local > level + LAKE_FREEBOARD:
+                        level = local
+                        if lakes is not None:
+                            lakes.append({k: r[k] for k in ("label", "x", "y", "rx", "ry", "angle")} | {"level": level})
             depth = 0.05 + 0.25 * max(top, 0.1)
             bowl = level - depth * _smooth(1.0, 0.0, d) ** 0.7 - 0.01
             f = _smooth(1.0, 0.55, d)
@@ -306,15 +321,18 @@ def river_field(river: dict[str, Any], h: np.ndarray, rng: np.random.Generator) 
 
 
 def carve_rivers(h: np.ndarray, rivers: list[dict[str, Any]], rng: np.random.Generator
-                 ) -> tuple[np.ndarray, np.ndarray]:
-    """Rivers worked out on a coarse grid (distance + bed), applied at full size; returns heights and a 0..1 bank
-    mask for the splat."""
+                 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Rivers worked out on a coarse grid (distance + bed), applied at full size; returns heights, a 0..1 bank mask
+    for the splat and the river's water surface on the coarse grid (-inf away from any river)."""
     n = h.shape[0]
     m = min(n, ERODE_RES)
     small = _resize(h, m) if m != n else h
     bank = np.zeros_like(h)
+    surface = np.full((m, m), -np.inf, np.float32)
     for r in rivers:
         dist, bed = river_field(r, small, rng)
+        # The channel centre sits half a depth under the bed line; water fills it to just under the bed.
+        surface = np.where(dist < r["width"] * 1.5, np.maximum(surface, bed - 0.1 * r["depth"]), surface)
         if m != n:
             dist, bed = _resize(dist, n, Image.Resampling.BILINEAR), _resize(bed, n, Image.Resampling.BILINEAR)
         w = r["width"]
@@ -322,7 +340,102 @@ def carve_rivers(h: np.ndarray, rivers: list[dict[str, Any]], rng: np.random.Gen
         f = _smooth(w * 4.0, w * 0.5, dist)
         h = h * (1 - f) + np.minimum(h, channel) * f
         bank = np.maximum(bank, _smooth(w * 2.5, w * 0.8, dist))
-    return h, bank
+    return h, bank, surface
+
+
+def _flood(seed: np.ndarray, allowed: np.ndarray) -> np.ndarray:
+    """4-connected region of `allowed` reachable from `seed`."""
+    cur = seed & allowed
+    while True:
+        nxt = cur.copy()
+        nxt[1:] |= cur[:-1]
+        nxt[:-1] |= cur[1:]
+        nxt[:, 1:] |= cur[:, :-1]
+        nxt[:, :-1] |= cur[:, 1:]
+        nxt &= allowed
+        if (nxt == cur).all():
+            return cur
+        cur = nxt
+
+
+def spill_level(h: np.ndarray, start: tuple[int, int], outside: np.ndarray) -> float:
+    """Lowest water level at which a basin around `start` overflows into `outside` (priority flood): the height of
+    the lowest pass on its rim."""
+    import heapq
+
+    n = h.shape[0]
+    seen = np.zeros(h.shape, bool)
+    heap = [(float(h[start]), start)]
+    seen[start] = True
+    level = -math.inf
+    while heap:
+        z, (y, x) = heapq.heappop(heap)
+        level = max(level, z)
+        if outside[y, x]:
+            return level
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            yy, xx = y + dy, x + dx
+            if 0 <= yy < n and 0 <= xx < n and not seen[yy, xx]:
+                seen[yy, xx] = True
+                heapq.heappush(heap, (float(h[yy, xx]), (yy, xx)))
+    return level
+
+
+def water_bodies(h01: np.ndarray, lakes: list[dict[str, Any]], river: np.ndarray, sea: float | None,
+                 res: int = WATER_RES) -> tuple[np.ndarray, list[dict[str, Any]]]:
+    """Water surface (0..1 of height) of perched lakes and rivers above the sea on a res×res grid, NaN where dry.
+    Each lake level is capped under the lowest pass of its rim so it can never spill down the mountainside; the
+    sea itself stays a flat plane at `sea`."""
+    hs = _resize(h01, res, Image.Resampling.BILINEAR)
+    surf = np.full((res, res), np.nan, np.float32)
+    vv, uu = np.mgrid[0:res, 0:res].astype(np.float32) / (res - 1)
+    floor = -1.0 if sea is None else sea
+    out: list[dict[str, Any]] = []
+    for lk in lakes:
+        d = _region_masks(lk, uu, vv)
+        core = d < 0.6
+        if not core.any():
+            continue
+        start = np.unravel_index(int(np.argmin(np.where(core, hs, np.inf))), hs.shape)
+        outside = (d > 1.8) | np.pad(np.zeros((res - 2, res - 2), bool), 1, constant_values=True)
+        spill = spill_level(hs, start, outside)
+        level = min(float(lk["level"]), spill - 0.002)
+        if level <= floor + 0.002 or level <= float(hs[start]):
+            continue
+        seed = np.zeros_like(core)
+        seed[start] = True
+        wet = _flood(seed, hs < level)
+        surf = np.where(wet, np.fmax(surf, level), surf)
+        out.append({"label": lk["label"], "level": round(level, 5), "area": round(float(wet.mean()), 5)})
+    if river.size and np.isfinite(river).any():
+        rv = _resize(np.where(np.isfinite(river), river, -1.0).astype(np.float32), res, Image.Resampling.BILINEAR)
+        wet = (rv > hs) & (rv > floor + 0.002) & (rv > 0)
+        surf = np.where(wet, np.fmax(surf, rv), surf)
+    return surf, out
+
+
+def dilate_surface(surf: np.ndarray, steps: int = 2) -> np.ndarray:
+    """Spreads each water edge outward by `steps` cells at its own level, so the mesh edge tucks under the bank and
+    the terrain draws the shoreline."""
+    out = surf.copy()
+    for _ in range(steps):
+        pad = np.pad(out, 1, constant_values=np.nan)
+        nb = np.stack([pad[:-2, 1:-1], pad[2:, 1:-1], pad[1:-1, :-2], pad[1:-1, 2:]])
+        with np.errstate(all="ignore"):
+            fill = np.nanmax(np.where(np.isnan(nb), -np.inf, nb), 0)
+        out = np.where(np.isnan(out) & np.isfinite(fill), fill, out)
+    return out.astype(np.float32)
+
+
+def read_water_raw(data: bytes, res: int) -> np.ndarray:
+    v = np.frombuffer(data, "<u2").reshape(res, res).astype(np.float32)
+    return np.where(v == 0, np.nan, (v - 1) / 65534).astype(np.float32)
+
+
+def water_raw(surf: np.ndarray) -> bytes:
+    """u16 little-endian, row 0 = north; 0 = dry, else 1 + level·65534."""
+    v = np.where(np.isnan(surf), 0, 1 + np.round(np.clip(surf, 0, 1) * 65534)).astype("<u2")
+    return v.tobytes()
 
 
 def quantize16(h: np.ndarray, rng: np.random.Generator) -> np.ndarray:
@@ -396,17 +509,29 @@ def hillshade(h01: np.ndarray, world_m: float, height_m: float) -> np.ndarray:
     return np.clip(nrm @ light, 0, 1).astype(np.float32)
 
 
+def surface_grid(surface: np.ndarray | None, n: int) -> np.ndarray | None:
+    """Water bodies' level resized to n×n, -1 where dry (for the previews)."""
+    if surface is None or np.isnan(surface).all():
+        return None
+    return _resize(np.nan_to_num(dilate_surface(surface, 1), nan=-1.0), n, Image.Resampling.NEAREST)
+
+
 def map_preview(h01: np.ndarray, w: np.ndarray, water: float | None, world_m: float, height_m: float,
-                colors: dict[str, tuple[int, int, int]] | None = None, size: int = 768) -> Image.Image:
-    """Top-down shaded relief tinted by the splat, water in blue."""
+                colors: dict[str, tuple[int, int, int]] | None = None, size: int = 768,
+                surface: np.ndarray | None = None) -> Image.Image:
+    """Top-down shaded relief tinted by the splat, water (sea level and perched lakes / rivers) in blue."""
     cols = np.array([(colors or ROLE_COLORS)[r] for r in ROLES], np.float32) / 255
     small_h = _resize(h01, size, Image.Resampling.BILINEAR)
     small_w = np.stack([_resize(w[..., k], size, Image.Resampling.BILINEAR) for k in range(4)], -1)
     shade = hillshade(small_h, world_m, height_m)[..., None]
     rgb = (small_w @ cols) * (0.35 + 0.75 * shade)
-    if water is not None:
-        depth = np.clip((water - small_h) * 6, 0, 1)[..., None]
-        wet = small_h[..., None] < water
+    level = np.full_like(small_h, -1.0 if water is None else water)
+    grid = surface_grid(surface, size)
+    if grid is not None:
+        level = np.maximum(level, grid)
+    if water is not None or grid is not None:
+        depth = np.clip((level - small_h) * 6, 0, 1)[..., None]
+        wet = small_h[..., None] < level[..., None]
         rgb = np.where(wet, rgb * 0.35 + np.array([0.12, 0.3, 0.5]) * (1 - depth * 0.5), rgb)
     return Image.fromarray(np.clip(rgb * 255, 0, 255).astype(np.uint8), "RGB")
 
@@ -437,15 +562,16 @@ def build_height(plan: dict[str, Any], p: HeightParams) -> dict[str, Any]:
     rng = np.random.default_rng(seed)
     n = p.size
     m = min(n, ERODE_RES)
-    base = compose(plan, m, rng)
+    lakes: list[dict[str, Any]] = []
+    base = compose(plan, m, rng, lakes if n == m else None)
     eroded = erode(base, p.erosion)
-    h = compose(plan, n, np.random.default_rng(seed)) if n != m else base
+    h = compose(plan, n, np.random.default_rng(seed), lakes) if n != m else base
     if n != m:
         # Detail comes from the full-size noise; the erosion runs on the coarse grid and adds its difference.
         h = h + _resize(eroded - base, n)
     else:
         h = eroded
-    h, bank = carve_rivers(h, plan["rivers"], rng)
+    h, bank, river = carve_rivers(h, plan["rivers"], rng)
     lo, hi = float(h.min()), float(h.max())
     span = max(hi - lo, 1e-6)
     h01 = ((h - lo) / span).astype(np.float32)
@@ -453,6 +579,12 @@ def build_height(plan: dict[str, Any], p: HeightParams) -> dict[str, Any]:
     snow = plan["snowline"]
     h16 = quantize16(h01, rng)
     h01q = h16.astype(np.float32) / 65535
+    lakes01 = [{**lk, "level": (lk["level"] - lo) / span} for lk in lakes]
+    surface, bodies = water_bodies(h01q, lakes01, np.where(np.isfinite(river), (river - lo) / span, -np.inf), water)
+    if bodies:
+        # Shore texture around perched lakes too, not just along the sea line and river banks.
+        levels = _resize(np.nan_to_num(dilate_surface(surface, 4), nan=-1.0), n, Image.Resampling.BILINEAR)
+        bank = np.maximum(bank, np.where(levels > 0, _smooth(levels + 0.015, levels, h01q), 0))
     slope = slope_map(h01q, p.world_m, p.height_m)
     w = splat_weights(h01q, slope, water, snow, bank, rng)
     splat_n = n - 1
@@ -461,7 +593,7 @@ def build_height(plan: dict[str, Any], p: HeightParams) -> dict[str, Any]:
     hist = histogram_report(h16)
     coverage = {r: round(float(s8[..., k].mean()) / 255, 4) for k, r in enumerate(ROLES)}
     return {"h16": h16, "splat": s8, "weights": w, "h01": h01q, "water": water, "snowline": snow, "seed": seed,
-            "plan": plan, "histogram": hist, "coverage": coverage,
+            "plan": plan, "histogram": hist, "coverage": coverage, "surface": surface, "lakes": bodies,
             "slope_max_deg": round(math.degrees(math.atan(float(np.percentile(slope, 99.5)))), 1)}
 
 
@@ -510,11 +642,22 @@ class TerrainHeight(OpExecutor):
         height_png = await _put_bytes(ctx, await asyncio.to_thread(png16, h16), f"{a}_height16.png", "image/png")
         raw = await _put_bytes(ctx, raw16(h16), f"{a}_height.raw", "application/octet-stream")
         splat = await _put_bytes(ctx, await asyncio.to_thread(png_rgba, s8), f"{a}_splat.png", "image/png")
-        preview = await asyncio.to_thread(map_preview, res["h01"], res["weights"], res["water"], p.world_m, p.height_m)
+        preview = await asyncio.to_thread(map_preview, res["h01"], res["weights"], res["water"], p.world_m, p.height_m,
+                                          None, 768, res["surface"])
         prev_ref = await _put_png(ctx, preview, f"{a}_map.png")
         water_m = None if res["water"] is None else round(res["water"] * p.height_m, 3)
+        bodies: dict[str, Any] | None = None
+        outs: dict[str, list[BlobRef]] = {}
+        if not np.isnan(res["surface"]).all():
+            wraw = await _put_bytes(ctx, water_raw(dilate_surface(res["surface"])), f"{a}{WATER_FILE_SUFFIX}",
+                                    "application/octet-stream")
+            outs["water"] = [wraw]
+            bodies = {**_ref(wraw), "resolution": WATER_RES, "lakes": [
+                {**lk, "level_m": round(lk["level"] * p.height_m, 3)} for lk in res["lakes"]],
+                      "encoding": "u16 LE, row 0 = north; 0 = dry, else 1 + level·65534 (0..1 of height_m)"}
         doc = {"type": HEIGHT_TYPE, "asset": a, "resolution": p.size, "world_m": p.world_m, "height_m": p.height_m,
-               "water_level": res["water"], "water_m": water_m, "snowline": round(res["snowline"], 4),
+               "water_level": res["water"], "water_m": water_m, "water_bodies": bodies,
+               "snowline": round(res["snowline"], 4),
                "seed": res["seed"], "erosion": p.erosion, "splat_size": p.size - 1, "channels": list(ROLES),
                "convention": "row 0 = north (-Z Godot, +Z Unity), column 0 = west; heights 0..1 of height_m",
                "heightmap": _ref(height_png), "raw": _ref(raw), "splat": _ref(splat),
@@ -522,10 +665,11 @@ class TerrainHeight(OpExecutor):
                "plan": res["plan"]}
         ctx.progress(3, 3)
         return StepResult(outputs={"terrain": [await _put_json(ctx, doc, HEIGHT_FILE)], "heightmap": [height_png],
-                                   "raw": [raw], "splat": [splat], "preview": [prev_ref]},
+                                   "raw": [raw], "splat": [splat], "preview": [prev_ref], **outs},
                           meta={"resolution": p.size, "continuous": res["histogram"]["continuous"],
                                 "levels_used": res["histogram"]["levels_used"], "coverage": res["coverage"],
-                                "water_m": water_m, "seed": res["seed"]})
+                                "water_m": water_m, "seed": res["seed"],
+                                "lakes": [lk["label"] for lk in res["lakes"]]})
 
 
 def _avg_color(img: Image.Image) -> tuple[int, int, int]:
@@ -534,7 +678,8 @@ def _avg_color(img: Image.Image) -> tuple[int, int, int]:
 
 
 def render_view(h01: np.ndarray, splat: np.ndarray, albedo: list[np.ndarray], tile_m: list[float],
-                water: float | None, world_m: float, height_m: float, w: int = 960, hgt: int = 540) -> Image.Image:
+                water: float | None, world_m: float, height_m: float, w: int = 960, hgt: int = 540,
+                surface: np.ndarray | None = None) -> Image.Image:
     """Oblique heightfield render (voxel-space march, all screen columns at once) textured with the real layers, so
     the gate shows the terrain the engines will draw, not just its map. Camera in the south-west corner."""
     n = h01.shape[0]
@@ -559,6 +704,7 @@ def render_view(h01: np.ndarray, splat: np.ndarray, albedo: list[np.ndarray], ti
     cell = world_m / (n - 1)
     z, dz, far = cell * 2, cell * 0.5, world_m * 2.2
     water_h = None if water is None else water * height_m
+    grid = surface_grid(surface, min(n, 513))
     while z < far:
         px = cam[0] + (fwd[0] + xs * side[0]) * z
         pz = cam[1] + (fwd[1] + xs * side[1]) * z
@@ -566,7 +712,11 @@ def render_view(h01: np.ndarray, splat: np.ndarray, albedo: list[np.ndarray], ti
         if inside.any():
             u, v = np.clip(px / world_m, 0, 1), np.clip(pz / world_m, 0, 1)
             ground = sample(hm, u, v)
-            top = ground if water_h is None else np.maximum(ground, water_h)
+            wl = None if water_h is None else np.full_like(ground, water_h)
+            if grid is not None:
+                local = sample(grid, u, v) * height_m
+                wl = local if wl is None else np.maximum(wl, local)
+            top = ground if wl is None else np.maximum(ground, wl)
             sy = np.clip(horizon + (cam_h - top) / z * focal, 0, hgt).astype(np.int32)
             cols = np.nonzero(inside & (sy < ybuf))[0]
             if len(cols):
@@ -578,8 +728,8 @@ def render_view(h01: np.ndarray, splat: np.ndarray, albedo: list[np.ndarray], ti
                     ty = ((pz[cols] / tile_m[k]) % 1) * (a.shape[0] - 1)
                     col += a[ty.astype(np.int32), tx.astype(np.int32)] * sample(sp[..., k], uc, vc)[:, None]
                 col *= 0.35 + 0.8 * sample(shade, uc, vc)[:, None]
-                if water_h is not None:
-                    under = (ground[cols] < water_h)[:, None]
+                if wl is not None:
+                    under = (ground[cols] < wl[cols])[:, None]
                     col = np.where(under, col * 0.25 + np.array([0.15, 0.32, 0.5]) * 0.75, col)
                 fog = min(1.0, z / far) ** 1.5 * 0.7
                 col = col * (1 - fog) + sky_bot * fog
@@ -659,11 +809,20 @@ class TerrainPack(OpExecutor):
             s8 = np.asarray(im.convert("RGBA"), np.uint8)
         world, height = float(hdoc["world_m"]), float(hdoc["height_m"])
         small = _resize(h01, min(n, 513), Image.Resampling.BILINEAR)
-        view = await asyncio.to_thread(render_view, small, s8, albedo, tiles, hdoc.get("water_level"), world, height)
+        surface = None
+        wb = hdoc.get("water_bodies") or {}
+        if wb.get("hash"):
+            try:
+                surface = read_water_raw(await asyncio.to_thread(ctx.blobs.path(wb["hash"]).read_bytes),
+                                         int(wb["resolution"]))
+            except (OSError, ValueError, KeyError) as e:
+                raise StepError("op_bad_input", f"bad water bodies file: {e}") from e
+        view = await asyncio.to_thread(render_view, small, s8, albedo, tiles, hdoc.get("water_level"), world, height,
+                                       960, 540, surface)
         ws = np.stack([_resize(s8[..., k].astype(np.float32) / 255, 768, Image.Resampling.BILINEAR)
                        for k in range(4)], -1)
         tinted = await asyncio.to_thread(map_preview, _resize(h01, 768, Image.Resampling.BILINEAR), ws,
-                                         hdoc.get("water_level"), world, height, colors)
+                                         hdoc.get("water_level"), world, height, colors, 768, surface)
         ctx.progress(2, 4, label="skybox")
         sky = None
         for r in inputs.get("skybox") or []:

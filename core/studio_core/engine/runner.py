@@ -587,6 +587,13 @@ class StudioEngine:
                     await self._set_step(step, status=StepStatus.CACHED, outputs=hit, progress=1.0,
                                          started_at=now, ended_at=now, meta={**cached_meta, **step.meta})
                     return
+            spec = step.meta.get("spec", {})
+            if spec.get("map") and not spec.get("map_param") and not inputs.get(spec["map"]):
+                # Mapping over nothing (a branch the upstream switched off) must not take the lane or boot ComfyUI.
+                now = _now()
+                await self._set_step(step, status=StepStatus.SUCCEEDED, outputs={}, progress=1.0, started_at=now,
+                                     ended_at=now)
+                return
             lane = step.lane
 
             async def on_wait() -> None:
@@ -735,10 +742,12 @@ class StudioEngine:
         gate = GATES[step.kind]
         try:
             inputs = await self._resolve_inputs(st, step)
+            # `enabled: "${steps.prep.json.pick}"` lets an upstream step decide whether a person is needed.
+            resolved, _ = await self._resolve_refs(st, step)
         except StepError as e:
             await self._set_step(step, status=StepStatus.FAILED, ended_at=_now(), error=_err(e.code, e.message))
             return
-        if not gate_enabled(step.params):
+        if not gate_enabled(resolved):
             res = gate.auto_resolution(step.params, inputs)
             try:
                 outputs = gate.resolve(step.params, inputs, res)

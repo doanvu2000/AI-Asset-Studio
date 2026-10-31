@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 
 READY_PREFIX = "STUDIO_CORE_READY"
 LAUNCH_CMD = "launch-detached"
+ATTACH_TIMEOUTS_S = (3.0, 8.0, 15.0)
 CORE_DIR = core_cwd()
 
 
@@ -57,9 +58,9 @@ class CoreLink:
                 self._client = await self._attach() or await self._spawn()
             return self._client
 
-    async def _alive(self, c: httpx.AsyncClient) -> bool:
+    async def _alive(self, c: httpx.AsyncClient, timeout: float = 3) -> bool:
         try:
-            return (await c.get("/api/runs", params={"limit": 1}, timeout=3)).status_code == 200
+            return (await c.get("/api/runs", params={"limit": 1}, timeout=timeout)).status_code == 200
         except httpx.HTTPError:
             return False
 
@@ -74,9 +75,14 @@ class CoreLink:
         if info is None or not await asyncio.to_thread(pid_alive, int(info.get("pid", 0))):
             return None
         c = self._make_client(lock_host(info), info["port"], str(info["token"]))
-        if await self._alive(c):
-            log.info("attached to core pid=%s port=%s", info.get("pid"), info["port"])
-            return c
+        # The lock's process is alive: a core busy with GPU work or a loaded machine can answer late, and giving up
+        # here would spawn a second core on the same data dir.
+        for timeout in ATTACH_TIMEOUTS_S:
+            if await self._alive(c, timeout):
+                log.info("attached to core pid=%s port=%s", info.get("pid"), info["port"])
+                return c
+            if not await asyncio.to_thread(pid_alive, int(info.get("pid", 0))):
+                break
         await c.aclose()
         return None
 

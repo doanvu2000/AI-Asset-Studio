@@ -42,7 +42,7 @@ from .ui_screen import UI_SCREEN_OPS
 from .trim import TRIM_OPS
 from .decal import DECAL_OPS
 from .terrain import TERRAIN_OPS
-from .upscale import UPSCALE_OPS
+from .upscale import UpscalePost, UpscalePrep
 from .vfx import VfxFrames
 from .vfx_particles import VFX_PARTICLE_OPS
 
@@ -72,8 +72,10 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(npc_cls())
     for loc_cls in LOCALIZE_OPS:
         registry.register(loc_cls())
-    for tile_cls in (*TILE_OPS, *UI_OPS, *UPSCALE_OPS, *PBR_OPS, *RARITY_OPS, *LUT_OPS, *PARALLAX_OPS):
+    for tile_cls in (*TILE_OPS, *UI_OPS, *PBR_OPS, *RARITY_OPS, *LUT_OPS, *PARALLAX_OPS):
         registry.register(tile_cls())
+    registry.register(UpscalePrep())
+    registry.register(UpscalePost(settings))
     for store_cls in STORE_OPS:
         registry.register(store_cls())
     for n2d_cls in NORMAL2D_OPS:
@@ -109,4 +111,27 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(vp_cls())
     for mm_cls in MINIMAP_OPS:
         registry.register(mm_cls())
+    from .tile_anim import TILE_ANIM_OPS
+
+    for ta_cls in TILE_ANIM_OPS:
+        registry.register(ta_cls())
+    from .icon3d import ICON3D_OPS
+    from .iso import ISO_OPS
+
+    for iso_cls in (*ICON3D_OPS, *ISO_OPS):
+        registry.register(iso_cls())
+    from .card_set import CARD_OPS
+
+    for cs_cls in CARD_OPS:
+        registry.register(cs_cls())
+    from .spine_face import FACE_OPS
+
+    for sf_cls in FACE_OPS:
+        registry.register(sf_cls())
+    from .playable_scene import PLAYABLE_OPS, SETTINGS_OPS
+
+    for pl_cls in PLAYABLE_OPS:
+        registry.register(pl_cls())
+    for pl_cls in SETTINGS_OPS:
+        registry.register(pl_cls(settings))
     return []

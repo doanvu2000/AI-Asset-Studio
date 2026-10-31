@@ -1,6 +1,6 @@
 [project]
 name = "studio-core"
-version = "1.0.0"
+dynamic = ["version"]
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "fastapi>=0.115",
@@ -39,6 +39,9 @@ testpaths = ["tests"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "studio_core/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["studio_core"]

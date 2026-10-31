@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from studio_core.contracts import BlobStore, StepRow
-from studio_core.export.sheet import cs_namespace, ident
+from studio_core.export.sheet import SHARED_SCRIPT_NOTE, cs_namespace, ident
 from studio_core.export.source import Files, Source
 
 SPRITE_ID = 21300000
@@ -216,7 +216,7 @@ def unity_files(src: Source) -> tuple[Files, list[str]]:
             f"chân dung theo biểu cảm, {len(flat_lines(src))} câu thoại (mỗi ngôn ngữ một dòng) gắn AudioClip trong "
             "Audio/ + cues phụ đề (giây). Dùng: GetPortrait(line.expression), RandomLine(\"idle\", \"vi\"), "
             f"CueAt(line, audioSource.time). NPC/{src.asset}_npc.json chứa cùng dữ liệu cho code tự đọc. Nhập nhiều "
-            "NPC vào một project thì giữ một bản Scripts/NpcData.cs (cùng GUID).")
+            "NPC vào một project thì giữ một bản Scripts/NpcData.cs (cùng GUID)" + SHARED_SCRIPT_NOTE + ".")
     return files, [note]
 
 

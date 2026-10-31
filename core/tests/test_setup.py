@@ -210,3 +210,28 @@ async def test_setup_api(client: httpx.AsyncClient, tmp_path: Path) -> None:
     rel = await client.post("/api/setup/start", headers=AUTH, json={"tools_dir": "t", "models_dir": "m"})
     assert rel.status_code == 400
     assert (await client.post("/api/setup/cancel", headers=AUTH)).json() is None
+
+
+def test_job_installs_a_packs_custom_node(server: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("Node-abc123/__init__.py", "NODE_CLASS_MAPPINGS = {}\n")
+    BLOBS["/node.zip"] = buf.getvalue()
+    node = {"name": "my_node", "url": f"{server}/node.zip", "pip": []}
+    m = {**plan.manifest(), "packs": [{"id": "base", "label": "B", "detail": "", "required": True, "workflows": []},
+                                      {"id": "x", "label": "X", "detail": "", "required": False, "workflows": [],
+                                       "custom_nodes": [node]}]}
+    monkeypatch.setattr(setup_job, "manifest", lambda: m)
+    monkeypatch.setattr(setup_job, "pack_models", lambda packs: [])
+    s = _settings(tmp_path)
+    req = SetupRequest(tmp_path / "tools", tmp_path / "models", ["x"], blender=False, claude=False)
+    job = SetupJob(s, req)
+    assert [i.id for i in job.items] == ["comfyui", "pack:x", "finish"]
+    job._run()
+    assert job.state == "done", job.snapshot()
+    assert (s.comfy_dir / "custom_nodes" / "my_node" / "__init__.py").is_file()
+    assert plan.custom_node_present(s.comfy_dir, node)
+    assert [i.id for i in SetupJob(s, req).items] == ["comfyui", "finish"]

@@ -63,6 +63,15 @@ def model_present(models_dir: Path, m: dict[str, Any]) -> bool:
     return p.is_file() and p.stat().st_size == m["size"]
 
 
+def pack_custom_nodes(pack_ids: list[str] | set[str]) -> list[dict[str, Any]]:
+    return [n for p in manifest()["packs"] if p["required"] or p["id"] in pack_ids for n in p.get("custom_nodes") or []]
+
+
+def custom_node_present(comfy_dir: Path, node: dict[str, Any]) -> bool:
+    d = comfy_dir / "custom_nodes" / node["name"]
+    return (d / "__init__.py").is_file()
+
+
 def recipe_packs(recipe_text: str) -> set[str]:
     """Packs a recipe's workflows come from (`views.qwen*` steps run the multi-angle workflow), plus packs whose
     `kinds` prefixes (CPU steps such as `tts.`) appear in it."""
@@ -134,9 +143,10 @@ def describe(settings: Settings, tools_dir: Path | None = None, models_dir: Path
     for p in manifest()["packs"]:
         ms = base if p["required"] else [m for m in pack_models([p["id"]]) if m not in base]
         missing = [m for m in ms if not model_present(models_dir, m)]
+        nodes_missing = [n for n in p.get("custom_nodes") or [] if not custom_node_present(settings.comfy_dir, n)]
         packs.append({"id": p["id"], "label": p["label"], "detail": p["detail"], "required": p["required"],
                       "files": len(ms), "size": sum(m["size"] for m in ms),
-                      "missing_size": sum(m["size"] for m in missing), "installed": not missing})
+                      "missing_size": sum(m["size"] for m in missing), "installed": not missing and not nodes_missing})
     gpu = detect_gpu()
     blender = manifest()["blender"]
     return {

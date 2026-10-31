@@ -1,0 +1,29 @@
+id: iso-tiles-image
+name: Tile isometric 2:1 từ texture có sẵn
+description: >-
+  Ảnh texture vuông (từ texture-seamless hoặc tự vẽ; thêm ảnh thứ hai trở đi làm nguồn phần giữa) → làm liền mạch
+  (tắt được) → chiếu lên hình thoi 2:1, một chu kỳ texture đúng một ô → 4–8 biến thể chỉ đổi phần giữa → kiểm ghép 4×4
+  → duyệt. Xuất Godot TileSet isometric y-sort, Unity Tilemap Isometric. Chạy CPU.
+inputs:
+  image: {type: image, siblings: multi, label: "Texture vuông (chọn nhiều: ảnh 2+ làm phần giữa biến thể)"}
+  seamless: {type: bool, default: true, label: "Làm liền mạch trước (tắt nếu ảnh đã liền mạch)"}
+  tile: {type: int, default: 128, options: [64, 128, 256], label: "Bề ngang ô (px, cao = ½)"}
+  variants: {type: int, default: 6, min: 1, max: 8, label: Số biến thể}
+  asset: {type: text, default: ground, label: Tên asset}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: tiles
+    kind: op.iso_tiles
+    in: {images: inputs.image}
+    params: {asset: "${inputs.asset}", tile: "${inputs.tile}", variants: "${inputs.variants}",
+             seamless: "${inputs.seamless}"}
+  - id: approve
+    kind: gate.approve
+    in: {images: tiles.images, preview: tiles.preview, grid: tiles.grid, atlas: tiles.atlas, iso: tiles.iso}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  preview: approve.preview
+  grid: approve.grid
+  atlas: approve.atlas
+  iso: approve.iso
