@@ -38,7 +38,15 @@ export const CHANGELOG: Release[] = [
       'Màn UI tự dùng TextMeshPro và vẽ icon theo chủ đề; Kiểm tra project bắt ảnh gần giống bằng CLIP',
       'Sửa: preview Unity không còn hồng, terrain có mặt nước hồ / sông, decal hết ra vòng tròn, trim đúng màu gỗ, VFX trễ / kéo dài theo vận tốc, nhiều bản xuất chung một project Unity không trùng script',
       'Chạy nhanh hơn: bước Claude và bước tất định dùng lại kết quả khi đầu vào y hệt (tuỳ chọn “Bỏ qua kết quả cũ”)',
-      'Trang Quy trình dùng hết bề ngang khi màn hình rộng'
+      'Trang Quy trình dùng hết bề ngang khi màn hình rộng',
+      'Nhập nhiều bản xuất vào cùng project Unity / Godot: script dùng chung (NpcData, Parallax, class_name…) được dùng lại, không còn trùng class',
+      'Màn chơi thử: nhân vật không có anim walk nhún theo bước thay vì trượt, tường top-down có mặt trước + bóng đổ; .tmx / .ldtk đúng chuẩn',
+      'Tile động đuốc / thác khớp tông mép giữa các frame, lát liền hơn; Godot có scene demo mở là chạy',
+      'Biểu cảm mặt Spine: mặt bị tóc hoặc mũ che một phần vẫn làm phần còn thấy; mày dưới tóc giữ nguyên tóc, hết viền mờ',
+      'Icon 3D: chỉ chọn thư mục cũng chạy, mesh hỏng bỏ qua từng file; kiểu toon có khối, AO và viền sáng',
+      'Bộ thẻ bài: chữ tự đổi sang TextMeshPro khi project có TMP; thẻ thiếu mô tả art thì Claude viết, vẽ theo ảnh style không còn chép ảnh mẫu',
+      'Decal vết nứt nét đậm, đọc rõ; preview Godot của VFX hạt 3D không còn trống',
+      'Phóng to SeedVR2 nhận ảnh lớn không tràn VRAM; màn UI vẽ icon nhanh hơn và không để ô icon trống',
     ]
   },
   {
