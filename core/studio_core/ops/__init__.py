@@ -112,6 +112,10 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(fx_cls())
     for vp_cls in VFX_PARTICLE_OPS:
         registry.register(vp_cls())
+    from .weather import WEATHER_OPS
+
+    for wx_cls in WEATHER_OPS:
+        registry.register(wx_cls())
     for mm_cls in MINIMAP_OPS:
         registry.register(mm_cls())
     from .tile_anim import TILE_ANIM_OPS

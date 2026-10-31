@@ -835,6 +835,12 @@ def export(src: Source) -> Files:
         vx_files, vx_notes = vfx_files(src)
         files += vx_files
         notes += vx_notes
+    if src.weather and src.weather_files:
+        from studio_core.export.weather import unity_files as weather_files
+
+        wx_files, wx_notes = weather_files(src)
+        files += wx_files
+        notes += wx_notes
     if src.minimap and src.minimap_files:
         from studio_core.export.minimap import unity_files as minimap_files
 

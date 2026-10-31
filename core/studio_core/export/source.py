@@ -89,6 +89,9 @@ class Source:
     # Particle VFX pack (op.vfx_particles): its vfx_particles.json doc and texture paths by key (soft_dot, smoke...).
     vfx: dict[str, Any] | None = None
     vfx_files: dict[str, Path] = field(default_factory=dict)
+    # Weather overlay (op.weather_overlay): its weather.json doc and texture / loop-sheet paths by key.
+    weather: dict[str, Any] | None = None
+    weather_files: dict[str, Path] = field(default_factory=dict)
     # Minimap (op.minimap_finish): its minimap.json doc (POIs) and paths by key (map, mask, framed).
     minimap: dict[str, Any] | None = None
     minimap_files: dict[str, Path] = field(default_factory=dict)

@@ -258,6 +258,9 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
     from studio_core.export.vfx_particles import vfx_set
 
     src.vfx, src.vfx_files = vfx_set(step, blobs)
+    from studio_core.export.weather import weather_set
+
+    src.weather, src.weather_files = weather_set(step, blobs)
     from studio_core.export.minimap import minimap_set
 
     src.minimap, src.minimap_files = minimap_set(step, blobs)
@@ -419,7 +422,7 @@ def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
             or bool(src.rarity) or bool(src.luts) or bool(src.damage_states)
             or bool(src.parallax) or bool(src.image_layers) or bool(src.localized) or bool(src.npc)
             or bool(src.autotile) or bool(src.font) or bool(src.skybox) or bool(src.decals) or bool(src.terrain)
-            or bool(src.vfx) or bool(src.minimap) or bool(src.tile_anim) or bool(src.cards)
+            or bool(src.vfx) or bool(src.weather) or bool(src.minimap) or bool(src.tile_anim) or bool(src.cards)
             or bool(src.iso) or bool(src.playable))
 
 

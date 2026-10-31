@@ -1,0 +1,40 @@
+id: weather-overlay
+name: Lớp thời tiết & không khí (mưa, tuyết, sương, lá rơi, tro, đom đóm)
+description: >-
+  Chọn loại thời tiết (mưa nhẹ / nặng / xiên, tuyết, sương trôi, lá rơi, tro bụi, đom đóm) và góc nhìn
+  (sideview / topdown) → vẽ bằng CPU, không cần GPU: sheet loop liền mạch cho từng lớp (hạt chạy trọn số ô mỗi vòng
+  nên khung cuối nối đúng khung đầu; sương là noise cuộn liền mạch đúng 1 chu kỳ), texture hạt, preset emitter trung
+  lập, số đo QA (chênh khung cuối → đầu, mép tile sương, ngân sách texture ≤ 1024²). Texture lá / tro theo style
+  (Z-Image) là tuỳ chọn: đưa ảnh vẽ trên nền đen vào là thay texture hạt. Xuất Godot (CanvasLayer + GPUParticles2D +
+  ParticleProcessMaterial, ColorRect + shader sương .gdshader) và Unity (prefab ParticleSystem, Quad sương URP) →
+  duyệt.
+inputs:
+  weather: {type: text, label: "Loại thời tiết (phẩy)",
+            default: "rain_light, rain_heavy, rain_slanted, snow, mist, leaves, ash, fireflies"}
+  view: {type: enum, default: sideview, options: [sideview, topdown], label: Góc nhìn}
+  intensity: {type: float, default: 1.0, min: 0, max: 1, label: "Mật độ (0 = trống, 1 = tối đa)"}
+  area: {type: text, default: "1280x720", label: "Vùng phủ của emitter (px, RxC)"}
+  tint: {type: text, default: auto, label: "Màu chủ đạo (auto = màu riêng từng loại, hoặc #rrggbb)"}
+  cell: {type: int, default: 256, options: [128, 192, 256], label: Cỡ ô sheet (px)}
+  frames: {type: int, default: 16, min: 4, max: 64, label: "Số khung loop (sheet ≤ 1024×1024)"}
+  mist_size: {type: int, default: 512, options: [256, 512, 1024], label: Cỡ tile sương (px)}
+  particle_size: {type: int, default: 64, options: [32, 64, 128], label: Cỡ texture hạt (px)}
+  style_image: {type: image, required: false, label: "Texture lá / tro có style (tuỳ chọn: ảnh vẽ trên nền đen)"}
+  asset: {type: text, default: weather, label: Tên asset}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: weather
+    kind: op.weather_overlay
+    in: {styled: inputs.style_image}
+    params: {weather: "${inputs.weather}", view: "${inputs.view}", intensity: "${inputs.intensity}",
+             area: "${inputs.area}", tint: "${inputs.tint}", cell: "${inputs.cell}", frames: "${inputs.frames}",
+             mist_size: "${inputs.mist_size}", particle_size: "${inputs.particle_size}", asset: "${inputs.asset}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: weather.preview, images: weather.images, sheets: weather.sheets, weather: weather.weather}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  sheets: approve.sheets
+  preview: approve.preview
+  weather: approve.weather
