@@ -1,0 +1,36 @@
+id: spine-to-engine
+name: Rig Spine sang Godot / Unity native (không cần runtime Spine)
+description: >-
+  Skeleton Spine 4.2 (từ spine-character / spine-face / spine-physics hoặc có sẵn) + atlas → Godot 4: scene Skeleton2D
+  + Bone2D (rest = setup pose, lật trục y), mỗi attachment một Polygon2D skin theo xương (region = quad, mesh = đa giác
+  + weights), AnimationPlayer với track rotation / position / scale, hiện-ẩn attachment, draw order. Unity: prefab cây
+  GameObject xương + SpriteRenderer con theo xương (mesh bake thành sprite tĩnh), AnimationClip + Animator controller.
+  Atlas xoay 90°, nhiều trang, skin ghép đều được cắt lại thành PNG từng attachment. IK / transform / path constraint
+  chỉ giữ được khi bật bake (lấy mẫu từng frame bằng bộ giải Spine); physics constraint, deform, shear, sự kiện bị
+  bỏ và ghi vào báo cáo cảnh báo. Không dùng GPU, không cần license Spine.
+inputs:
+  skeleton: {type: file, ext: [json], label: Skeleton JSON (Spine 4.2)}
+  atlas: {type: file, ext: [atlas, txt], siblings: atlas_pages, label: "Atlas (các trang png cùng thư mục tự đi kèm)"}
+  asset: {type: text, default: spine_rig, label: Tên asset (tên thư mục / scene / prefab)}
+  skin: {type: text, default: auto, label: "Skin ghép (auto = skin đầu mỗi nhóm | default | skin,skin)"}
+  engines: {type: enum, default: both, options: [both, godot, unity], label: Engine xuất}
+  bake: {type: enum, default: auto, options: [auto, "on", "off"],
+         label: "Bake constraint (auto = bật khi rig có IK / transform / path; on = lấy mẫu mọi xương từng frame)"}
+  fps: {type: int, default: 30, min: 5, max: 120, label: FPS bake và làm mịn đường cong bezier}
+  ppu: {type: float, default: 100, min: 1, max: 1000, label: "Pixels per unit (Unity)"}
+  review: {type: bool, default: false, label: Duyệt trước khi xong}
+steps:
+  - id: convert
+    kind: op.spine_convert
+    in: {skeleton: inputs.skeleton, atlas: inputs.atlas}
+    params: {asset: "${inputs.asset}", skin: "${inputs.skin}", engines: "${inputs.engines}",
+             bake: "${inputs.bake}", fps: "${inputs.fps}", ppu: "${inputs.ppu}"}
+  - id: approve
+    kind: gate.approve
+    in: {godot: convert.godot, unity: convert.unity, report: convert.report}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.godot
+  godot: approve.godot
+  unity: approve.unity
+  report: approve.report

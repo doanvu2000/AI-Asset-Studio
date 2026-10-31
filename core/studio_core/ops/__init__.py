@@ -33,6 +33,7 @@ from .rarity import RARITY_OPS
 from .restyle import register_restyle
 from .rig import RIG_OPS
 from .soundscape import SOUNDSCAPE_OPS
+from .spine_convert import SPINE_CONVERT_OPS
 from .spine_physics import SPINE_PHYSICS_OPS
 from .spine_ref import SPINE_REF_OPS, VideoFrames
 from .spine_variant import VARIANT_OPS
@@ -73,6 +74,8 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(npc_cls())
     for fd_cls in FRAME_DATA_OPS:
         registry.register(fd_cls())
+    for sc_cls in SPINE_CONVERT_OPS:
+        registry.register(sc_cls())
     for loc_cls in LOCALIZE_OPS:
         registry.register(loc_cls())
     for tile_cls in (*TILE_OPS, *UI_OPS, *PBR_OPS, *RARITY_OPS, *LUT_OPS, *PARALLAX_OPS):
