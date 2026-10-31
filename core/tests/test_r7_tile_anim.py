@@ -321,3 +321,11 @@ def test_follow_up_offers_tile_animated_only_for_tiles() -> None:
     assert looks_like_tile({"mime": "image/png", "name": "stone_tile_01.png"})
     assert not looks_like_tile({"mime": "image/png", "name": "hero.png"}, "concept-2d")
     assert not looks_like_tile({"mime": "application/json", "name": "tile.json"})
+
+
+def test_recipe_forms_expose_edge_fix_and_toon_bands() -> None:
+    tile = load_recipe_file(RECIPES / "tile-animated.yaml")
+    assert tile.inputs["edge_fix"]["default"] is True
+    icon = load_recipe_file(RECIPES / "icon-3d.yaml")
+    assert icon.inputs["toon_bands"]["default"] == 3
+    assert validate((RECIPES / "icon-3d.yaml").read_text(encoding="utf-8"), None)[1] == []

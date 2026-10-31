@@ -16,6 +16,7 @@ inputs:
   outline: {type: int, default: 0, min: 0, max: 16, label: "Viền ngoài (px, 0 = tắt)"}
   outline_color: {type: text, default: "#1b1420", label: Màu viền}
   toon: {type: bool, default: false, label: Toon (cel shading)}
+  toon_bands: {type: int, default: 3, min: 2, max: 5, label: "Số dải sáng toon (khi bật Toon)"}
   background: {type: enum, default: transparent, options: [transparent, rarity, frame],
                label: "Nền (trong suốt / ô độ hiếm / khung icon)"}
   tier: {type: int, default: 3, min: 1, max: 5, label: "Bậc độ hiếm 1–5 (nền rarity)"}
@@ -25,7 +26,8 @@ steps:
   - id: render
     kind: blender.icon_render
     in: {mesh: inputs.meshes}
-    params: {angle: "${inputs.angle}", size: "${inputs.size}", toon: "${inputs.toon}", folder: "${inputs.folder}"}
+    params: {angle: "${inputs.angle}", size: "${inputs.size}", toon: "${inputs.toon}", toon_bands: "${inputs.toon_bands}",
+             folder: "${inputs.folder}"}
   - id: compose
     kind: op.icon_compose
     in: {images: render.images}

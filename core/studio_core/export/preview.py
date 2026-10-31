@@ -125,8 +125,13 @@ def godot_target(folder: Path) -> Path | None:
         return min(paths, key=lambda p: (p.stem.endswith("_original"), len(p.relative_to(folder).parts),
                                          len(p.stem), p.name)) if paths else None
 
+    # A VFX export ships the same presets as Presets/ (2D) and Presets3D/; the 2D demo always wins on depth, so 3D
+    # particles would never be previewed.
+    scenes = [p for p in folder.rglob("*.tscn") if p.is_file()]
+    if (hit := pick([p for p in scenes if "Presets3D" in p.relative_to(folder).parts])):
+        return hit
     for pattern in ("*.tscn", "*.glb", "*.gltf", "*.tres", "*.png"):
-        hit = pick([p for p in folder.rglob(pattern) if p.is_file()])
+        hit = pick(scenes if pattern == "*.tscn" else [p for p in folder.rglob(pattern) if p.is_file()])
         if hit:
             return hit
     return None

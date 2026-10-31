@@ -24,6 +24,7 @@ inputs:
   candidates: {type: int, default: 2, min: 1, max: 4, label: Số ứng viên video (kiểu Wan)}
   seconds: {type: int, default: 2, options: [2, 3, 4], label: Độ dài video sinh (giây, kiểu Wan)}
   sampler_steps: {type: int, default: 20, min: 8, max: 40, label: Số bước khử nhiễu (kiểu Wan)}
+  edge_fix: {type: bool, default: true, label: "Sửa lệch tông + khép mép (kiểu Wan)"}
   review: {type: bool, default: true, label: Chọn ứng viên + duyệt trước khi xong}
 rules:
   - when: {kind: custom}
@@ -60,7 +61,8 @@ steps:
     in: {picked: pick.images, candidates: candidates.json, image: prep.image, json: prep.json,
          autotile: inputs.autotile}
     params: {kind: "${inputs.kind}", frames: "${inputs.frames}", fps: "${inputs.fps}", size: "${inputs.size}",
-             strength: "${inputs.strength}", scroll: "${inputs.scroll}", seed: "${inputs.seed}"}
+             strength: "${inputs.strength}", scroll: "${inputs.scroll}", seed: "${inputs.seed}",
+             edge_fix: "${inputs.edge_fix}"}
   - id: approve
     kind: gate.approve
     in: {sheet: anim.sheet, preview: anim.gif, qa: anim.qa, frames: anim.images, tile_anim: anim.tile_anim,

@@ -249,3 +249,15 @@ def test_unity_env_restores_programdata(monkeypatch: pytest.MonkeyPatch) -> None
     env = unity_env()
     if os.name == "nt":
         assert env["ProgramData"].endswith("ProgramData")
+
+
+def test_godot_target_prefers_3d_vfx_presets(tmp_path: Path) -> None:
+    d = _export(tmp_path, "Spells")
+    (d / "VFX" / "Presets").mkdir(parents=True)
+    (d / "VFX" / "Presets3D").mkdir()
+    (d / "VFX" / "Presets" / "Spells_fire.tscn").write_text("[gd_scene format=3]\n", encoding="utf-8")
+    (d / "VFX" / "Presets3D" / "Spells_fire_3d.tscn").write_text("[gd_scene format=3]\n", encoding="utf-8")
+    (d / "VFX" / "Spells_vfx_demo.tscn").write_text("[gd_scene format=3]\n", encoding="utf-8")
+    assert preview.godot_target(d).name == "Spells_fire_3d.tscn"
+    (d / "VFX" / "Presets3D" / "Spells_fire_3d.tscn").unlink()
+    assert preview.godot_target(d).name == "Spells.tscn"

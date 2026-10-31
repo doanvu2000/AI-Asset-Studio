@@ -30,6 +30,7 @@ dev = [
     "pyinstaller>=6.22.3",
     "pytest>=8",
     "pytest-asyncio>=0.24",
+    "pytmx>=3.32",
 ]
 
 [tool.pytest.ini_options]
