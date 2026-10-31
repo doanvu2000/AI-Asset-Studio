@@ -1,5 +1,6 @@
 """Card set export (op.card_set): per card a Unity UGUI prefab (Art Image under a Frame Image with a transparent window,
-legacy Text for name / type / rules / cost / attack / health) and a Godot Control scene (TextureRects + Labels with a
+legacy Text for name / type / rules / cost / attack / health, swapped for TextMeshPro by an Editor script when the
+project has TMP) and a Godot Control scene (TextureRects + Labels with a
 SystemFont matching the baked PNGs), a data asset (ScriptableObject / Resource), the baked fronts, the shared back
 and an atlas of fronts + back."""
 from __future__ import annotations
@@ -373,8 +374,53 @@ def _atlas(src: Source, engine: str) -> tuple[Files, list[str]]:
     return files, stats_lines(atlas)
 
 
+# ui-screen's Text -> TextMeshPro converter, retargeted from one <asset>.prefab to every card prefab (one marker each)
+# and to one outline material per stroke colour (cost / attack / health / type lines are outlined in different colours).
+TMP_PATCHES = (
+    ("once __ASSET__.prefab is imported, swaps its", "once the __ASSET__ card prefabs are imported, swaps their"),
+    ("Reimport __ASSET___ui_tmp.json", "Reimport the __ASSET___*_ui_tmp.json markers"),
+    ("    const string Asset = __ASSET_LIT__;\n",
+     "    const string Asset = __ASSET_LIT__;\n\n    static bool Mine(string p)\n    {\n"
+     "        var f = Path.GetFileName(p);\n"
+     "        return f == Asset + \"_CardsDemo_ui_tmp.json\"\n"
+     "               || (p.Contains(\"/Cards/Prefabs/\") && f.StartsWith(Asset + \"_\") && f.EndsWith(\"_ui_tmp.json\"));\n"
+     "    }\n"),
+    ('if (!p.EndsWith("/" + Asset + "_ui_tmp.json")) continue;', "if (!Mine(p)) continue;"),
+    ('if (p.EndsWith("/" + Asset + "_ui_tmp.json")) Convert(p);', "if (Mine(p)) Convert(p);"),
+    ('var prefab = dir + "/" + Asset + ".prefab";',
+     'var prefab = marker.Substring(0, marker.Length - "_ui_tmp.json".Length) + ".prefab";'),
+    ('Asset + "_TMP_Outline.mat"', 'Asset + "_TMP_Outline_" + ColorUtility.ToHtmlStringRGB(color) + ".mat"'),
+    ("outline = outline ?? OutlineMaterial(font, dir, outlineColor);",
+     "outline = OutlineMaterial(font, dir, outlineColor);"),
+)
+
+
+def tmp_cs(asset: str) -> str:
+    from studio_core.export.sheet import ident
+    from studio_core.export.ui_screen import TMP_CS
+
+    cs = TMP_CS
+    for old, new in TMP_PATCHES:
+        if old not in cs:
+            raise RuntimeError(f"ui_screen.TMP_CS changed; card_set patch no longer applies: {old!r}")
+        cs = cs.replace(old, new)
+    return cs_namespace(cs.replace("__CLASS__", f"CardTmp_{ident(asset, 'Cards')}")
+                        .replace("__ASSET_LIT__", json.dumps(asset)).replace("__ASSET__", asset))
+
+
+def _tmp_files(src: Source, prefabs: list[str], guid_of: Any) -> Files:
+    from studio_core.export.npc import script_meta
+    from studio_core.export.ui_screen import TMP_MARKER
+
+    cs_rel = f"Editor/AssetStudioCardTmp_{src.asset}.cs"
+    files: Files = [(f"{r[:-len('.prefab')]}{TMP_MARKER}", json.dumps({"prefab": Path(r).name}).encode())
+                    for r in prefabs]
+    return files + [(cs_rel, tmp_cs(src.asset).encode()), (f"{cs_rel}.meta", script_meta(guid_of(cs_rel)).encode())]
+
+
 def unity_files(src: Source) -> tuple[Files, list[str]]:
     from studio_core.export.npc import script_meta
+    from studio_core.export.ui_screen import TMP_MARKER
     from studio_core.export.unity import guid, native_meta, prefab_meta, texture_meta
 
     files: Files = []
@@ -405,6 +451,8 @@ def unity_files(src: Source) -> tuple[Files, list[str]]:
               ("Scripts/CardSetData.cs.meta", script_meta(SCRIPT_GUID).encode()),
               (asset_rel, unity_asset(src, guids, prefab_guids).encode("utf-8")),
               (f"{asset_rel}.meta", native_meta(guid(src.uid, src.asset, asset_rel), ASSET_ID).encode())]
+    files += _tmp_files(src, [r for r, _ in files if r.endswith(".prefab") and r != back_rel],
+                        lambda r: guid(src.uid, src.asset, r))
     atlas_files, atlas_notes = _atlas(src, "unity")
     files += atlas_files
     doc = src.cards or {}
@@ -412,9 +460,13 @@ def unity_files(src: Source) -> tuple[Files, list[str]]:
     n = len(doc.get("cards") or [])
     note = (f"- Cards/: {n} thẻ {w}×{h} px (tỉ lệ 63×88). Cards/Prefabs/{src.asset}_<id>.prefab: thẻ UGUI ghép lớp "
             "(Art dưới Frame có ô trong suốt, Text tên / dòng loại / luật / chi phí / công / máu, Best Fit bật), kéo vào "
-            "một Canvas; Text dùng font LegacyRuntime (Unity tự lấy font hệ thống cho chữ Việt có dấu), muốn TMP thì "
-            "thay Text bằng TextMeshProUGUI với font asset có dấu. Cards/Fronts/ là ảnh thẻ đã in sẵn chữ (dùng ngay "
-            f"không cần prefab), Cards/card_back.png là mặt sau chung ({src.asset}_back.prefab). "
+            "một Canvas. Chữ: project có TextMeshPro + font TMP (TMP Essentials) thì "
+            f"Editor/AssetStudioCardTmp_{src.asset}.cs tự đổi Text sang TextMeshPro trong mọi prefab thẻ + CardsDemo "
+            "(giữ cỡ, màu, căn giữa, Auto Size, viền theo màu từng dòng qua material outline); chưa có TMP thì giữ UI Text (legacy) LegacyRuntime + Best Fit — import "
+            f"TMP Essentials rồi Reimport các file *{TMP_MARKER}. Font TMP mặc định (LiberationSans SDF) cần bản Fallback "
+            "động để có chữ Việt có dấu; thiếu glyph thì gán font TMP có dấu làm Default Font Asset rồi Reimport. "
+            "Cards/Fronts/ là ảnh thẻ đã in sẵn chữ (dùng ngay không cần prefab), Cards/card_back.png là mặt sau chung "
+            f"({src.asset}_back.prefab). "
             f"{src.asset}_CardsDemo.prefab: Canvas mẫu bày vài thẻ + mặt sau để xem nhanh. "
             f"Cards/{src.asset}_cards.asset: ScriptableObject AssetStudio.CardSetData (Scripts/CardSetData.cs) — "
             "cards[i].front / art / prefab, Find(id). Cards/Atlas/: atlas mặt trước + mặt sau.")
@@ -536,7 +588,8 @@ def godot_files(src: Source) -> tuple[Files, list[str]]:
     atlas_files, atlas_notes = _atlas(src, "godot")
     files += atlas_files
     note = (f"- {src.asset}_<id>.tscn: {len(cards)} thẻ Control (TextureRect Art dưới Frame có ô trong suốt, Label tên / "
-            "dòng loại / luật / chi phí / công / máu với SystemFont cùng họ font ảnh in sẵn, có fallback chữ Việt). "
+            "dòng loại / luật / chi phí / công / máu với SystemFont cùng họ font ảnh in sẵn, có fallback chữ Việt; "
+            "không dùng font bitmap vì cỡ chữ mỗi dòng mỗi thẻ khác nhau sau khi tự co, font bitmap chỉ đúng một cỡ). "
             f"{src.asset}_cards.tres: Resource ({GODOT_SCRIPT_FILE}) — cards[i] là Dictionary (front, art, scene); "
             "dùng load(\".../" + f"{src.asset}_cards.tres\").instantiate(\"<id>\"). Cards/Fronts/ là ảnh thẻ đã in "
             "chữ, Cards/card_back.png mặt sau chung, Cards/Atlas/ atlas (AtlasTexture .tres).")

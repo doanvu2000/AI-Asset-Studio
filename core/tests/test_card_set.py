@@ -184,7 +184,10 @@ async def test_card_set_recipe_runs_and_exports(tmp_path: Path, art: str, z_call
         dragon = next(p for p in z.prompts if "ancient fire dragon" in p)
         assert "no text" in dragon
     if k_calls:
-        assert all("same art style as the reference image" in p for p in k.prompts)
+        assert all("art style of the reference" in p and "Replace the whole scene" in p for p in k.prompts)
+        plan = steps["plan"]
+        assert len(plan.meta["no_art_prompt"]) == 5 and "rong_lua_co_dai" not in plan.meta["no_art_prompt"]
+        assert any("Thầy Phù Thuỷ, Sinh vật: Rút một thẻ." in p for p in k.prompts)
     doc = json.loads(env.blobs.path(steps["render"].outputs["cards"][0].hash).read_bytes())
     assert doc["ok"] and len(doc["cards"]) == 6 and doc["size"] == [378, 528] and doc["art_mode"] == art
     assert len(steps["render"].outputs["images"]) == 7 and steps["render"].outputs["atlas"]
@@ -218,6 +221,30 @@ def _check_unity(root: Path, rels: set[str]) -> None:
     asset = (root / "Cards/Myth_cards.asset").read_text(encoding="utf-8")
     assert asset.count("  - id: ") == 6 and "attack: -1" in asset
     assert {g for g in re.findall(r"guid: ([0-9a-f]{32})", asset)} <= metas
+    markers = {r for r in rels if r.endswith("_ui_tmp.json")}
+    cards = {r for r in rels if r.startswith("Cards/Prefabs/") and r.endswith(".prefab") and "_back." not in r}
+    assert len(cards) == 6 and markers == {r[:-len(".prefab")] + "_ui_tmp.json" for r in cards} | {
+        "Myth_CardsDemo_ui_tmp.json"}
+    for m in markers:
+        assert m[:-len("_ui_tmp.json")] + ".prefab" in rels
+    assert {"Editor/AssetStudioCardTmp_Myth.cs", "Editor/AssetStudioCardTmp_Myth.cs.meta"} <= rels
+
+
+def test_tmp_converter_targets_every_card_prefab() -> None:
+    from studio_core.export.card_set import tmp_cs
+    from studio_core.export.ui_screen import tmp_cs as screen_cs
+
+    cs_ = tmp_cs("Thần Thoại")
+    assert "class CardTmp_Thần_Thoại : AssetPostprocessor" in cs_ and "namespace AssetStudio\n" in cs_
+    assert 'const string Asset = "Th\\u1ea7n Tho\\u1ea1i";' in cs_ and "static bool Mine(string p)" in cs_
+    assert cs_.count("Mine(p)") == 2 and 'Asset + "_ui_tmp.json"' not in cs_
+    assert 'marker.Substring(0, marker.Length - "_ui_tmp.json".Length) + ".prefab"' in cs_
+    assert "ToHtmlStringRGB(color)" in cs_ and "outline ?? OutlineMaterial" not in cs_
+    # Same conversion body as ui-screen: size, colour, Auto Size, alignment, bitmap-font skip, no TMP -> keep Text.
+    for keep in ('Set(t, "enableAutoSizing", best);', 'Set(t, "fontSizeMin", (float)min);', ".fontsettings",
+                 "if (tmp == null || fontType == null) return 0;", "keeps legacy Text"):
+        assert keep in cs_ and keep in screen_cs("x")
+    assert "using TMPro" not in cs_ and cs_.count("{") == cs_.count("}")
 
 
 def _check_godot(root: Path, rels: set[str]) -> None:

@@ -202,9 +202,13 @@ def parse_cards(data: bytes, name: str = "") -> list[dict[str, Any]]:
     return [normalize_card(r, i, taken) for i, r in enumerate(rows)]
 
 
-def art_prompt(card: dict[str, Any], style: str) -> str:
-    subject = card["art"] or f"{card['name']}, {card['type_label'] or card['type']}" + \
+def _subject(card: dict[str, Any]) -> str:
+    return card["art"] or f"{card['name']}, {card['type_label'] or card['type']}" + \
         (f": {card['description']}" if card["description"] else "")
+
+
+def art_prompt(card: dict[str, Any], style: str) -> str:
+    subject = _subject(card)
     # Never say "card" here: Z-Image then paints a framed card inside the art window.
     return (f"{subject}, {style}, full-bleed scene, one clear focal subject, detailed background reaching every "
             "edge of the image, no text, no letters, no border, no watermark")
@@ -213,9 +217,11 @@ def art_prompt(card: dict[str, Any], style: str) -> str:
 def klein_prompt(subject: str, back: bool = False) -> str:
     tail = ("a symmetrical ornamental pattern filling the whole image" if back else
             "a full-bleed scene, the subject centered, detailed background reaching every edge of the image")
-    return (f"Draw a completely new picture: {subject}. Use exactly the same art style as the reference image: the same "
-            "line work, shading, colour palette and rendering technique. The reference image is only a style sample: "
-            f"do not draw its subject or its frame. {tail}. No text, no letters, no border, no watermark.")
+    # Klein copies the reference's own figures and scene unless told to drop them (live: 3 of 5 cards did).
+    return (f"Paint a new illustration whose only subject is: {subject}. Keep just the art style of the reference "
+            "image: the same line work, shading, colour palette and rendering technique. Replace the whole scene: keep "
+            "no figure, animal, object, pose or composition of the reference image, and no frame. "
+            f"{tail}. No text, no letters, no border, no watermark.")
 
 
 def cover(img: Image.Image, size: tuple[int, int]) -> Image.Image:
@@ -239,7 +245,7 @@ def resolve_mode(mode: str, has_ref: bool) -> str:
 
 class CardPlan(OpExecutor):
     kind = "op.card_plan"
-    version = "1"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = inputs.get("cards") or []
@@ -266,18 +272,22 @@ class CardPlan(OpExecutor):
             # Klein keeps its input's size, so the crop sets each output's aspect.
             card_ref = await _put_png(ctx, cover(ref, ART_SIZE).convert("RGB"), "card_ref_art.png")
             ref_cards = [card_ref] * len(cards)
-            plan["prompts_k"] = [klein_prompt(c["art"] or f"{c['name']}, {c['type_label'] or c['type']}")
-                                 for c in cards]
+            plan["prompts_k"] = [klein_prompt(_subject(c)) for c in cards]
             if back:
                 ref_back = [await _put_png(ctx, cover(ref, BACK_SIZE).convert("RGB"), "card_ref_back.png")]
                 plan["back_k"] = [klein_prompt(back, back=True)]
         doc = await ctx.blobs.put_bytes(json.dumps(plan, ensure_ascii=False, indent=1).encode("utf-8"),
                                         name=PLAN_FILE, mime="application/json")
         summary = f"{len(cards)} cards, art: {mode}" + (", painted back" if plan["back_z"] or plan["back_k"] else "")
+        # Klein reads the name/rules (often Vietnamese) poorly and then repaints the reference's own subject.
+        no_art = [c["id"] for c in cards if mode == "klein" and not c["art"]]
+        if no_art:
+            summary += (f"\nWarning: {len(no_art)} card(s) have no English art prompt ({', '.join(no_art)}); Klein may "
+                        "repeat the style image's subject for them. Fill the art column, or use card-set-prompt.")
         return StepResult(outputs={"plan": [doc], "ref_cards": ref_cards, "ref_back": ref_back,
                                    "text": [await ctx.blobs.put_bytes(summary.encode(), name="card_plan.txt",
                                                                       mime="text/plain")]},
-                          meta={"cards": len(cards), "art": mode})
+                          meta={"cards": len(cards), "art": mode, "no_art_prompt": no_art})
 
 
 def _rgb(h: str) -> tuple[int, int, int]:

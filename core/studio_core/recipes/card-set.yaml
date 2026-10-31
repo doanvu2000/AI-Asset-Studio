@@ -11,7 +11,8 @@ inputs:
           label: "Danh sách thẻ .csv / .json (tên, mô tả, chi phí, công, máu, độ hiếm, loại, art)"}
   style: {type: text, required: false, default: "", label: "Phong cách art (trống = theo dự án / mặc định)",
           placeholder: "painterly dark fantasy, rich colours, dramatic rim light"}
-  image: {type: image, required: false, label: "Ảnh style tham chiếu (tuỳ chọn → Klein vẽ theo nét này)"}
+  image: {type: image, required: false,
+          label: "Ảnh style tham chiếu (tuỳ chọn → Klein vẽ theo nét này; nên điền cột art tiếng Anh cho mọi thẻ)"}
   art: {type: enum, default: auto, options: [auto, zimage, klein, none],
         label: "Vẽ art (auto = Klein nếu có ảnh style, không thì Z-Image; none = art tạm CPU)"}
   back: {type: text, required: false, default: "ornate symmetrical card back, central glowing emblem, intricate filigree border pattern",
