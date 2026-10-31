@@ -1,0 +1,43 @@
+id: combat-frame-data
+name: Frame data chiến đấu (hitbox / hurtbox + sự kiện)
+description: >-
+  Sprite sheet có clip đánh (sprite-8dir-anim / anim-video: idle, slash, cast…) + sheet.json của nó → hurtbox từng frame
+  (alpha thân, bỏ vũ khí / hiệu ứng bằng cách so với frame idle cùng hướng; thiếu idle thì so với frame đầu clip) →
+  frame active: bạn ghi thì dùng, không ghi thì Claude đoán nhìn dải frame (lỗi thì dùng ngưỡng pixel-mới trên CPU) →
+  hitbox = vùng pixel mới so với idle ở các frame active (hộp + đa giác) → sự kiện attack_start / hit_active / recover
+  / footstep (chân chạm đất) → frame_data.json + ảnh QA vẽ hộp lên sheet → duyệt. Xuất Unity (ScriptableObject
+  FrameData + AnimationEvent ghi vào clip) và Godot (scene Area2D + AnimationPlayer bật/tắt hộp + method track).
+inputs:
+  sheet: {type: image, label: Sprite sheet có clip đánh}
+  meta: {type: file, ext: [json], label: "sheet.json (cùng bước với sheet)"}
+  active: {type: text, default: "", label: "Frame active (trống = tự đoán; vd 3-5 hoặc slash: 3-5; cast: 4 — đếm từ 0)",
+           placeholder: "slash: 3-5; cast: 4"}
+  idle_clip: {type: text, default: idle, label: Tên clip idle (tham chiếu thân)}
+  attack_clips: {type: text, default: auto, label: "Clip đánh (auto = mọi clip trừ idle / đi / chạy / nhảy / bị đánh…; hoặc tên, phẩy)"}
+  hurtboxes: {type: int, default: 1, min: 1, max: 3, label: "Số hurtbox mỗi frame (1 = cả thân, 3 = đầu / thân / chân)"}
+  footsteps: {type: bool, default: true, label: Sự kiện footstep cho clip đi / chạy}
+  claude: {type: bool, default: true, label: Claude đoán frame active khi bạn không ghi}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  # Claude only runs when `active` is empty and the sheet has an attack clip; if it fails the run goes on and
+  # op.frame_data uses its pixel heuristic.
+  - id: guess
+    kind: claude.combat_active
+    allow_fail: true
+    in: {sheet: inputs.sheet, meta: inputs.meta}
+    params: {active: "${inputs.active}", claude: "${inputs.claude}", attack_clips: "${inputs.attack_clips}",
+             idle_clip: "${inputs.idle_clip}", model: opus, _auto_retry: 1}
+  - id: frames
+    kind: op.frame_data
+    in: {sheet: inputs.sheet, meta: inputs.meta, claude: guess.json}
+    params: {active: "${inputs.active}", idle_clip: "${inputs.idle_clip}", attack_clips: "${inputs.attack_clips}",
+             hurtboxes: "${inputs.hurtboxes}", footsteps: "${inputs.footsteps}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: frames.preview, sheet: frames.sheet, meta: frames.meta, frames: frames.frames}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.sheet
+  meta: approve.meta
+  preview: approve.preview
+  frames: approve.frames

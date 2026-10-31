@@ -13,6 +13,7 @@ from .damage import DAMAGE_OPS
 from .enemy_variants import ENEMY_OPS
 from .executors import ALL_OPS, Sheet
 from .fx import FX_OPS
+from .frame_data import FRAME_DATA_OPS
 from .image_layers import IMAGE_LAYERS_OPS
 from .item_fx import ITEM_FX_OPS
 from .keyart import KEYART_OPS, KeyartVideo
@@ -70,6 +71,8 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(sc_cls())
     for npc_cls in NPC_OPS:
         registry.register(npc_cls())
+    for fd_cls in FRAME_DATA_OPS:
+        registry.register(fd_cls())
     for loc_cls in LOCALIZE_OPS:
         registry.register(loc_cls())
     for tile_cls in (*TILE_OPS, *UI_OPS, *PBR_OPS, *RARITY_OPS, *LUT_OPS, *PARALLAX_OPS):

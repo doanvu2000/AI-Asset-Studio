@@ -222,6 +222,12 @@ def engine_source(step: StepRow, siblings: list[StepRow], blobs: BlobStore, asse
     if body is not None and src.sheet is None:
         src.sheet, src.meta = body
         src.directional_rows = True
+    from studio_core.export.frame_data import frame_data_set
+
+    src.frame_data, fd_sheet = frame_data_set(step, blobs)
+    if src.frame_data and fd_sheet is not None and src.sheet is None:
+        src.sheet, src.meta = fd_sheet, src.frame_data["sheet_meta"]
+        src.directional_rows = True
     from studio_core.export.enemy_variants import variant_set
 
     src.enemy_variants, src.enemy_meta, enemy_source = variant_set(step, blobs)

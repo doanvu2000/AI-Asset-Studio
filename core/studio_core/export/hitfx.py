@@ -439,6 +439,14 @@ func _on_frame() -> void:
 _EVENTS = "  m_Events: []\n"
 
 
+def _add_event(text: str, events: str) -> str:
+    """m_Events is the clip's last key: an empty list is replaced, a list another export filled is appended to."""
+    if _EVENTS in text:
+        return text.replace(_EVENTS, events, 1)
+    rows = events.removeprefix("  m_Events:\n")
+    return text.rstrip("\n") + "\n" + rows if "  m_Events:\n" in text else text
+
+
 def unity_events(hit: Hit, doc_hit: dict[str, Any], ppu: float) -> str:
     dx, dy = doc_hit["offset"]
     return (f"  m_Events:\n  - time: {hit.frame / hit.fps:.6g}\n    functionName: OnHit\n"
@@ -497,7 +505,7 @@ def _unity(files: Files, src: Source, lay: Layout, hits: list[Hit], opts: HitOpt
     for rel, data in files:
         if rel in clips and isinstance(data, bytes):
             h = clips[rel]
-            data = data.decode().replace(_EVENTS, unity_events(h, by_track[h.track], src.ppu), 1).encode()
+            data = _add_event(data.decode(), unity_events(h, by_track[h.track], src.ppu)).encode()
         elif rel in (f"{a}.prefab", f"{a}_paperdoll.prefab") and isinstance(data, bytes):
             data = _patch_prefab(data.decode(), mb, behaviour).encode()
         out.append((rel, data))

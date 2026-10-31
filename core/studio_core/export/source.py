@@ -116,6 +116,8 @@ class Source:
     playable_files: dict[str, Path] = field(default_factory=dict)
     # Set when the export asked for traced 2D colliders + foot pivot on the sprite sheet (export/collider.py).
     collider: Any = None
+    # Combat frame data (op.frame_data): its frame_data.json doc (sheet meta inlined as `sheet_meta`); the sheet is `sheet`.
+    frame_data: dict[str, Any] | None = None
 
     def is_pixel(self) -> bool:
         if self.pixel is not None:

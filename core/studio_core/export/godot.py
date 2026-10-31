@@ -406,6 +406,12 @@ def export(src: Source) -> Files:
         n_files, n_notes = npc_files(src)
         files += n_files
         notes += n_notes
+    if src.frame_data:
+        from studio_core.export.frame_data import godot_files as frame_data_files
+
+        fd_files, fd_notes = frame_data_files(src)
+        files += fd_files
+        notes += fd_notes
     if src.luts:
         from studio_core.export.lut import godot_files as lut_files
 
