@@ -124,9 +124,9 @@ Như "Bitmap font theo style game" nhưng phần ruột chữ do Klein tô chấ
 
 ## `card-set` — Bộ thẻ bài (khung theo độ hiếm + art + chữ tự co)
 
-Danh sách thẻ CSV / JSON (tên, mô tả, chi phí, công / máu, độ hiếm, loại, prompt art) → art từng thẻ bằng Z-Image theo style dự án, hoặc Flux.2 Klein theo ảnh style tham chiếu → CPU vẽ khung theo độ hiếm (5 bậc màu, bậc cao có ngọc + viền sáng) và loại (sinh vật, phép, trang bị, bẫy, anh hùng: đổi màu nền + dáng ô art), chữ tiếng Việt có dấu tự co / xuống dòng vừa ô, mặt sau chung → thẻ 63×88 + atlas + card_set.json → duyệt. Xuất Unity (prefab UGUI từng thẻ + ScriptableObject) và Godot (scene Control từng thẻ + Resource).
+Danh sách thẻ CSV / JSON (tên, mô tả, chi phí, công / máu, độ hiếm, loại, prompt art; thiếu thì Claude viết) → art từng thẻ bằng Z-Image theo style dự án, hoặc Flux.2 Klein theo ảnh style tham chiếu → CPU vẽ khung theo độ hiếm (5 bậc màu, bậc cao có ngọc + viền sáng) và loại (sinh vật, phép, trang bị, bẫy, anh hùng: đổi màu nền + dáng ô art), chữ tiếng Việt có dấu tự co / xuống dòng vừa ô, mặt sau chung → thẻ 63×88 + atlas + card_set.json → duyệt. Xuất Unity (prefab UGUI từng thẻ + ScriptableObject) và Godot (scene Control từng thẻ + Resource).
 
-- runs on: ComfyUI GPU; gates: approve
+- runs on: Claude, ComfyUI GPU; gates: approve
 - outputs: `final`, `preview`, `cards`, `atlas`
 - inputs:
   - `cards` (file; .csv/.json; required) — Danh sách thẻ .csv / .json (tên, mô tả, chi phí, công, máu, độ hiếm, loại, art)
@@ -249,7 +249,7 @@ Text → N ảnh nền trong suốt (Codex) → chọn → căn chỉnh
 
 ## `decal-pack` — Bộ decal (nứt, rêu, bẩn, cháy, graffiti)
 
-Mỗi dòng 1 decal (vết nứt, rêu, vết bẩn, vết cháy, graffiti / logo sơn) → Z-Image vẽ trên nền trắng phẳng → tách nền theo màu nền (giữ được vết nứt mảnh, bụi loang) hoặc BiRefNet (logo, sticker khối đặc) → màu khử nền trắng, mép mờ dần để không lộ khung vuông → normal map (vết tối là lõm) → duyệt. Xuất Unity URP Decal Projector prefab + material Shader Graphs/Decal, Godot node Decal (.tscn) gắn sẵn albedo + normal.
+Mỗi dòng 1 decal (vết nứt, rêu, vết bẩn, vết cháy, graffiti / logo sơn) → Z-Image vẽ trên nền trắng phẳng → tách nền theo màu nền (vết nứt / vết xước: chỉ lấy nét tối, bỏ hạt lẻ, làm dày nét cho đọc được; bụi loang giữ nguyên) hoặc BiRefNet (logo, sticker khối đặc) → màu khử nền trắng, mép mờ dần để không lộ khung vuông → normal map (vết tối là lõm) → duyệt. Xuất Unity URP Decal Projector prefab + material Shader Graphs/Decal, Godot node Decal (.tscn) gắn sẵn albedo + normal.
 
 - runs on: ComfyUI GPU; gates: approve
 - outputs: `final`, `normals`, `preview`, `decals`
@@ -286,8 +286,8 @@ Nhiều mesh GLB / FBX / OBJ (thả cùng lúc, thêm thư mục tuỳ chọn) �
 - runs on: Blender; gates: approve
 - outputs: `final`, `slices`, `preview`, `atlas`, `atlas_json`, `report`
 - inputs:
-  - `meshes` (mesh; .glb/.fbx/.obj; required) — Mesh (GLB / FBX / OBJ, chọn nhiều)
-  - `folder` (text; absolute folder path) — Thêm mesh từ thư mục (tuỳ chọn)
+  - `meshes` (mesh; .glb/.fbx/.obj) — Mesh (GLB / FBX / OBJ, chọn nhiều; để trống nếu lấy từ thư mục)
+  - `folder` (text; absolute folder path) — Thêm mesh từ thư mục (cần mesh hoặc thư mục, ít nhất một)
   - `angle` (enum; default 'iso34'; one of iso34, front, top) — Góc (iso34 = 3/4 nhìn xuống 30°)
   - `size` (int; default 256; one of 128, 256, 512) — Cỡ icon (px)
   - `padding` (float; default 0.08; 0..0.3) — Lề

@@ -27,9 +27,13 @@ steps:
     in: {images: inputs.image}
     params: {theme: "${inputs.prompt}", count: "${inputs.count}", language: "${inputs.language}",
              types: "${inputs.types}", notes: "${inputs.notes}", model: opus, _auto_retry: 1}
+  - id: art_text
+    kind: claude.card_art
+    in: {cards: list.json}
+    params: {art: "${inputs.art}", model: opus, _auto_retry: 1}
   - id: plan
     kind: op.card_plan
-    in: {cards: list.json, ref: inputs.image}
+    in: {cards: list.json, ref: inputs.image, art: art_text.json}
     params: {style: "${inputs.style}", art: "${inputs.art}", back: "${inputs.back}"}
   - id: art_z
     kind: comfy.t2i_zimage_turbo

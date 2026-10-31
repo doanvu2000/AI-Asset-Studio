@@ -376,36 +376,25 @@ def _atlas(src: Source, engine: str) -> tuple[Files, list[str]]:
 
 # ui-screen's Text -> TextMeshPro converter, retargeted from one <asset>.prefab to every card prefab (one marker each)
 # and to one outline material per stroke colour (cost / attack / health / type lines are outlined in different colours).
-TMP_PATCHES = (
-    ("once __ASSET__.prefab is imported, swaps its", "once the __ASSET__ card prefabs are imported, swaps their"),
-    ("Reimport __ASSET___ui_tmp.json", "Reimport the __ASSET___*_ui_tmp.json markers"),
-    ("    const string Asset = __ASSET_LIT__;\n",
-     "    const string Asset = __ASSET_LIT__;\n\n    static bool Mine(string p)\n    {\n"
-     "        var f = Path.GetFileName(p);\n"
-     "        return f == Asset + \"_CardsDemo_ui_tmp.json\"\n"
-     "               || (p.Contains(\"/Cards/Prefabs/\") && f.StartsWith(Asset + \"_\") && f.EndsWith(\"_ui_tmp.json\"));\n"
-     "    }\n"),
-    ('if (!p.EndsWith("/" + Asset + "_ui_tmp.json")) continue;', "if (!Mine(p)) continue;"),
-    ('if (p.EndsWith("/" + Asset + "_ui_tmp.json")) Convert(p);', "if (Mine(p)) Convert(p);"),
-    ('var prefab = dir + "/" + Asset + ".prefab";',
-     'var prefab = marker.Substring(0, marker.Length - "_ui_tmp.json".Length) + ".prefab";'),
-    ('Asset + "_TMP_Outline.mat"', 'Asset + "_TMP_Outline_" + ColorUtility.ToHtmlStringRGB(color) + ".mat"'),
-    ("outline = outline ?? OutlineMaterial(font, dir, outlineColor);",
-     "outline = OutlineMaterial(font, dir, outlineColor);"),
-)
+TMP_MINE = """
+    static bool Mine(string p)
+    {
+        var f = Path.GetFileName(p);
+        return f == Asset + "_CardsDemo_ui_tmp.json"
+               || (p.Contains("/Cards/Prefabs/") && f.StartsWith(Asset + "_") && f.EndsWith("_ui_tmp.json"));
+    }
+"""
 
 
 def tmp_cs(asset: str) -> str:
     from studio_core.export.sheet import ident
-    from studio_core.export.ui_screen import TMP_CS
+    from studio_core.export.ui_screen import tmp_cs as screen_tmp_cs
 
-    cs = TMP_CS
-    for old, new in TMP_PATCHES:
-        if old not in cs:
-            raise RuntimeError(f"ui_screen.TMP_CS changed; card_set patch no longer applies: {old!r}")
-        cs = cs.replace(old, new)
-    return cs_namespace(cs.replace("__CLASS__", f"CardTmp_{ident(asset, 'Cards')}")
-                        .replace("__ASSET_LIT__", json.dumps(asset)).replace("__ASSET__", asset))
+    return screen_tmp_cs(asset, cls=f"CardTmp_{ident(asset, 'Cards')}",
+                         target="the __ASSET__ card prefabs are imported, swaps their",
+                         markers="the __ASSET___*_ui_tmp.json markers", members=TMP_MINE, mine="Mine(p)",
+                         prefab='marker.Substring(0, marker.Length - "_ui_tmp.json".Length) + ".prefab"',
+                         outline_per_color=True)
 
 
 def _tmp_files(src: Source, prefabs: list[str], guid_of: Any) -> Files:

@@ -23,6 +23,7 @@ from .rarity import DEFAULT_COLORS, DEFAULT_TIERS
 PLAN_FILE = "card_plan.json"
 PLAN_TYPE = "asset-studio/card-plan"
 LIST_TYPE = "asset-studio/card-list"
+ART_TYPE = "asset-studio/card-art"
 SET_FILE = "card_set.json"
 SET_TYPE = "asset-studio/card-set"
 ART_MODES = ("auto", "zimage", "klein", "none")
@@ -243,9 +244,24 @@ def resolve_mode(mode: str, has_ref: bool) -> str:
     return mode
 
 
+async def _claude_art(ctx: StepContext, refs: list[BlobRef], cards: list[dict[str, Any]]) -> list[str]:
+    """Fills empty art from claude.card_art; a card's own art column always wins."""
+    if not refs:
+        return []
+    doc = json.loads(await asyncio.to_thread(ctx.blobs.path(refs[0].hash).read_bytes))
+    art = doc.get("art") if isinstance(doc, dict) and doc.get("type") == ART_TYPE else None
+    written = []
+    for c in cards:
+        a = _norm((art or {}).get(c["id"]))
+        if a and not c["art"]:
+            c["art"] = a
+            written.append(c["id"])
+    return written
+
+
 class CardPlan(OpExecutor):
     kind = "op.card_plan"
-    version = "2"
+    version = "3"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = inputs.get("cards") or []
@@ -253,6 +269,7 @@ class CardPlan(OpExecutor):
             raise StepError("op_no_input", "input 'cards' is empty (a CSV / JSON card list)")
         data = await asyncio.to_thread(ctx.blobs.path(refs[0].hash).read_bytes)
         cards = parse_cards(data, refs[0].name or "")
+        written = await _claude_art(ctx, inputs.get("art") or [], cards)
         style = _norm(params.get("style")) or DEFAULT_STYLE
         back = _norm(params.get("back"))
         if back.lower() in ("none", "cpu", "-", "0", "off"):
@@ -287,7 +304,7 @@ class CardPlan(OpExecutor):
         return StepResult(outputs={"plan": [doc], "ref_cards": ref_cards, "ref_back": ref_back,
                                    "text": [await ctx.blobs.put_bytes(summary.encode(), name="card_plan.txt",
                                                                       mime="text/plain")]},
-                          meta={"cards": len(cards), "art": mode, "no_art_prompt": no_art})
+                          meta={"cards": len(cards), "art": mode, "no_art_prompt": no_art, "claude_art": written})
 
 
 def _rgb(h: str) -> tuple[int, int, int]:

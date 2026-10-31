@@ -8,7 +8,7 @@ from typing import Any
 
 from ..config import Settings
 from ..contracts import Lane, Outputs, StepContext, StepError, StepResult, cache_enabled
-from ..ops.card_set import LIST_TYPE, MAX_CARDS
+from ..ops.card_set import ART_TYPE, LIST_TYPE, MAX_CARDS, parse_cards
 from ..ops.rarity import DEFAULT_TIERS
 from .claude import DEFAULT_MODEL, QueryFn, ask, load_images, put_json, sdk_query
 
@@ -124,3 +124,89 @@ class ClaudeCardListExecutor:
                                    "text": [await ctx.blobs.put_bytes(summary.encode("utf-8"), name="card_list.txt",
                                                                       mime="text/plain")]},
                           meta={**reply.meta, "cards": len(doc["cards"])})
+
+
+ART_SYSTEM = (
+    "You write illustration prompts for the art window of trading cards. Each prompt names one concrete subject that "
+    "a reader of the card's name and rules would expect, its pose or action, the setting and the mood, in English.")
+
+ART_PROMPT = """These cards have no art prompt yet. Write one for each card listed under "Cards".
+Set: {names}
+Cards (id | name | type | rules | flavour):
+{rows}
+Return `cards`: one entry per card above with its exact `id` and `art`: an English illustration prompt (15-35 words)
+of the subject this card's name and rules suggest, with its pose or action, the setting and the mood. Translate the
+idea, not the words: the name may be Vietnamese or another language. No text, no card frame, no style words (the art
+style is added later), no reference to any other image."""
+
+ART_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"cards": {"type": "array", "items": {
+        "type": "object", "properties": {"id": {"type": "string"}, "art": {"type": "string"}},
+        "required": ["id", "art"]}}},
+    "required": ["cards"],
+}
+MAX_ART_CHARS = 400
+
+
+def build_art_prompt(cards: list[dict[str, Any]], missing: list[dict[str, Any]]) -> str:
+    rows = "\n".join(" | ".join([c["id"], c["name"], c["type_label"] or c["type"], c["description"] or "-",
+                                 c["flavor"] or "-"]) for c in missing)
+    return ART_PROMPT.format(names=", ".join(c["name"] for c in cards), rows=rows)
+
+
+def to_art_map(raw: Any, missing: list[dict[str, Any]]) -> dict[str, str]:
+    """Only ids that were asked for count; a card Claude skipped keeps its name/rules fallback in op.card_plan."""
+    want = {c["id"] for c in missing}
+    out: dict[str, str] = {}
+    for c in (raw.get("cards") if isinstance(raw, dict) else None) or []:
+        if not isinstance(c, dict):
+            continue
+        cid, art = str(c.get("id") or "").strip(), " ".join(str(c.get("art") or "").split())
+        if cid in want and art and cid not in out:
+            out[cid] = art[:MAX_ART_CHARS]
+    if not out:
+        raise StepError("claude_bad_output", "no art prompt matched a card id", retryable=True, detail={"reply": raw})
+    return out
+
+
+class ClaudeCardArtExecutor:
+    """Fills the art column for cards that have none, so the art engines never paint a card from its (often
+    Vietnamese) name alone; Klein then repeats the style image's own subject instead. Cards that already have art,
+    or art 'none', finish without a Claude call."""
+    kind = "claude.card_art"
+    lane = Lane.CLOUD
+    version = "1"
+
+    def __init__(self, settings: Settings | None = None, query: QueryFn = sdk_query):
+        self.settings = settings
+        self.query = query
+
+    def cacheable(self, params: dict[str, Any]) -> bool:
+        return cache_enabled(params)
+
+    def cache_material(self, params: dict[str, Any]) -> str:
+        return ART_SYSTEM + ART_PROMPT
+
+    async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
+        refs = inputs.get("cards") or []
+        if not refs:
+            raise StepError("op_no_input", "input 'cards' is empty (a CSV / JSON card list)")
+        if str(params.get("art") or "auto").strip().lower() == "none":
+            return StepResult(outputs={"json": []}, meta={"asked": 0})
+        data = await asyncio.to_thread(ctx.blobs.path(refs[0].hash).read_bytes)
+        cards = parse_cards(data, refs[0].name or "")
+        missing = [c for c in cards if not c["art"]]
+        if not missing:
+            return StepResult(outputs={"json": []}, meta={"asked": 0})
+        q = {"model": params.get("model") or DEFAULT_MODEL, "max_turns": 2, "system": ART_SYSTEM,
+             "schema": ART_SCHEMA, "_timeout_s": params.get("_timeout_s")}
+        await asyncio.to_thread(ctx.job_dir.mkdir, parents=True, exist_ok=True)
+        ctx.progress(0, 1, "art")
+        reply = await ask(self.query, q, build_art_prompt(cards, missing), str(ctx.job_dir), ctx=ctx)
+        art = to_art_map(reply.structured, missing)
+        ctx.progress(1, 1, "art")
+        doc = {"type": ART_TYPE, "art": art}
+        return StepResult(outputs={"json": [await put_json(ctx, doc, "card_art.json")]},
+                          meta={**reply.meta, "asked": len(missing), "filled": len(art),
+                                "missing": [c["id"] for c in missing if c["id"] not in art]})

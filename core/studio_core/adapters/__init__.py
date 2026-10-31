@@ -25,7 +25,7 @@ from .store_layout import ClaudeStoreLayoutExecutor
 from .ui_layout import ClaudeUiLayoutExecutor
 from .spine_review import SpineReviewLoopExecutor
 from .terrain import ClaudeTerrainPlanExecutor
-from .card_list import ClaudeCardListExecutor
+from .card_list import ClaudeCardArtExecutor, ClaudeCardListExecutor
 from .comfy import CheckedMeshExecutor, CheckedViewsExecutor, ComfyExecutor, ComfyResource
 from .comfy.retexture import RetexPaintExecutor
 from .comfy.upscale import UpscaleModelExecutor
@@ -74,6 +74,7 @@ def register(registry: ExecutorRegistry, settings: Settings, bus: Any, blobs: An
     registry.register(SpineReviewLoopExecutor(settings))
     registry.register(ClaudeTerrainPlanExecutor(settings))
     registry.register(ClaudeCardListExecutor(settings))
+    registry.register(ClaudeCardArtExecutor(settings))
     registry.register(BlenderScriptExecutor(settings, blender))
     registry.register(Procedural3DExecutor(settings, blender))
     registry.register(BlenderAgentExecutor(settings))

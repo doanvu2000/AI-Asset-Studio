@@ -10,7 +10,8 @@ from typing import Any
 import pytest
 from PIL import Image
 
-from studio_core.adapters.card_list import SCHEMA, ClaudeCardListExecutor, build_prompt, to_card_list
+from studio_core.adapters.card_list import (SCHEMA, ClaudeCardArtExecutor, ClaudeCardListExecutor, build_art_prompt,
+                                            build_prompt, to_art_map, to_card_list)
 from studio_core.adapters.claude import ClaudeReply
 from studio_core.contracts import Lane, RunStatus, StepResult
 from studio_core.engine.kinds import CATALOG
@@ -102,12 +103,27 @@ def test_claude_card_list_prompt_and_normalize() -> None:
     assert cards[0]["id"] == "son_tinh" and cards[1]["type"] == "spell" and cards[0]["rarity"] == "epic"
 
 
+def test_claude_art_prompt_and_map() -> None:
+    cards = cs.parse_cards(CSV.encode(), "set.csv")
+    missing = [c for c in cards if not c["art"]]
+    p = build_art_prompt(cards, missing)
+    assert "rong_lua_co_dai |" not in p and "thay_phu_thuy | Thầy Phù Thuỷ | Sinh vật | Rút một thẻ." in p
+    assert cards[-1]["id"] in p and "Rồng Lửa Cổ Đại" in p
+    got = to_art_map({"cards": [{"id": "thay_phu_thuy", "art": "  an old  wizard "}, {"id": "rong_lua_co_dai",
+                                "art": "x"}, {"id": "ghost", "art": "y"}, {"id": "mua_bang", "art": ""},
+                                {"id": "thay_phu_thuy", "art": "dup"}]}, missing)
+    assert got == {"thay_phu_thuy": "an old wizard"}
+    for bad in ({"cards": []}, {"cards": [{"id": "ghost", "art": "y"}]}, None):
+        with pytest.raises(Exception):
+            to_art_map(bad, missing)
+
+
 def test_recipes_and_kinds() -> None:
     for rid in ("card-set", "card-set-prompt"):
         load_recipe_file(RECIPES / f"{rid}.yaml")
         _, issues = validate((RECIPES / f"{rid}.yaml").read_text(encoding="utf-8"), None)
         assert issues == []
-    for kind in ("claude.card_list", "op.card_plan", "op.card_set"):
+    for kind in ("claude.card_list", "claude.card_art", "op.card_plan", "op.card_set"):
         assert CATALOG[kind]["label"]
 
 
@@ -149,13 +165,21 @@ class FakeQuery:
         return ClaudeReply(self.reply, "", {"cost_usd": 0.03, "model": options.model})
 
 
+def _art_reply() -> dict[str, Any]:
+    # Skips the last card and adds an unknown id: the skipped card keeps the name/rules fallback.
+    missing = [c["id"] for c in cs.parse_cards(CSV.encode(), "set.csv") if not c["art"]]
+    return {"cards": [{"id": cid, "art": f"painted subject for {cid}"} for cid in missing[:-1]] +
+            [{"id": "ghost", "art": "nothing"}]}
+
+
 def _env(tmp_path: Path, rid: str) -> tuple[Any, FakeComfy, FakeComfy]:
     from test_engine_runner import Env
 
     env = Env(tmp_path, [], {rid: (RECIPES / f"{rid}.yaml").read_text(encoding="utf-8")})
     z = FakeComfy("comfy.t2i_zimage_turbo", "57:27.text")
     k = FakeComfy("comfy.edit_flux2_klein4b", "75:74.text")
-    for ex in (z, k, *(c() for c in cs.CARD_OPS)):
+    env.art_query = FakeQuery(_art_reply())
+    for ex in (z, k, ClaudeCardArtExecutor(env.settings, env.art_query), *(c() for c in cs.CARD_OPS)):
         env.registry.register(ex)
     return env, z, k
 
@@ -179,6 +203,13 @@ async def test_card_set_recipe_runs_and_exports(tmp_path: Path, art: str, z_call
     steps = env.steps(run_id)
     assert env.status(run_id) == RunStatus.SUCCEEDED, {k_: s.error for k_, s in steps.items() if s.error}
     assert (len(z.prompts), len(k.prompts)) == (z_calls, k_calls)
+    assert len(env.art_query.calls) == (0 if art == "none" else 1)
+    if art != "none":
+        assert "opus" in str(env.art_query.calls[0][1].model)
+        filled = steps["plan"].meta["claude_art"]
+        assert len(filled) == 4 and "rong_lua_co_dai" not in filled and "ghost" not in filled
+        assert any("painted subject for thay_phu_thuy" in p for p in z.prompts + k.prompts)
+        assert not any("Rút một thẻ" in p for p in z.prompts + k.prompts)
     # art_* and back_* share the GPU lane; which of them takes it first is up to the scheduler.
     if z_calls:
         dragon = next(p for p in z.prompts if "ancient fire dragon" in p)
@@ -186,8 +217,8 @@ async def test_card_set_recipe_runs_and_exports(tmp_path: Path, art: str, z_call
     if k_calls:
         assert all("art style of the reference" in p and "Replace the whole scene" in p for p in k.prompts)
         plan = steps["plan"]
-        assert len(plan.meta["no_art_prompt"]) == 5 and "rong_lua_co_dai" not in plan.meta["no_art_prompt"]
-        assert any("Thầy Phù Thuỷ, Sinh vật: Rút một thẻ." in p for p in k.prompts)
+        # Only the card Claude skipped is still painted from its name and rules.
+        assert plan.meta["no_art_prompt"] == [cs.parse_cards(CSV.encode(), "set.csv")[-1]["id"]]
     doc = json.loads(env.blobs.path(steps["render"].outputs["cards"][0].hash).read_bytes())
     assert doc["ok"] and len(doc["cards"]) == 6 and doc["size"] == [378, 528] and doc["art_mode"] == art
     assert len(steps["render"].outputs["images"]) == 7 and steps["render"].outputs["atlas"]
@@ -273,6 +304,8 @@ async def test_card_set_prompt_uses_claude_list(tmp_path: Path) -> None:
     steps = env.steps(run_id)
     assert env.status(run_id) == RunStatus.SUCCEEDED, {k: s.error for k, s in steps.items() if s.error}
     assert len(q.calls) == 1 and len(z.prompts) == 6 and "hero number 0" in z.prompts[0]
+    # Every card already has art: the art step finishes without asking Claude.
+    assert env.art_query.calls == [] and steps["art_text"].outputs["json"] == []
     doc = json.loads(env.blobs.path(steps["render"].outputs["cards"][0].hash).read_bytes())
     assert [c["rarity"] for c in doc["cards"]][:5] == ["common", "uncommon", "rare", "epic", "legendary"]
     assert steps["approve"].outputs["list"]

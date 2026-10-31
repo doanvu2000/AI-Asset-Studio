@@ -1,8 +1,8 @@
 id: card-set
 name: Bộ thẻ bài (khung theo độ hiếm + art + chữ tự co)
 description: >-
-  Danh sách thẻ CSV / JSON (tên, mô tả, chi phí, công / máu, độ hiếm, loại, prompt art) → art từng thẻ bằng Z-Image
-  theo style dự án, hoặc Flux.2 Klein theo ảnh style tham chiếu → CPU vẽ khung theo độ hiếm (5 bậc màu, bậc cao có
+  Danh sách thẻ CSV / JSON (tên, mô tả, chi phí, công / máu, độ hiếm, loại, prompt art; thiếu thì Claude viết)
+  → art từng thẻ bằng Z-Image theo style dự án, hoặc Flux.2 Klein theo ảnh style tham chiếu → CPU vẽ khung theo độ hiếm (5 bậc màu, bậc cao có
   ngọc + viền sáng) và loại (sinh vật, phép, trang bị, bẫy, anh hùng: đổi màu nền + dáng ô art), chữ tiếng Việt có
   dấu tự co / xuống dòng vừa ô, mặt sau chung → thẻ 63×88 + atlas + card_set.json → duyệt. Xuất Unity (prefab UGUI
   từng thẻ + ScriptableObject) và Godot (scene Control từng thẻ + Resource).
@@ -12,7 +12,7 @@ inputs:
   style: {type: text, required: false, default: "", label: "Phong cách art (trống = theo dự án / mặc định)",
           placeholder: "painterly dark fantasy, rich colours, dramatic rim light"}
   image: {type: image, required: false,
-          label: "Ảnh style tham chiếu (tuỳ chọn → Klein vẽ theo nét này; nên điền cột art tiếng Anh cho mọi thẻ)"}
+          label: "Ảnh style tham chiếu (tuỳ chọn → Klein vẽ theo nét này)"}
   art: {type: enum, default: auto, options: [auto, zimage, klein, none],
         label: "Vẽ art (auto = Klein nếu có ảnh style, không thì Z-Image; none = art tạm CPU)"}
   back: {type: text, required: false, default: "ornate symmetrical card back, central glowing emblem, intricate filigree border pattern",
@@ -21,9 +21,14 @@ inputs:
   colors: {type: text, default: auto, label: "Màu 5 bậc hiếm (auto | #hex, #hex…)"}
   review: {type: bool, default: true, label: Duyệt trước khi xong}
 steps:
+  # Claude writes English art prompts only for cards with an empty art column; none missing = no Claude call.
+  - id: art_text
+    kind: claude.card_art
+    in: {cards: inputs.cards}
+    params: {art: "${inputs.art}", model: opus, _auto_retry: 1}
   - id: plan
     kind: op.card_plan
-    in: {cards: inputs.cards, ref: inputs.image}
+    in: {cards: inputs.cards, ref: inputs.image, art: art_text.json}
     params: {style: "${inputs.style}", art: "${inputs.art}", back: "${inputs.back}"}
   # Each GPU step runs once per prompt the plan wrote for its engine: the other engine's lists are empty, so it never
   # starts ComfyUI.
