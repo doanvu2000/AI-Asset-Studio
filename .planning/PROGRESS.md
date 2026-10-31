@@ -1285,3 +1285,50 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
   audit bản copy (hoàn tác md5 khớp 100%), MCP studio-core.exe mcp generate ui-juice 25s. Nợ: Unity preview modular-kit hồng (URP Lit/Built-in).
 - [x] 2026-10-30 Bump app 1.2.0 + changelog 1.2.0 (11 dòng). Commit: 6a41f8b (cache), 852573a (agent/MCP/plugin), 9a9b0c0 (recipe + audit), 7032b8b (1.2.0), + planning. Chưa push.
 - [x] 2026-10-30 02:52 Handoff mới: .planning/HANDOFF-2026-10-30-0252.md
+
+## Phiên 2026-10-30 — lượt 7
+- Chủ nhân: "làm hết, chia subagent, em quản lý". Ý tưởng `PLAN-2026-10-30-feature-ideas-r7.md` (#56–#58), spec `PLAN-2026-10-30-r7-build.md`.
+- Phân công: A #57+#36 · B #56 · C #58(+#35) · D #34 + nợ Spine physics · E #37 · F #39 SeedVR2 · G nợ 3D/VFX · H nợ app/agent · R review/build/e2e.
+- Chưa được phép commit lượt này (chờ chủ nhân).
+- 8 agent A–H đã chạy (D chạy lại: không được tải spine-unity từ Internet, chỉ kiểm physics bằng spine-core local).
+- [x] F #39 SeedVR2: node numz@4490bd1 (Apache-2.0) + 3B fp8 + VAE ở F:\...\SEEDVR2, torch giữ 2.14.1. Kind `upscale.model`, input engine esrgan|seedvr2|auto (mặc định esrgan).
+  512→2048: ESRGAN 3s/6.3GB, SeedVR2 x4 16.5s/8.8GB. Live core 24.5s alpha sạch. Comfy spawn PYTHONIOENCODING=utf-8 (emoji node làm crash cp1252).
+  Bootstrap thêm gói tuỳ chọn seedvr2 + `custom_nodes` (zip ghim commit, không chạy requirements.txt). pytest 1060/4 skip. Nợ: art mô tả, ảnh >1024, zip không sha256.
+- Chủ nhân cho tải spine-unity 4.2 → giao D kiểm physics #51 trên bản copy project Unity (nguồn chính thức EsotericSoftware).
+- [x] H nợ app/agent: version 1 nguồn (`studio_core/__init__.py`, pyproject dynamic, test khớp app 1.2.0); pruneBackups giữ 5; minimap FollowUp có cổng (FOLLOW_UP_GATES);
+  audit CLIP (pHash gần + cos≥0.9, CLIP riêng ≥0.985, >1500 ảnh → pHash); ui-screen TMP (Editor script đổi Text→TMP khi có TMP); ui-screen-prompt icon Z-Image (chưa live GPU);
+  Codex thật `codex exec` OK (list_recipes 83, ui-juice 46s); GUI plugin Godot/Unity sửa cắt chữ/kéo rộng. pytest 1076/4 skip.
+- [x] G nợ 3D/VFX: `export/pbr.py` Editor script đổi URP Lit↔Standard theo pipeline (modular hết hồng); terrain mực nước hồ cao/sông (`_water.raw`, mesh WaterBodies Unity, shader Godot), namespace riêng mỗi terrain;
+  VFX Godot AnimationPlayer `Delays`, stretch theo vận tốc (Godot scale_over_velocity + shader 3D, Unity Stretched Billboard); decal: Z-Image cfg1 nên "never a ring" lại ra vòng → viết lại prompt + `irregular`;
+  trim ép màu theo vật liệu tên dải. pytest 1059/4 skip. Nợ: decal cracks mảnh, modular URP chưa preview, preview.gd 3D hạt trống, Editor script GUID cố định (Modular/Vfx) trùng class khi 2 bản xuất chung project. ComfyUI G bật vẫn chạy.
+- [x] B #56 tile-animated: `ops/tile_anim.py`, `export/tile_anim.py` (Godot animation_columns; Unity AnimatedTile + RuleTile m_Output 2), recipe 6 kiểu, autotile 48 ô động. Test 11.
+  Live water CPU 0.3s (seam .78/.91, loop .93 ≤2.119); torch Wan 161s VRAM 11.7GB (period 16, seam x 1.98 sát ngưỡng). Unity/Godot import OK.
+  **runner.py sửa (R xem)**: gate `enabled` resolve `${steps…}`; bước `map:` input rỗng xong ngay không chiếm lane/bật Comfy. Nợ: torch lệch tông mép, chưa thử tile Z-Image thật, chưa scene demo Godot.
+- [x] C #58 playable-scene (+#35): gather → claude.scene_layout → scene → check → approve. Godot TileMapLayer + CharacterBody2D 8 hướng, Unity Tilemap + PlayerController (namespace riêng); .tmx + LDtk 1.5.
+  `POST /api/steps/{id}/open-in-engine` + `OpenInEngine.vue` (R xem an toàn spawn editor). AssetStudioPreview.cs: TilemapRenderer = 2D phẳng. Test 17, pytest 1077/4 skip.
+  Live topdown 45s / sideview 36s, Godot+Unity 0 lỗi, nhân vật đi 3–6 ô. Asset lấy read-only từ blob Portable data (chép ra scratchpad, không ghi). Nợ: .ldtk/.tmx chưa mở app thật, sheet không walk thì trượt, tường phẳng.
+- [x] E #37 card-set + card-set-prompt: `ops/card_set.py` (khung CPU 5 bậc × loại, chữ tự co + kiểm tràn bbox, 756×1056, mặt sau, atlas), `adapters/card_list.py`, `export/card_set.py` (UGUI prefab + CardSetData SO; Godot Control + .tres). Test 10.
+  Live "thần thoại Việt Nam" 6 thẻ 164–167s, VRAM 11.2GB, 0 lỗi chữ, dấu đúng. Sửa: Z-Image vẽ thẻ-trong-thẻ khi prompt có "card"; độ hiếm in TV.
+  Nợ: chưa bitmap font #25, chưa TMP, nhánh Klein chỉ fake, 1 lần flaky test_card_set[zimage] khi chạy song song (R xem).
+- [x] A #57 icon-3d + #36 iso-tiles/iso-tiles-image/iso-prop: `adapters/blender/icon3d(_bpy).py`, `ops/{icon3d,iso}.py`, `export/iso.py` (Unity Grid Isometric 1×0.5 + sort Y prefab; Godot tile_shape iso + y-sort). Test 9.
+  Live icon-3d 4 mesh ~12s (lấp đầy chênh 0%, tâm ≤0.5px); iso-prop ~7s; iso-tiles Z-Image ~36s, ghép 4×4 mép lệch 0. BlobDropZone `siblings: multi`. Sửa followUp.ts TS2722 (dòng của H).
+  Nợ: folder vẫn cần ≥1 file, TRELLIS toon phẳng, Editor script đổi Transparency Sort project Built-in.
+- [x] D #34 spine-face: prep → Claude khoanh mắt/mày/miệng → plan → Klein inpaint 11 biểu cảm → build (slot eyes/brow/mouth, anim blink/talk/happy/angry/sad track 1). Test 10 (spine-core node).
+  Live girl 194.6s, VRAM 11.4GB, lệch 0px, MAE trung tính 0.13. #51: cloth 35/0.95 + LINK_DAMPING 0.015 (áo girl 5.2°→10.2°, chuỗi 4 xương 42° không quay vòng), op version 2.
+  **Chưa kiểm Unity thật**: lệnh unity batchmode + UPM git spine-runtimes 4.2 bị classifier chặn dù chủ nhân đã cho → báo chủ nhân, script ở scratchpad/agentD/PhysicsCheck.cs. Nợ: mày dưới tóc viền mờ, mặt bị che → op_no_face.
+- A–H xong. Bắt đầu R.
+- [x] R lượt 7: sửa modular/vfx Editor script namespace+GUID theo bản xuất; iso Transparency Sort chỉ đặt khi Default, namespace Iso<hash>; ops/iso ident(asset);
+  flaky test_card_set (thứ tự lane) + mcp/link `_attach` retry 3/8/15s khi pid còn sống; bootstrap zip slip; mcp/followup GATES dict khớp TS; preview.gd tô TileMapLayer cho TileSet;
+  `unity_env()` bù ProgramData (core spawn bởi MCP thiếu env → UPM chết). pytest 1078/4 skip ×3, typecheck sạch.
+  Build: `core/dist/studio-core`, `app/release/1.2.0/win-unpacked`. E2E đóng gói qua MCP 11/11 succeeded, preview Godot/Unity 0 lỗi.
+  Nợ: script runtime GUID cố định (CardSetData, NpcData, Parallax, Paperdoll, HitFx, Destructible); upscale auto ghi method "auto"; zip node chưa sha256.
+- Changelog 1.2.0 (chưa phát hành) thêm 9 dòng lượt 7. Chưa commit — chờ chủ nhân.
+
+## Phiên 2026-10-31 (sau HANDOFF-2026-10-30-0928) — trả nợ lượt 7, chưa commit
+- [x] Nợ "script runtime GUID cố định": giữ GUID + namespace chung (NpcData/CardSetData là kiểu dùng chung, tách namespace sẽ phá code game),
+  thay vào đó chép vào project thì dùng lại bản có sẵn: `export/unity.py::copy_unity_export` (script .cs.meta trùng GUID nằm ngoài thư mục đích → ghi đè nội dung bản cũ tại chỗ, không chép bản 2, xoá bản cũ trùng trong đích).
+  Dùng ở MCP `export_to_engine` (unity, trả `reused_scripts`), `preview._unity_stage`, bridge Unity `StudioRuns.CopyDir` + `SharedScripts` (C#, chưa compile trong Unity).
+  Ghi chú xuất (npc/parallax/paperdoll/hitfx/destructible) thêm `sheet.SHARED_SCRIPT_NOTE`. Test `tests/test_unity_shared_scripts.py` (2). Godot class_name trùng (npc_data.gd) chưa xử lý.
+- [x] Nợ "upscale auto ghi method auto": `UpscalePost(settings)` resolve auto qua `adapters.comfy.upscale.resolve_engine`; ops/__init__ đăng ký riêng, bỏ `UPSCALE_OPS`. Test thêm 1.
+- [-] Nợ "zip node chưa sha256": bỏ — zip codeload GitHub không ổn định byte (ComfyUI cũng không ghi), commit đã ghim.
+- pytest toàn bộ (sau nợ 1): 1080 pass / 4 skip; test_upscale 17 pass.
