@@ -237,3 +237,49 @@ def test_concat_binding_parses_and_tracks_deps(tmp_path):
     assert isinstance(b.bindings["images"], ConcatBinding)
     assert str(b.bindings["images"]) == "inputs.image+a.images"
     assert b.deps == ["a"]
+
+
+class PlanExec(FakeExec):
+    def __init__(self, prompts: list[str], count: int):
+        super().__init__("t.plan")
+        self.prompts, self.count = prompts, count
+
+    async def run(self, ctx: Any, params: dict[str, Any], inputs: Any) -> StepResult:
+        js = await ctx.blobs.put_bytes(json.dumps({"prompts": self.prompts}).encode())
+        imgs = [await ctx.blobs.put_bytes(f"img{i}".encode()) for i in range(self.count)]
+        return StepResult(outputs={"json": [js], "images": imgs})
+
+
+MAP_EMPTY = """
+id: me
+steps:
+  - {id: plan, kind: t.plan}
+  - id: edit
+    kind: t.edit
+    in: {image: plan.images}
+    map: image
+    params: {prompt: ["${steps.plan.json.prompts}"]}
+    map_param: prompt
+"""
+
+
+@pytest.mark.parametrize("prompts, count, status, acquired", [
+    ([], 0, RunStatus.SUCCEEDED, False),
+    (["a"], 0, RunStatus.FAILED, True),
+])
+async def test_map_and_map_param_over_nothing_skips_the_lane(tmp_path: Path, prompts: list[str], count: int,
+                                                             status: RunStatus, acquired: bool) -> None:
+    edit = ParamExec("t.edit")
+    env = Env(tmp_path, [PlanExec(prompts, count), edit], {"me": MAP_EMPTY})
+    lanes: list[Lane] = []
+    real = env.engine.scheduler.acquire
+
+    async def spy(lane: Lane, *a: Any, **kw: Any) -> Any:
+        lanes.append(lane)
+        return await real(lane, *a, **kw)
+
+    env.engine.scheduler.acquire = spy  # type: ignore[method-assign]
+    run_id = await env.engine.start_run("me", {})
+    await until(lambda: env.status(run_id) in (RunStatus.SUCCEEDED, RunStatus.FAILED))
+    assert env.status(run_id) == status
+    assert (Lane.GPU in lanes) == acquired and edit.params == []

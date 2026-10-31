@@ -124,6 +124,14 @@ def _allowed_failure(step: StepRow) -> bool:
     return step.status == StepStatus.SKIPPED and bool(step.meta.get(ALLOWED_FAILURE))
 
 
+def _map_values(params: dict[str, Any], map_param: str | None) -> list[Any]:
+    if not map_param:
+        return []
+    raw = params.get(map_param)
+    # `[ "${steps.plan.json.prompts}" ]` resolves to a nested list: map over the upstream list's items.
+    return [x for v in (raw if isinstance(raw, list) else [raw]) for x in (v if isinstance(v, list) else [v])]
+
+
 def _spent_on(e: StepError) -> float:
     """API spend of the failed call(s) behind `e`: set by the runner while unwinding, else reported in detail."""
     v = getattr(e, "spent_usd", None)
@@ -605,8 +613,10 @@ class StudioEngine:
                                          started_at=now, ended_at=now, meta={**cached_meta, **step.meta})
                     return
             spec = step.meta.get("spec", {})
-            if spec.get("map") and not spec.get("map_param") and not inputs.get(spec["map"]):
-                # Mapping over nothing (a branch the upstream switched off) must not take the lane or boot ComfyUI.
+            if (spec.get("map") and not inputs.get(spec["map"])
+                    and not _map_values(params, spec.get("map_param"))):
+                # Mapping over nothing (a branch the upstream switched off) must not take the lane or boot ComfyUI;
+                # values without items still fall through so the executor reports map_mismatch.
                 now = _now()
                 await self._set_step(step, status=StepStatus.SUCCEEDED, outputs={}, progress=1.0, started_at=now,
                                      ended_at=now)
@@ -723,12 +733,7 @@ class StudioEngine:
         spec = step.meta.get("spec", {})
         mp, mpp = spec.get("map"), spec.get("map_param")
         calls: list[tuple[dict[str, Any], Outputs]]
-        values: list[Any] = []
-        if mpp:
-            values = step_params.get(mpp)  # type: ignore[assignment]
-            # `[ "${steps.plan.json.prompts}" ]` resolves to a nested list: map over the upstream list's items.
-            values = [x for v in (values if isinstance(values, list) else [values])
-                      for x in (v if isinstance(v, list) else [v])]
+        values = _map_values(step_params, mpp)
         if mp and mpp:
             # Both: item i of the mapped input runs with value i of the mapped param (one prompt per image).
             items = inputs.get(mp, [])
