@@ -1405,4 +1405,5 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [x] WP-APP — format.ts nhãn 9 kind, 'Bỏ qua (lỗi cho phép)' + run warnings, BundleMenu Toon (main/preload checkEngineOptions), StyleLockReport.vue, changelog 1.3.0 (11 dòng, APP_VERSION vẫn 1.2.0); typecheck sạch (agent chạy); commit 8be8f27. Chưa xem bằng mắt.
 - [x] #63 room-kit — wfc + room_rules (allow_fail) + ops/export room_kit, đăng ký 7 file; review sonnet: main sửa clamp w sideview cols=12 + bắt AttributeError; test CHƯA CHẠY; commit b8cbbba.
 - [x] gen_agent_docs (parse đủ recipe mới OK) → commit 294d536.
-- [x] Kết đợt: 14 commit, chưa push; MỌI test lượt 8 chưa chạy (lệnh chủ nhân). Handoff: .planning/HANDOFF-2026-11-01-r8.md
+- [x] Kết đợt: 14 commit, chưa push; MỌI test lượt 8 chưa chạy (lệnh chủ nhân). Handoff: .planning/HANDOFF-2026-11-01-0424.md
+- [x] 04:24 Handoff mới: .planning/HANDOFF-2026-11-01-0424.md (đổi tên từ -r8, thêm đường dẫn tuyệt đối wp10).
