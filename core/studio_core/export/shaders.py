@@ -172,9 +172,12 @@ def _row(c: ShaderChoice, rows: int) -> float:
     return float(rows - 1) if r < 0 else min(r, rows - 1)
 
 
-def _num(v: float) -> str:
+def num(v: float) -> str:
     s = f"{float(v):.6g}"
     return s if any(ch in s for ch in ".e") else f"{s}.0"
+
+
+_num = num
 
 
 def godot_material(c: ShaderChoice, ramp: str | None, rows: int) -> str:
@@ -187,12 +190,12 @@ def godot_material(c: ShaderChoice, ramp: str | None, rows: int) -> str:
         if q.key == "row":
             v = _row(c, rows)
         if q.is_color:
-            props.append(f"shader_parameter/{q.godot} = Color({', '.join(_num(x) for x in parse_color(v))})")
+            props.append(f"shader_parameter/{q.godot} = Color({', '.join(num(x) for x in parse_color(v))})")
         else:
-            props.append(f"shader_parameter/{q.godot} = {_num(float(v))}")
+            props.append(f"shader_parameter/{q.godot} = {num(float(v))}")
     if ramp:
         ext.append(f'[ext_resource type="Texture2D" path="{ramp}" id="2_ramp"]')
-        props += ['shader_parameter/ramp = ExtResource("2_ramp")', f"shader_parameter/rows = {_num(rows)}"]
+        props += ['shader_parameter/ramp = ExtResource("2_ramp")', f"shader_parameter/rows = {num(rows)}"]
     return ('[gd_resource type="ShaderMaterial" format=3]\n\n' + "\n".join(ext) + "\n\n[resource]\n"
             + "\n".join(props) + "\n")
 

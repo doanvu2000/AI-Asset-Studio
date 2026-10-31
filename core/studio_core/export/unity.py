@@ -26,6 +26,7 @@ def guid(uid: str, asset: str, rel: str) -> str:
 
 
 _META_GUID = re.compile(r"^guid: ([0-9a-f]{32})\s*$", re.M)
+_SHARED_META = ("*.cs.meta", "*.shader.meta")
 
 
 def _meta_guid(meta: Path) -> str | None:
@@ -40,12 +41,13 @@ def copy_unity_export(src: Path, target: Path, assets: Path) -> list[str]:
     """Copies an export folder into <project>/Assets. Shared fixed-GUID scripts (NpcData.cs, AssetStudioParallax.cs,
     ...) that another export already placed in the project are refreshed where they are instead of copied again:
     a second copy is CS0101 plus a GUID clash Unity resolves by re-keying one of them. Returns the reused paths."""
-    shared = {g: m for m in src.rglob("*.cs.meta") if (g := _meta_guid(m))}
+    shared = {g: m for pat in _SHARED_META for m in src.rglob(pat) if (g := _meta_guid(m))}
     elsewhere: dict[str, Path] = {}
     if shared:
-        for m in assets.rglob("*.cs.meta"):
-            if not m.is_relative_to(target) and (g := _meta_guid(m)) in shared:
-                elsewhere.setdefault(g, m)
+        for pat in _SHARED_META:
+            for m in assets.rglob(pat):
+                if not m.is_relative_to(target) and (g := _meta_guid(m)) in shared:
+                    elsewhere.setdefault(g, m)
     skip: dict[Path, Path] = {}
     for g, m in shared.items():
         if have := elsewhere.get(g):
@@ -56,13 +58,13 @@ def copy_unity_export(src: Path, target: Path, assets: Path) -> list[str]:
             continue
         to = target / p.relative_to(src)
         if (have := skip.get(p)) is not None:
-            if p.suffix == ".cs":
+            if p.suffix in (".cs", ".shader"):
                 shutil.copyfile(p, have)
             to.unlink(missing_ok=True)
             continue
         to.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(p, to)
-    return sorted(q.relative_to(assets.parent).as_posix() for q in skip.values() if q.suffix == ".cs")
+    return sorted(q.relative_to(assets.parent).as_posix() for q in skip.values() if q.suffix in (".cs", ".shader"))
 
 
 def file_id(*parts: str) -> int:

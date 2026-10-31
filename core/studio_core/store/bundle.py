@@ -420,7 +420,7 @@ def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,
                   engine: str, ppu: float = 100.0, pixel: bool | None = None, collider: Any = None,
                   shaders: list[Any] | None = None, normal2d: Any = None, mobile: bool = False,
-                  hits: Any = None, aseprite: bool = False) -> dict[str, Any]:
+                  hits: Any = None, aseprite: bool = False, toon: Any = None) -> dict[str, Any]:
     exporter = ENGINES.get(engine)
     if exporter is None:
         raise BundleError(f"unknown engine '{engine}' (use {', '.join(ENGINES)})")
@@ -443,6 +443,13 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
         try:
             files = apply(files, engine, src, shaders)
         except ShaderError as e:
+            raise BundleError(str(e)) from None
+    if toon is not None:
+        from studio_core.export import toon3d
+
+        try:
+            files = toon3d.apply(files, engine, src, toon)
+        except toon3d.ShaderError as e:
             raise BundleError(str(e)) from None
     if hits is not None:
         from studio_core.export.hitfx import apply as apply_hits

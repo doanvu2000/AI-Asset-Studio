@@ -9,6 +9,7 @@ import time
 import bpy
 import numpy as np
 from mathutils import Vector
+from toon_bands import band_levels
 
 # Directions the light travels in camera space (x right, y up, -z forward) and sun strength; the key/fill/rim
 # energies are the worker's tuned "studio" preset, but tied to the camera so every angle preset lights alike.
@@ -21,7 +22,6 @@ ISO_ELEVATION = 30.0
 ISO_AZIMUTH = 45.0
 ISO_DIRS = (("sw", 0), ("se", 90), ("ne", 180), ("nw", 270))
 # Band greys are picked as display (sRGB) values: 0.4 linear showed as 0.66 on screen and the bands melted.
-TOON_SHADOW = 0.5
 TOON_KEY = 0.9
 TOON_FILL = 0.3
 TOON_AMBIENT = 0.0
@@ -201,10 +201,11 @@ def toonify(meshes, bands, size, key, fill):
                 els.new(1.0)
             while len(els) > max(1, bands):
                 els.remove(els[-1])
+            levels = band_levels(bands)
             for i in range(bands):
                 e = els[i]
                 e.position = i / bands
-                e.color = (srgb_to_linear(TOON_SHADOW + (1 - TOON_SHADOW) * i / max(1, bands - 1)),) * 3 + (1,)
+                e.color = (srgb_to_linear(levels[i]),) * 3 + (1,)
             # Shader to RGB irradiance saturated the ramp (sun 4 + fill 1.6 + world 1.6 never drops below the middle
             # band), so the bands come from N.L directly: independent of light energy, full 0..1 range.
             light = _math(nodes, links, "MULTIPLY_ADD", _lambert(nodes, links, n_out, key), TOON_KEY)

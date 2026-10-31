@@ -11,12 +11,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from studio_core.export.shaders import (Param, Preset, ShaderChoice, ShaderError, _num, parse_color, template_dir,
-                                        unity_material)
+from studio_core.adapters.blender.toon_bands import band_levels
+from studio_core.export.shaders import (Param, Preset, ShaderChoice, ShaderError, num as _num, parse_color,
+                                        template_dir, unity_material)
 from studio_core.export.source import Files, Source
 
 BANDS = (2, 4)
-TOON_SHADOW = 0.5
 TINT_MIX = 0.5
 UNITY_SHADER_GUID = "7c3f1e5a9b2d4806a1d94e0b5f6c2a31"
 UNITY_EDITOR_GUID = "b8e24d7f3a9c4c15902e6d1f4a7b3c58"
@@ -125,11 +125,6 @@ def inspect_glb(path: Path) -> ModelInfo:
     size = max(h - l for l, h in zip(lo, hi))
     return ModelInfo(size=size if size > 1e-6 else 1.0, center=tuple((l + h) / 2 for l, h in zip(lo, hi)),
                      color=color, factor=factor)  # type: ignore[arg-type]
-
-
-def band_levels(bands: int) -> list[float]:
-    """Same display-space grey steps as the icon-3d Blender toon (TOON_SHADOW .. 1)."""
-    return [TOON_SHADOW + (1 - TOON_SHADOW) * i / max(1, bands - 1) for i in range(bands)]
 
 
 def ramp_colors(bands: int, color: tuple[int, int, int] | None) -> list[tuple[int, int, int]]:

@@ -24,6 +24,7 @@ from studio_core.engine.projects import apply_style
 from studio_core.engine.recipe import Recipe, RecipeError
 from studio_core.ops.presets import ExportPreset, PresetStore
 from studio_core.export.collider import DEFAULT_TOLERANCE, ColliderOptions, default_enabled
+from studio_core.export import toon3d
 from studio_core.export.shaders import ShaderError, applies_to as shaders_apply, catalog as shader_catalog
 from studio_core.export.shaders import resolve as resolve_shaders
 from studio_core.export.normal2d import Normal2DOptions
@@ -507,6 +508,9 @@ class StepExport(BaseModel):
     # Sprite shader presets (export/shaders.py), e.g. ["hit_flash"]; shader_params = {"hit_flash": {"color": "#fff"}}.
     shaders: list[str] = Field(default_factory=list, max_length=16)
     shader_params: dict[str, dict[str, float | str]] = Field(default_factory=dict)
+    # 3D models only (export/toon3d.py): "toon" adds the toon/outline material; toon = {bands, outline_color, ...}.
+    material_style: Literal["pbr", "toon"] = "pbr"
+    toon: dict[str, float | int | str] | None = None
     # CPU normal map for the sprite sheet (export/normal2d.py); bevel None = auto from the frame size.
     normal2d: bool = False
     normal2d_strength: float = Field(1.0, gt=0, le=10)
@@ -571,9 +575,13 @@ async def export_step(request: Request, step_id: str, body: StepExport) -> Respo
         normal2d = (Normal2DOptions(body.normal2d_strength, body.normal2d_bevel) if body.normal2d else None)
         hits = await resolve_hits(request, body.hits)
         try:
+            toon = toon3d.preset_from(body.toon) if body.material_style == "toon" else None
+        except ShaderError as e:
+            raise ApiError(422, "invalid", str(e)) from e
+        try:
             out = await asyncio.to_thread(export_engine, step, siblings, _blobs(request), Path(root), body.name,
                                           body.engine, body.ppu, body.pixel, collider, shaders, normal2d,
-                                          body.mobile, aseprite=body.aseprite, hits=hits)
+                                          body.mobile, aseprite=body.aseprite, hits=hits, toon=toon)
         except BundleError as e:
             raise ApiError(422, "not_exportable", str(e)) from e
         return _json(out)

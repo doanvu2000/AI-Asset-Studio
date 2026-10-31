@@ -44,3 +44,27 @@ def test_reexport_of_owner_keeps_its_copy_and_drops_stale_duplicate(tmp_path: Pa
     copy_unity_export(_export(tmp_path, "Bob", "v2"), b, assets)
     assert not (b / "Scripts" / "NpcData.cs").exists()
     assert len(list(assets.rglob("NpcData.cs"))) == 1
+
+
+def _shader_export(root: Path, name: str, code: str) -> Path:
+    from studio_core.export.shaders import shader_meta
+    from studio_core.export.toon3d import UNITY_SHADER_GUID
+
+    d = root / "exports" / name
+    (d / "Shaders").mkdir(parents=True)
+    (d / "Shaders" / "AssetStudio_Toon3D.shader").write_text(code, encoding="utf-8")
+    (d / "Shaders" / "AssetStudio_Toon3D.shader.meta").write_text(shader_meta(UNITY_SHADER_GUID), encoding="utf-8")
+    (d / "Shaders" / f"{name}_toon3d.mat").write_text("m_Name: x\n", encoding="utf-8")
+    return d
+
+
+def test_second_export_reuses_shared_toon_shader(tmp_path: Path) -> None:
+    assets = tmp_path / "Proj" / "Assets"
+    a = assets / "Ann"
+    b = assets / "Bob"
+    assert copy_unity_export(_shader_export(tmp_path, "Ann", "v1"), a, assets) == []
+    reused = copy_unity_export(_shader_export(tmp_path, "Bob", "v2"), b, assets)
+    assert reused == ["Assets/Ann/Shaders/AssetStudio_Toon3D.shader"]
+    assert (a / "Shaders" / "AssetStudio_Toon3D.shader").read_text(encoding="utf-8") == "v2"
+    assert not (b / "Shaders" / "AssetStudio_Toon3D.shader").exists()
+    assert (b / "Shaders" / "Bob_toon3d.mat").is_file()

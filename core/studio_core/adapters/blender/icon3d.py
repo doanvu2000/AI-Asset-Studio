@@ -25,7 +25,8 @@ ISO_TILE_W = (64, 128, 256)
 
 def side_hash() -> str:
     h = blake3.blake3(worker_hash().encode())
-    h.update(WORKER_SCRIPT.with_name("icon3d_bpy.py").read_bytes())
+    for name in ("icon3d_bpy.py", "toon_bands.py"):
+        h.update(WORKER_SCRIPT.with_name(name).read_bytes())
     return h.hexdigest()
 
 

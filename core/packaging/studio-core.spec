@@ -28,6 +28,7 @@ datas = [
     (str(PKG / "adapters" / "blender" / "modular_math.py"), "studio_core/adapters/blender"),
     (str(PKG / "adapters" / "blender" / "trim_math.py"), "studio_core/adapters/blender"),
     (str(PKG / "adapters" / "blender" / "icon3d_bpy.py"), "studio_core/adapters/blender"),
+    (str(PKG / "adapters" / "blender" / "toon_bands.py"), "studio_core/adapters/blender"),
     # Op cache keys hash these sources (ops/executors.py: ops_source_hash).
     (str(PKG / "ops" / "*.py"), "studio_core/ops"),
 ]
