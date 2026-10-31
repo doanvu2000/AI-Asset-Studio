@@ -69,6 +69,11 @@ def adjacency(patterns: np.ndarray) -> np.ndarray:
     return adj
 
 
+def _bits(mask: int, n: int) -> np.ndarray:
+    return np.unpackbits(np.frombuffer(mask.to_bytes((n + 7) // 8, "little"), np.uint8), count=n,
+                         bitorder="little").astype(bool)
+
+
 class Wfc:
     def __init__(self, samples: list[np.ndarray], width: int, height: int, n: int = 2):
         if width < n or height < n:
@@ -77,6 +82,10 @@ class Wfc:
         self.patterns, self.weights = extract_patterns(samples, n)
         self.adj = adjacency(self.patterns)
         self.gw, self.gh = width - n + 1, height - n + 1
+        # Pure-int bitsets: a numpy call per neighbour costs ~10 us, which made a 48x32 room take seconds.
+        self._adj_bits = [[sum(1 << b for b in np.flatnonzero(row).tolist()) for row in self.adj[d]] for d in range(4)]
+        self._support_memo: dict[int, tuple[int, int, int, int]] = {}
+        self._entropy_memo: dict[int, float] = {}
 
     def _restrict(self, wave: np.ndarray, fixed: dict[tuple[int, int], int]) -> None:
         n = self.n
@@ -87,58 +96,89 @@ class Wfc:
                 for px in range(max(0, x - n + 1), min(self.gw - 1, x) + 1):
                     wave[py, px] &= self.patterns[:, y - py, x - px] == v
 
-    def _propagate(self, wave: np.ndarray, stack: list[tuple[int, int]]) -> bool:
+    def _support(self, mask: int) -> tuple[int, int, int, int]:
+        sup = self._support_memo.get(mask)
+        if sup is None:
+            out = [0, 0, 0, 0]
+            m = mask
+            while m:
+                low = m & -m
+                a = low.bit_length() - 1
+                for d in range(4):
+                    out[d] |= self._adj_bits[d][a]
+                m ^= low
+            sup = self._support_memo[mask] = (out[0], out[1], out[2], out[3])
+        return sup
+
+    def _entropy(self, mask: int) -> float:
+        e = self._entropy_memo.get(mask)
+        if e is None:
+            w = self.weights[_bits(mask, len(self.weights))]
+            total = float(w.sum())
+            e = self._entropy_memo[mask] = float(np.log(total) - float((w * np.log(w)).sum()) / total)
+        return e
+
+    def _propagate(self, wave: list[int], stack: list[int], changed: list[int] | None = None) -> bool:
+        """Cells are flat indices y * gw + x; every cell whose mask shrinks is appended to `changed`."""
+        gw, gh = self.gw, self.gh
         while stack:
-            x, y = stack.pop()
-            here = wave[y, x]
+            i = stack.pop()
+            y, x = divmod(i, gw)
+            sup = self._support(wave[i])
             for d, (dx, dy) in enumerate(DIRS):
                 nx, ny = x + dx, y + dy
-                if not (0 <= nx < self.gw and 0 <= ny < self.gh):
+                if not (0 <= nx < gw and 0 <= ny < gh):
                     continue
-                new = wave[ny, nx] & self.adj[d][here].any(axis=0)
-                if not new.any():
+                j = ny * gw + nx
+                old = wave[j]
+                new = old & sup[d]
+                if not new:
                     return False
-                if new.sum() != wave[ny, nx].sum():
-                    wave[ny, nx] = new
-                    stack.append((nx, ny))
+                if new != old:
+                    wave[j] = new
+                    stack.append(j)
+                    if changed is not None:
+                        changed.append(j)
         return True
 
-    def _collapse(self, wave: np.ndarray, rng: np.random.Generator) -> bool:
+    def _collapse(self, wave: list[int], rng: np.random.Generator) -> bool:
         w = self.weights
-        logw = np.log(w)
+        shape = (self.gh, self.gw)
+        entropy = np.array([self._entropy(m) if m & (m - 1) else np.inf for m in wave]).reshape(shape)
         while True:
-            count = wave.sum(axis=2)
-            open_cells = count > 1
-            if not open_cells.any():
+            noisy = entropy + rng.random(shape) * 1e-6
+            i = int(np.argmin(noisy))
+            if not np.isfinite(noisy.flat[i]):
                 return True
-            total = wave @ w
-            entropy = np.log(total) - (wave @ (w * logw)) / total + rng.random(count.shape) * 1e-6
-            entropy[~open_cells] = np.inf
-            y, x = np.unravel_index(int(np.argmin(entropy)), entropy.shape)
-            p = w * wave[y, x]
+            p = w * _bits(wave[i], len(w))
             pick = int(rng.choice(len(w), p=p / p.sum()))
-            wave[y, x] = False
-            wave[y, x, pick] = True
-            if not self._propagate(wave, [(int(x), int(y))]):
+            wave[i] = 1 << pick
+            entropy.flat[i] = np.inf
+            changed: list[int] = []
+            if not self._propagate(wave, [i], changed):
                 return False
+            for j in changed:
+                m = wave[j]
+                entropy.flat[j] = self._entropy(m) if m & (m - 1) else np.inf
 
     def solve(self, seed: int, fixed: dict[tuple[int, int], int] | None = None, max_restarts: int = 20) -> np.ndarray:
         """Output cells as symbol indices, shape (height, width). Pinned cells that the samples cannot satisfy raise
         WfcError at once; a contradiction while collapsing retries up to `max_restarts` times."""
-        base = np.ones((self.gh, self.gw, len(self.weights)), bool)
-        self._restrict(base, fixed or {})
-        if not base.reshape(-1, base.shape[2]).any(axis=1).all() or not self._propagate(
-                base, [(x, y) for y in range(self.gh) for x in range(self.gw)]):
+        grid = np.ones((self.gh, self.gw, len(self.weights)), bool)
+        self._restrict(grid, fixed or {})
+        base = [int.from_bytes(np.packbits(row, bitorder="little").tobytes(), "little")
+                for row in grid.reshape(-1, grid.shape[2])]
+        if not all(base) or not self._propagate(base, list(range(len(base)))):
             raise WfcError("the pinned cells contradict the sample patterns")
         for attempt in range(max(1, max_restarts)):
-            wave = base.copy()
+            wave = list(base)
             if self._collapse(wave, np.random.default_rng([int(seed) & 0xFFFFFFFF, attempt])):
                 return self._render(wave)
         raise WfcContradiction(f"wave function collapse hit a contradiction in all {max(1, max_restarts)} attempts "
                                f"(seed {seed}, {self.width}x{self.height})")
 
-    def _render(self, wave: np.ndarray) -> np.ndarray:
-        pat = wave.argmax(axis=2)
+    def _render(self, wave: list[int]) -> np.ndarray:
+        pat = np.array([m.bit_length() - 1 for m in wave]).reshape(self.gh, self.gw)
         out = np.zeros((self.height, self.width), np.uint8)
         for y in range(self.height):
             for x in range(self.width):
