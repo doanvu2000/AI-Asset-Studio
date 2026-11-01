@@ -51,7 +51,7 @@ watch(
   { immediate: true }
 )
 
-const graph = computed(() => (detail.value && kinds.loaded ? buildEditorGraph(detail.value.doc, kinds.byKind, [], null) : null))
+const graph = computed(() => (detail.value && kinds.loaded ? buildEditorGraph(detail.value.doc, kinds.byKind, [], null, true) : null))
 const needs = computed(() => (props.recipe ? requiredInputs(props.recipe) : []))
 const outputs = computed(() => (detail.value ? recipeOutputs(detail.value, kinds.byKind) : []))
 const exportTags = computed(() => exportLabels(props.recipe))
@@ -83,7 +83,7 @@ useEventListener(document, 'keydown', (e: KeyboardEvent) => {
           </header>
           <div class="body">
             <section class="flow" aria-label="Sơ đồ các bước">
-              <FlowCanvas v-if="graph" :id="`qv-${recipe.id}`" :nodes="graph.nodes" :edges="graph.edges" :fit-key="recipe.id" :minimap="false" />
+              <FlowCanvas v-if="graph" :id="`qv-${recipe.id}`" :nodes="graph.nodes" :edges="graph.edges" :fit-key="recipe.id" :min-fit-zoom="0.4" :minimap="false" />
               <span v-else-if="error" class="caption state err"><TriangleAlert :size="14" /> {{ error }} <button type="button" class="btn btn-plain" @click="load(recipe)"><RotateCw /> Thử lại</button></span>
               <span v-else class="skel fill" />
             </section>
@@ -251,7 +251,7 @@ useEventListener(document, 'keydown', (e: KeyboardEvent) => {
 @media (max-width: 820px) {
   .body {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(220px, 1fr) auto;
+    grid-template-rows: minmax(380px, 1fr) auto;
     overflow-y: auto;
   }
   .flow {

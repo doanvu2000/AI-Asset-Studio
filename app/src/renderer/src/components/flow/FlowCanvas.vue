@@ -3,22 +3,25 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { useResizeObserver } from '@vueuse/core'
+import { useMediaQuery, useResizeObserver } from '@vueuse/core'
 import { VueFlow, useVueFlow, type Connection, type Edge, type EdgeMouseEvent, type Node, type NodeDragEvent, type NodeMouseEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
-import { Controls } from '@vue-flow/controls'
+import { ControlButton, Controls } from '@vue-flow/controls'
+import { Maximize } from '@lucide/vue'
 import { MiniMap } from '@vue-flow/minimap'
 import StepNode from './StepNode.vue'
 import IoNode from './IoNode.vue'
 import type { StepStatus } from '@/api/types'
 import type { IoNodeData, StepNodeData } from '@/composables/graph'
 
-const props = withDefaults(defineProps<{ id: string; nodes: Node[]; edges: Edge[]; editable?: boolean; fitKey?: string; minimap?: boolean; focusId?: string | null }>(), {
+const props = withDefaults(defineProps<{ id: string; nodes: Node[]; edges: Edge[]; editable?: boolean; fitKey?: string; minimap?: boolean; focusId?: string | null; minFitZoom?: number }>(), {
   editable: false,
   fitKey: '',
   minimap: true,
-  focusId: null
+  focusId: null,
+  minFitZoom: 0
 })
+const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
 const emit = defineEmits<{
   connect: [c: Connection]
   nodeClick: [id: string]
@@ -28,11 +31,10 @@ const emit = defineEmits<{
   resize: [size: { width: number; height: number }]
 }>()
 
-const { fitView, getNodes, getViewport, setViewport, setCenter, dimensions, onNodesInitialized } = useVueFlow(props.id)
-// Below MIN_FIT_ZOOM node text is unreadable; such graphs anchor left at LONG_GRAPH_ZOOM and the user pans.
+const { getNodes, getViewport, setViewport, setCenter, dimensions, onNodesInitialized } = useVueFlow(props.id)
 const MIN_FIT_ZOOM = 0.45
 const LONG_GRAPH_ZOOM = 0.6
-const FIT_PADDING = 0.2
+const FIT_MARGIN = 32
 const MINIMAP_MIN_NODES = 13
 
 const root = ref<HTMLElement | null>(null)
@@ -41,20 +43,26 @@ const size = ref({ width: 0, height: 0 })
 const ready = computed(() => size.value.width > 0 && size.value.height > 0)
 const showMinimap = computed(() => props.minimap && ready.value && props.nodes.length >= MINIMAP_MIN_NODES)
 
-async function frame(duration = 280): Promise<void> {
+async function frame(duration = 200): Promise<void> {
   const nodes = getNodes.value
   if (!ready.value || !nodes.length) return
-  await fitView({ padding: FIT_PADDING, duration: 0, maxZoom: 1.05 })
-  const v = getViewport()
-  if (v.zoom >= MIN_FIT_ZOOM) {
-    if (duration) await fitView({ padding: FIT_PADDING, duration, maxZoom: 1.05 })
-    return
-  }
+  if (reducedMotion.value) duration = 0
+  const floor = props.minFitZoom || MIN_FIT_ZOOM
+  const { width, height } = dimensions.value
   const minX = Math.min(...nodes.map((n) => n.position.x))
   const minY = Math.min(...nodes.map((n) => n.position.y))
+  const maxX = Math.max(...nodes.map((n) => n.position.x + (n.dimensions.width || 0)))
   const maxY = Math.max(...nodes.map((n) => n.position.y + (n.dimensions.height || 0)))
-  const zoom = LONG_GRAPH_ZOOM
-  await setViewport({ x: 40 - minX * zoom, y: dimensions.value.height / 2 - ((minY + maxY) / 2) * zoom, zoom }, { duration })
+  const fit = Math.min((width - 2 * FIT_MARGIN) / (maxX - minX), (height - 2 * FIT_MARGIN) / (maxY - minY), 1.05)
+  if (fit >= floor) {
+    const x = (width - (maxX - minX) * fit) / 2 - minX * fit
+    const y = (height - (maxY - minY) * fit) / 2 - minY * fit
+    await setViewport({ x, y, zoom: fit }, { duration })
+    return
+  }
+  // Below the floor node text is unreadable; keep the floor, anchor left and let the user pan.
+  const zoom = props.minFitZoom || LONG_GRAPH_ZOOM
+  await setViewport({ x: FIT_MARGIN - minX * zoom, y: height / 2 - ((minY + maxY) / 2) * zoom, zoom }, { duration })
 }
 
 let raf = 0
@@ -85,7 +93,7 @@ watch(
   () => props.fitKey,
   async () => {
     await nextTick()
-    frameNextPaint(280)
+    frameNextPaint(200)
   }
 )
 
@@ -106,7 +114,7 @@ watch(
   }
 )
 
-defineExpose({ fit: (animate = true): void => frameNextPaint(animate ? 280 : 0) })
+defineExpose({ fit: (animate = true): void => frameNextPaint(animate ? 200 : 0) })
 
 function edgeTone(s: StepStatus): string {
   switch (s) {
@@ -189,7 +197,11 @@ function onDragStop(e: NodeDragEvent): void {
         <IoNode :data="p.data as IoNodeData" />
       </template>
       <Background v-if="ready" :gap="18" :size="1.4" pattern-color="var(--canvas-dot)" />
-      <Controls v-if="ready" :show-interactive="false" position="bottom-right" />
+      <Controls v-if="ready" :show-interactive="false" position="bottom-right">
+        <template #control-fit-view>
+          <ControlButton class="vue-flow__controls-fitview" title="Vừa khung" aria-label="Vừa khung" @click="frameNextPaint(200)"><Maximize /></ControlButton>
+        </template>
+      </Controls>
       <MiniMap
         v-if="showMinimap"
         pannable
@@ -288,6 +300,12 @@ function onDragStop(e: NodeDragEvent): void {
 }
 .canvas :deep(.vue-flow__controls-button svg) {
   fill: currentColor;
+}
+.canvas :deep(.vue-flow__controls-fitview svg) {
+  fill: none;
+  stroke: currentColor;
+  width: 14px;
+  height: 14px;
 }
 .canvas :deep(.vue-flow__controls-button:hover) {
   background: color-mix(in srgb, var(--bg-elevated) 90%, var(--text));

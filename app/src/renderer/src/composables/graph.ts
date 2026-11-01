@@ -78,12 +78,19 @@ export function depths(ids: string[], deps: (id: string) => string[]): Map<strin
   return memo
 }
 
-function autoPositions(columns: string[][]): Map<string, { x: number; y: number }> {
+const WRAP_COLS = 5
+const BAND_GAP = 140
+
+// Overview layouts fold the left-to-right chain into evenly filled bands so a long recipe fits a small pane at a readable zoom.
+function autoPositions(columns: string[][], wrap = false): Map<string, { x: number; y: number }> {
   const tallest = Math.max(1, ...columns.map((c) => c.length))
+  const bands = wrap ? Math.ceil(columns.length / WRAP_COLS) : 1
+  const perBand = Math.ceil(columns.length / bands)
   const out = new Map<string, { x: number; y: number }>()
   columns.forEach((col, ci) => {
     const offset = ((tallest - col.length) * ROW_H) / 2
-    col.forEach((id, ri) => out.set(id, { x: ci * COL_W, y: offset + ri * ROW_H }))
+    const band = Math.floor(ci / perBand)
+    col.forEach((id, ri) => out.set(id, { x: (ci % perBand) * COL_W, y: band * (tallest * ROW_H + BAND_GAP) + offset + ri * ROW_H }))
   })
   return out
 }
@@ -102,7 +109,8 @@ export function buildEditorGraph(
   doc: RecipeDoc,
   kinds: Map<string, KindInfo>,
   issues: RecipeIssue[],
-  selected: string | null
+  selected: string | null,
+  wrap = false
 ): { nodes: Node[]; edges: Edge[] } {
   const steps = doc.steps ?? []
   const usedOut = new Map<string, Set<string>>()
@@ -126,8 +134,8 @@ export function buildEditorGraph(
   }
   columns[maxDepth + 2] = [OUTPUTS_NODE]
   for (let i = 0; i < columns.length; i++) columns[i] ??= []
-  const auto = autoPositions(columns)
-  const saved = doc.ui?.positions ?? {}
+  const auto = autoPositions(columns, wrap)
+  const saved = wrap ? {} : (doc.ui?.positions ?? {})
   const pos = (id: string): { x: number; y: number } => {
     const p = saved[id]
     return p ? { x: p[0], y: p[1] } : (auto.get(id) ?? { x: 0, y: 0 })
