@@ -12,6 +12,7 @@ import RunRowItem from '@/components/RunRowItem.vue'
 import ManifestPanel from '@/components/ManifestPanel.vue'
 import QaPanel from '@/components/QaPanel.vue'
 import StyleBiblePanel from '@/components/StyleBiblePanel.vue'
+import StyleLockPanel from '@/components/StyleLockPanel.vue'
 import PackDialog from '@/components/PackDialog.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import RelTime from '@/components/RelTime.vue'
@@ -338,6 +339,8 @@ function newAsset(): void {
           </button>
         </div>
 
+        <StyleLockPanel v-if="tab === 'style'" :project-id="id" class="lockpanel" />
+
         <form v-if="tab === 'style' && draft" class="style" novalidate @submit.prevent="save">
           <div class="fields card">
             <div class="f">
@@ -569,6 +572,9 @@ function newAsset(): void {
   height: 6px;
   border-radius: 50%;
   background: var(--st-waiting);
+}
+.lockpanel {
+  margin-bottom: 12px;
 }
 .style {
   display: grid;

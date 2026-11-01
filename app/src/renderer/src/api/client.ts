@@ -13,6 +13,8 @@ import type {
   ProjectQaReport,
   StyleBibleEdit,
   StyleBibleView,
+  StyleDriftReport,
+  StyleRestyleResult,
   DuplicatesReport,
   PackBody,
   AtlasBody,
@@ -148,6 +150,12 @@ export interface StudioApi {
   /** Measures the approved assets; vision (default true) lets Claude write the prompt suffix/negative. */
   buildStyleBible(projectId: string, body?: { vision?: boolean; model?: string }): Promise<StyleBibleView>
   editStyleBible(projectId: string, body: StyleBibleEdit): Promise<StyleBibleView>
+  /** Locks the project style to a finished style-lock run (its anchors become the style refs). */
+  lockStyleFromRun(projectId: string, runId: string): Promise<StyleBibleView>
+  /** Recent assets scored against the locked style, worst first; 409 until a style is locked. */
+  getStyleDrift(projectId: string, limit?: number): Promise<StyleDriftReport>
+  /** Starts the runs behind these assets/runs again so the project's current style applies. */
+  restyleProjectAssets(projectId: string, body: { version_ids?: string[]; run_ids?: string[] }): Promise<StyleRestyleResult>
   /** Cost/time per recipe + per-day totals + most expensive step kinds for one period. */
   statsOverview(q?: StatsQuery): Promise<StatsOverview>
   /** Scores Library versions that have no QA yet (or all of them with `missing_only: false`). */
@@ -332,6 +340,9 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     getStyleBible: (id) => call('GET', `/api/projects/${enc(id)}/style`),
     buildStyleBible: (id, body = {}) => call('POST', `/api/projects/${enc(id)}/style/build`, body, GDD_TIMEOUT_MS),
     editStyleBible: (id, body) => call('POST', `/api/projects/${enc(id)}/style`, body),
+    lockStyleFromRun: (id, runId) => call('POST', `/api/projects/${enc(id)}/style/from-run`, { run_id: runId }),
+    getStyleDrift: (id, limit) => call('GET', `/api/projects/${enc(id)}/style/drift${query({ limit })}`, undefined, GDD_TIMEOUT_MS),
+    restyleProjectAssets: (id, body) => call('POST', `/api/projects/${enc(id)}/style/restyle`, body),
     statsOverview: (q = {}) =>
       call('GET', `/api/stats/overview${query({ since: q.since, until: q.until, project_id: q.project_id, days: q.days, tz_offset_s: q.tz_offset_s })}`),
     recomputeQa: (body = {}) => call('POST', '/api/qa/recompute', body, SLOW_TIMEOUT_MS),

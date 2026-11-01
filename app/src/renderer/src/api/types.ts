@@ -739,6 +739,48 @@ export interface StyleBible {
   cost_usd: number | null
   model: string | null
   vision_error: string | null
+  /** Set when the bible was locked from a style-lock run (POST style/from-run). */
+  lock?: StyleLockSource | null
+}
+
+export interface StyleLockSource {
+  run_id: string
+  locked_at: number
+  recipe_id: string
+  palette: string[]
+}
+
+export interface StyleDriftIssue {
+  key: string
+  label: string
+  severity: 'warn' | 'bad'
+  message: string
+}
+
+export interface StyleDriftAsset {
+  version_id: string
+  run_id: string
+  asset_name: string
+  status: VersionStatus
+  blob: BlobRef
+  score: number | null
+  grade: 'ok' | 'warn' | 'bad' | 'skip'
+  drifted: boolean
+  note: string
+  issues: StyleDriftIssue[]
+}
+
+export interface StyleDriftReport {
+  project_id: string
+  created_at: number
+  assets: StyleDriftAsset[]
+  summary: { total: number; scored: number; score: number | null; flagged: number }
+  reference: { palette: string[]; source: string; run_id: string | null; locked_at: number | null }
+}
+
+export interface StyleRestyleResult {
+  started: { source_run_id: string; run_id: string }[]
+  skipped: { id: string; reason: string }[]
 }
 
 export interface StyleBibleView {

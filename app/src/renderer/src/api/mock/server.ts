@@ -44,7 +44,7 @@ import type { QaPart, QaRecomputeResult, QaResult } from '../types'
 import type { GddProposal, ManifestFormat, ManifestRow, ManifestStatus, ManifestView } from '../types'
 import type { SetupJob, SetupPlan, SetupStartBody } from '../types'
 import type { ProjectQaAsset, ProjectQaFixResult, ProjectQaReport } from '../types'
-import type { StyleBible, StyleBibleEdit, StyleBibleView } from '../types'
+import type { StyleBible, StyleBibleEdit, StyleBibleView, StyleDriftAsset, StyleDriftReport, StyleRestyleResult } from '../types'
 import type { DuplicateGroup, DuplicatesReport, MoreLikePlan, SimilarAsset, SimilarIndexStatus, SimilarQuery, SimilarResult } from '../types'
 import type { AtlasBody, AtlasResult, PackBody, PackListing, PackRecord, PackResult } from '../types'
 import type { RestyleApplyResult, RestyleBackup, RestyleScan, RestyleUndoResult } from '../restyleTypes'
@@ -1906,6 +1906,74 @@ export class MockCore implements StudioApi, EventStream {
     if (body.active !== undefined) bible.active = body.active
     bible.updated_at = now()
     return clone({ project_id: projectId, bible })
+  }
+
+  async lockStyleFromRun(projectId: string, runId: string): Promise<StyleBibleView> {
+    await this.ready
+    const run = this.runs.get(runId)
+    if (!run) throw new ApiError('not_found', `unknown run: ${runId}`, 404)
+    if (run.recipe_id !== 'style-lock') throw new ApiError('bad_run', `run ${runId} is not a style-lock run`, 422)
+    if (run.project_id !== projectId) throw new ApiError('bad_run', 'the run belongs to another project', 422)
+    if (run.status !== 'succeeded') throw new ApiError('not_finished', 'the style-lock run is not finished and approved yet', 409)
+    const prev = this.styleBibles.get(projectId)
+    const anchor = typeof run.inputs.anchor === 'string' ? run.inputs.anchor : null
+    const palette = ['#2d3a4a', '#6aa84f', '#e0c068', '#8a5a3c']
+    const bible: StyleBible = {
+      active: true, outlined: null, outline_weight: null, light_angle: null, light_label: null, pixel_art: false,
+      suffix: '', negative: '', summary: '', source_count: 0, built_at: null, cost_usd: null, model: null, vision_error: null,
+      ...prev, refs: anchor ? [{ hash: anchor, version_id: '', asset_name: 'anchor' }] : (prev?.refs ?? []), palette, edited: true,
+      version: (prev?.version ?? 0) + 1, updated_at: now(), lock: { run_id: runId, locked_at: now(), recipe_id: 'style-lock', palette }
+    }
+    this.styleBibles.set(projectId, bible)
+    return clone({ project_id: projectId, bible })
+  }
+
+  async getStyleDrift(projectId: string, limit = 30): Promise<StyleDriftReport> {
+    await this.ready
+    await sleep(200)
+    const bible = this.styleBibles.get(projectId)
+    if (!bible?.palette.length) throw new ApiError('no_style', 'the project has no locked style yet', 409)
+    const seen = new Set<string>()
+    const assets: StyleDriftAsset[] = []
+    for (const v of [...this.versionMap.values()].sort((a, b) => b.created_at - a.created_at)) {
+      if (v.project_id !== projectId || v.status === 'rejected' || !v.blob.mime.startsWith('image/') || seen.has(v.blob.hash)) continue
+      seen.add(v.blob.hash)
+      const score = 45 + ((parseInt(v.blob.hash.slice(0, 4), 16) || 0) % 55)
+      const grade = score >= 80 ? 'ok' : score >= 60 ? 'warn' : 'bad'
+      const issues = grade === 'ok' ? [] : [{ key: 'palette', label: 'Bảng màu', severity: grade as 'warn' | 'bad', message: `Màu lệch bảng màu đã khoá (gấp ${(1 + (100 - score) / 30).toFixed(1)}× mức chung)` }]
+      assets.push({ version_id: v.id, run_id: v.run_id, asset_name: v.asset_name, status: v.status, blob: v.blob, score, grade, drifted: grade !== 'ok', note: '', issues })
+      if (assets.length >= limit) break
+    }
+    assets.sort((a, b) => (a.score ?? 0) - (b.score ?? 0))
+    const scores = assets.map((a) => a.score ?? 0)
+    return clone({
+      project_id: projectId, created_at: now(), assets,
+      summary: { total: assets.length, scored: assets.length, score: scores.length ? Math.round(scores.reduce((x, y) => x + y, 0) / scores.length) : null, flagged: assets.filter((a) => a.drifted).length },
+      reference: { palette: bible.palette, source: 'Style đã khoá của dự án', run_id: bible.lock?.run_id ?? null, locked_at: bible.lock?.locked_at ?? null }
+    })
+  }
+
+  async restyleProjectAssets(projectId: string, body: { version_ids?: string[]; run_ids?: string[] }): Promise<StyleRestyleResult> {
+    await this.ready
+    const ids = [...(body.run_ids ?? [])]
+    const skipped: StyleRestyleResult['skipped'] = []
+    for (const vid of body.version_ids ?? []) {
+      const v = this.versionMap.get(vid)
+      if (v && v.project_id === projectId) ids.push(v.run_id)
+      else skipped.push({ id: vid, reason: 'unknown version in this project' })
+    }
+    if (!ids.length && !skipped.length) throw new ApiError('invalid', 'pass version_ids or run_ids', 400)
+    const started: StyleRestyleResult['started'] = []
+    for (const rid of new Set(ids)) {
+      const run = this.runs.get(rid)
+      if (!run || run.project_id !== projectId) skipped.push({ id: rid, reason: 'unknown run in this project' })
+      else if (run.recipe_id === 'style-lock') skipped.push({ id: rid, reason: 'style-lock runs are not restyled' })
+      else {
+        const { run_id } = await this.startRun({ recipe_id: run.recipe_id, inputs: run.inputs, title: `Style mới · ${run.title}`, params: { $meta: { source: 'style_restyle', restyled_from: rid } }, project_id: projectId })
+        started.push({ source_run_id: rid, run_id })
+      }
+    }
+    return clone({ started, skipped })
   }
 
   async statsOverview(q: StatsQuery = {}): Promise<StatsOverview> {

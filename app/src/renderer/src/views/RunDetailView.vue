@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { onClickOutside, onKeyStroke } from '@vueuse/core'
 import { AnimatePresence, motion } from 'motion-v'
-import { ArrowLeft, CircleAlert, CircleCheck, CircleStop, Copy, Ellipsis, FolderKanban, Hourglass, Inbox, List, LoaderCircle, Library, RotateCcw, TriangleAlert, Workflow } from '@lucide/vue'
+import { ArrowLeft, CircleAlert, CircleCheck, CircleStop, Copy, Ellipsis, FolderKanban, Hourglass, Inbox, List, LoaderCircle, Library, Lock, RotateCcw, TriangleAlert, Workflow } from '@lucide/vue'
 import type { BlobRef, StepRow } from '@/api/types'
 import { NO_PROJECT, RUN_ACTIVE, STEP_DONE_OK } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
@@ -29,7 +29,7 @@ import { errorAdvice } from '@/composables/errorAdvice'
 import { useKinds } from '@/stores/catalog'
 import { useRuns } from '@/stores/runs'
 import { useRecipes } from '@/stores/recipes'
-import { useConnection } from '@/stores/connection'
+import { api, useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { useProjects } from '@/stores/projects'
 import { appliedText } from '@/composables/projectStyle'
@@ -392,6 +392,22 @@ function segTitle(s: StepRow): string {
   return `${stepName(s)}: ${allowedFailure(s) === null ? STEP_LABEL[s.status] : ALLOWED_FAILURE_LABEL}`
 }
 
+const canLockStyle = computed(() => run.value?.recipe_id === 'style-lock' && run.value.status === 'succeeded' && !!runProject.value)
+const lockingStyle = ref(false)
+async function lockStyle(): Promise<void> {
+  const p = runProject.value
+  if (!p || lockingStyle.value) return
+  lockingStyle.value = true
+  try {
+    const bible = (await api().lockStyleFromRun(p.id, props.id)).bible
+    toasts.push(`Đã đặt style cho dự án ${p.name}${bible ? ` (bản ${bible.version})` : ''}`, 'success', 3000)
+  } catch (e) {
+    toasts.error(e, 'Không đặt được style project')
+  } finally {
+    lockingStyle.value = false
+  }
+}
+
 const runWarnings = computed(() => {
   const w = (run.value?.params?.$meta as { warnings?: unknown } | undefined)?.warnings
   return Array.isArray(w) ? w.filter((x): x is string => typeof x === 'string' && x.trim() !== '').map(allowedFailureText) : []
@@ -667,6 +683,16 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
             <MeshReport v-if="(sel.kind === 'mesh.checked' || sel.outputs.report?.[0]?.name === 'mesh_report.json') && sel.outputs.report?.[0]" :report="sel.outputs.report[0]" />
 
             <StyleLockReport v-if="sel.kind === 'op.style_audit' && sel.outputs.report?.[0]" :report="sel.outputs.report[0]" />
+            <button
+              v-if="sel.kind === 'op.style_audit' && canLockStyle"
+              type="button"
+              class="btn btn-primary lock-btn"
+              :disabled="lockingStyle"
+              :title="`Dùng ảnh mỏ neo của lượt này làm style chung của dự án ${runProject?.name}; lượt chạy mới trong dự án sẽ tự áp`"
+              @click="lockStyle"
+            >
+              <LoaderCircle v-if="lockingStyle" class="spin" /> <Lock v-else /> Đặt làm style project
+            </button>
 
             <div v-for="[name, list] in selInputs" :key="`i-${name}`" class="group">
               <h3 class="section-label">{{ portName(name) }} đầu vào</h3>
@@ -1241,6 +1267,10 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+.lock-btn {
+  justify-self: start;
+  margin: 4px 0 8px;
 }
 .proj-badge {
   display: inline-flex;
