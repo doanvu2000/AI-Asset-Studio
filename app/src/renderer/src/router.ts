@@ -11,6 +11,11 @@ export const router = createRouter({
     { path: '/gallery', name: 'gallery', component: () => import('./views/GalleryView.vue') },
     { path: '/recipes', name: 'recipes', component: () => import('./views/RecipesView.vue') },
     { path: '/recipes/:id', name: 'recipe', component: () => import('./views/RecipeEditorView.vue'), props: true },
+    { path: '/flows', name: 'flows', component: () => import('./views/FlowsView.vue') },
+    { path: '/flows/new', name: 'flow-new', component: () => import('./views/FlowEditorView.vue'), props: { id: 'new' } },
+    { path: '/flows/runs/:id', name: 'flow-run', component: () => import('./views/FlowRunView.vue'), props: true },
+    { path: '/flows/:id/edit', name: 'flow-edit', component: () => import('./views/FlowEditorView.vue'), props: true },
+    { path: '/flows/:id/run', name: 'flow-start', component: () => import('./views/FlowStartView.vue'), props: true },
     { path: '/batch', name: 'batch', component: () => import('./views/BatchView.vue') },
     // Creating a batch moved into Tạo mới (mode "Nhiều prompt"); /batch itself is the list of batches.
     { path: '/batch/new', redirect: (to) => ({ path: '/new', query: { ...to.query, mode: 'batch' } }) },

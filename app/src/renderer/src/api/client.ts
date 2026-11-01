@@ -55,6 +55,7 @@ import type {
   SetupPlan,
   SetupStartBody
 } from './types'
+import type { FlowValidateResult, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from './types'
 import type { CoreDiagnostics } from '../../../preload/types'
 import type { AgentActivitySnapshot } from './types'
 import type { EnginePreviewBody, EnginePreviewJob, OpenInEngineResult, PreviewEngine, PreviewEngines } from './enginePreview'
@@ -204,6 +205,19 @@ export interface StudioApi {
   auditBackups(path?: string): Promise<{ backups: AuditBackup[] }>
   similarStatus(): Promise<SimilarIndexStatus>
   reindexSimilar(body?: { project_id?: string; force?: boolean }): Promise<SimilarIndexStatus>
+  flows(): Promise<WorkflowDef[]>
+  getFlow(id: string): Promise<WorkflowDef>
+  /** 409 when a user workflow with this id exists; 400 `invalid` carries `detail.issues`. */
+  createFlow(def: WorkflowDef): Promise<SavedWorkflow>
+  saveFlow(def: WorkflowDef): Promise<SavedWorkflow>
+  deleteFlow(id: string): Promise<{ ok: boolean; restored_builtin: boolean }>
+  /** Checks the unsaved definition when given, else the stored one. */
+  validateFlow(id: string, def?: WorkflowDef): Promise<FlowValidateResult>
+  startFlowRun(id: string, body: { inputs: Record<string, unknown>; project_id?: string; title?: string }): Promise<WorkflowRunRow>
+  flowRuns(q?: { workflow_id?: string; project_id?: string; limit?: number }): Promise<WorkflowRunRow[]>
+  flowRun(id: string): Promise<WorkflowRunDetail>
+  retryFlowNode(runId: string, nodeId: string): Promise<WorkflowRunRow>
+  cancelFlowRun(runId: string): Promise<WorkflowRunRow>
 }
 
 export type RecipeBody = { yaml: string } | { doc: RecipeDoc }
@@ -385,6 +399,17 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     auditUndo: (backupId, force = false) => call('POST', '/api/audit/undo', { backup_id: backupId, force }, SLOW_TIMEOUT_MS),
     auditBackups: (path) => call('GET', `/api/audit/backups${query({ path })}`),
     similarStatus: () => call('GET', '/api/search/status'),
-    reindexSimilar: (body = {}) => call('POST', '/api/search/reindex', body)
+    reindexSimilar: (body = {}) => call('POST', '/api/search/reindex', body),
+    flows: () => call('GET', '/api/flows'),
+    getFlow: (id) => call('GET', `/api/flows/${enc(id)}`),
+    createFlow: (def) => call('POST', '/api/flows', def),
+    saveFlow: (def) => call('PUT', `/api/flows/${enc(def.id)}`, def),
+    deleteFlow: (id) => call('DELETE', `/api/flows/${enc(id)}`),
+    validateFlow: (id, def) => call('POST', `/api/flows/${enc(id)}/validate`, def),
+    startFlowRun: (id, body) => call('POST', `/api/flows/${enc(id)}/runs`, body, SLOW_TIMEOUT_MS),
+    flowRuns: (q = {}) => call('GET', `/api/flow-runs${query({ workflow_id: q.workflow_id, project_id: q.project_id, limit: q.limit })}`),
+    flowRun: (id) => call('GET', `/api/flow-runs/${enc(id)}`),
+    retryFlowNode: (runId, nodeId) => call('POST', `/api/flow-runs/${enc(runId)}/nodes/${enc(nodeId)}/retry`),
+    cancelFlowRun: (runId) => call('POST', `/api/flow-runs/${enc(runId)}/cancel`)
   }
 }

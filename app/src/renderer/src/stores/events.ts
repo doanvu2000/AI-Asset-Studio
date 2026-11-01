@@ -10,7 +10,8 @@ import type {
   RunUpdatedData,
   StepRow,
   StudioEvent,
-  VersionRow
+  VersionRow,
+  WorkflowRunRow
 } from '@/api/types'
 import { useRuns } from './runs'
 import { useGates } from './gates'
@@ -19,6 +20,7 @@ import { useVersions } from './versions'
 import { useRecipes } from './recipes'
 import { useProjects } from './projects'
 import { useAgents } from './agents'
+import { useFlows } from './flows'
 import { NO_PROJECT } from '@/api/types'
 
 // One pass per animation frame: each store mutates in place and triggers its shallowRefs once.
@@ -28,6 +30,7 @@ export function applyEvents(events: StudioEvent[]): void {
   const resources = useResources()
   const versions = useVersions()
   const projects = useProjects()
+  const flows = useFlows()
   const touchedProjects = new Set<string>()
   const touchProject = (id: string | undefined): void => void (id && id !== NO_PROJECT && touchedProjects.add(id))
   const tx = runs.begin()
@@ -38,6 +41,7 @@ export function applyEvents(events: StudioEvent[]): void {
         touchProject((e.data as unknown as RunRow).project_id)
         break
       case 'run.updated':
+        flows.onChildEvent(e.run_id)
         if (e.run_id) {
           const prev = runs.runs.get(e.run_id)
           const patch = e.data as unknown as RunUpdatedData
@@ -47,12 +51,14 @@ export function applyEvents(events: StudioEvent[]): void {
         }
         break
       case 'step.updated': {
+        flows.onChildEvent(e.run_id)
         const step = e.data as unknown as StepRow
         tx.step(step)
         gates.onStep(step)
         break
       }
       case 'step.progress':
+        flows.onChildEvent(e.run_id)
         if (e.step_id) tx.progress(e.step_id, e.data as unknown as ProgressData)
         break
       case 'step.preview':
@@ -77,6 +83,9 @@ export function applyEvents(events: StudioEvent[]): void {
       case 'resource.updated':
         resources.upsert(e.data as unknown as ResourceHealth)
         break
+      case 'workflow.updated':
+        flows.onRun(e.data as unknown as WorkflowRunRow)
+        break
       case 'agent.activity':
         useAgents().push(e.data as unknown as AgentActivity)
         break
@@ -99,6 +108,7 @@ export async function resyncAll(): Promise<void> {
     useGates().load(),
     useVersions().load(),
     useProjects().load(),
-    useAgents().load()
+    useAgents().load(),
+    useFlows().resync()
   ])
 }

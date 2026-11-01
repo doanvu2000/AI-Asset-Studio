@@ -138,6 +138,7 @@ export type EventType =
   | 'resource.updated'
   | 'project.updated'
   | 'agent.activity'
+  | 'workflow.updated'
 
 /** An MCP client (Claude Code, Codex…) driving the studio; core/studio_core/api/agent.py. */
 export type AgentPhase = 'connect' | 'disconnect' | 'start' | 'end' | 'error' | 'wait'
@@ -1005,4 +1006,90 @@ export interface PackResult extends PackRecord {
   skipped: { name: string; step_id: string; reason: string }[]
   atlas?: (AtlasStats & { folder: string; name: string }) | null
   mobile?: Partial<Record<PackEngine, MobileBudget>>
+}
+
+export type WorkflowStatus = 'queued' | 'running' | 'awaiting_human' | 'succeeded' | 'failed' | 'cancelled'
+export type WorkflowNodeStatus = 'pending' | 'running' | 'awaiting_human' | 'succeeded' | 'failed' | 'cancelled' | 'blocked'
+export const WORKFLOW_ACTIVE: ReadonlySet<WorkflowStatus> = new Set(['queued', 'running', 'awaiting_human'])
+
+export interface WorkflowInputSpec {
+  type: string
+  label?: string
+  default?: unknown
+  required?: boolean
+}
+
+export interface WorkflowNodeDef {
+  id: string
+  recipe_id: string
+  title?: string
+  inputs: Record<string, unknown>
+  map: Record<string, string>
+  params: Record<string, unknown>
+}
+
+export interface WorkflowDef {
+  id: string
+  title: string
+  description: string
+  inputs: Record<string, WorkflowInputSpec>
+  nodes: WorkflowNodeDef[]
+  tags: string[]
+  preview?: string | null
+  source?: RecipeSource
+}
+
+export interface FlowIssue {
+  level: 'error' | 'warning'
+  node: string | null
+  field: string | null
+  message: string
+}
+
+export interface FlowValidateResult {
+  ok: boolean
+  issues: FlowIssue[]
+}
+
+export interface SavedWorkflow extends WorkflowDef {
+  issues?: FlowIssue[]
+}
+
+export interface WorkflowNodeState {
+  status: WorkflowNodeStatus
+  run_id: string | null
+  error: string | null
+  attempts: number
+}
+
+export interface WorkflowRunRow {
+  id: string
+  workflow_id: string
+  title: string
+  project_id: string
+  status: WorkflowStatus
+  def_snapshot: Partial<WorkflowDef>
+  inputs: Record<string, unknown>
+  nodes: Record<string, WorkflowNodeState>
+  error: string | null
+  created_at: number
+  updated_at: number
+  ended_at: number | null
+}
+
+export interface WorkflowChild {
+  node_id: string
+  recipe_id: string
+  title: string
+  status: WorkflowNodeStatus
+  run_id: string | null
+  error: string | null
+  attempts: number
+  /** 0..1 over the child run's steps; null until a child run exists. */
+  progress: number | null
+  preview: string | null
+}
+
+export interface WorkflowRunDetail extends WorkflowRunRow {
+  children: WorkflowChild[]
 }

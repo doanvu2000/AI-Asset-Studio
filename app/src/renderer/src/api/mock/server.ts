@@ -1,7 +1,7 @@
 import { ApiError, type ListRunsQuery, type RecipeBody, type StudioApi, type VersionsQuery } from '../client'
 import { FrameBatcher, type EventSink, type EventStream } from '../ws'
 import type { CoreDiagnostics } from '../../../../preload/types'
-import type { AgentActivitySnapshot } from '../types'
+import type { AgentActivitySnapshot, FlowValidateResult, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from '../types'
 import type { EnginePreviewJob, OpenInEngineResult, PreviewEngines } from '../enginePreview'
 import type { HitVfx, StepHits } from '../hitFx'
 import {
@@ -36,6 +36,7 @@ import {
   type StepRow,
   type VersionRow
 } from '../types'
+import { MockFlows } from './flows'
 import { renderArt, renderPreviewB64 } from './art'
 import { renderWalkSheet } from './walkSheet'
 import { mockStatsOverview } from './stats'
@@ -441,6 +442,20 @@ export class MockCore implements StudioApi, EventStream {
   private tools: ToolPath[] = MOCK_TOOLS.map((t) => ({ ...t }))
   private ready: Promise<void>
   private samples: Samples | null = null
+  private flowsCore = new MockFlows({
+    emit: (type, data) => this.emit(type, data),
+    startRun: (body) => this.startRun(body),
+    cancelRun: (id) => this.cancelRun(id),
+    runRow: (id) => this.runs.get(id),
+    stepsOf: (id) => this.stepsOf(id),
+    previewHash: (id) => this.previewHash(id),
+    recipe: (id) => {
+      const r = this.recipe(id)
+      return r ? { info: r.info, outputs: Object.keys(docOf(r).outputs ?? {}) } : undefined
+    },
+    makeBlob: (seed) => this.makeBlob(seed, { size: 256, transparent: true }),
+    sampleRunIds: () => [...this.runs.values()].filter((r) => r.status === 'succeeded').slice(0, 3).map((r) => r.id)
+  })
 
   constructor() {
     this.ready = this.seed()
@@ -728,6 +743,7 @@ export class MockCore implements StudioApi, EventStream {
     void this.startRun({ recipe_id: 'concept-2d', inputs: { prompt: 'Kiếm pha lê xanh, low-poly', count: 4, size: 512, seed: -1 }, title: 'Kiếm pha lê xanh' })
     const gateRun = await this.startRun({ recipe_id: 'concept-2d-codex', inputs: { prompt: 'Bình thuốc tím phát sáng', count: 4, transparent: true }, title: 'Bình thuốc tím' })
     void gateRun
+    await this.flowsCore.seed()
   }
 
   private seedProjects(t0: number): void {
@@ -2053,5 +2069,54 @@ export class MockCore implements StudioApi, EventStream {
 
   async openInEngine(): Promise<OpenInEngineResult> {
     throw new ApiError('engine_unavailable', 'Bản xem thử không chạy được engine thật', 409)
+  }
+
+  async flows(): Promise<WorkflowDef[]> {
+    await this.ready
+    return this.flowsCore.list()
+  }
+
+  async getFlow(id: string): Promise<WorkflowDef> {
+    await this.ready
+    return this.flowsCore.get(id)
+  }
+
+  async createFlow(def: WorkflowDef): Promise<SavedWorkflow> {
+    return this.flowsCore.save(def, true)
+  }
+
+  async saveFlow(def: WorkflowDef): Promise<SavedWorkflow> {
+    return this.flowsCore.save(def, false)
+  }
+
+  async deleteFlow(id: string): Promise<{ ok: boolean; restored_builtin: boolean }> {
+    return this.flowsCore.remove(id)
+  }
+
+  async validateFlow(id: string, def?: WorkflowDef): Promise<FlowValidateResult> {
+    await sleep(60)
+    return this.flowsCore.validate(def ?? this.flowsCore.get(id))
+  }
+
+  async startFlowRun(id: string, body: { inputs: Record<string, unknown>; project_id?: string; title?: string }): Promise<WorkflowRunRow> {
+    return this.flowsCore.start(id, body)
+  }
+
+  async flowRuns(q: { workflow_id?: string; project_id?: string; limit?: number } = {}): Promise<WorkflowRunRow[]> {
+    await this.ready
+    return this.flowsCore.list_runs(q)
+  }
+
+  async flowRun(id: string): Promise<WorkflowRunDetail> {
+    await this.ready
+    return this.flowsCore.detail(id)
+  }
+
+  async retryFlowNode(runId: string, nodeId: string): Promise<WorkflowRunRow> {
+    return this.flowsCore.retry(runId, nodeId)
+  }
+
+  async cancelFlowRun(runId: string): Promise<WorkflowRunRow> {
+    return this.flowsCore.cancel(runId)
   }
 }

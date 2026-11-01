@@ -81,7 +81,7 @@ export function depths(ids: string[], deps: (id: string) => string[]): Map<strin
   return memo
 }
 
-interface Size {
+export interface Size {
   w: number
   h: number
   laneW: number
@@ -97,7 +97,7 @@ interface Slot {
   row: number
   lane: number
 }
-interface VerticalFlow {
+export interface VerticalFlow {
   slots: Map<string, Slot>
   lanes: number
   size: Size
@@ -118,7 +118,7 @@ function nearestFree(base: number, taken: Set<number>): number {
 }
 
 // Rows are dependency depths read top to bottom; each parallel branch keeps one lane so a child sits under its parent.
-function verticalFlow(rows: string[][], parentsOf: (id: string) => string[], size: Size): VerticalFlow {
+export function verticalFlow(rows: string[][], parentsOf: (id: string) => string[], size: Size): VerticalFlow {
   const rowOf = new Map<string, number>()
   rows.forEach((r, i) => r.forEach((id) => rowOf.set(id, i)))
   const lane = new Map<string, number>()
@@ -144,7 +144,7 @@ function verticalFlow(rows: string[][], parentsOf: (id: string) => string[], siz
 }
 
 // Links run orthogonally through the gaps between rows; one that skips rows drops down a lane no node uses, else takes a side rail.
-function routeEdges(pairs: Edge[], flow: VerticalFlow): Edge[] {
+export function routeEdges(pairs: Edge[], flow: VerticalFlow): Edge[] {
   const { slots, size: s } = flow
   const occ = new Set<string>()
   slots.forEach((v) => occ.add(`${v.row}:${v.lane}`))

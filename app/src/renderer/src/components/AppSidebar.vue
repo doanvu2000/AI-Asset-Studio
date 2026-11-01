@@ -3,8 +3,10 @@ import { ART } from '@/assets/art'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { motion } from 'motion-v'
-import { FolderKanban, Images, Inbox, Layers, LayoutDashboard, ListChecks, Plus, ScanSearch, Settings, Workflow } from '@lucide/vue'
+import { FolderKanban, Images, Inbox, Layers, LayoutDashboard, ListChecks, Plus, ScanSearch, Settings, Waypoints, Workflow } from '@lucide/vue'
+import { WORKFLOW_ACTIVE } from '@/api/types'
 import { useRuns } from '@/stores/runs'
+import { useFlows } from '@/stores/flows'
 import { useGates } from '@/stores/gates'
 import { useConnection } from '@/stores/connection'
 import TweenNumber from './TweenNumber.vue'
@@ -14,6 +16,7 @@ defineProps<{ compact?: boolean }>()
 
 const route = useRoute()
 const runs = useRuns()
+const flows = useFlows()
 const gates = useGates()
 const conn = useConnection()
 
@@ -40,6 +43,7 @@ const groups = computed(() => [
     title: 'Công cụ',
     items: [
       { to: '/recipes', name: 'recipes', label: 'Quy trình', icon: Workflow, badge: 0, busy: false, key: '6' },
+      { to: '/flows', name: 'flows', label: 'Workflow', icon: Waypoints, badge: 0, busy: flows.runList.some((r) => WORKFLOW_ACTIVE.has(r.status)), key: '' },
       { to: '/batch', name: 'batch', label: 'Hàng loạt', icon: Layers, badge: 0, busy: false, key: '7' },
       { to: '/audit', name: 'audit', label: 'Kiểm tra project', icon: ScanSearch, badge: 0, busy: false, key: '9' }
     ]
@@ -47,13 +51,13 @@ const groups = computed(() => [
 ])
 
 function tip(it: { label: string; badge: number; busy: boolean; key: string }): string {
-  const extra = it.badge ? ` · ${it.badge} đang chờ` : it.busy ? ` · ${runs.runningRuns.length} đang chạy` : ''
-  return `${it.label}${extra}  (Ctrl+${it.key})`
+  const extra = it.badge ? ` · ${it.badge} đang chờ` : it.busy && it.key ? ` · ${runs.runningRuns.length} đang chạy` : it.busy ? ' · đang chạy' : ''
+  return it.key ? `${it.label}${extra}  (Ctrl+${it.key})` : `${it.label}${extra}`
 }
 
 function isActive(name: string): boolean {
   const r = String(route.name ?? '')
-  return r === name || (name === 'runs' && r === 'run') || (name === 'recipes' && r === 'recipe') || (name === 'batch' && r === 'batch-detail') || (name === 'projects' && r === 'project')
+  return r === name || (name === 'runs' && r === 'run') || (name === 'recipes' && r === 'recipe') || (name === 'batch' && r === 'batch-detail') || (name === 'projects' && r === 'project') || (name === 'flows' && r.startsWith('flow-'))
 }
 
 const status = computed(() => {

@@ -11,9 +11,11 @@ import { Maximize } from '@lucide/vue'
 import { MiniMap } from '@vue-flow/minimap'
 import StepNode from './StepNode.vue'
 import IoNode from './IoNode.vue'
+import WfNode from './WfNode.vue'
 import BandEdge from './BandEdge.vue'
 import type { StepStatus } from '@/api/types'
 import type { IoNodeData, StepNodeData } from '@/composables/graph'
+import type { WfNodeData } from '@/composables/flowGraph'
 
 const props = withDefaults(defineProps<{ id: string; nodes: Node[]; edges: Edge[]; editable?: boolean; fitKey?: string; minimap?: boolean; focusId?: string | null; minFitZoom?: number; scrollPan?: boolean }>(), {
   editable: false,
@@ -148,11 +150,14 @@ function edgeTone(s: StepStatus): string {
   }
 }
 
+const WF_STEP: Record<string, StepStatus> = { running: 'running', awaiting_human: 'awaiting_human', succeeded: 'succeeded', failed: 'failed', cancelled: 'cancelled', blocked: 'skipped', pending: 'pending' }
+const wfStep = (s: string | undefined): StepStatus | undefined => (s ? WF_STEP[s] : undefined)
+
 // A connector says whether work has reached its target, so run edges take the TARGET step's status.
 const shownEdges = computed<Edge[]>(() => {
   const status = new Map<string, StepStatus>()
   for (const n of props.nodes) {
-    const st = n.type === 'step' ? (n.data as StepNodeData).step?.status : undefined
+    const st = n.type === 'step' ? (n.data as StepNodeData).step?.status : n.type === 'wf' ? wfStep((n.data as WfNodeData).status) : undefined
     if (st) status.set(n.id, st)
   }
   if (!status.size) return props.edges
@@ -207,6 +212,9 @@ function onDragStop(e: NodeDragEvent): void {
     >
       <template #node-step="p">
         <StepNode :data="p.data as StepNodeData" />
+      </template>
+      <template #node-wf="p">
+        <WfNode :data="p.data as WfNodeData" />
       </template>
       <template #node-io="p">
         <IoNode :data="p.data as IoNodeData" />

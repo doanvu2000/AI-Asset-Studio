@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { onClickOutside, onKeyStroke } from '@vueuse/core'
 import { AnimatePresence, motion } from 'motion-v'
-import { ArrowLeft, CircleAlert, CircleCheck, CircleStop, Copy, Ellipsis, FolderKanban, Hourglass, Inbox, List, LoaderCircle, Library, Lock, RotateCcw, TriangleAlert, Workflow } from '@lucide/vue'
+import { ArrowLeft, CircleAlert, CircleCheck, CircleStop, Copy, Ellipsis, FolderKanban, Hourglass, Inbox, List, LoaderCircle, Library, Lock, RotateCcw, TriangleAlert, Waypoints, Workflow } from '@lucide/vue'
 import type { BlobRef, StepRow } from '@/api/types'
 import { NO_PROJECT, RUN_ACTIVE, STEP_DONE_OK } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
@@ -29,6 +29,7 @@ import { errorAdvice } from '@/composables/errorAdvice'
 import { useKinds } from '@/stores/catalog'
 import { useRuns } from '@/stores/runs'
 import { useRecipes } from '@/stores/recipes'
+import { useFlows } from '@/stores/flows'
 import { api, useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { useProjects } from '@/stores/projects'
@@ -58,6 +59,7 @@ const kinds = useKinds()
 const gates = useGates()
 const versions = useVersions()
 const projects = useProjects()
+const flows = useFlows()
 const listW = usePaneWidth('run-steps', 420)
 const graphW = usePaneWidth('run-graph', 620)
 
@@ -408,6 +410,16 @@ async function lockStyle(): Promise<void> {
   }
 }
 
+const workflowId = computed(() => {
+  const id = (run.value?.params?.$meta as { workflow_run_id?: unknown } | undefined)?.workflow_run_id
+  return typeof id === 'string' && id ? id : null
+})
+watch(
+  [workflowId, () => conn.transport],
+  ([id, t]) => id && t && !flows.runs.has(id) && void flows.loadRuns(),
+  { immediate: true }
+)
+
 const runWarnings = computed(() => {
   const w = (run.value?.params?.$meta as { warnings?: unknown } | undefined)?.warnings
   return Array.isArray(w) ? w.filter((x): x is string => typeof x === 'string' && x.trim() !== '').map(allowedFailureText) : []
@@ -435,6 +447,10 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
         <FolderKanban :size="13" aria-hidden="true" />
         <span class="pb-name">{{ runProject.name }}</span>
         <span v-if="runProject.applied" class="pb-applied num">· áp {{ runProject.applied.split(', ').length }}</span>
+      </RouterLink>
+      <RouterLink v-if="workflowId" :to="`/flows/runs/${workflowId}`" class="proj-badge" title="Mở sơ đồ workflow của lượt chạy này">
+        <Waypoints :size="13" aria-hidden="true" />
+        <span class="pb-name">Thuộc workflow {{ flows.runs.get(workflowId)?.title ?? '' }}</span>
       </RouterLink>
       <div class="seg" role="radiogroup" aria-label="Kiểu xem">
         <button type="button" role="radio" :aria-checked="viewMode === 'list'" :class="{ on: viewMode === 'list' }" title="Danh sách bước" @click="setMode('list')"><List :size="14" /> Danh sách</button>
