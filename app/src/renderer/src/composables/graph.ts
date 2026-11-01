@@ -222,7 +222,23 @@ export function buildEditorGraph(
     if (!byId.has(src)) continue
     edges.push({ id: `o|${name}`, source: src, target: OUTPUTS_NODE, sourceHandle: `o:${out}`, targetHandle: `i:${name}`, type: 'smoothstep', class: 'out' })
   }
+  crowdLabels(edges)
   return { nodes, edges }
+}
+
+// Labels of edges that leave one step or enter one step sit on top of each other; those show only while the edge is hovered.
+function crowdLabels(edges: Edge[]): void {
+  const labelled = edges.filter((e) => e.label)
+  const count = (key: (e: Edge) => string): Map<string, number> => {
+    const m = new Map<string, number>()
+    for (const e of labelled) m.set(key(e), (m.get(key(e)) ?? 0) + 1)
+    return m
+  }
+  const bySource = count((e) => e.source)
+  const byTarget = count((e) => e.target)
+  for (const e of labelled) {
+    if ((bySource.get(e.source) ?? 0) > 1 || (byTarget.get(e.target) ?? 0) > 1) e.class = `${e.class ?? ''} crowded`.trim()
+  }
 }
 
 export function buildRunGraph(steps: StepRow[], kinds: Map<string, KindInfo>, selected: string | null): { nodes: Node[]; edges: Edge[] } {

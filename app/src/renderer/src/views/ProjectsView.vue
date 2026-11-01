@@ -152,8 +152,8 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
             <span v-if="projects.activeId === p.id" class="cur-tag">Đang chọn</span>
           </RouterLink>
           <div class="body">
-            <RouterLink :to="`/projects/${p.id}`" class="name headline">{{ p.name }}</RouterLink>
-            <p class="desc callout">{{ p.description || (styleIsEmpty(normalizeStyle(p.style)) ? 'Chưa khoá phong cách' : 'Không có mô tả') }}</p>
+            <RouterLink :to="`/projects/${p.id}`" class="name headline" :title="p.name">{{ p.name }}</RouterLink>
+            <p class="desc callout" :title="p.description">{{ p.description || (styleIsEmpty(normalizeStyle(p.style)) ? 'Chưa khoá phong cách' : 'Không có mô tả') }}</p>
             <div v-if="styleTags(p).length" class="tags">
               <span v-for="t in styleTags(p)" :key="t" class="tag">{{ t }}</span>
             </div>
@@ -286,9 +286,11 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
 .name {
   color: var(--text);
   text-decoration: none;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .name:hover {
   color: var(--accent);

@@ -266,6 +266,10 @@ export interface RecipeInfo {
   steps: RecipeStepInfo[]
   hash: string
   source?: RecipeSource
+  /** Engines and formats the recipe's steps can export: unity | godot | spine | glb | fbx | audio. */
+  exports?: string[]
+  /** A blob hash, or `file` when the core serves a shipped demo image at /recipes/{id}/preview. */
+  preview?: string | null
 }
 
 export interface GateResolution {

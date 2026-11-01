@@ -37,7 +37,7 @@ import { gateFromStep, useGates } from '@/stores/gates'
 import { exportName, useVersions } from '@/stores/versions'
 import ResizeHandle from '@/components/ResizeHandle.vue'
 import { usePaneWidth } from '@/composables/paneSize'
-import { absoluteTime, ALLOWED_FAILURE_LABEL, allowedFailure, humanDuration, kindName, STEP_LABEL, stepName, waitingHint, waitingLabel } from '@/composables/format'
+import { absoluteTime, ALLOWED_FAILURE_LABEL, allowedFailure, allowedFailureText, humanDuration, kindName, STEP_LABEL, stepName, waitingHint, waitingLabel } from '@/composables/format'
 import { flyFromOrigin, takeOrigin, useReducedMotion, type SharedOrigin } from '@/composables/motion'
 
 const props = defineProps<{ id: string }>()
@@ -382,7 +382,7 @@ function segTitle(s: StepRow): string {
 
 const runWarnings = computed(() => {
   const w = (run.value?.params?.$meta as { warnings?: unknown } | undefined)?.warnings
-  return Array.isArray(w) ? w.filter((x): x is string => typeof x === 'string' && x.trim() !== '') : []
+  return Array.isArray(w) ? w.filter((x): x is string => typeof x === 'string' && x.trim() !== '').map(allowedFailureText) : []
 })
 const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : null))
 </script>

@@ -87,7 +87,7 @@ ${skipWarning}` : ''}`"
     <StatusGlyph :status="step.status" :progress="fraction" :size="26" />
     <div class="body">
       <div class="row1">
-        <span class="name">{{ stepName(step) }}</span>
+        <span class="name" :title="stepName(step)">{{ stepName(step) }}</span>
         <span v-if="step.attempt > 1" class="attempt">lần {{ step.attempt }}</span>
         <Transition name="pop">
           <span v-if="step.status === 'cached'" class="reuse">Dùng lại</span>
@@ -97,7 +97,7 @@ ${skipWarning}` : ''}`"
       </div>
       <div class="row2">
         <Transition name="swap" mode="out-in">
-          <span :key="detailKey" class="detail" :class="{ err: step.status === 'failed' }">{{ detail }}</span>
+          <span :key="detailKey" class="detail" :class="{ err: step.status === 'failed' }" :title="detail">{{ detail }}</span>
         </Transition>
         <span v-if="step.status === 'running'" class="metrics num">
           <span v-if="counter">{{ counter }}</span>
@@ -169,10 +169,13 @@ ${skipWarning}` : ''}`"
   min-width: 0;
 }
 .name {
+  min-width: 0;
   font-weight: 600;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .attempt {
   font-size: 11px;
@@ -201,9 +204,11 @@ ${skipWarning}` : ''}`"
 .detail {
   flex: 1;
   min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .st-waiting_resource .detail {
   color: var(--st-waiting);

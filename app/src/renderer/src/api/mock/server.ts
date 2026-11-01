@@ -584,6 +584,10 @@ export class MockCore implements StudioApi, EventStream {
     return this.blobUrl(hash)
   }
 
+  recipePreviewUrl(): string {
+    return ''
+  }
+
   async uploadBlob(file: File): Promise<BlobRef> {
     await sleep(350)
     const ref: BlobRef = { hash: hex(), mime: file.type || 'application/octet-stream', size: file.size, name: file.name }
@@ -1315,6 +1319,7 @@ export class MockCore implements StudioApi, EventStream {
     let rows = [...this.runs.values()].sort((a, b) => b.created_at - a.created_at)
     if (q.status) rows = rows.filter((r) => r.status === q.status)
     if (q.project_id) rows = rows.filter((r) => r.project_id === q.project_id)
+    if (q.recipe_id) rows = rows.filter((r) => r.recipe_id === q.recipe_id)
     if (q.before) rows = rows.filter((r) => r.created_at < q.before!)
     const batchOf = (r: RunRow): unknown => (r.params?.$meta as { batch_id?: string } | undefined)?.batch_id
     if (q.batch_id) rows = rows.filter((r) => batchOf(r) === q.batch_id)

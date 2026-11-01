@@ -92,7 +92,7 @@ const detail = computed(() => {
       <Handle id="o:out" type="source" :position="Position.Right" class="h h-run" :connectable="false" />
       <div class="run">
         <Transition name="swap" mode="out-in">
-          <span :key="`${step?.status}:${progress?.label ?? ''}`" class="detail" :class="{ err: step?.status === 'failed' }" :title="skipWarning">{{ detail }}</span>
+          <span :key="`${step?.status}:${progress?.label ?? ''}`" class="detail" :class="{ err: step?.status === 'failed' }" :title="skipWarning || detail">{{ detail }}</span>
         </Transition>
         <span v-if="step?.status === 'running'" class="metrics num">
           <span v-if="fraction !== null" class="pct"><TweenNumber :value="fraction * 100" />%</span>
@@ -199,9 +199,11 @@ const detail = computed(() => {
 .name {
   font-weight: 600;
   font-size: var(--fs-body);
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .sub {
   display: flex;
@@ -286,9 +288,11 @@ const detail = computed(() => {
 .detail {
   flex: 1;
   min-width: 0;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .detail.err {
   color: var(--st-fail);

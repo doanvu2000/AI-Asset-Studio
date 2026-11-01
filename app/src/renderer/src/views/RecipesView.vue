@@ -29,7 +29,13 @@ const SOURCE: Record<string, { label: string; tone: string } | undefined> = {
   override: { label: 'Đã sửa', tone: 'edit' }
 }
 const sorted = computed(() => [...recipes.list].sort((a, b) => a.name.localeCompare(b.name, 'vi')))
-const flow = (r: RecipeInfo) => [...new Set(r.steps.map((s) => stepName(s)))].join(' · ')
+const FLOW_SHOWN = 5
+const flowNames = (r: RecipeInfo): string[] => [...new Set(r.steps.map((s) => stepName(s)))]
+const flow = (r: RecipeInfo): string => {
+  const names = flowNames(r)
+  const rest = names.length - FLOW_SHOWN
+  return rest > 1 ? `${names.slice(0, FLOW_SHOWN).join(' · ')} · +${rest} bước nữa` : names.join(' · ')
+}
 const PEEK_DELAY_MS = 300
 const peek = ref<{ recipe: RecipeInfo; anchor: DOMRect } | null>(null)
 const quick = ref<RecipeInfo | null>(null)
@@ -81,7 +87,7 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
                   <h2 class="headline name" :title="r.name">{{ r.name }}</h2>
                   <span v-if="SOURCE[r.source ?? 'builtin']" class="badge" :class="SOURCE[r.source ?? 'builtin']!.tone">{{ SOURCE[r.source ?? 'builtin']!.label }}</span>
                 </div>
-                <p class="caption desc" :title="flow(r)">{{ flow(r) }}</p>
+                <p class="caption desc" :title="flowNames(r).join(' → ')">{{ flow(r) }}</p>
                 <div class="meta">
                   <span class="caption num">{{ r.steps.length }} bước</span>
                   <LaneTag v-for="l in lanes(r)" :key="l" :lane="l" />
@@ -151,17 +157,9 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
 .name {
   flex: 1;
   min-width: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
   overflow-wrap: anywhere;
 }
 .desc {
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
   min-height: 4.3em;
 }
 .meta {

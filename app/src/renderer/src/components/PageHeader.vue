@@ -7,8 +7,8 @@ defineProps<{ title: string; subtitle?: string }>()
     <div class="titles">
       <slot name="leading" />
       <div class="t">
-        <h1 class="title">{{ title }}</h1>
-        <p v-if="subtitle || $slots.subtitle" class="caption sub"><slot name="subtitle">{{ subtitle }}</slot></p>
+        <h1 class="title" :title="title">{{ title }}</h1>
+        <p v-if="subtitle || $slots.subtitle" class="caption sub" :title="subtitle"><slot name="subtitle">{{ subtitle }}</slot></p>
       </div>
     </div>
     <div class="actions"><slot /></div>

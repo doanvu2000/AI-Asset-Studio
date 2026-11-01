@@ -40,17 +40,17 @@ const review = computed(() => (props.steps ? latestReview(props.steps) : null))
     </span>
     <div class="main">
       <div class="l1">
-        <span class="title-text">{{ run.title || recipeName }}</span>
+        <span class="title-text" :title="run.title || recipeName">{{ run.title || recipeName }}</span>
         <RunStatusBadge :status="run.status" />
         <ScoreBadge v-if="review" :score="review.score" :history="review.history" />
       </div>
       <div class="l2 caption">
-        <span class="recipe">{{ recipeName }}</span>
+        <span class="recipe" :title="recipeName">{{ recipeName }}</span>
         <span>·</span>
         <RelTime :ts="run.created_at" />
         <template v-if="current">
           <span>·</span>
-          <span class="cur" :class="`c-${current.status}`">{{ stepName(current) }}</span>
+          <span class="cur" :class="`c-${current.status}`" :title="stepName(current)">{{ stepName(current) }}</span>
         </template>
       </div>
     </div>

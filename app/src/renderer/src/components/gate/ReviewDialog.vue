@@ -5,6 +5,7 @@ import { Download, LoaderCircle, TriangleAlert, X } from '@lucide/vue'
 import BlobImage from '@/components/BlobImage.vue'
 import ScoreBadge from '@/components/ScoreBadge.vue'
 import { loadRounds, miniMarkdown, reviewImages, type ReviewRound, type StepReview } from '@/composables/review'
+import { allowedFailureText } from '@/composables/format'
 
 const props = defineProps<{ review: StepReview | null; open: boolean; oldSpec?: unknown }>()
 const emit = defineEmits<{ close: [] }>()
@@ -42,7 +43,7 @@ const images = computed(() => (props.review ? reviewImages(props.review) : { ref
 const critiqueHtml = computed(() => miniMarkdown(round.value?.critique ?? props.review?.critique ?? ''))
 const warning = computed(() => {
   const w = props.review?.step.meta?.warning
-  return typeof w === 'string' ? w : ''
+  return typeof w === 'string' ? allowedFailureText(w) : ''
 })
 const pct = (v: number): string => `${Math.round(v * 100)}%`
 const CYCLE_LABEL: Record<string, string> = {

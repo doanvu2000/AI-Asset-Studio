@@ -3,11 +3,11 @@ import { computed, ref, watch } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { ImageOff, Pencil, Play, RotateCw, TriangleAlert, X } from '@lucide/vue'
 import type { RecipeDetail, RecipeInfo } from '@/api/types'
-import BlobImage from './BlobImage.vue'
+import RecipeDemoImage from './RecipeDemoImage.vue'
 import LaneTag from './LaneTag.vue'
 import FlowCanvas from './flow/FlowCanvas.vue'
 import { buildEditorGraph } from '@/composables/graph'
-import { exportEngines, forgetRecipeDetail, recipeDemo, recipeDetail, recipeOutputs, requiredInputs } from '@/composables/recipePeek'
+import { exportLabels, forgetRecipeDetail, recipeDemo, recipeDetail, recipeOutputs, requiredInputs, type RecipeDemo } from '@/composables/recipePeek'
 import { useFocusTrap } from '@/composables/focusTrap'
 import { useKinds } from '@/stores/catalog'
 
@@ -21,7 +21,7 @@ const isOpen = computed(() => !!props.recipe)
 const trap = useFocusTrap(root, isOpen, closeBtn)
 
 const detail = ref<RecipeDetail | null>(null)
-const demo = ref<string | null>(null)
+const demo = ref<RecipeDemo | null>(null)
 const loading = ref(false)
 const error = ref('')
 
@@ -35,7 +35,7 @@ async function load(r: RecipeInfo): Promise<void> {
     const d = await recipeDetail(r.id)
     if (props.recipe?.id !== r.id) return
     detail.value = d
-    const h = await recipeDemo(d, r.id)
+    const h = await recipeDemo(r)
     if (props.recipe?.id === r.id) demo.value = h
   } catch (e) {
     if (props.recipe?.id !== r.id) return
@@ -54,7 +54,7 @@ watch(
 const graph = computed(() => (detail.value && kinds.loaded ? buildEditorGraph(detail.value.doc, kinds.byKind, [], null) : null))
 const needs = computed(() => (props.recipe ? requiredInputs(props.recipe) : []))
 const outputs = computed(() => (detail.value ? recipeOutputs(detail.value, kinds.byKind) : []))
-const engines = computed(() => exportEngines(props.recipe?.description ?? ''))
+const exportTags = computed(() => exportLabels(props.recipe))
 const lanes = computed(() => [...new Set((props.recipe?.steps ?? []).map((s) => s.lane).filter((l) => l && l !== 'none'))])
 
 useEventListener(document, 'keydown', (e: KeyboardEvent) => {
@@ -92,7 +92,7 @@ useEventListener(document, 'keydown', (e: KeyboardEvent) => {
               <h3 class="section-label">Demo</h3>
               <div class="demo checker">
                 <span v-if="loading" class="skel fill" />
-                <BlobImage v-else-if="demo" :hash="demo" :full="true" :alt="`Kết quả mẫu của ${recipe.name}`" />
+                <RecipeDemoImage v-else-if="demo" :demo="demo" :full="true" :alt="`Kết quả mẫu của ${recipe.name}`" @failed="demo = null" />
                 <span v-else class="caption empty"><ImageOff :size="16" /> Chưa có demo — chạy thử để tạo</span>
               </div>
               <h3 class="section-label">Cần</h3>
@@ -107,7 +107,7 @@ useEventListener(document, 'keydown', (e: KeyboardEvent) => {
               </p>
               <p class="tags meta">
                 <LaneTag v-for="l in lanes" :key="l" :lane="l" />
-                <span v-for="e in engines" :key="e" class="chip">Xuất {{ e }}</span>
+                <span v-for="e in exportTags" :key="e" class="chip">Xuất {{ e }}</span>
                 <span class="caption" :class="{ gpu: lanes.includes('gpu') }">{{ lanes.includes('gpu') ? 'Dùng GPU' : 'Không dùng GPU' }}</span>
               </p>
             </aside>

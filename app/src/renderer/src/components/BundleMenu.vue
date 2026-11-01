@@ -41,9 +41,9 @@ watch(
   { immediate: true }
 )
 
-const ENGINES: Record<BundleEngine, { label: string; hint: string }> = {
-  unity: { label: 'Xuất cho Unity', hint: 'Sprite + anim + prefab' },
-  godot: { label: 'Xuất cho Godot', hint: 'SpriteFrames + scene' }
+const ENGINES: Record<BundleEngine, { label: string; hint: string; hint3d: string }> = {
+  unity: { label: 'Xuất cho Unity', hint: 'Sprite + anim + prefab', hint3d: 'Model GLB + prefab' },
+  godot: { label: 'Xuất cho Godot', hint: 'SpriteFrames + scene', hint3d: 'Model GLB + scene' }
 }
 const engines = computed(() => opts.value?.engines ?? [])
 
@@ -132,6 +132,8 @@ const isMesh = computed(() => {
   if (s) return Object.values(s.outputs).some((list) => list.some(isGlb))
   return /^(blender|mesh)\./.test(opts.value?.kind ?? '')
 })
+// PPU and the pixel filter only mean something for sprites; a pure 3D model has neither.
+const showSprite2d = computed(() => !isMesh.value || !!opts.value?.sprite_sheet)
 type MatStyle = 'pbr' | 'toon'
 const MAT_KEY = 'export:material'
 const TOON_KEY = 'export:toon'
@@ -201,7 +203,7 @@ const items = computed<Item[]>(() => {
   const list: Item[] = o.sprite_sheet
     ? presets.list.map((p) => ({ id: `p-${p.id}`, label: p.name, hint: p.id === o.preset ? 'Đang dùng' : undefined, preset: p.id }))
     : [{ id: 'raw', label: `Cả ${o.files} tệp` }]
-  engines.value.forEach((e, i) => list.push({ id: `e-${e}`, label: ENGINES[e].label, hint: ENGINES[e].hint, engine: e, sep: i === 0 }))
+  engines.value.forEach((e, i) => list.push({ id: `e-${e}`, label: ENGINES[e].label, hint: showSprite2d.value ? ENGINES[e].hint : ENGINES[e].hint3d, engine: e, sep: i === 0 }))
   return [...list, { id: 'reveal', label: 'Mở thư mục đã xuất', reveal: true, sep: true }]
 })
 const itemId = (i: number): string => `${uid}-it-${i}`
@@ -321,7 +323,7 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
             </div>
           </template>
           <div v-if="engines.length" class="b-opts" @click.stop>
-            <label class="b-opt">
+            <label v-if="showSprite2d" class="b-opt">
               <span class="b-opt-label" title="Pixels per unit: số pixel ứng với 1 đơn vị thế giới trong Unity / Godot">PPU</span>
               <input
                 v-model.number="ppu"
@@ -336,7 +338,7 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
                 aria-label="Pixels per unit cho Unity / Godot"
               />
             </label>
-            <div class="b-opt" role="radiogroup" aria-label="Lọc pixel (Point, không làm mờ)">
+            <div v-if="showSprite2d" class="b-opt" role="radiogroup" aria-label="Lọc pixel (Point, không làm mờ)">
               <span class="b-opt-label" title="Lọc Point giữ nét pixel art; Tự động theo sheet">Lọc pixel</span>
               <div class="b-seg">
                 <button
@@ -516,7 +518,7 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
                 <span class="b-opt-label">Ngân sách mobile</span>
               </label>
             </div>
-            <p v-if="!ppuValid" class="b-err caption">PPU từ 1 đến 10000 — đang dùng 100</p>
+            <p v-if="showSprite2d && !ppuValid" class="b-err caption">PPU từ 1 đến 10000 — đang dùng 100</p>
           </div>
         </div>
       </Transition>

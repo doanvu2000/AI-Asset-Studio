@@ -2,9 +2,9 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ImageOff } from '@lucide/vue'
 import type { RecipeDetail, RecipeInfo } from '@/api/types'
-import BlobImage from './BlobImage.vue'
+import RecipeDemoImage from './RecipeDemoImage.vue'
 import LaneTag from './LaneTag.vue'
-import { exportEngines, recipeDemo, recipeDetail, recipeOutputs, requiredInputs } from '@/composables/recipePeek'
+import { exportLabels, recipeDemo, recipeDetail, recipeOutputs, requiredInputs, type RecipeDemo } from '@/composables/recipePeek'
 import { useKinds } from '@/stores/catalog'
 
 const props = defineProps<{ recipe: RecipeInfo; anchor: DOMRect }>()
@@ -13,22 +13,22 @@ const GAP = 10
 
 const kinds = useKinds()
 const detail = ref<RecipeDetail | null>(null)
-const demo = ref<string | null>(null)
+const demo = ref<RecipeDemo | null>(null)
 const demoDone = ref(false)
 let alive = true
 onBeforeUnmount(() => (alive = false))
 
 onMounted(async () => {
   void kinds.load()
+  recipeDemo(props.recipe)
+    .then((d) => alive && (demo.value = d))
+    .catch(() => undefined)
+    .finally(() => alive && (demoDone.value = true))
   try {
     const d = await recipeDetail(props.recipe.id)
     if (alive) detail.value = d
-    const h = await recipeDemo(d, props.recipe.id)
-    if (alive) demo.value = h
   } catch {
-    /* summary falls back to the list data; the demo shows its empty state */
-  } finally {
-    if (alive) demoDone.value = true
+    /* the summary falls back to the list data */
   }
 })
 
@@ -43,7 +43,7 @@ const needs = computed(() => requiredInputs(props.recipe))
 const lanes = computed(() => [...new Set(props.recipe.steps.map((s) => s.lane).filter((l) => l && l !== 'none'))])
 const usesGpu = computed(() => lanes.value.includes('gpu'))
 const outputs = computed(() => (detail.value ? recipeOutputs(detail.value, kinds.byKind) : null))
-const engines = computed(() => exportEngines(props.recipe.description))
+const exportTags = computed(() => exportLabels(props.recipe))
 </script>
 
 <template>
@@ -67,9 +67,9 @@ const engines = computed(() => exportEngines(props.recipe.description))
         </template>
         <span v-else class="caption">—</span>
       </dd>
-      <template v-if="engines.length">
-        <dt>Engine</dt>
-        <dd><span v-for="e in engines" :key="e" class="chip">{{ e }}</span></dd>
+      <template v-if="exportTags.length">
+        <dt>Xuất</dt>
+        <dd><span v-for="e in exportTags" :key="e" class="chip">{{ e }}</span></dd>
       </template>
       <dt>Chạy</dt>
       <dd>
@@ -80,7 +80,7 @@ const engines = computed(() => exportEngines(props.recipe.description))
     </dl>
     <div class="demo checker">
       <span v-if="!demoDone" class="skel fill" />
-      <BlobImage v-else-if="demo" :hash="demo" :size="320" :alt="`Kết quả mẫu của ${recipe.name}`" />
+      <RecipeDemoImage v-else-if="demo" :demo="demo" :size="320" :alt="`Kết quả mẫu của ${recipe.name}`" @failed="demo = null" />
       <span v-else class="caption empty"><ImageOff :size="16" /> Chưa có demo — chạy thử để tạo</span>
     </div>
   </div>
@@ -145,6 +145,7 @@ dd {
   position: relative;
   display: grid;
   place-items: center;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   height: 150px;
   border-radius: var(--r-md);
   overflow: hidden;

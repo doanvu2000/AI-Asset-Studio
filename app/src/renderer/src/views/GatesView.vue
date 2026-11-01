@@ -120,8 +120,8 @@ function instruction(g: GateItem): string {
               <BlobThumb v-if="leadBlob(g)" :blob="leadBlob(g)!" :size="96" />
             </span>
             <span class="q-text">
-              <span class="q-title">{{ runTitle(g) }}</span>
-              <span class="caption q-meta">
+              <span class="q-title" :title="runTitle(g)">{{ runTitle(g) }}</span>
+              <span class="caption q-meta" :title="`${g.kind === 'pick' ? 'Chọn ảnh' : 'Duyệt'} · ${g.candidates.length} ${g.kind === 'pick' ? 'ảnh' : 'tệp'}`">
                 {{ g.kind === 'pick' ? 'Chọn ảnh' : 'Duyệt' }} · <span class="num">{{ g.candidates.length }}</span> {{ g.kind === 'pick' ? 'ảnh' : 'tệp' }} · <RelTime :ts="g.since" />
               </span>
             </span>
@@ -234,9 +234,11 @@ function instruction(g: GateItem): string {
 }
 .q-title {
   font-weight: 600;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .stage {
   flex: 1;

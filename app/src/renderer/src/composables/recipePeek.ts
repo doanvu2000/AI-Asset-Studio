@@ -15,8 +15,7 @@ const PORT_LABEL: Record<string, string> = {
 }
 
 const details = new Map<string, Promise<RecipeDetail>>()
-let demos: { at: number; byRecipe: Map<string, string> } | null = null
-let demoLoad: Promise<Map<string, string>> | null = null
+const demos = new Map<string, { at: number; demo: Promise<RecipeDemo | null> }>()
 
 export function recipeDetail(id: string): Promise<RecipeDetail> {
   let p = details.get(id)
@@ -32,26 +31,38 @@ export function forgetRecipeDetail(id: string): void {
   details.delete(id)
 }
 
-/** Latest successful run's preview blob per recipe; one list call serves every card. */
-async function demoMap(): Promise<Map<string, string>> {
-  if (demos && Date.now() - demos.at < DEMO_TTL_MS) return demos.byRecipe
-  demoLoad ??= api()
-    .listRuns({ status: 'succeeded', limit: 300 })
-    .then((runs) => {
-      const byRecipe = new Map<string, string>()
-      for (const r of runs) if (r.preview_hash && !byRecipe.has(r.recipe_id)) byRecipe.set(r.recipe_id, r.preview_hash)
-      demos = { at: Date.now(), byRecipe }
-      return byRecipe
-    })
-    .finally(() => (demoLoad = null))
-  return demoLoad
+export type RecipeDemo = { type: 'file'; src: string } | { type: 'blob'; hash: string }
+
+async function usableBlob(hash: string): Promise<boolean> {
+  try {
+    await api().blobInfo(hash)
+    return true
+  } catch {
+    return false
+  }
 }
 
-/** The recipe's own `preview` blob hash when it declares one, else its latest successful run's image. */
-export async function recipeDemo(detail: RecipeDetail | null, id: string): Promise<string | null> {
-  const own = detail?.doc.preview
-  if (typeof own === 'string' && HASH_RE.test(own)) return own
-  return (await demoMap()).get(id) ?? null
+async function latestRunDemo(id: string): Promise<RecipeDemo | null> {
+  const runs = await api().listRuns({ recipe_id: id, status: 'succeeded', limit: 5 })
+  for (const r of runs) if (r.preview_hash && (await usableBlob(r.preview_hash))) return { type: 'blob', hash: r.preview_hash }
+  return null
+}
+
+async function loadDemo(recipe: RecipeInfo): Promise<RecipeDemo | null> {
+  const own = recipe.preview
+  if (own === 'file') return { type: 'file', src: api().recipePreviewUrl(recipe.id) }
+  if (own && HASH_RE.test(own) && (await usableBlob(own))) return { type: 'blob', hash: own }
+  return latestRunDemo(recipe.id)
+}
+
+/** The recipe's shipped demo image, else its newest successful run's image; null when neither is usable. */
+export function recipeDemo(recipe: RecipeInfo): Promise<RecipeDemo | null> {
+  const hit = demos.get(recipe.id)
+  if (hit && Date.now() - hit.at < DEMO_TTL_MS) return hit.demo
+  const demo = loadDemo(recipe)
+  demos.set(recipe.id, { at: Date.now(), demo })
+  demo.catch(() => demos.get(recipe.id)?.demo === demo && demos.delete(recipe.id))
+  return demo
 }
 
 export function portLabel(type: string | undefined): string {
@@ -85,6 +96,15 @@ export function recipeOutputs(detail: RecipeDetail, kinds: Map<string, KindInfo>
   return Object.entries(detail.doc.outputs ?? {}).map(([name, ref]) => ({ name, type: portLabel(typeOf(ref)) }))
 }
 
-export function exportEngines(description: string): string[] {
-  return ['Unity', 'Godot'].filter((e) => description.includes(e))
+const EXPORT_LABEL: Record<string, string> = {
+  unity: 'Unity',
+  godot: 'Godot',
+  spine: 'Spine',
+  glb: 'GLB',
+  fbx: 'FBX',
+  audio: 'Âm thanh'
+}
+
+export function exportLabels(r: RecipeInfo | null | undefined): string[] {
+  return (r?.exports ?? []).map((e) => EXPORT_LABEL[e] ?? e)
 }

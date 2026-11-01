@@ -255,6 +255,14 @@ function onDragStop(e: NodeDragEvent): void {
   font-size: var(--fs-caption);
   font-family: var(--mono);
 }
+.canvas :deep(.vue-flow__edge.crowded .vue-flow__edge-textwrapper) {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--t-fast) var(--ease-out);
+}
+.canvas :deep(.vue-flow__edge.crowded:hover .vue-flow__edge-textwrapper) {
+  opacity: 1;
+}
 .canvas :deep(.vue-flow__connection-path) {
   stroke: var(--accent);
   stroke-width: 2;

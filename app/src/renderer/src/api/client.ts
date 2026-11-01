@@ -78,6 +78,7 @@ export interface ListRunsQuery {
   batch_id?: string
   batched?: boolean
   project_id?: string
+  recipe_id?: string
 }
 
 export interface VersionsQuery {
@@ -107,6 +108,7 @@ export interface StudioApi {
   setVersionStatus(id: string, action: 'approve' | 'reject'): Promise<VersionRow>
   blobUrl(hash: string): string
   thumbUrl(hash: string, size?: number): string
+  recipePreviewUrl(id: string): string
   kinds(): Promise<KindInfo[]>
   getRecipe(id: string): Promise<RecipeDetail>
   validateRecipe(body: RecipeBody): Promise<ValidateResult>
@@ -267,7 +269,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     listRuns: (q = {}) =>
       call(
         'GET',
-        `/api/runs${query({ limit: q.limit, before: q.before, status: q.status, batch_id: q.batch_id, batched: q.batched ? 'true' : undefined, project_id: q.project_id })}`,
+        `/api/runs${query({ limit: q.limit, before: q.before, status: q.status, batch_id: q.batch_id, batched: q.batched ? 'true' : undefined, project_id: q.project_id, recipe_id: q.recipe_id })}`,
         undefined,
         q.batched || (q.limit ?? 0) > 500 ? SLOW_TIMEOUT_MS : TIMEOUT_MS
       ),
@@ -285,6 +287,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     versions: (q = {}) => call('GET', `/api/versions${query({ run_id: q.run_id, status: q.status, project_id: q.project_id })}`),
     setVersionStatus: (id, action) => call('POST', `/api/versions/${enc(id)}/${action}`),
     blobUrl: (hash) => `${baseUrl}/api/blobs/${enc(hash)}?t=${enc(token)}`,
+    recipePreviewUrl: (id) => `${baseUrl}/api/recipes/${enc(id)}/preview?t=${enc(token)}`,
     thumbUrl: (hash, size = 256) => `${baseUrl}/api/blobs/${enc(hash)}/thumb?size=${size}&t=${enc(token)}`,
     kinds: () => call('GET', '/api/kinds'),
     getRecipe: (id) => call('GET', `/api/recipes/${enc(id)}`),

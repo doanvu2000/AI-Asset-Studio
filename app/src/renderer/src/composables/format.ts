@@ -57,7 +57,16 @@ export const ALLOWED_FAILURE_LABEL = 'Bỏ qua (lỗi cho phép)'
 /** Warning text of a step the runner skipped on purpose (`allow_fail`); null when the step is not one. */
 export function allowedFailure(s: { status: StepStatus; meta?: StepMeta }): string | null {
   if (s.status !== 'skipped' || s.meta?.allowed_failure !== true) return null
-  return typeof s.meta?.warning === 'string' ? s.meta.warning : ''
+  return typeof s.meta?.warning === 'string' ? allowedFailureText(s.meta.warning) : ''
+}
+
+const ALLOWED_FAILURE_RE = /^(\S+) failed \(([^:)]+): ([\s\S]*)\); continuing without its outputs$/
+
+/** The core logs this warning in English; the app shows it translated, falling back to the raw text. */
+export function allowedFailureText(raw: string): string {
+  const m = ALLOWED_FAILURE_RE.exec(raw)
+  if (!m) return raw
+  return `Bước "${m[1]}" bị lỗi (${m[2]}) nên được bỏ qua, các bước sau chạy tiếp mà không có đầu ra của nó. Chi tiết: ${m[3]}`
 }
 
 export const RUN_LABEL: Record<RunStatus, string> = {

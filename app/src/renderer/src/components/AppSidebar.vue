@@ -94,7 +94,7 @@ const status = computed(() => {
           :transition="{ type: 'spring', stiffness: 520, damping: 40 }"
         />
         <component :is="it.icon" class="ic" :size="16" :stroke-width="1.75" />
-        <span class="label">{{ it.label }}</span>
+        <span class="label" :title="it.label">{{ it.label }}</span>
         <Transition name="badge">
           <span v-if="it.badge > 0" class="count human" :aria-label="`${it.badge} đang chờ`">
             <TweenNumber :value="it.badge" :duration="200" />
@@ -123,7 +123,7 @@ const status = computed(() => {
     <div class="foot">
       <span class="conn" :class="status.tone" :title="compact ? status.text : undefined" role="status">
         <span class="dot" />
-        <span class="conn-text">{{ status.text }}</span>
+        <span class="conn-text" :title="status.text">{{ status.text }}</span>
       </span>
     </div>
   </aside>
@@ -273,9 +273,7 @@ nav {
   color: var(--text-2);
 }
 .conn-text {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .compact .group {
   height: 1px;
