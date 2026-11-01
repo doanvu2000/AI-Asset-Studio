@@ -1,5 +1,6 @@
 id: sprite-8dir-pixel
 name: Sprite 8 hướng pixel art (GLB → Blender)
+preview: previews/sprite-8dir-pixel.webp
 description: Mesh GLB → dọn mesh → render 8 hướng ortho (Blender) → pixel art (một bảng màu chung cho mọi hướng, viền 1px, alpha cứng) → sprite sheet (pivot = tâm chân) + JSON + bảng màu; bóng/viền hậu kỳ (tuỳ chọn) có cạnh cứng, bóng dither, màu của chúng nằm ngoài bảng màu
 inputs:
   mesh: {type: mesh, label: Mesh GLB}

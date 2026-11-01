@@ -1,5 +1,6 @@
 id: sprite-8dir-glb
 name: Sprite 8 hướng (GLB → Blender)
+preview: previews/sprite-8dir-glb.webp
 description: Mesh GLB → dọn mesh → render 8 hướng ortho (Blender) → thu nhỏ 2× → sprite sheet (pivot = tâm chân) + JSON
 inputs:
   mesh: {type: mesh, label: Mesh GLB}
