@@ -1,0 +1,38 @@
+id: level-pack
+title: Gói màn chơi
+description: >-
+  Autotile địa hình + prop isometric + nền parallax → ghép màn mẫu chơi được (xuất Tiled/Godot) → minimap từ chính màn
+  đó. Có nhiều bước duyệt nên workflow sẽ dừng chờ người.
+tags: [2d, level, tilemap, pack]
+inputs:
+  tile_a:  {type: image, label: Texture địa hình A (vd cỏ)}
+  ground_b: {type: text, label: Vật liệu nền B, default: "dry cracked dirt with small pebbles"}
+  prop_mesh: {type: mesh, label: Mesh prop}
+  scenery: {type: text, label: Mô tả phong cảnh nền parallax}
+  brief: {type: text, label: Gợi ý bố cục màn, default: ""}
+nodes:
+  - id: terrain
+    recipe_id: autotile-terrain-prompt
+    title: Autotile địa hình
+    map: {tile_a: workflow.inputs.tile_a, prompt_b: workflow.inputs.ground_b}
+  - id: prop
+    recipe_id: iso-prop
+    title: Prop isometric
+    map: {mesh: workflow.inputs.prop_mesh}
+  - id: parallax
+    recipe_id: parallax-layers
+    title: Nền parallax
+    map: {prompt: workflow.inputs.scenery}
+  - id: scene
+    recipe_id: playable-scene
+    title: Màn chơi mẫu
+    map:
+      tiles: "terrain.outputs.final[0]"
+      autotile: "terrain.outputs.autotile[0]"
+      props: "prop.outputs.final[0]"
+      background: "parallax.outputs.final[0]"
+      brief: workflow.inputs.brief
+  - id: minimap
+    recipe_id: minimap
+    title: Minimap
+    map: {source: "scene.outputs.tmx[0]"}

@@ -1,0 +1,66 @@
+id: character-pack
+title: Gói nhân vật 1 nút
+description: >-
+  Prompt → concept 2D → khoá style + sprite 8 hướng 2D + anim idle/walk/attack/hit dựng từ chính concept (cùng một
+  nhân vật); clip tấn công sinh biến thể kẻ địch và dữ liệu khung chiến đấu; song song sinh VFX trúng đòn. Có nhiều bước duyệt nên workflow sẽ dừng chờ người.
+tags: [2d, sprite, character, pack]
+inputs:
+  prompt: {type: text, label: Mô tả nhân vật}
+  hit_prompt: {type: text, label: Mô tả VFX trúng đòn, default: "bright slash impact burst, comic hit flash"}
+  enemy_variants: {type: text, label: "Biến thể kẻ địch (phẩy)", default: "lửa, băng, độc, elite"}
+nodes:
+  - id: concept
+    recipe_id: concept-2d
+    title: Concept
+    map: {prompt: workflow.inputs.prompt}
+  - id: style
+    recipe_id: style-lock
+    title: Khoá style từ concept
+    map: {anchor: "concept.outputs.final[0]"}
+  - id: sprite
+    recipe_id: sprite-8dir-2d
+    title: Sprite 8 hướng từ concept
+    map: {image: "concept.outputs.final[0]"}
+  - id: anim_idle
+    recipe_id: sprite-anim-video
+    title: Anim đứng thở từ concept
+    inputs: {action: idle}
+    map: {image: "concept.outputs.final[0]"}
+  - id: anim_walk
+    recipe_id: sprite-anim-video
+    title: Anim đi bộ từ concept
+    inputs: {action: walk}
+    map: {image: "concept.outputs.final[0]"}
+  - id: anim_attack
+    recipe_id: sprite-anim-video
+    title: Anim tấn công từ concept
+    inputs: {action: slash}
+    map: {image: "concept.outputs.final[0]"}
+  - id: anim_hit
+    recipe_id: sprite-anim-video
+    title: Anim bị đánh từ concept
+    inputs: {action: hit}
+    map: {image: "concept.outputs.final[0]"}
+  - id: hit_flipbook
+    recipe_id: vfx-flipbook
+    title: VFX trúng đòn (flipbook)
+    inputs: {mode: oneshot}
+    map: {prompt: workflow.inputs.hit_prompt}
+  - id: hit_particles
+    recipe_id: vfx-particles
+    title: VFX trúng đòn (hạt)
+    inputs: {presets: hit_spark, asset: hit}
+  - id: enemies
+    recipe_id: enemy-variants
+    title: Biến thể kẻ địch
+    inputs: {asset: enemy}
+    map:
+      sheet: "anim_attack.outputs.final[0]"
+      meta: "anim_attack.outputs.meta[0]"
+      variants: workflow.inputs.enemy_variants
+  - id: combat
+    recipe_id: combat-frame-data
+    title: Dữ liệu khung chiến đấu
+    map:
+      sheet: "anim_attack.outputs.final[0]"
+      meta: "anim_attack.outputs.meta[0]"

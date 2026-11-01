@@ -1,0 +1,33 @@
+id: ui-pack
+title: Gói UI
+description: >-
+  Ảnh style tham chiếu → bộ UI kit cùng style → màn hình UI mẫu → bản địa hoá ảnh màn hình; song song bitmap font và
+  bộ ảnh store. Có nhiều bước duyệt nên workflow sẽ dừng chờ người.
+tags: [ui, pack]
+inputs:
+  style_image: {type: image, label: Ảnh style tham chiếu}
+  theme: {type: text, label: Chủ đề UI, default: "wooden frames with brass corners"}
+  screen_brief: {type: text, label: Mô tả màn hình, default: ""}
+  game_title: {type: text, label: Tên game}
+  store_prompt: {type: text, label: Mô tả cảnh ảnh store}
+nodes:
+  - id: kit
+    recipe_id: ui-kit-style
+    title: UI kit theo style
+    map: {image: workflow.inputs.style_image, prompt: workflow.inputs.theme}
+  - id: screen
+    recipe_id: ui-screen
+    title: Màn hình UI
+    map: {kit: "kit.outputs.slices[0]", title: workflow.inputs.game_title, brief: workflow.inputs.screen_brief}
+  - id: font
+    recipe_id: bitmap-font
+    title: Bitmap font
+    map: {name: workflow.inputs.game_title}
+  - id: localize
+    recipe_id: image-localize
+    title: Địa hoá ảnh màn hình
+    map: {image: "screen.outputs.final[0]"}
+  - id: store
+    recipe_id: store-kit
+    title: Bộ ảnh store
+    map: {title: workflow.inputs.game_title, prompt: workflow.inputs.store_prompt}
