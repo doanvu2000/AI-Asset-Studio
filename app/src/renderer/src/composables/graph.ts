@@ -9,7 +9,7 @@ const ROW_H = 150
 const STEP_REF = /\$\{steps\.([A-Za-z_][\w-]*)\.([A-Za-z_][\w-]*)/g
 
 export interface StepNodeData {
-  mode: 'edit' | 'run'
+  mode: 'edit' | 'run' | 'peek'
   stepId: string
   kind: string
   lane: Lane
@@ -20,11 +20,14 @@ export interface StepNodeData {
   mapped: string | null
   issues: RecipeIssue[]
   selected: boolean
+  order?: number
+  vertical?: boolean
   step?: StepRow
 }
 
 export interface IoNodeData {
   role: 'inputs' | 'outputs'
+  peek?: boolean
   ports: { name: string; type: string; bindable: boolean }[]
   selected: boolean
   issues: RecipeIssue[]
@@ -78,20 +81,104 @@ export function depths(ids: string[], deps: (id: string) => string[]): Map<strin
   return memo
 }
 
-const WRAP_COLS = 5
-const BAND_GAP = 140
+interface Size {
+  w: number
+  h: number
+  laneW: number
+  rowH: number
+}
+const PEEK_SIZE: Size = { w: 208, h: 56, laneW: 244, rowH: 104 }
+const RUN_SIZE: Size = { w: 232, h: 100, laneW: 272, rowH: 156 }
+const RAIL_JITTER = 4
 
-// Overview layouts fold the left-to-right chain into evenly filled bands so a long recipe fits a small pane at a readable zoom.
-function autoPositions(columns: string[][], wrap = false): Map<string, { x: number; y: number }> {
+interface Slot {
+  x: number
+  y: number
+  row: number
+  lane: number
+}
+interface VerticalFlow {
+  slots: Map<string, Slot>
+  lanes: number
+  size: Size
+}
+
+function autoPositions(columns: string[][]): Map<string, { x: number; y: number }> {
   const tallest = Math.max(1, ...columns.map((c) => c.length))
-  const bands = wrap ? Math.ceil(columns.length / WRAP_COLS) : 1
-  const perBand = Math.ceil(columns.length / bands)
   const out = new Map<string, { x: number; y: number }>()
   columns.forEach((col, ci) => {
     const offset = ((tallest - col.length) * ROW_H) / 2
-    const band = Math.floor(ci / perBand)
-    col.forEach((id, ri) => out.set(id, { x: (ci % perBand) * COL_W, y: band * (tallest * ROW_H + BAND_GAP) + offset + ri * ROW_H }))
+    col.forEach((id, ri) => out.set(id, { x: ci * COL_W, y: offset + ri * ROW_H }))
   })
+  return out
+}
+
+function nearestFree(base: number, taken: Set<number>): number {
+  for (let k = 0; ; k++) for (const l of k ? [base + k, base - k] : [base]) if (l >= 0 && !taken.has(l)) return l
+}
+
+// Rows are dependency depths read top to bottom; each parallel branch keeps one lane so a child sits under its parent.
+function verticalFlow(rows: string[][], parentsOf: (id: string) => string[], size: Size): VerticalFlow {
+  const rowOf = new Map<string, number>()
+  rows.forEach((r, i) => r.forEach((id) => rowOf.set(id, i)))
+  const lane = new Map<string, number>()
+  const slots = new Map<string, Slot>()
+  let lanes = 1
+  rows.forEach((row, ri) => {
+    const pref = new Map<string, number>()
+    for (const id of row) {
+      const ps = parentsOf(id).filter((x) => lane.has(x))
+      const primary = ps.reduce<string | undefined>((a, b) => (a === undefined || rowOf.get(b)! > rowOf.get(a)! ? b : a), undefined)
+      pref.set(id, primary === undefined ? 0 : lane.get(primary)!)
+    }
+    const taken = new Set<number>()
+    for (const id of [...row].sort((a, b) => pref.get(a)! - pref.get(b)!)) {
+      const l = nearestFree(pref.get(id)!, taken)
+      taken.add(l)
+      lane.set(id, l)
+      lanes = Math.max(lanes, l + 1)
+      slots.set(id, { x: l * size.laneW, y: ri * size.rowH, row: ri, lane: l })
+    }
+  })
+  return { slots, lanes, size }
+}
+
+// Links run orthogonally through the gaps between rows; one that skips rows drops down a lane no node uses, else takes a side rail.
+function routeEdges(pairs: Edge[], flow: VerticalFlow): Edge[] {
+  const { slots, size: s } = flow
+  const occ = new Set<string>()
+  slots.forEach((v) => occ.add(`${v.row}:${v.lane}`))
+  const cx = (lane: number): number => lane * s.laneW + s.w / 2
+  const gutter = (row: number): number => row * s.rowH + s.h + (s.rowH - s.h) / 2
+  const clear = (lane: number, from: number, to: number): boolean => {
+    for (let r = from + 1; r < to; r++) if (occ.has(`${r}:${lane}`)) return false
+    return true
+  }
+  const seen = new Map<string, Edge>()
+  for (const e of pairs) {
+    const key = `${e.source}|${e.target}`
+    const prev = seen.get(key)
+    if (!prev || (e.class === 'bind' && prev.class !== 'bind')) seen.set(key, e)
+  }
+  const out: Edge[] = []
+  let k = 0
+  for (const e of seen.values()) {
+    const a = slots.get(e.source)
+    const b = slots.get(e.target)
+    if (!a || !b) continue
+    const n = k++
+    const off = ((n % RAIL_JITTER) - (RAIL_JITTER - 1) / 2) * 6
+    const skip = b.row > a.row + 1
+    let route: Array<[number, number]>
+    if (!skip) route = [[cx(a.lane), gutter(a.row) + off], [cx(b.lane), gutter(a.row) + off]]
+    else if (clear(a.lane, a.row, b.row)) route = [[cx(a.lane), gutter(b.row - 1) + off], [cx(b.lane), gutter(b.row - 1) + off]]
+    else if (clear(b.lane, a.row, b.row)) route = [[cx(a.lane), gutter(a.row) + off], [cx(b.lane), gutter(a.row) + off]]
+    else {
+      const rail = cx(flow.lanes) - s.w / 2 + 12 + (n % 3) * 6
+      route = [[cx(a.lane), gutter(a.row) + off], [rail, gutter(a.row) + off], [rail, gutter(b.row - 1) + off], [cx(b.lane), gutter(b.row - 1) + off]]
+    }
+    out.push({ ...e, label: undefined, type: 'band', class: skip ? `${e.class ?? ''} jump`.trim() : e.class, deletable: false, data: { route } })
+  }
   return out
 }
 
@@ -110,7 +197,7 @@ export function buildEditorGraph(
   kinds: Map<string, KindInfo>,
   issues: RecipeIssue[],
   selected: string | null,
-  wrap = false
+  peek = false
 ): { nodes: Node[]; edges: Edge[] } {
   const steps = doc.steps ?? []
   const usedOut = new Map<string, Set<string>>()
@@ -134,10 +221,23 @@ export function buildEditorGraph(
   }
   columns[maxDepth + 2] = [OUTPUTS_NODE]
   for (let i = 0; i < columns.length; i++) columns[i] ??= []
-  const auto = autoPositions(columns, wrap)
-  const saved = wrap ? {} : (doc.ui?.positions ?? {})
+  const parentMap = new Map<string, string[]>()
+  const link = (child: string, src: string): void => {
+    if (src !== INPUTS_NODE && !byId.has(src)) return
+    parentMap.set(child, [...(parentMap.get(child) ?? []), src])
+  }
+  for (const s of steps) {
+    for (const b of Object.values(s.in ?? {})) for (const p of parts(b)) link(s.id, splitRef(p)[0] === 'inputs' ? INPUTS_NODE : splitRef(p)[0])
+    for (const [sid] of stepRefs(s.params)) link(s.id, sid)
+  }
+  for (const b of Object.values(doc.outputs ?? {})) link(OUTPUTS_NODE, splitRef(b)[0])
+  const flow = peek ? verticalFlow(columns, (id) => parentMap.get(id) ?? [], PEEK_SIZE) : null
+  const auto = autoPositions(columns)
+  const saved = peek ? {} : (doc.ui?.positions ?? {})
   const pos = (id: string): { x: number; y: number } => {
     const p = saved[id]
+    const v = flow?.slots.get(id)
+    if (v) return { x: v.x, y: v.y }
     return p ? { x: p[0], y: p[1] } : (auto.get(id) ?? { x: 0, y: 0 })
   }
 
@@ -152,10 +252,10 @@ export function buildEditorGraph(
       type: 'io',
       position: pos(INPUTS_NODE),
       deletable: false,
-      data: { role: 'inputs', ports: inputPorts, selected: selected === INPUTS_NODE, issues: [] } satisfies IoNodeData
+      data: { role: 'inputs', peek, ports: inputPorts, selected: selected === INPUTS_NODE, issues: [] } satisfies IoNodeData
     }
   ]
-  for (const s of steps) {
+  for (const [si, s] of steps.entries()) {
     const info = kinds.get(s.kind)
     const declaredIn = info?.in ? Object.keys(info.in).filter((k) => k !== '*') : []
     const acceptsAny = !info || !info.in || '*' in info.in
@@ -164,7 +264,7 @@ export function buildEditorGraph(
       type: 'step',
       position: pos(s.id),
       data: {
-        mode: 'edit',
+        mode: peek ? 'peek' : 'edit',
         stepId: s.id,
         kind: s.kind,
         lane: info?.lane ?? 'cpu',
@@ -174,7 +274,8 @@ export function buildEditorGraph(
         acceptsAny,
         mapped: s.map ?? s.map_param ?? null,
         issues: issues.filter((i) => i.step === s.id),
-        selected: selected === s.id
+        selected: selected === s.id,
+        order: si + 1
       } satisfies StepNodeData
     })
   }
@@ -185,6 +286,7 @@ export function buildEditorGraph(
     deletable: false,
     data: {
       role: 'outputs',
+      peek,
       ports: Object.keys(doc.outputs ?? {}).map((name) => ({ name, type: 'output', bindable: true })),
       selected: selected === OUTPUTS_NODE,
       issues: issues.filter((i) => i.field?.startsWith('outputs.'))
@@ -230,6 +332,7 @@ export function buildEditorGraph(
     if (!byId.has(src)) continue
     edges.push({ id: `o|${name}`, source: src, target: OUTPUTS_NODE, sourceHandle: `o:${out}`, targetHandle: `i:${name}`, type: 'smoothstep', class: 'out' })
   }
+  if (flow) return { nodes, edges: routeEdges(edges, flow) }
   crowdLabels(edges)
   return { nodes, edges }
 }
@@ -258,15 +361,16 @@ export function buildRunGraph(steps: StepRow[], kinds: Map<string, KindInfo>, se
   const columns: string[][] = []
   for (const s of steps) (columns[d.get(s.key) ?? 0] ??= []).push(s.key)
   for (let i = 0; i < columns.length; i++) columns[i] ??= []
-  const auto = autoPositions(columns)
-  const nodes: Node[] = steps.map((s) => ({
+  const flow = verticalFlow(columns, (id) => (byKey.get(id)?.deps ?? []).filter((x) => byKey.has(x)), RUN_SIZE)
+  const nodes: Node[] = steps.map((s, si) => ({
     id: s.key,
     type: 'step',
-    position: auto.get(s.key) ?? { x: 0, y: 0 },
+    position: flow.slots.get(s.key) ?? { x: 0, y: 0 },
     draggable: false,
     connectable: false,
     data: {
       mode: 'run',
+      vertical: true,
       stepId: s.key,
       kind: s.kind,
       lane: s.lane,
@@ -277,6 +381,7 @@ export function buildRunGraph(steps: StepRow[], kinds: Map<string, KindInfo>, se
       mapped: null,
       issues: [],
       selected: selected === s.id,
+      order: si + 1,
       step: s
     } satisfies StepNodeData
   }))
@@ -298,7 +403,7 @@ export function buildRunGraph(steps: StepRow[], kinds: Map<string, KindInfo>, se
       })
     }
   }
-  return { nodes, edges }
+  return { nodes, edges: routeEdges(edges, flow) }
 }
 
 export function uniqueStepId(doc: RecipeDoc, kind: string): string {

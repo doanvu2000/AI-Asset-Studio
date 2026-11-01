@@ -20,12 +20,14 @@ const TYPE_LABEL: Record<string, string> = {
 </script>
 
 <template>
-  <div class="io" :class="[data.role, { selected: data.selected, bad: data.issues.length }]">
+  <div class="io" :class="[data.role, { selected: data.selected, bad: data.issues.length, peek: data.peek }]">
+    <Handle v-if="data.peek && data.role === 'outputs'" type="target" :position="Position.Top" class="h h-peek" :connectable="false" />
+    <Handle v-if="data.peek && data.role === 'inputs'" type="source" :position="Position.Bottom" class="h h-peek" :connectable="false" />
     <header class="head">
       <component :is="data.role === 'inputs' ? LogIn : LogOut" :size="14" class="ic" />
       <span class="name">{{ data.role === 'inputs' ? 'Đầu vào quy trình' : 'Đầu ra quy trình' }}</span>
     </header>
-    <ul class="ports">
+    <ul v-if="!data.peek" class="ports">
       <li v-for="p in data.ports" :key="p.name" class="port" :class="{ off: !p.bindable }">
         <Handle v-if="data.role === 'outputs'" :id="`i:${p.name}`" type="target" :position="Position.Left" class="h" />
         <span class="pname">{{ p.name }}</span>
@@ -107,6 +109,18 @@ const TYPE_LABEL: Record<string, string> = {
   height: 10px;
   border: 2px solid var(--bg-elevated);
   background: var(--accent);
+}
+.io.peek {
+  width: 208px;
+}
+.io.peek .head {
+  height: 56px;
+  padding: 0 14px;
+  font-size: 16px;
+}
+.h-peek {
+  opacity: 0;
+  pointer-events: none;
 }
 .h-add {
   background: var(--bg-elevated);

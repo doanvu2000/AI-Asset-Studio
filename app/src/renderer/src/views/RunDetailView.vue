@@ -163,6 +163,18 @@ function closeMenu(): void {
 }
 onClickOutside(menuRoot, closeMenu)
 onKeyStroke('Escape', () => menuOpen.value && closeMenu())
+function stepBy(delta: number, e: KeyboardEvent): void {
+  const t = e.target as HTMLElement | null
+  if (lightbox.value || t?.closest('input, textarea, select, [contenteditable="true"]')) return
+  const list = steps.value
+  const i = list.findIndex((s) => s.id === selected.value?.id)
+  const next = list[Math.min(list.length - 1, Math.max(0, (i < 0 ? 0 : i) + delta))]
+  if (!next) return
+  e.preventDefault()
+  manualId.value = next.id
+}
+onKeyStroke('ArrowRight', (e) => stepBy(1, e))
+onKeyStroke('ArrowLeft', (e) => stepBy(-1, e))
 
 async function cancel(): Promise<void> {
   cancelling.value = true
@@ -494,6 +506,9 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
           :nodes="graph.nodes"
           :edges="graph.edges"
           :fit-key="graphFit"
+          :focus-id="selected?.key ?? null"
+          :min-fit-zoom="0.75"
+          scroll-pan
           :minimap="steps.length > 6"
           @node-click="selectByKey"
         />

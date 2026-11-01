@@ -11,15 +11,17 @@ import { Maximize } from '@lucide/vue'
 import { MiniMap } from '@vue-flow/minimap'
 import StepNode from './StepNode.vue'
 import IoNode from './IoNode.vue'
+import BandEdge from './BandEdge.vue'
 import type { StepStatus } from '@/api/types'
 import type { IoNodeData, StepNodeData } from '@/composables/graph'
 
-const props = withDefaults(defineProps<{ id: string; nodes: Node[]; edges: Edge[]; editable?: boolean; fitKey?: string; minimap?: boolean; focusId?: string | null; minFitZoom?: number }>(), {
+const props = withDefaults(defineProps<{ id: string; nodes: Node[]; edges: Edge[]; editable?: boolean; fitKey?: string; minimap?: boolean; focusId?: string | null; minFitZoom?: number; scrollPan?: boolean }>(), {
   editable: false,
   fitKey: '',
   minimap: true,
   focusId: null,
-  minFitZoom: 0
+  minFitZoom: 0,
+  scrollPan: false
 })
 const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
 const emit = defineEmits<{
@@ -60,8 +62,18 @@ async function frame(duration = 200): Promise<void> {
     await setViewport({ x, y, zoom: fit }, { duration })
     return
   }
+  if (props.minFitZoom) {
+    // Tall flows keep readable text (width-fit, 1.0 at most) and scroll: start at the first step or the focused one.
+    const zoom = Math.max(floor, Math.min(1, (width - 2 * FIT_MARGIN) / (maxX - minX)))
+    const x = (maxX - minX) * zoom <= width - 2 * FIT_MARGIN ? (width - (maxX - minX) * zoom) / 2 - minX * zoom : FIT_MARGIN - minX * zoom
+    const f = props.focusId ? nodes.find((n) => n.id === props.focusId) : undefined
+    const top = FIT_MARGIN - minY * zoom
+    const y = f ? Math.min(top, height / 2 - (f.position.y + (f.dimensions.height || 0) / 2) * zoom) : top
+    await setViewport({ x, y, zoom }, { duration })
+    return
+  }
   // Below the floor node text is unreadable; keep the floor, anchor left and let the user pan.
-  const zoom = props.minFitZoom || LONG_GRAPH_ZOOM
+  const zoom = LONG_GRAPH_ZOOM
   await setViewport({ x: FIT_MARGIN - minX * zoom, y: height / 2 - ((minY + maxY) / 2) * zoom, zoom }, { duration })
 }
 
@@ -180,6 +192,9 @@ function onDragStop(e: NodeDragEvent): void {
       :nodes-connectable="editable"
       :elements-selectable="false"
       :delete-key-code="null"
+      :pan-on-scroll="scrollPan"
+      :zoom-on-scroll="!scrollPan"
+      zoom-activation-key-code="Control"
       :min-zoom="0.3"
       :max-zoom="1.8"
       :default-edge-options="{ type: 'smoothstep' }"
@@ -195,6 +210,9 @@ function onDragStop(e: NodeDragEvent): void {
       </template>
       <template #node-io="p">
         <IoNode :data="p.data as IoNodeData" />
+      </template>
+      <template #edge-band="p">
+        <BandEdge v-bind="p" />
       </template>
       <Background v-if="ready" :gap="18" :size="1.4" pattern-color="var(--canvas-dot)" />
       <Controls v-if="ready" :show-interactive="false" position="bottom-right">
@@ -232,6 +250,14 @@ function onDragStop(e: NodeDragEvent): void {
 .canvas :deep(.vue-flow__edge.bind .vue-flow__edge-path),
 .canvas :deep(.vue-flow__edge.out .vue-flow__edge-path) {
   stroke: color-mix(in srgb, var(--accent) 55%, var(--separator-strong));
+}
+.canvas :deep(.vue-flow__edge.bind .vue-flow__edge-path),
+.canvas :deep(.vue-flow__edge.out .vue-flow__edge-path) {
+  stroke-width: 2.2;
+}
+.canvas :deep(.vue-flow__edge.jump .vue-flow__edge-path) {
+  stroke-width: 1.3;
+  opacity: 0.5;
 }
 .canvas :deep(.vue-flow__edge.ref .vue-flow__edge-path) {
   stroke-dasharray: 5 4;

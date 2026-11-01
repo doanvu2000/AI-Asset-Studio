@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Handle, Position } from '@vue-flow/core'
-import { CircleAlert, Repeat, TriangleAlert } from '@lucide/vue'
+import { Box, Cloud, CircleAlert, Cpu, Hand, Repeat, TriangleAlert, Zap } from '@lucide/vue'
 import type { StepNodeData } from '@/composables/graph'
 import { NEW_PORT } from '@/composables/graph'
 import { useRuns } from '@/stores/runs'
@@ -25,6 +25,7 @@ const title = computed(() => {
 
 const tooltip = computed(() => `${title.value}\nMã bước: ${props.data.stepId} · ${props.data.kind}`)
 
+const laneIcon = computed(() => ({ gpu: Zap, blender: Box, cloud: Cloud, cpu: Cpu, none: Hand })[props.data.lane])
 const step = computed(() => props.data.step)
 const progress = computed(() => (step.value ? runs.progress.get(step.value.id) : undefined))
 const fraction = computed(() => {
@@ -51,9 +52,18 @@ const detail = computed(() => {
     :class="[`lane-${data.lane}`, `m-${data.mode}`, step ? `st-${step.status}` : '', { selected: data.selected, bad: errors > 0 }]"
   >
     <span v-if="step?.status === 'running'" class="shimmer" aria-hidden="true" />
+    <template v-if="data.mode === 'peek'">
+      <Handle type="target" :position="Position.Top" class="h h-run" :connectable="false" />
+      <Handle type="source" :position="Position.Bottom" class="h h-run" :connectable="false" />
+      <span class="ord num" aria-hidden="true">{{ data.order }}</span>
+      <component :is="laneIcon" :size="18" :stroke-width="2.2" class="peek-ic" />
+      <span class="name" :title="tooltip">{{ title }}</span>
+      <span v-if="data.mapped" class="map" :title="`Chạy lặp theo ${data.mapped}`"><Repeat :size="12" /></span>
+    </template>
     <Handle v-if="data.mode === 'edit'" id="ref" type="target" :position="Position.Top" class="h-ref" :connectable="false" />
-    <header class="head">
+    <header v-if="data.mode !== 'peek'" class="head">
       <StatusGlyph v-if="step" :status="step.status" :progress="fraction" :size="22" />
+      <span v-if="data.order && data.mode === 'run'" class="ord num" aria-hidden="true">{{ data.order }}</span>
       <div class="t">
         <span class="name" :title="tooltip">{{ title }}</span>
         <span v-if="data.mode === 'edit' || data.mapped" class="sub">
@@ -64,7 +74,8 @@ const detail = computed(() => {
       <LaneTag :lane="data.lane" />
     </header>
 
-    <template v-if="data.mode === 'edit'">
+    <template v-if="data.mode === 'peek'" />
+    <template v-else-if="data.mode === 'edit'">
       <ul v-if="data.inPorts.length || data.acceptsAny" class="ports">
         <li v-for="p in data.inPorts" :key="`i-${p}`" class="port in">
           <Handle :id="`i:${p}`" type="target" :position="Position.Left" class="h" />
@@ -88,8 +99,8 @@ const detail = computed(() => {
     </template>
 
     <template v-else>
-      <Handle id="i:in" type="target" :position="Position.Left" class="h h-run" :connectable="false" />
-      <Handle id="o:out" type="source" :position="Position.Right" class="h h-run" :connectable="false" />
+      <Handle id="i:in" type="target" :position="data.vertical ? Position.Top : Position.Left" class="h h-run" :connectable="false" />
+      <Handle id="o:out" type="source" :position="data.vertical ? Position.Bottom : Position.Right" class="h h-run" :connectable="false" />
       <div class="run">
         <Transition name="swap" mode="out-in">
           <span :key="`${step?.status}:${progress?.label ?? ''}`" class="detail" :class="{ err: step?.status === 'failed' }" :title="skipWarning || detail">{{ detail }}</span>
@@ -131,6 +142,57 @@ const detail = computed(() => {
   width: 3px;
   border-radius: 0 3px 3px 0;
   background: var(--lane);
+}
+.ord {
+  flex: none;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  background: var(--bg-sunken);
+  box-shadow: var(--hairline);
+}
+.st-running {
+  animation: node-pulse 1.8s ease-in-out infinite;
+}
+@keyframes node-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--st-running) 35%, transparent), var(--shadow-1);
+  }
+  50% {
+    box-shadow: 0 0 0 2.5px var(--st-running), var(--shadow-1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .st-running {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--st-running), var(--shadow-1);
+  }
+}
+.m-peek {
+  width: 208px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 56px;
+  padding: 0 12px 0 16px;
+}
+.m-peek .name {
+  flex: 1;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.peek-ic {
+  flex: none;
+  color: var(--lane);
 }
 .lane-gpu {
   --lane: var(--lane-gpu);

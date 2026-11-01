@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useEventListener } from '@vueuse/core'
-import { ImageOff, Pencil, Play, RotateCw, TriangleAlert, X } from '@lucide/vue'
+import { ArrowLeft, ImageOff, List, Maximize2, Minimize2, Network, Pencil, Play, RotateCw, TriangleAlert, X } from '@lucide/vue'
 import type { RecipeDetail, RecipeInfo } from '@/api/types'
 import RecipeDemoImage from './RecipeDemoImage.vue'
 import LaneTag from './LaneTag.vue'
 import FlowCanvas from './flow/FlowCanvas.vue'
-import { buildEditorGraph } from '@/composables/graph'
+import { buildEditorGraph, parts, splitRef } from '@/composables/graph'
+import { kindName, LANE_LABEL } from '@/composables/format'
 import { exportLabels, forgetRecipeDetail, recipeDemo, recipeDetail, recipeOutputs, requiredInputs, type RecipeDemo } from '@/composables/recipePeek'
 import { useFocusTrap } from '@/composables/focusTrap'
 import { useKinds } from '@/stores/catalog'
@@ -51,7 +52,42 @@ watch(
   { immediate: true }
 )
 
-const graph = computed(() => (detail.value && kinds.loaded ? buildEditorGraph(detail.value.doc, kinds.byKind, [], null, true) : null))
+const view = ref<'flow' | 'list'>('flow')
+const full = ref(false)
+const selectedId = ref<string | null>(null)
+watch(
+  () => props.recipe?.id,
+  () => {
+    selectedId.value = null
+    view.value = 'flow'
+  }
+)
+
+const graph = computed(() => (detail.value && kinds.loaded ? buildEditorGraph(detail.value.doc, kinds.byKind, [], selectedId.value, true) : null))
+const stepDocs = computed(() => detail.value?.doc.steps ?? [])
+const selectedIndex = computed(() => stepDocs.value.findIndex((s) => s.id === selectedId.value))
+const selected = computed(() => (selectedIndex.value >= 0 ? stepDocs.value[selectedIndex.value]! : null))
+const selectedInfo = computed(() => (selected.value ? kinds.byKind.get(selected.value.kind) : undefined))
+const selectedOuts = computed(() => Object.keys(selectedInfo.value?.out ?? {}).filter((k) => k !== '*'))
+const selectedParams = computed(() =>
+  Object.entries(selected.value?.params ?? {})
+    .slice(0, 8)
+    .map(([k, v]) => [k, (typeof v === 'string' ? v : JSON.stringify(v)).slice(0, 80)] as const)
+)
+function sourceLabel(p: string): string {
+  const src = splitRef(p)[0]
+  return src === 'inputs' ? 'đầu vào quy trình' : `bước ${stepDocs.value.findIndex((s) => s.id === src) + 1}`
+}
+const selectedInputs = computed(() => Object.entries(selected.value?.in ?? {}).map(([port, b]) => [port, parts(b).map(sourceLabel).join(', ')] as const))
+function select(id: string | null): void {
+  if (id === null || stepDocs.value.some((s) => s.id === id)) selectedId.value = id
+}
+function stepBy(delta: number): void {
+  const n = stepDocs.value.length
+  if (!n) return
+  const i = selectedIndex.value < 0 ? (delta > 0 ? 0 : n - 1) : Math.min(n - 1, Math.max(0, selectedIndex.value + delta))
+  selectedId.value = stepDocs.value[i]!.id
+}
 const needs = computed(() => (props.recipe ? requiredInputs(props.recipe) : []))
 const outputs = computed(() => (detail.value ? recipeOutputs(detail.value, kinds.byKind) : []))
 const exportTags = computed(() => exportLabels(props.recipe))
@@ -62,7 +98,13 @@ useEventListener(document, 'keydown', (e: KeyboardEvent) => {
   if (trap.onTab(e)) return
   if (e.key === 'Escape') {
     e.preventDefault()
-    emit('close')
+    if (selectedId.value) selectedId.value = null
+    else emit('close')
+    return
+  }
+  if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !(e.target instanceof HTMLInputElement)) {
+    e.preventDefault()
+    stepBy(e.key === 'ArrowRight' ? 1 : -1)
   }
 })
 </script>
@@ -71,7 +113,7 @@ useEventListener(document, 'keydown', (e: KeyboardEvent) => {
   <Teleport to="body">
     <Transition name="qv">
       <div v-if="recipe" ref="root" class="scrim" role="dialog" aria-modal="true" aria-labelledby="qv-title" @click.self="emit('close')">
-        <section class="sheet">
+        <section class="sheet" :class="{ full }">
           <header class="head">
             <div class="who">
               <h2 id="qv-title" class="headline">{{ recipe.name }}</h2>
@@ -79,15 +121,56 @@ useEventListener(document, 'keydown', (e: KeyboardEvent) => {
             </div>
             <button type="button" class="btn btn-plain" @click="emit('edit', recipe.id)"><Pencil /> Sửa</button>
             <button type="button" class="btn btn-primary" @click="emit('run', recipe.id)"><Play /> Chạy</button>
+            <button type="button" class="btn btn-plain btn-icon" :aria-label="full ? 'Thu nhỏ' : 'Toàn màn hình'" :title="full ? 'Thu nhỏ' : 'Toàn màn hình'" @click="full = !full"><component :is="full ? Minimize2 : Maximize2" /></button>
             <button ref="closeBtn" type="button" class="btn btn-plain btn-icon" aria-label="Đóng (Esc)" title="Đóng (Esc)" @click="emit('close')"><X /></button>
           </header>
           <div class="body">
             <section class="flow" aria-label="Sơ đồ các bước">
-              <FlowCanvas v-if="graph" :id="`qv-${recipe.id}`" :nodes="graph.nodes" :edges="graph.edges" :fit-key="recipe.id" :min-fit-zoom="0.4" :minimap="false" />
+              <template v-if="graph">
+                <FlowCanvas v-show="view === 'flow'" :id="`qv-${recipe.id}`" :nodes="graph.nodes" :edges="graph.edges" :fit-key="recipe.id" :focus-id="selectedId" :min-fit-zoom="0.75" scroll-pan :minimap="false" @node-click="select" @pane-click="select(null)" />
+                <ol v-if="view === 'list'" class="steps">
+                  <li v-for="(s, i) in stepDocs" :key="s.id">
+                    <button type="button" class="row" :class="{ on: s.id === selectedId }" @click="select(s.id)">
+                      <span class="ord num">{{ i + 1 }}</span>
+                      <span class="rname">{{ kindName(s.kind) === s.kind ? (kinds.byKind.get(s.kind)?.label ?? s.kind) : kindName(s.kind) }}</span>
+                      <span class="caption">{{ LANE_LABEL[kinds.byKind.get(s.kind)?.lane ?? 'cpu'] }}</span>
+                    </button>
+                  </li>
+                </ol>
+                <div class="seg" role="group" aria-label="Kiểu xem">
+                  <button type="button" :class="{ on: view === 'flow' }" title="Sơ đồ" aria-label="Sơ đồ" @click="view = 'flow'"><Network :size="15" /></button>
+                  <button type="button" :class="{ on: view === 'list' }" title="Danh sách" aria-label="Danh sách" @click="view = 'list'"><List :size="15" /></button>
+                </div>
+              </template>
               <span v-else-if="error" class="caption state err"><TriangleAlert :size="14" /> {{ error }} <button type="button" class="btn btn-plain" @click="load(recipe)"><RotateCw /> Thử lại</button></span>
               <span v-else class="skel fill" />
             </section>
-            <aside class="side">
+            <aside v-if="selected" class="side">
+              <button type="button" class="btn btn-plain back" @click="select(null)"><ArrowLeft /> Cả quy trình</button>
+              <h3 class="headline step-title">{{ selectedIndex + 1 }}. {{ kindName(selected.kind) === selected.kind ? (kinds.byKind.get(selected.kind)?.label ?? selected.kind) : kindName(selected.kind) }}</h3>
+              <p class="tags meta">
+                <LaneTag :lane="selectedInfo?.lane ?? 'cpu'" />
+                <span class="chip">{{ selected.kind }}</span>
+                <span v-if="selected.map || selected.map_param" class="chip">Chạy lặp theo {{ selected.map ?? selected.map_param }}</span>
+              </p>
+              <h3 class="section-label">Đầu vào</h3>
+              <dl class="kv">
+                <template v-for="[k, v] in selectedInputs" :key="k"><dt>{{ k }}</dt><dd>{{ v }}</dd></template>
+                <span v-if="!selectedInputs.length" class="caption">Không có</span>
+              </dl>
+              <h3 class="section-label">Đầu ra</h3>
+              <p class="tags">
+                <span v-for="o in selectedOuts" :key="o" class="chip">{{ o }}</span>
+                <span v-if="!selectedOuts.length" class="caption">—</span>
+              </p>
+              <h3 class="section-label">Tham số chính</h3>
+              <dl class="kv">
+                <template v-for="[k, v] in selectedParams" :key="k"><dt>{{ k }}</dt><dd>{{ v }}</dd></template>
+                <span v-if="!selectedParams.length" class="caption">Mặc định</span>
+              </dl>
+              <p class="caption hint">← → chuyển bước · Esc bỏ chọn</p>
+            </aside>
+            <aside v-else class="side">
               <p class="caption desc selectable">{{ recipe.description || 'Chưa có mô tả.' }}</p>
               <h3 class="section-label">Demo</h3>
               <div class="demo checker">
@@ -129,8 +212,11 @@ useEventListener(document, 'keydown', (e: KeyboardEvent) => {
   background: rgba(0, 0, 0, 0.32);
 }
 .sheet {
-  width: min(1040px, 100%);
-  height: min(640px, 100%);
+  width: min(1600px, 90vw);
+  height: min(88vh, 100%);
+  transition:
+    width var(--t-base) var(--ease-out),
+    height var(--t-base) var(--ease-out);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   background: var(--bg-elevated);
@@ -150,9 +236,13 @@ useEventListener(document, 'keydown', (e: KeyboardEvent) => {
   min-width: 0;
   display: grid;
 }
+.sheet.full {
+  width: 100%;
+  height: 100%;
+}
 .body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   min-height: 0;
 }
 .flow {
@@ -166,6 +256,103 @@ useEventListener(document, 'keydown', (e: KeyboardEvent) => {
   gap: 6px;
   padding: 14px;
   overflow-y: auto;
+}
+.steps {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 12px;
+  list-style: none;
+  overflow-y: auto;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease-out);
+}
+.row:hover {
+  background: var(--bg-sunken);
+}
+.row.on {
+  background: var(--accent-soft);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+.rname {
+  flex: 1;
+  min-width: 0;
+}
+.ord {
+  flex: none;
+  min-width: 22px;
+  height: 22px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 11px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  background: var(--bg-sunken);
+  box-shadow: var(--hairline);
+}
+.seg {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  display: flex;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-2), var(--hairline);
+}
+.seg button {
+  width: 30px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.seg button.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.back {
+  align-self: flex-start;
+}
+.step-title {
+  margin: 4px 0 0;
+}
+.kv {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 10px;
+  margin: 0;
+  font-size: var(--fs-callout);
+}
+.kv dt {
+  font-family: var(--mono);
+  color: var(--text-3);
+}
+.kv dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.hint {
+  margin-top: auto;
 }
 .side .section-label {
   margin: 8px 0 0;
@@ -280,6 +467,8 @@ useEventListener(document, 'keydown', (e: KeyboardEvent) => {
 @media (prefers-reduced-motion: reduce) {
   .qv-enter-active .sheet,
   .qv-leave-active .sheet,
+  .sheet,
+  .row,
   .skel {
     transition: none;
     animation: none;
