@@ -1415,3 +1415,29 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [x] runner: map+map_param không item, không value → bỏ qua lane/boot ComfyUI (test fail trên code cũ, pass mới); commit c9a1f7c.
 - [x] room-kit WFC: propagate/collapse sang bitset int + memo support/entropy, entropy cập nhật theo ô đổi; output trùng 100% bản cũ (30 ca seed), 10 kiểu phòng 48x32: 13.6s → 1.3s; test room-kit 55 pass.
 - [x] Kết phiên chạy bù: pytest 1292 pass / 5 skip, gen_agent_docs --check OK. Handoff mới: .planning/HANDOFF-2026-11-01-0517.md
+
+## Phiên 2026-11-01 — manager-work-agent (lượt 8 live)
+- Chủ nhân: làm cả 3 (live kiểm, xem app, D1/D3/D4/D5 GPU); commit từng phần, không push. Plan: .planning/PLAN-2026-11-01-r8-live.md
+- [~] Đợt 1 giao (sonnet, chạy nền): L1 D7 Unity đo cloth (r8-d7-unity) · L2 mở Godot/Unity #59/#60/#63/#64/#65 (r8-godot, r8-unity) · G1 D1 tile-animated GPU (.gpu-lock). Đợt 2: L3 Blender #61/#64 + L4 app + G3; đợt 3: G4 + G5.
+- [x] L1 D7 Unity thật: cape 4 xương run-stop 104°→64.5°, tắt 5.6→2.0s, walk 7.4°; váy girl 2–3 xương 43–56°/1.5–1.9s (walk 0.3–0.5°, clip walk girl ít chuyển váy); tóc không đổi 8–10°. Preset cloth 0.8/90/0.9, taper limit 0.25, inertia min 0.3; op version 4; pytest 17 pass; commit 8a432c9.
+- [~] L4 app xem bằng mắt giao (sonnet, nền).
+- [~] G1 D1 xong code: Wan live seam 0.3675 (≥0.3, cũ 0.159) lần 1 đạt; retry candidate → fallback CPU (torch chỉ động vùng lửa), op tile_animate v3; pytest 17 pass; review sonnet đang chạy trước commit. QA: scratchpad 408df401…/g1/.
+- [~] L3 Blender #61 LOD + #64 toon render giao (sonnet, .gpu-lock).
+- [~] G1 review sonnet: 2 lỗi vừa (mask lửa rỗng → tile tĩnh; layer both + kind ngoài CPU_KINDS ném lỗi) + 3 thấp → G1 vòng sửa (SendMessage).
+- [x] G1 D1 tile-animated — live seam 0.3675; retry → CPU fallback, torch mask lửa (rỗng → lava toàn tile + warning), autotile both với kind Wan; review sonnet 2 vừa đã sửa; pytest 20 pass; commit 58f621f.
+- [x] L3 Blender live (không đổi code): #61 rock/ring/barrel LOD1=50% tri, IoU ≥0.95 (ring L3 0.9501 sát), hull/mesh ≤1.4 (ring auto multi_hull 1.18); weld không giảm tri nhưng giúp đo closed + pin nhẹ (barrel IoU tắt weld 0.53). #64 Blender toon 3/4 band OK; outline nằm ở shader engine chưa nhìn. pytest lod+toon3d 31 pass/1 skip. QA scratchpad 408df401…/l3/.
+- [~] G3 D3 spine-face giao (sonnet, .gpu-lock). Outline toon3d engine → gộp vào kiểm L2/sau.
+- [x] L2 engine live (không đổi code): #59/#63/#65/#60 Godot 4.7.2 + Unity 6000.3.27f1 OK; #60 girl frame 0 lệch 0px (Godot+Unity); #64 Unity Toon3D shader 4 pass 0 lỗi URP. pytest 116 pass. Còn: outline toon nhìn bằng mắt với GLB thật; nợ cũ #60 SpriteSkin weights, slot color timeline 'hurt'.
+- [~] G4 D4 decal crack giao (sonnet, chờ .gpu-lock sau G3).
+- [~] Chủ nhân yêu cầu thêm (giao vào L4): bỏ chữ cụt '...' (nút Xuất…/Dùng tiếp cho…, title recipe list) + màn Quy trình hover popover tóm tắt + nút mắt xem nhanh (sơ đồ bước + demo output mẫu/lượt chạy gần nhất).
+- [~] G4 D4 decal: std bề rộng 1.30→3.19 / 2.04→2.80, nhánh 0→12/9, op DecalPack v2, CPU-only (không cần GPU), pytest 14 pass. Main xem ảnh: ngọn nhánh trắng sáng → vòng sửa (SendMessage).
+- [x] G4 D4 decal crack — width std 1.30→3.19, nhánh cong cùng màu nét (main xem ảnh, hết ngọn trắng); DecalPack v2; pytest 15 pass; commit 1098e94.
+- [~] G5 D5 ui-kit runes chừa vùng chữ giao (sonnet, .gpu-lock).
+- [x] L4 app xem bằng mắt: StyleLockReport OK (+title), BundleMenu Toon tràn đáy → lật lên/max-height (lỗi thật), chip allow_fail OK; A nhãn 'Xuất tệp'/'Dùng tiếp cho', title recipe 2 dòng; B RecipePeek hover + RecipeQuickView (FlowCanvas + demo từ doc.preview/run gần nhất). typecheck sạch; commit e05a4c5. Ảnh scratchpad 408df401…/l4/.
+- [~] L5 giao (sonnet): core listRuns recipe_id + RecipeInfo exports/preview + ảnh demo thật từ data/ cho recipe có sẵn + nhãn VN cảnh báo allow_fail; app dùng chúng, rà nốt chữ cụt (bước trên thẻ, node sơ đồ, nhãn cạnh chồng, RunRow/StepChip/PageHeader/Sidebar/Gates/Projects), ẩn tuỳ chọn 2D khi xuất GLB.
+- [x] L5 — 9/90 recipe có demo thật (WebP ≤50KB từ run thật, 81 chưa có output → để trống), GET /runs?recipe_id + /recipes/{id}/preview (chặn thoát thư mục), RecipeInfo exports; app chip xuất, nhãn VN allow_fail, chữ cụt → xuống dòng + tooltip, nhãn cạnh chồng ẩn tới hover, ẩn PPU/lọc pixel cho GLB. pytest l5 6 pass, full 1309 pass (trừ file đang sửa), typecheck sạch; commit a4265d6 (core) + ad75915 (app). Ảnh scratchpad 408df401…/l5/. Nợ: QuickView sơ đồ dài neo trái.
+- [~] L6 giao (sonnet): QuickView sơ đồ dài tự fit/căn giữa (zoom tối thiểu đọc được, prop riêng không phá RunDetail/editor). Đã dừng 3 agent treo nền (L3, G4, L5).
+- [x] G3 D3 spine-face — mày sad/angry mẩu rời 2→0 (girl), live pirate (mũ), archer (mũ che mày → ẩn mày), profile (1 mắt); plan/build v3; main sửa test cloth cũ theo D7 (walk 2 xương 2.6°, ngưỡng >2); pytest 49 pass; commit 123df97. Nợ: mày dưới mũ Klein vẽ nhạt; profile miệng có thể ra mép mặt.
+- [~] G5 D5 ui-kit: vùng chữ std brass 15.4→2.2 (lọc), runes/candy prompt mới sạch 1.4/0.6; NineSlice v2; pytest 27 pass. Main xem ảnh: mảng lọc cạnh cứng lộ → vòng sửa feather (SendMessage).
+- [x] L6 QuickView sơ đồ dài: xếp dải ≤5 cột + auto-fit (min zoom 0.4), nút ⛶ dùng chung frame(); RunDetail/editor không đổi; typecheck sạch; commit ab64326. Ảnh scratchpad 408df401…/l6/.
+- [x] G5 D5 ui-kit — mask cosine feather, brass 15.4→4.1 không còn mảng vá; commit 6f9a091. Kết đợt: full pytest 1320 pass / 5 skip, gen_agent_docs OK. Handoff: .planning/HANDOFF-2026-11-01-live.md
