@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFilter
 from ..contracts import Outputs, StepContext, StepError, StepResult
 from . import spine_runtime as rt
 from .executors import OpExecutor, _images_in, _put_png
+from .frame_data import label_sparse
 from .rig import _put_json, _read_json
 from .spine_anim import _member_spans
 from .spine_physics import _tokens
@@ -53,6 +54,9 @@ PROMPT = ("Cartoon character face, front view. In the masked area draw {what}. M
 GROW = 4
 FEATHER = 3.0
 WORK = 768
+# Klein draws extra brow strokes inside the padded brow hole: a live "sad" brow had 3 detached bits of 14 to 58 work px
+# beside brows of about 1500 px; a real brow piece is at least a quarter of its brow's main stroke.
+STRAY_SHARE = 0.25
 
 
 def parse_emotions(raw: Any) -> list[str]:
@@ -289,7 +293,11 @@ def occluder(hole: np.ndarray, cores: list[tuple[float, ...]], ink: np.ndarray, 
             feat = np.median(rgb[own], 0)
             if np.linalg.norm(hair - feat) > 40:
                 dh = np.linalg.norm(rgb - hair, axis=2)
-                allowed |= own & (dh < np.linalg.norm(rgb - feat, axis=2)) & (dh < 48)
+                df = np.linalg.norm(rgb - feat, axis=2)
+                allowed |= own & (dh < df) & (dh < 48)
+                # The brow's tip past Claude's box reaches the hair at the hole edge and would be kept as hair.
+                tip = _flood(own, ((hole | ring) & ink) & (df < dh) & (df < 40))
+                allowed &= ~_dilate(tip, blur)
     out = _flood(ring, allowed) & hole
     return _dilate(out, blur) & hole if out.sum() >= 20 else np.zeros_like(hole)
 
@@ -373,7 +381,7 @@ def feature_holes(work: Image.Image, boxes: dict[str, Any], scale: float = 1.0) 
             cols = np.zeros(alpha.shape[1], bool)
             lo = int(max(0, min(bb[0], eb[0]) - 0.3 * (eb[2] - eb[0])))
             cols[lo:int(max(bb[2], eb[2]) + 0.3 * (eb[2] - eb[0])) + 1] = True
-            brow_hole &= ~((rows >= split - SPLIT) & cols[None, :])
+            brow_hole &= ~((rows >= split + SPLIT) & cols[None, :])
             eye_hole &= ~((rows <= split + SPLIT) & cols[None, :])
     brow_hole &= ~_dilate(eye_hole, 2)
 
@@ -421,6 +429,18 @@ def feature_holes(work: Image.Image, boxes: dict[str, Any], scale: float = 1.0) 
     if skipped:
         out_boxes["skipped"] = skipped
     return FaceHoles(holes, out_boxes, keep, ink, skipped)
+
+
+def _drop_strays(edit: Image.Image, hole: np.ndarray, fh: FaceHoles, alpha: np.ndarray) -> Image.Image:
+    e = np.asarray(edit.convert("RGB"), np.float64)
+    bad = stray_strokes(e, hole, [tuple(b) for b in fh.boxes.get("brow") or []], fh.ink, alpha)
+    if not bad.any():
+        return edit
+    ring = _dilate(hole, 6) & ~hole & ~fh.ink & alpha
+    skin = np.median(e[ring], 0)
+    fill = _dilate(bad, 2) & hole
+    e[fill] = skin
+    return Image.fromarray(np.clip(e + 0.5, 0, 255).astype(np.uint8), "RGB")
 
 
 def _mask_of(boxes: list[tuple[float, ...]], shape: tuple[int, ...]) -> np.ndarray:
@@ -499,7 +519,7 @@ def _located(raw: Any) -> dict[str, Any]:
 class SpineFacePlan(OpExecutor):
     """One Klein inpaint input + prompt per expression from the located features."""
     kind = "op.spine_face_plan"
-    version = "2"
+    version = "3"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         from .spine_ref import region_images
@@ -545,6 +565,36 @@ def tone_match(edit: Image.Image, work: Image.Image, hole: np.ndarray) -> Image.
     w = np.asarray(Image.fromarray((grown * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(2)), np.float64)
     out = e + (w / 255)[..., None] * delta
     return Image.fromarray(np.clip(out + 0.5, 0, 255).astype(np.uint8), "RGB")
+
+
+def stray_strokes(edit: np.ndarray, hole: np.ndarray, anchors: list[tuple[float, ...]], ink: np.ndarray,
+                  alpha: np.ndarray) -> np.ndarray:
+    """Ink of the inpainted `edit` (RGB, work canvas) inside `hole` that is a detached bit beside the feature's main
+    stroke: a connected piece under STRAY_SHARE of the largest piece nearest the same anchor box, not touching the
+    original line art around the hole (hair the edit continues is not a stray)."""
+    ring = _dilate(hole, 6) & ~hole & alpha
+    if (ring & ~ink).sum() < 10:
+        return np.zeros_like(hole)
+    skin = np.median(edit[ring & ~ink], 0)
+    fresh = hole & (np.linalg.norm(edit - skin, axis=2) > 48)
+    labels = label_sparse(fresh)
+    n = int(labels.max())
+    if n < 2 or not anchors:
+        return np.zeros_like(hole)
+    centres = np.array([[(b[0] + b[2]) / 2, (b[1] + b[3]) / 2] for b in anchors])
+    outside = _dilate(~hole & ink, 1)
+    owner, area, touches = {}, {}, {}
+    for k in range(1, n + 1):
+        ys, xs = np.nonzero(labels == k)
+        owner[k] = int(np.argmin(np.hypot(centres[:, 0] - xs.mean(), centres[:, 1] - ys.mean())))
+        area[k] = len(xs)
+        touches[k] = bool(outside[ys, xs].any())
+    main = {o: max(a for k, a in area.items() if owner[k] == o) for o in set(owner.values())}
+    out = np.zeros_like(hole)
+    for k in range(1, n + 1):
+        if area[k] < STRAY_SHARE * main[owner[k]] and not touches[k]:
+            out |= labels == k
+    return out
 
 
 def group_alpha(hole: np.ndarray, head_alpha: np.ndarray, keep: np.ndarray | None = None) -> np.ndarray:
@@ -802,7 +852,7 @@ def placement_error(doc: dict[str, Any], plan: dict[str, Any], placed: dict[str,
 class SpineFaceBuild(OpExecutor):
     """Expression attachments cut from the inpaints, face slots + animations, the atlas page extended, QA sheet."""
     kind = "op.spine_face_build"
-    version = "2"
+    version = "3"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         from .spine import PLAYER_VERSION, compare, preview_html, validate_skeleton
@@ -937,6 +987,8 @@ class SpineFaceBuild(OpExecutor):
             if edit.size != wsize:
                 edit = edit.resize(wsize, Image.Resampling.LANCZOS)
             edit = tone_match(edit, work, holes[g])
+            if g == "brow":
+                edit = _drop_strays(edit, holes[g], fh, head_alpha > 0.78)
             cut = native_patch(edit, alphas[g], s, size)
             if cut is None:
                 continue

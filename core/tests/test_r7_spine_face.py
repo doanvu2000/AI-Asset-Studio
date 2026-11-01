@@ -451,11 +451,12 @@ def test_cloth_preset_swings_more_and_long_chains_stay_bounded(tmp_path: Path) -
     tips = {}
     for seg in (2, 4):
         new, _ = ph.add_physics(auto_rig(), segments=seg)
-        assert [c["damping"] for c in new["physics"]][:2] == [0.95, 0.935]
+        assert [c["damping"] for c in new["physics"]][:2] == [0.9, 0.885]
         sk = tmp_path / f"hero{seg}.json"
         sk.write_text(json.dumps(new), encoding="utf-8")
         out = subprocess.run(["node", str(script), SPINE_CORE.as_uri(), str(sk), str(atlas)], capture_output=True,
                              text=True, timeout=60, check=False)
         assert out.returncode == 0, out.stderr
         tips[seg] = max(json.loads(out.stdout)["swing"].values())
-    assert tips[2] > 8 and tips[4] < 90, tips
+    # D7 (8a432c9) stiffened cloth to cap run-stop swing at ~65°, so a 2-bone walk sways ~2.6° instead of ~9°.
+    assert tips[2] > 2 and tips[4] < 90, tips
