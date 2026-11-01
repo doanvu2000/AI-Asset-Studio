@@ -170,13 +170,13 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
     :disabled="starting"
     aria-haspopup="menu"
     :aria-expanded="open"
-    :aria-label="compact ? 'Dùng tiếp cho…' : undefined"
+    :aria-label="compact ? 'Dùng tiếp cho' : undefined"
     title="Dùng kết quả này làm đầu vào cho quy trình khác"
     @click="open ? close() : show()"
   >
     <LoaderCircle v-if="starting" class="spin" />
     <Forward v-else />
-    <span v-if="!compact">Dùng tiếp cho…</span>
+    <span v-if="!compact">Dùng tiếp cho</span>
     <ChevronDown v-if="!compact" :size="13" class="chev" :class="{ up: open }" aria-hidden="true" />
   </button>
   <Teleport to="body">

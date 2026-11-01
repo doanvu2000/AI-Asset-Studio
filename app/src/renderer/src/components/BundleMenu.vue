@@ -22,7 +22,7 @@ const open = ref(false)
 const active = ref(0)
 const button = ref<HTMLButtonElement | null>(null)
 const menu = ref<HTMLElement | null>(null)
-const pos = ref({ left: 0, top: 0 })
+const pos = ref<{ left: number; top?: number; bottom?: number; maxHeight: number }>({ left: 0, top: 0, maxHeight: 0 })
 
 watch(
   () => props.stepId,
@@ -209,11 +209,17 @@ const itemId = (i: number): string => `${uid}-it-${i}`
 async function show(): Promise<void> {
   const r = button.value?.getBoundingClientRect()
   if (!r) return
-  pos.value = { left: Math.min(r.left, window.innerWidth - 288), top: r.bottom + 4 }
+  const left = Math.min(r.left, window.innerWidth - 288)
+  const below = window.innerHeight - r.bottom - 12
+  // Toon options make the menu ~400px tall: flip above the button when the space below is the smaller one.
+  pos.value =
+    below < 420 && r.top - 12 > below
+      ? { left, bottom: window.innerHeight - r.top + 4, maxHeight: r.top - 12 }
+      : { left, top: r.bottom + 4, maxHeight: below }
   active.value = 0
   open.value = true
   await nextTick()
-  menu.value?.focus()
+  menu.value?.focus({ preventScroll: true })
 }
 
 function close(refocus = true): void {
@@ -262,7 +268,7 @@ function onKey(e: KeyboardEvent): void {
 
 onClickOutside(menu, () => close(false), { ignore: [button] })
 useEventListener(window, 'resize', () => close(false))
-useEventListener(window, 'scroll', () => close(false), { capture: true, passive: true })
+useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node) && close(false), { capture: true, passive: true })
 </script>
 
 <template>
@@ -294,7 +300,7 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
           tabindex="-1"
           aria-label="Xuất cho engine"
           :aria-activedescendant="itemId(active)"
-          :style="{ left: `${pos.left}px`, top: `${pos.top}px` }"
+          :style="{ left: `${pos.left}px`, top: pos.top === undefined ? undefined : `${pos.top}px`, bottom: pos.bottom === undefined ? undefined : `${pos.bottom}px`, maxHeight: `${pos.maxHeight}px` }"
           @keydown="onKey"
         >
           <p class="b-head caption">{{ opts?.sprite_sheet ? 'Sheet + từng khung, thứ tự hướng theo engine' : 'Xuất thư mục' }}</p>
@@ -539,6 +545,8 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
   font-size: var(--fs-body);
   color: var(--text);
   outline: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   transform-origin: top left;
 }
 .b-head {

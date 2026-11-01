@@ -46,12 +46,12 @@ const offTitle = 'Chỉ dùng được trong app desktop'
       :class="{ 'btn-icon': compact }"
       :disabled="!file.available || !!file.busy.value"
       :title="file.available ? 'Lưu một bản sao vào thư mục bạn chọn' : offTitle"
-      :aria-label="compact ? 'Xuất…' : undefined"
+      :aria-label="compact ? 'Xuất tệp' : undefined"
       @click="file.saveAs(hash, name)"
     >
       <LoaderCircle v-if="file.busy.value === 'save'" class="spin" />
       <Download v-else />
-      <span v-if="!compact">Xuất…</span>
+      <span v-if="!compact">Xuất tệp</span>
     </button>
     <BundleMenu v-if="bundleStep && file.available" :step-id="bundleStep" :name="version?.asset_name.trim() || undefined" :compact="compact" />
     <EnginePreview v-if="bundleStep && file.available" :step-id="bundleStep" :name="version?.asset_name.trim() || undefined" :compact="compact" />

@@ -113,7 +113,7 @@ const warnings = computed(() => (data.value?.warnings ?? []).filter((w) => typeo
             <td class="c-img">
               <span v-if="r.blob" class="th checker"><BlobThumb :blob="r.blob" :size="96" /></span>
             </td>
-            <td class="name selectable">{{ r.name }}</td>
+            <td class="name selectable" :title="r.name">{{ r.name }}</td>
             <td class="c-num num">{{ r.score }}</td>
             <td>
               <span v-for="f in r.flags" :key="f" class="flag">{{ f }}</span>

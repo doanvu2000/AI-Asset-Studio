@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { BookOpen, Copy, Pencil, Plus, RotateCw } from '@lucide/vue'
+import { BookOpen, Copy, Eye, Pencil, Plus, RotateCw } from '@lucide/vue'
 import type { RecipeInfo } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RecipeThumb from '@/components/RecipeThumb.vue'
 import LaneTag from '@/components/LaneTag.vue'
+import RecipePeek from '@/components/RecipePeek.vue'
+import RecipeQuickView from '@/components/RecipeQuickView.vue'
 import { stepName } from '@/composables/format'
 import { useRecipes } from '@/stores/recipes'
 import { useConnection } from '@/stores/connection'
@@ -28,6 +30,27 @@ const SOURCE: Record<string, { label: string; tone: string } | undefined> = {
 }
 const sorted = computed(() => [...recipes.list].sort((a, b) => a.name.localeCompare(b.name, 'vi')))
 const flow = (r: RecipeInfo) => [...new Set(r.steps.map((s) => stepName(s)))].join(' · ')
+const PEEK_DELAY_MS = 300
+const peek = ref<{ recipe: RecipeInfo; anchor: DOMRect } | null>(null)
+const quick = ref<RecipeInfo | null>(null)
+let peekTimer = 0
+// Moving between cards while a popover is open swaps it at once; the delay only guards the first open.
+function peekOn(r: RecipeInfo, e: Event): void {
+  if (quick.value) return
+  const anchor = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  window.clearTimeout(peekTimer)
+  if (peek.value) peek.value = { recipe: r, anchor }
+  else peekTimer = window.setTimeout(() => (peek.value = { recipe: r, anchor }), PEEK_DELAY_MS)
+}
+function peekOff(): void {
+  window.clearTimeout(peekTimer)
+  peek.value = null
+}
+function openQuick(r: RecipeInfo): void {
+  peekOff()
+  quick.value = r
+}
+onBeforeUnmount(() => window.clearTimeout(peekTimer))
 const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((l) => l && l !== 'none'))]
 </script>
 
@@ -50,15 +73,15 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
           <button v-if="recipes.error" class="btn" @click="recipes.load(true)"><RotateCw /> Thử lại</button>
         </EmptyState>
         <div v-else v-auto-animate class="grid">
-          <article v-for="r in sorted" :key="r.id" class="rc card">
+          <article v-for="r in sorted" :key="r.id" class="rc card" @mouseenter="peekOn(r, $event)" @mouseleave="peekOff" @focusin="peekOn(r, $event)" @focusout="peekOff" @keydown.esc="peekOff">
             <RouterLink :to="`/recipes/${encodeURIComponent(r.id)}`" class="rc-main">
               <RecipeThumb :id="r.id" :size="52" />
               <div class="rc-text">
                 <div class="rc-top">
-                  <h2 class="headline name">{{ r.name }}</h2>
+                  <h2 class="headline name" :title="r.name">{{ r.name }}</h2>
                   <span v-if="SOURCE[r.source ?? 'builtin']" class="badge" :class="SOURCE[r.source ?? 'builtin']!.tone">{{ SOURCE[r.source ?? 'builtin']!.label }}</span>
                 </div>
-                <p class="caption desc" :title="r.description">{{ flow(r) }}</p>
+                <p class="caption desc" :title="flow(r)">{{ flow(r) }}</p>
                 <div class="meta">
                   <span class="caption num">{{ r.steps.length }} bước</span>
                   <LaneTag v-for="l in lanes(r)" :key="l" :lane="l" />
@@ -66,6 +89,7 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
               </div>
             </RouterLink>
             <div class="rc-actions">
+              <button type="button" class="btn btn-plain" :aria-label="`Xem nhanh ${r.name}`" title="Xem nhanh: sơ đồ và demo" @click="openQuick(r)"><Eye /> Xem nhanh</button>
               <RouterLink :to="`/recipes/${encodeURIComponent(r.id)}`" class="btn btn-plain"><Pencil /> Sửa</RouterLink>
               <RouterLink :to="{ path: '/recipes/new', query: { from: r.id } }" class="btn btn-plain"><Copy /> Nhân bản</RouterLink>
             </div>
@@ -73,6 +97,17 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
         </div>
       </div>
     </div>
+    <Teleport to="body">
+      <Transition name="peek">
+        <RecipePeek v-if="peek" :key="peek.recipe.id" :recipe="peek.recipe" :anchor="peek.anchor" />
+      </Transition>
+    </Teleport>
+    <RecipeQuickView
+      :recipe="quick"
+      @close="quick = null"
+      @edit="(id) => router.push(`/recipes/${encodeURIComponent(id)}`)"
+      @run="(id) => router.push({ path: '/new', query: { recipe: id } })"
+    />
   </div>
 </template>
 
@@ -116,16 +151,18 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
 .name {
   flex: 1;
   min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.desc {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: 2.9em;
+  overflow-wrap: anywhere;
+}
+.desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 4.3em;
 }
 .meta {
   display: flex;
@@ -160,5 +197,25 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
 .rc-actions .btn {
   height: 28px;
   font-size: var(--fs-callout);
+}
+.rc-actions {
+  flex-wrap: wrap;
+}
+.peek-enter-active,
+.peek-leave-active {
+  transition:
+    opacity 150ms var(--ease-out),
+    transform 150ms var(--ease-out);
+}
+.peek-enter-from,
+.peek-leave-to {
+  opacity: 0;
+  transform: scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  .peek-enter-active,
+  .peek-leave-active {
+    transition: none;
+  }
 }
 </style>
