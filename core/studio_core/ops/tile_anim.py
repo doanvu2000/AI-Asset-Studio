@@ -40,10 +40,17 @@ LAYERS = ("auto", "a", "b", "both")
 CANVAS = {"480p": 672, "540p": 768, "720p": 960}
 # tile_report's seam_score is 100·exp(-0.35·(ratio - 1.1)) and passes at 70: the same ratio bounds an animated edge.
 SEAM_RATIO_MAX = round(1.1 + math.log(100 / 70) / 0.35, 3)
+# The r7 live waterfall looped at seam_similarity 0.159 and visibly jumped: below this the clip has no real repeat.
+LOOP_SIMILARITY_MIN = 0.3
+# A flame mask weaker than this (blue flame, flat image) would leave the torch frozen, so the whole tile moves instead.
+MASK_MIN = 0.05
+# Wan clip kinds without a clean repeat fall back to the CPU motion that reads closest; torch also gets a flame mask.
+FALLBACK = {"waterfall": ("water", "down"), "torch": ("lava", "none"), "custom": ("water", "none")}
 MOTION_WORDS = {"water": ("water", "sea", "ocean", "river", "lake", "pond", "swamp"),
                 "lava": ("lava", "magma", "fire"), "grass_wind": ("grass", "meadow", "field", "wheat", "bush")}
 VIDEO_PROMPTS = {
-    "torch": "the flames flicker and dance continuously, small embers rise and fade, warm firelight pulses softly",
+    "torch": "a wall torch mounted on the stone wall tile: only the flames flicker and dance, small embers rise and "
+             "fade, warm firelight pulses softly on the wall around it, the torch and the wall stay perfectly still",
     "waterfall": "water pours straight down continuously, white foam streaks and ripples stream downward",
     "custom": "",
 }
@@ -153,6 +160,28 @@ def cpu_frames(img: np.ndarray, kind: str, n: int, strength: float = 1.0, seed: 
             frame = frame * (1 + 0.1 * strength * np.clip(c, -1, 1) * (0.3 + 0.7 * lum_n))[..., None]
         out.append(np.clip(frame, 0, 1).astype(np.float32))
     return out
+
+
+def flame_mask(img: np.ndarray) -> np.ndarray:
+    """Soft mask of the bright warm pixels (a flame, glowing embers): the wall around a torch must not move."""
+    lum = _lum(img)
+    warm = np.clip((img[..., 0] - img[..., 2]) * 3, 0, 1)
+    hot = np.clip((lum - np.percentile(lum, 80)) / 0.15, 0, 1) * warm
+    return box_blur(box_blur(hot, 2), 2)
+
+
+def fallback_frames(base: np.ndarray, kind: str, n: int, strength: float, seed: int, cycles: int, pixel: bool
+                    ) -> tuple[list[np.ndarray], dict[str, Any]]:
+    motion, scroll = FALLBACK[kind]
+    frames = cpu_frames(base, motion, n, strength, seed, cycles, scroll, pixel)
+    used: dict[str, Any] = {"motion": motion, "scroll": scroll}
+    if kind == "torch":
+        mask = flame_mask(base)
+        if float(mask.max()) < MASK_MIN:
+            used["static_mask"] = True
+        else:
+            frames = [(base * (1 - mask[..., None]) + f * mask[..., None]).astype(np.float32) for f in frames]
+    return frames, used
 
 
 def seam_blend(frame: np.ndarray, band: float = 0.25) -> np.ndarray:
@@ -502,22 +531,40 @@ class TileAnimCandidates(OpExecutor):
 
 class TileAnimate(OpExecutor):
     kind = "op.tile_animate"
-    version = "2"
+    version = "3"
 
-    async def _clip(self, ctx: StepContext, inputs: Outputs) -> list[BlobRef]:
+    async def _clips(self, ctx: StepContext, inputs: Outputs) -> list[tuple[int, list[str]]]:
+        """(candidate number, frame hashes) with the picked clip first, then the other candidates as retries."""
         picked = _images_in(inputs, "picked")[0]
         doc = await _read_json(ctx, _images_in(inputs, "candidates")[0])
         cands = doc.get("candidates") if isinstance(doc, dict) else None
-        hit = next((c for c in cands or [] if c.get("preview") == picked.hash), None)
-        if hit is None:
+        if not any(c.get("preview") == picked.hash for c in cands or []):
             raise StepError("op_bad_input", "the picked image is not one of the candidate previews")
-        refs = []
-        for h in hit.get("frames") or []:
-            ref = await ctx.blobs.get(h)
-            if ref is None:
-                raise StepError("op_bad_input", f"frame blob {h[:12]} is missing")
-            refs.append(ref)
-        return refs
+        order = sorted(enumerate(cands), key=lambda e: e[1].get("preview") != picked.hash)
+        return [(i + 1, list(c.get("frames") or [])) for i, c in order]
+
+    async def _video(self, ctx: StepContext, inputs: Outputs, n: int, crossfade: float
+                     ) -> tuple[list[np.ndarray] | None, dict[str, Any]]:
+        attempts: list[dict[str, Any]] = []
+        clips = await self._clips(ctx, inputs)
+        for done, (number, hashes) in enumerate(clips):
+            if not hashes:
+                attempts.append({"candidate": number, "seam_similarity": None, "error": "no frames"})
+                ctx.log(f"candidate {number}: no frames", "warning")
+                continue
+            clip = []
+            for i, h in enumerate(hashes):
+                ref = await ctx.blobs.get(h)
+                if ref is None:
+                    raise StepError("op_bad_input", f"frame blob {h[:12]} is missing")
+                clip.append(seam_blend(_rgb(await _load(ctx, ref))))
+                ctx.progress(0.05 + 0.4 * (done + (i + 1) / len(hashes)) / len(clips), 1.0, "load")
+            frames, vrep = await asyncio.to_thread(video_loop, clip, n, crossfade)
+            attempts.append({"candidate": number, "seam_similarity": vrep["seam_similarity"]})
+            if vrep["seam_similarity"] >= LOOP_SIMILARITY_MIN:
+                return frames, vrep | {"attempts": attempts}
+            ctx.log(f"candidate {number}: seam similarity {vrep['seam_similarity']} < {LOOP_SIMILARITY_MIN}", "warning")
+        return None, {"attempts": attempts}
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         kind = _kind(params)
@@ -546,18 +593,25 @@ class TileAnimate(OpExecutor):
             frames = await asyncio.to_thread(cpu_frames, base, kind, n, strength, seed, cycles, scroll, pixel)
             report |= {"strength": strength, "cycles": cycles, "scroll": scroll, "seed": seed}
         else:
-            clip = []
-            refs = await self._clip(ctx, inputs)
-            for i, ref in enumerate(refs):
-                clip.append(seam_blend(_rgb(await _load(ctx, ref))))
-                ctx.progress(0.05 + 0.4 * (i + 1) / len(refs), 1.0, "load")
-            frames, vrep = await asyncio.to_thread(video_loop, clip, n, float(params.get("crossfade", 0.25)))
-            th, tw = base.shape[:2]
-            frames = [_rgb(wrap_resize(_to_img(f), tw, th, Image.Resampling.LANCZOS).convert("RGB")) for f in frames]
-            raw_seam = frame_check(frames)["seam_ratio"]
-            if _flag(params.get("edge_fix", True)):
-                frames = [close_wrap(f) for f in match_edge_tone(frames)]
-            report["video"] = vrep | {"seam_before_edge_fix": raw_seam}
+            frames, vrep = await self._video(ctx, inputs, n, float(params.get("crossfade", 0.25)))
+            if frames is None:
+                frames, used = await asyncio.to_thread(fallback_frames, base, kind, n, strength, seed, cycles, pixel)
+                tried = [a for a in vrep["attempts"] if a["seam_similarity"] is not None]
+                why = (f"seam similarity below {LOOP_SIMILARITY_MIN} in {len(tried)} candidate(s)" if tried
+                       else "every candidate came back with no frames")
+                note = f"no Wan clip looped ({why}); used the CPU {used['motion']} motion instead"
+                if used.get("static_mask"):
+                    note += "; no flame found in the tile, so the whole tile moves"
+                ctx.log(note, "warning")
+                report["fallback"] = {"note": note, **used, "attempts": vrep["attempts"]}
+            else:
+                th, tw = base.shape[:2]
+                frames = [_rgb(wrap_resize(_to_img(f), tw, th, Image.Resampling.LANCZOS).convert("RGB"))
+                          for f in frames]
+                raw_seam = frame_check(frames)["seam_ratio"]
+                if _flag(params.get("edge_fix", True)):
+                    frames = [close_wrap(f) for f in match_edge_tone(frames)]
+                report["video"] = vrep | {"seam_before_edge_fix": raw_seam}
         if pixel and doc is None and (pal := palette_of(base)) is not None:
             frames = [snap(f, pal) for f in frames]
         ctx.progress(0.6, 1.0, "check")
@@ -565,7 +619,12 @@ class TileAnimate(OpExecutor):
             layer = str(info.get("layer") or "a")
             a, b = autotile_parts(doc, await _autotile_atlas(ctx, doc, inputs))
             if layer == "both":
-                b_frames = await asyncio.to_thread(cpu_frames, b, kind, n, strength, seed + 101, cycles, scroll, pixel)
+                if kind in CPU_KINDS:
+                    b_frames = await asyncio.to_thread(cpu_frames, b, kind, n, strength, seed + 101, cycles, scroll,
+                                                       pixel)
+                else:
+                    b_frames = (await asyncio.to_thread(fallback_frames, b, kind, n, strength, seed + 101, cycles,
+                                                        pixel))[0]
                 a_frames = frames
             else:
                 a_frames = frames if layer == "a" else [a] * n

@@ -160,6 +160,23 @@ class FakeWan(FakeExec):
         return StepResult(outputs={"images": refs})
 
 
+class DriftWan(FakeWan):
+    """Clips that never repeat (fresh noise each frame) for the first `bad` calls, then the looping FakeWan clip."""
+
+    def __init__(self, bad: int) -> None:
+        super().__init__()
+        self.bad = bad
+
+    async def run(self, ctx: Any, params: dict[str, Any], inputs: Any) -> StepResult:
+        if len(self.params) >= self.bad:
+            return await super().run(ctx, params, inputs)
+        self.params.append(params)
+        rng = np.random.default_rng(len(self.params))
+        refs = [await ctx.blobs.put_bytes(_png(rng.random((672, 672, 3), np.float32)), name=f"w_{i:03d}.png",
+                                          mime="image/png") for i in range(int(params["55.length"]))]
+        return StepResult(outputs={"images": refs})
+
+
 def _env(tmp_path: Path, execs: list[FakeExec]) -> Env:
     env = Env(tmp_path, execs, {"tile-animated": (RECIPES / "tile-animated.yaml").read_text(encoding="utf-8")})
     for cls in ta.TILE_ANIM_OPS:
@@ -329,3 +346,86 @@ def test_recipe_forms_expose_edge_fix_and_toon_bands() -> None:
     icon = load_recipe_file(RECIPES / "icon-3d.yaml")
     assert icon.inputs["toon_bands"]["default"] == 3
     assert validate((RECIPES / "icon-3d.yaml").read_text(encoding="utf-8"), None)[1] == []
+
+
+async def _tile_report(env: Env, steps: dict[str, Any]) -> dict[str, Any]:
+    return json.loads(env.blobs.path(steps["anim"].outputs["json"][0].hash).read_bytes())
+
+
+async def test_waterfall_retries_next_candidate_below_loop_threshold(tmp_path: Path) -> None:
+    env = _env(tmp_path, [DriftWan(bad=1)])
+    ref = await env.blobs.put_bytes(_png(texture(48, seed=9)), name="fall.png", mime="image/png")
+    steps = await _wait(env, {"image": ref.hash, "kind": "waterfall", "frames": 6, "candidates": 2, "review": False})
+    rep = await _tile_report(env, steps)
+    attempts = rep["video"]["attempts"]
+    assert "fallback" not in rep and len(attempts) == 2
+    assert attempts[0]["seam_similarity"] < ta.LOOP_SIMILARITY_MIN <= attempts[1]["seam_similarity"]
+
+
+async def test_waterfall_falls_back_to_cpu_flow_when_no_clip_loops(tmp_path: Path) -> None:
+    env = _env(tmp_path, [DriftWan(bad=9)])
+    ref = await env.blobs.put_bytes(_png(texture(48, seed=9)), name="fall.png", mime="image/png")
+    steps = await _wait(env, {"image": ref.hash, "kind": "waterfall", "frames": 6, "candidates": 2, "review": False})
+    rep = await _tile_report(env, steps)
+    fb = rep["fallback"]
+    assert "video" not in rep and fb["scroll"] == "down" and len(fb["attempts"]) == 2 and "CPU" in fb["note"]
+    assert all(a["seam_similarity"] < ta.LOOP_SIMILARITY_MIN for a in fb["attempts"])
+    assert _doc(env, steps["approve"])["check"]["passed"]
+
+
+def test_torch_fallback_moves_only_the_flame() -> None:
+    img = np.full((48, 48, 3), 0.3, np.float32)
+    img[..., 2] = 0.25
+    img[20:30, 20:28] = (1.0, 0.7, 0.1)
+    frames, used = ta.fallback_frames(img, "torch", 6, 1.0, 0, 1, False)
+    assert used["motion"] == "lava" and len(frames) == 6
+    assert all(np.array_equal(f[:6], img[:6]) and np.array_equal(f[:, :6], img[:, :6]) for f in frames)
+    assert max(float(np.abs(f[18:32, 18:30] - img[18:32, 18:30]).max()) for f in frames) > 0.02
+    assert "wall torch" in ta.video_prompt("torch", "")
+
+
+def test_torch_fallback_with_no_flame_moves_the_whole_tile() -> None:
+    flat = np.full((48, 48, 3), 0.4, np.float32)
+    frames, used = ta.fallback_frames(flat, "torch", 6, 1.0, 0, 1, False)
+    assert used["static_mask"] is True
+    assert max(float(np.abs(f - frames[0]).max()) for f in frames[1:]) > 0.0
+
+
+async def test_torch_single_candidate_falls_back_and_reports_it(tmp_path: Path) -> None:
+    env = _env(tmp_path, [DriftWan(bad=9)])
+    flat = np.full((48, 48, 3), 0.4, np.float32)
+    flat[..., 2] = 0.5
+    ref = await env.blobs.put_bytes(_png(flat), name="blue_torch.png", mime="image/png")
+    steps = await _wait(env, {"image": ref.hash, "kind": "torch", "frames": 6, "candidates": 1, "review": False})
+    rep = await _tile_report(env, steps)
+    fb = rep["fallback"]
+    assert len(fb["attempts"]) == 1 and fb["static_mask"] is True and "whole tile" in fb["note"]
+    assert _doc(env, steps["approve"])["frames"] == 6
+
+
+async def test_autotile_both_layers_with_wan_kind_uses_cpu_for_second_terrain(tmp_path: Path) -> None:
+    from studio_core.ops.autotile import Autotile
+    from test_ops_executors import FakeCtx
+
+    env = _env(tmp_path, [])
+    a = await env.blobs.put_bytes(_png(texture(64, 2, (0.2, 0.6, 0.15))), name="a.png", mime="image/png")
+    b = await env.blobs.put_bytes(_png(texture(64, 4)), name="b.png", mime="image/png")
+    ctx = FakeCtx(tmp_path / "at")
+    ctx.blobs = env.blobs
+    ctx.job_dir.mkdir(parents=True)
+    res = await Autotile().run(ctx, {"terrains": "grass, wall", "size": 32, "seamless": "off"},
+                               {"tile_a": [a], "tile_b": [b]})
+    atlas, js = res.outputs["images"][0], res.outputs["autotile"][0]
+    a = await env.blobs.put_bytes(_png(ta._rgb(wrap_resize(ta._to_img(texture(64, 2, (0.2, 0.6, 0.15))), 32, 32))),
+                                  name="tile.png", mime="image/png")
+    info = await env.blobs.put_bytes(json.dumps({"kind": "torch", "layer": "both", "mode": "blob47"}).encode(),
+                                     name="prep.json", mime="application/json")
+    picked = await env.blobs.put_bytes(b"x", name="p.png", mime="image/png")
+    cands = await env.blobs.put_bytes(json.dumps({"candidates": [{"preview": picked.hash, "frames": []}]}).encode(),
+                                      name="c.json", mime="application/json")
+    out = await ta.TileAnimate().run(ctx, {"kind": "torch", "frames": 4},
+                                     {"image": [a], "images": [atlas], "autotile": [js], "json": [info], "picked": [picked],
+                                      "candidates": [cands]})
+    rep = json.loads(env.blobs.path(out.outputs["json"][0].hash).read_bytes())
+    assert rep["fallback"]["attempts"] == [{"candidate": 1, "seam_similarity": None, "error": "no frames"}]
+    assert "no frames" in rep["fallback"]["note"] and len(out.outputs["images"]) == 4
