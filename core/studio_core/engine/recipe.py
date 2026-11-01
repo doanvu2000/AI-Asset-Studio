@@ -153,7 +153,7 @@ class Recipe:
                           "map_param": s.map_param, **({"allow_fail": True} if s.allow_fail else {})})
         return RecipeInfo(id=self.id, name=self.name, description=self.description, inputs=self.inputs,
                           steps=steps, hash=self.hash, exports=recipe_exports(s.kind for s in self.steps),
-                          preview=self.preview)
+                          preview=self.preview, outputs=list(self.outputs))
 
 
 def coerce_value(name: str, spec: dict[str, Any], v: Any) -> Any:

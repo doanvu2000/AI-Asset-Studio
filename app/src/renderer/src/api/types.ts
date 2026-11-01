@@ -271,6 +271,8 @@ export interface RecipeInfo {
   exports?: string[]
   /** A blob hash, or `file` when the core serves a shipped demo image at /recipes/{id}/preview. */
   preview?: string | null
+  /** Output names of the recipe, in document order. */
+  outputs?: string[]
 }
 
 export interface GateResolution {

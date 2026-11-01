@@ -97,27 +97,10 @@ watch(
   }
 )
 
-// Recipe outputs only exist in the recipe document, not in the list payload.
-const outputNames = reactive<Record<string, string[]>>({})
-async function ensureOutputs(recipeId: string): Promise<void> {
-  if (recipeId in outputNames) return
-  outputNames[recipeId] = []
-  try {
-    outputNames[recipeId] = Object.keys((await api().getRecipe(recipeId)).doc.outputs ?? {})
-  } catch {
-    delete outputNames[recipeId]
-  }
-}
-watch(
-  () => doc.nodes.map((n) => n.recipe_id).join('|'),
-  () => doc.nodes.forEach((n) => void ensureOutputs(n.recipe_id)),
-  { immediate: true }
-)
-
 const graph = computed(() =>
   buildFlowEditGraph(doc, {
     recipes: recipes.byId,
-    outputsOf: (rid) => outputNames[rid] ?? [],
+    outputsOf: (rid) => recipes.byId(rid)?.outputs ?? [],
     issues: issues.value,
     selected: selected.value,
     positions
@@ -239,7 +222,6 @@ function changeRecipe(n: WorkflowNodeDef, recipeId: string): void {
     for (const k of Object.keys(n.inputs)) if (!(k in r.inputs)) delete n.inputs[k]
     for (const k of Object.keys(n.map)) if (!(k in r.inputs)) delete n.map[k]
   }
-  void ensureOutputs(recipeId)
 }
 
 // ---- wiring ----
@@ -307,7 +289,7 @@ function optionsFor(n: WorkflowNodeDef, input: string): { inputs: Option[]; node
   const nodes = isBlobType(type)
     ? doc.nodes
         .filter((o) => o.id !== n.id && !wouldCycle(doc.nodes, o.id, n.id))
-        .map((o) => ({ node: o.title || o.id, items: (outputNames[o.recipe_id] ?? []).map((out) => ({ value: sourceFor(o.id, out, type), label: `${o.title || o.id} · ${out}` })) }))
+        .map((o) => ({ node: o.title || o.id, items: (recipes.byId(o.recipe_id)?.outputs ?? []).map((out) => ({ value: sourceFor(o.id, out, type), label: `${o.title || o.id} · ${out}` })) }))
         .filter((g) => g.items.length)
     : []
   return { inputs, nodes }

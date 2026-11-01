@@ -73,6 +73,14 @@ async def test_recipe_info_reports_preview_only_when_the_file_exists(ctx) -> Non
     assert by_id["escape"]["preview"] is None
 
 
+async def test_recipe_list_carries_output_names(ctx) -> None:
+    _, client = ctx
+    by_id = {r["id"]: r for r in (await client.get("/api/recipes", headers=AUTH)).json()}
+    assert by_id["with-preview"]["outputs"] == ["final"]
+    detail = (await client.get("/api/recipes/with-preview", headers=AUTH)).json()
+    assert detail["info"]["outputs"] == list(detail["doc"]["outputs"])
+
+
 async def test_preview_endpoint_serves_the_image_and_404s_otherwise(ctx) -> None:
     _, client = ctx
     ok = await client.get("/api/recipes/with-preview/preview", params={"t": TOKEN})

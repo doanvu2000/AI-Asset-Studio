@@ -439,6 +439,7 @@ class RecipeInfo(BaseModel):
     source: str = "builtin"  # builtin | user | override (user copy shadowing a built-in)
     exports: list[str] = []  # unity | godot | spine | glb | fbx | audio, from the step kinds
     preview: str | None = None  # blob hash, or "file" when GET /recipes/{id}/preview serves a shipped image
+    outputs: list[str] = []  # output names, so list consumers need not fetch every recipe document
 
 
 class GateResolution(BaseModel):

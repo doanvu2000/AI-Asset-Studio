@@ -1098,7 +1098,10 @@ export class MockCore implements StudioApi, EventStream {
   async recipes(): Promise<RecipeInfo[]> {
     await sleep(80)
     const ids = new Set([...this.builtins.keys(), ...this.userRecipes.keys()])
-    return clone([...ids].map((id) => this.recipe(id)!.info))
+    return clone([...ids].map((id) => {
+      const r = this.recipe(id)!
+      return { ...r.info, outputs: Object.keys(docOf(r).outputs ?? {}) }
+    }))
   }
 
   async kinds(): Promise<KindInfo[]> {
