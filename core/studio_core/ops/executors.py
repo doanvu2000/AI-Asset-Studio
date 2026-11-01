@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import asyncio
 import functools
 import io
@@ -59,11 +60,18 @@ async def _put_png(ctx: StepContext, img: Image.Image, name: str) -> BlobRef:
     return await ctx.blobs.put_bytes(data, name=name, mime="image/png")
 
 
+_OPS_PKG = "studio_core.ops"
+
+
 @functools.cache
 def ops_source_hash() -> str:
-    # Whole package, since ops share helpers (image.py, presets.py...). Frozen builds only have these
-    # files if the spec bundles them; without them the class `version` is the only invalidation.
-    files = sorted(Path(__file__).parent.glob("*.py"))
+    # Whole-package fallback. Frozen builds only have these files if the spec bundles them; without
+    # them the class `version` is the only invalidation.
+    return _hash_modules(Path(__file__).parent, None)
+
+
+def _hash_modules(ops_dir: Path, names: list[str] | None) -> str:
+    files = sorted(ops_dir.glob("*.py")) if names is None else [ops_dir / f"{n}.py" for n in sorted(names)]
     if not files:
         return ""
     h = blake3()
@@ -71,6 +79,61 @@ def ops_source_hash() -> str:
         h.update(f.name.encode())
         h.update(f.read_bytes())
     return h.hexdigest()
+
+
+def _ops_imports(tree: ast.AST, ops_dir: Path) -> set[str]:
+    """Sibling ops modules imported anywhere in the file, lazy imports inside functions included."""
+    found: set[str] = set()
+
+    def add(dotted: str, names: list[str]) -> None:
+        parts = dotted.split(".")
+        if parts[:2] != _OPS_PKG.split("."):
+            return
+        if len(parts) > 2:
+            found.add(parts[2])
+        else:
+            found.update(n for n in names if (ops_dir / f"{n}.py").is_file())
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                add(a.name, [])
+        elif isinstance(node, ast.ImportFrom):
+            base = _OPS_PKG.split(".")
+            if node.level:
+                base = base[:len(base) - (node.level - 1)]
+            elif not node.module:
+                continue
+            add(".".join([*base, *([node.module] if node.module else [])]), [a.name for a in node.names])
+    found.discard("__init__")
+    return {n for n in found if (ops_dir / f"{n}.py").is_file()}
+
+
+@functools.cache
+def _scoped_hash(ops_dir: str, module: str) -> str:
+    root = Path(ops_dir)
+    try:
+        seen: set[str] = set()
+        todo = [module]
+        while todo:
+            name = todo.pop()
+            if name in seen:
+                continue
+            seen.add(name)
+            tree = ast.parse((root / f"{name}.py").read_bytes())
+            todo.extend(_ops_imports(tree, root) - seen)
+        return _hash_modules(root, list(seen))
+    except (OSError, SyntaxError, ValueError):
+        return _hash_modules(root, None)
+
+
+def op_source_hash(module: str) -> str:
+    """Hash of the op's module plus the ops modules it imports (transitively), so editing one op only
+    invalidates ops that depend on it. Falls back to the whole package when the module is not an ops file."""
+    pkg, _, name = module.rpartition(".")
+    if pkg != _OPS_PKG or not name:
+        return ops_source_hash()
+    return _scoped_hash(str(Path(__file__).parent), name)
 
 
 class OpExecutor:
@@ -82,7 +145,7 @@ class OpExecutor:
         return True
 
     def cache_material(self, params: dict[str, Any]) -> str:
-        return ops_source_hash()
+        return op_source_hash(type(self).__module__)
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         raise NotImplementedError

@@ -646,7 +646,8 @@ class StudioEngine:
             await self._set_step(step, status=StepStatus.SUCCEEDED, outputs=result.outputs, progress=1.0,
                                  meta={**kept, **result.meta}, ended_at=_now())
             if key is not None:
-                await self.repo.cache_put(key, result.outputs, cacheable_meta(result.meta))
+                origin = {"run_id": step.run_id, "step_id": step.id, "step_key": step.key}
+                await self.repo.cache_put(key, result.outputs, {**cacheable_meta(result.meta), "cached_from": origin})
         except asyncio.CancelledError:
             raise
         except StepError as e:

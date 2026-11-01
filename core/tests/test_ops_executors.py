@@ -10,7 +10,7 @@ from PIL import Image
 
 from studio_core.contracts import BlobRef, ExecutorRegistry, Executor, Lane, StepError
 from studio_core.ops import register
-from studio_core.ops.executors import Sheet, ops_source_hash
+from studio_core.ops.executors import Sheet, op_source_hash, ops_source_hash
 
 
 class FakeBlobs:
@@ -86,7 +86,7 @@ def test_register_all_ops(reg: ExecutorRegistry):
     for k in kinds:
         ex = reg.resolve(k)
         assert isinstance(ex, Executor)
-        assert ex.lane == Lane.CPU and ex.version == "1" and ex.cacheable({}) and ex.cache_material({}) == ops_source_hash()
+        assert ex.lane == Lane.CPU and ex.version == "1" and ex.cacheable({}) and ex.cache_material({}) == op_source_hash(type(ex).__module__)
 
 
 async def test_trim_pad_resize_executor(ctx: FakeCtx, reg: ExecutorRegistry):
@@ -157,7 +157,7 @@ def test_op_cache_material_follows_source(monkeypatch: pytest.MonkeyPatch, tmp_p
     from studio_core.ops import executors
 
     assert len(ops_source_hash()) == 64
-    assert Sheet().cache_material({"preset": "unity"}).startswith(ops_source_hash() + "|")
+    assert Sheet().cache_material({"preset": "unity"}).startswith(op_source_hash(Sheet.__module__) + "|")
     (tmp_path / "a.py").write_text("x = 1")
     monkeypatch.setattr(executors, "__file__", str(tmp_path / "executors.py"))
     ops_source_hash.cache_clear()
