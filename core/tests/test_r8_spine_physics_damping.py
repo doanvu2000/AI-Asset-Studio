@@ -33,7 +33,7 @@ def test_cloth_damping_strength_and_limit_tighten_along_the_chain() -> None:
 
 
 def test_short_cloth_chains_keep_the_walk_tuned_values() -> None:
-    cloth = ph.PRESETS["cloth"]
+    cloth = ph.CLOTH_SHORT
     one = chain_constraints("cape", 1)[0]
     assert (one["inertia"], one["strength"], one["damping"]) == (cloth["inertia"], cloth["strength"], cloth["damping"])
     a, b = chain_constraints("cape", 2)

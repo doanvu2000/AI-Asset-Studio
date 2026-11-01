@@ -28,7 +28,7 @@ from .spine_weld import _deformed
 PRESETS: dict[str, dict[str, float]] = {
     "hair": {"inertia": 0.5, "strength": 160.0, "damping": 0.85, "mass": 1.0},
     # Unity (spine-unity 4.2.121) run-stop sweep at 1.5 heights/s: 1.0 / 35 / 0.95 swung a 4-bone cape 104° and rang
-    # 5.6 s; 0.8 / 90 / 0.9 with the taper below gives 65° and 2.0 s, and the cape still swings 7° on walk.
+    # 5.6 s; 0.8 / 90 / 0.9 with the taper below gives 65° and 2.0 s (3+ bone chains; see CLOTH_SHORT).
     "cloth": {"inertia": 0.8, "strength": 90.0, "damping": 0.9, "mass": 1.0},
     "tail": {"inertia": 0.6, "strength": 120.0, "damping": 0.88, "mass": 1.5},
     "rope": {"inertia": 0.9, "strength": 60.0, "damping": 0.92, "mass": 3.0},
@@ -258,6 +258,10 @@ LINK_DAMPING = 0.015
 # (the share of the host's motion kicked into the swing), stiffer `strength` (spring pulls back faster, ω² =
 # strength / mass), lower `damping` (velocity multiplier per 1/60 s, so a smaller number settles sooner) and a
 # lower `limit` (the cap, in skeleton units / s, on the per-frame displacement that feeds the rotation).
+# A 1-2 bone cloth has no parent swing to amplify, so it keeps the soft pre-D7 preset (35 / 0.95 swung a 2-bone cape
+# ~9° on walk; the stiff one gives ~2.6°). Spine-core measured both; only 3+ bone chains need the stiff one.
+CLOTH_SHORT = {"inertia": 1.0, "strength": 35.0, "damping": 0.95, "mass": 1.0}
+CLOTH_SHORT_MAX_BONES = 2
 CLOTH_TAPER = {"inertia": 0.1, "strength": 0.25, "damping": 0.02, "limit": 0.25}
 CLOTH_INERTIA_MIN = 0.3
 # `limit` scales with the bone (skeleton units are px): 6 bone lengths / s leaves a walk untouched and caps the kick
@@ -274,8 +278,9 @@ def link_params(kind: str, link: int) -> dict[str, float]:
 
 
 def constraint(name: str, bone: str, kind: str, order: int, strength: float = 1.0, wind: float = 0.0,
-               gravity: float = 0.0, root: bool = False, link: int = 0, length: float = 0.0) -> dict[str, Any]:
-    p = PRESETS[kind]
+               gravity: float = 0.0, root: bool = False, link: int = 0, length: float = 0.0,
+               chain_len: int = 0) -> dict[str, Any]:
+    p = CLOTH_SHORT if kind == "cloth" and 0 < chain_len <= CLOTH_SHORT_MAX_BONES else PRESETS[kind]
     t = link_params(kind, link)
     cloth = kind == "cloth"
     limit = round(CLOTH_LIMIT_LENGTHS * length * t["limit"], 3) if cloth and length > 0 else 5000
@@ -381,7 +386,7 @@ def add_physics(doc: dict[str, Any], parts: list[str] | None = None, segments: i
         preset = k if kind == "auto" else kind
         for j, b in enumerate(chain):
             physics.append(constraint(_unique(f"phys_{b}", used), b, preset, order, strength, wind, gravity,
-                                      root=j == 0, link=j, length=blen.get(b, 0.0)))
+                                      root=j == 0, link=j, length=blen.get(b, 0.0), chain_len=len(chain)))
             order += 1
         report["chains"].append({"bones": chain, "preset": preset, "source": origin})
     report["constraints"] = sum(len(c) for c, _, _ in chains)
@@ -523,7 +528,7 @@ def _mesh_report(doc: dict[str, Any], meshed: list[list[str]]) -> list[str]:
 
 class SpinePhysics(OpExecutor):
     kind = "op.spine_physics"
-    version = "4"
+    version = "5"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         from . import spine_runtime as rt
