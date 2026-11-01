@@ -280,6 +280,84 @@ def make_states(img: Image.Image) -> dict[str, Image.Image]:
     return {"hover": put(hover), "pressed": put(pressed), "disabled": put(disabled, 0.75)}
 
 
+TEXT_KINDS = ("button", "tab")
+TEXT_ZONE_STD_MAX = 5.0
+GLYPH_DELTA = 24
+DETAIL_KEEP = 0.2
+GLYPH_WIDTH = 15
+
+
+def text_zone(size: tuple[int, int]) -> tuple[int, int, int, int] | None:
+    """Box a label sits in: the middle of a button, clear of the corner ornaments. None when too small to hold text."""
+    w, h = size
+    if w < 48 or h < 20:
+        return None
+    return round(w * 0.25), round(h * 0.3), round(w * 0.75), round(h * 0.7)
+
+
+def _lowpass(a: np.ndarray, sigma: float) -> np.ndarray:
+    r = max(1, round(sigma * 3))
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k /= k.sum()
+    for axis in (0, 1):
+        pad = [(0, 0)] * a.ndim
+        pad[axis] = (r, r)
+        p = np.pad(a, pad, mode="edge")
+        a = sum(k[i] * np.take(p, range(i, i + a.shape[axis]), axis=axis) for i in range(len(k)))
+    return a
+
+
+def _zone_sigma(box: tuple[int, int, int, int], k: float) -> float:
+    return max(2.0, (box[3] - box[1]) * k)
+
+
+def _lum(rgb: np.ndarray) -> np.ndarray:
+    return rgb @ np.array([0.299, 0.587, 0.114], np.float32)
+
+
+def text_zone_std(img: Image.Image) -> float:
+    """Luminance std of the text zone's detail: what remains after the zone's own smooth gradient is taken out."""
+    arr = np.asarray(img.convert("RGBA"))
+    box = text_zone((arr.shape[1], arr.shape[0]))
+    if box is None:
+        return 0.0
+    x0, y0, x1, y1 = box
+    lum = _lum(arr[y0:y1, x0:x1, :3].astype(np.float32))
+    opaque = arr[y0:y1, x0:x1, 3] > 200
+    if not opaque.any():
+        return 0.0
+    return float((lum - _lowpass(lum, _zone_sigma(box, 1 / 3)))[opaque].std())
+
+
+def clear_text_zone(img: Image.Image) -> tuple[Image.Image, bool]:
+    """Replaces glyph-like detail (runes, filigree, metal grain) in the text zone with its own smooth colour field, so
+    the gradient and bevel survive and a label stays readable; returns (img, changed)."""
+    rgba = img.convert("RGBA")
+    box = text_zone(rgba.size)
+    if box is None or text_zone_std(rgba) <= TEXT_ZONE_STD_MAX:
+        return img, False
+    arr = np.asarray(rgba).astype(np.float32)
+    h, w = arr.shape[:2]
+    sigma = _zone_sigma(box, 0.5)
+    f = max(3, round(0.8 * (box[3] - box[1])))
+    x0, y0, x1, y1 = max(0, box[0] - f), max(0, box[1] - f), min(w, box[2] + f), min(h, box[3] + f)
+    rgb = arr[y0:y1, x0:x1, :3]
+    broad = np.asarray(Image.fromarray(rgb.astype(np.uint8)).filter(ImageFilter.MedianFilter(GLYPH_WIDTH))).astype(np.float32)
+    low = _lowpass(broad, sigma)
+    for _ in range(2):
+        glyph = np.abs(_lum(rgb) - _lum(low)) > GLYPH_DELTA
+        low = _lowpass(np.where(glyph[..., None], low, broad), sigma)
+    keep = np.where(glyph[..., None], 0.0, (rgb - low) * DETAIL_KEEP)
+    dy = np.maximum(box[1] - np.arange(y0, y1), np.arange(y0, y1) - (box[3] - 1))[:, None]
+    dx = np.maximum(box[0] - np.arange(x0, x1), np.arange(x0, x1) - (box[2] - 1))[None, :]
+    signed = np.hypot(np.maximum(dx, 0), np.maximum(dy, 0)) + np.minimum(np.maximum(dx, dy), 0)
+    t = np.clip(signed / f, 0, 1)
+    weight = (0.5 + 0.5 * np.cos(np.pi * t))[..., None]
+    opaque = (arr[y0:y1, x0:x1, 3:4] > 200).astype(np.float32)
+    arr[y0:y1, x0:x1, :3] = rgb + (low + keep - rgb) * weight * opaque
+    return Image.fromarray(np.clip(arr + 0.5, 0, 255).astype(np.uint8), "RGBA"), True
+
+
 def stretch_target(name: str, w: int, h: int, factor: float = 3) -> tuple[int, int]:
     kind = name.split("_")[0]
     if kind in ("button", "tab") or (kind == "bar" and w >= h):
@@ -373,6 +451,7 @@ class UiSplit(OpExecutor):
 
 class NineSlice(OpExecutor):
     kind = "op.nine_slice"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = _images_in(inputs)
@@ -394,6 +473,9 @@ class NineSlice(OpExecutor):
             while name in seen:
                 name += "_b"
             seen.add(name)
+            if do_slice and bool(params.get("clear_text", True)) and name.split("_")[0] in TEXT_KINDS:
+                img, cleared = await asyncio.to_thread(clear_text_zone, img)
+                ref = await _put_png(ctx, img, f"{name}.png") if cleared else ref
             if do_slice:
                 border, info = await asyncio.to_thread(nine_slice_borders, img, margin)
             else:
