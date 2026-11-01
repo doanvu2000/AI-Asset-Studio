@@ -11,6 +11,7 @@ from .autotile import AUTOTILE_OPS
 from .bitmap_font import BITMAP_FONT_OPS
 from .damage import DAMAGE_OPS
 from .enemy_variants import ENEMY_OPS
+from .engine_pack import ENGINE_PACK_OPS
 from .executors import ALL_OPS, Sheet
 from .fx import FX_OPS
 from .frame_data import FRAME_DATA_OPS
@@ -101,6 +102,8 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(il_cls())
     for ev_cls in ENEMY_OPS:
         registry.register(ev_cls())
+    for ep_cls in ENGINE_PACK_OPS:
+        registry.register(ep_cls())
     for pano_cls in PANO_OPS:
         registry.register(pano_cls())
     register_restyle(registry, settings)

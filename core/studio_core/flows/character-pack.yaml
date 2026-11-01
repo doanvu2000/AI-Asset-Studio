@@ -2,7 +2,7 @@ id: character-pack
 title: Gói nhân vật 1 nút
 description: >-
   Prompt → concept 2D → khoá style + sprite 8 hướng 2D + anim idle/walk/attack/hit dựng từ chính concept (cùng một
-  nhân vật); clip tấn công sinh biến thể kẻ địch và dữ liệu khung chiến đấu; song song sinh VFX trúng đòn. Có nhiều bước duyệt nên workflow sẽ dừng chờ người.
+  nhân vật); clip tấn công sinh biến thể kẻ địch và dữ liệu khung chiến đấu; song song sinh VFX trúng đòn; bước cuối gom 8 hướng + anim thành atlas và gói Unity / Godot. Có nhiều bước duyệt nên workflow sẽ dừng chờ người.
 tags: [2d, sprite, character, pack]
 inputs:
   prompt: {type: text, label: Mô tả nhân vật}
@@ -64,3 +64,16 @@ nodes:
     map:
       sheet: "anim_attack.outputs.final[0]"
       meta: "anim_attack.outputs.meta[0]"
+  - id: engine
+    recipe_id: character-engine-pack
+    title: Atlas + gói Unity / Godot
+    map:
+      frames: "sprite.outputs.final"
+      idle: "anim_idle.outputs.final[0]"
+      idle_meta: "anim_idle.outputs.meta[0]"
+      walk: "anim_walk.outputs.final[0]"
+      walk_meta: "anim_walk.outputs.meta[0]"
+      attack: "anim_attack.outputs.final[0]"
+      attack_meta: "anim_attack.outputs.meta[0]"
+      hit: "anim_hit.outputs.final[0]"
+      hit_meta: "anim_hit.outputs.meta[0]"

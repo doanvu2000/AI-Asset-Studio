@@ -5,8 +5,8 @@ from collections.abc import Iterable
 
 _ENGINES = ("unity", "godot")
 
-_SHEET = {"op.sheet", "op.sprite_fx", "op.item_spin", "op.spin_frames", "op.rarity_set", "op.enemy_variants",
-          "op.frame_data", "op.paperdoll", "op.damage_states", "op.damage_debris", "op.icon_compose",
+_SHEET = {"op.sheet", "op.engine_pack", "op.sprite_fx", "op.item_spin", "op.spin_frames", "op.rarity_set",
+          "op.enemy_variants", "op.frame_data", "op.paperdoll", "op.damage_states", "op.damage_debris", "op.icon_compose",
           "op.vfx_particles", "op.vfx_frames", "op.weather_overlay", "op.tile_animate", "op.aseprite_import"}
 _TEXTURE = {"op.seamless", "op.pbr", "op.tile_normal", "op.tile_wang", "op.autotile", "op.terrain_pack",
             "op.decal_pack", "op.trim_sheet", "op.fit_lut", "op.lut_prep", "op.pano_cubemap", "op.parallax_layers",

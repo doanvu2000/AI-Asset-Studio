@@ -1,0 +1,43 @@
+id: character-engine-pack
+name: Gom sprite 8 hướng + anim thành atlas Unity / Godot
+description: >-
+  8 khung hướng (0..315°) của sprite 8 hướng và tới 4 sheet anim (idle, walk, attack, hit; thiếu clip nào bỏ clip đó)
+  → một atlas MaxRects cắt viền trong suốt, khử trùng lặp → gói Unity (trang PNG + .meta cắt sprite theo pivot chân) và
+  gói Godot (AtlasTexture .tres từng khung) + atlas JSON kiểu TexturePacker + clips.json (clip, fps, lặp, danh sách khung)
+  để dựng AnimationClip / SpriteFrames. Chỉ CPU, không dùng GPU.
+inputs:
+  frames: {type: image, label: "8 khung hướng (đủ 8, theo thứ tự 0..315°)"}
+  idle: {type: image, required: false, label: "Sheet anim idle"}
+  idle_meta: {type: file, ext: [json], required: false, label: "Meta sheet anim idle"}
+  walk: {type: image, required: false, label: "Sheet anim walk"}
+  walk_meta: {type: file, ext: [json], required: false, label: "Meta sheet anim walk"}
+  attack: {type: image, required: false, label: "Sheet anim attack"}
+  attack_meta: {type: file, ext: [json], required: false, label: "Meta sheet anim attack"}
+  hit: {type: image, required: false, label: "Sheet anim hit"}
+  hit_meta: {type: file, ext: [json], required: false, label: "Meta sheet anim hit"}
+  asset: {type: text, default: character, label: Tên asset (tên thư mục / atlas)}
+  engines: {type: enum, default: both, options: [both, unity, godot], label: Engine xuất}
+  fps: {type: float, default: 12, min: 1, max: 60, label: FPS clip}
+  ppu: {type: float, default: 100, min: 1, max: 1000, label: "Pixels per unit (Unity)"}
+  pixel: {type: bool, default: false, label: Pixel art (lọc Nearest)}
+steps:
+  - id: pack
+    kind: op.engine_pack
+    in:
+      frames: inputs.frames
+      sheet_idle: inputs.idle
+      meta_idle: inputs.idle_meta
+      sheet_walk: inputs.walk
+      meta_walk: inputs.walk_meta
+      sheet_attack: inputs.attack
+      meta_attack: inputs.attack_meta
+      sheet_hit: inputs.hit
+      meta_hit: inputs.hit_meta
+    params: {asset: "${inputs.asset}", engines: "${inputs.engines}", fps: "${inputs.fps}", ppu: "${inputs.ppu}",
+             pixel: "${inputs.pixel}"}
+outputs:
+  final: pack.atlas
+  atlas: pack.atlas
+  unity: pack.unity
+  godot: pack.godot
+  manifest: pack.manifest
