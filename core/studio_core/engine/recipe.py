@@ -13,6 +13,7 @@ import yaml
 from blake3 import blake3
 
 from ..contracts import ExecutorRegistry, RecipeInfo
+from .exports import recipe_exports
 from .gates import GATES
 
 log = logging.getLogger(__name__)
@@ -113,6 +114,8 @@ class Recipe:
     hash: str
     path: Path | None = None
     rules: list[dict[str, Any]] = field(default_factory=list)
+    # A blob hash, or the name of an image in the built-in recipes/previews folder.
+    preview: str | None = None
 
     def step(self, key: str) -> StepSpec:
         for s in self.steps:
@@ -149,7 +152,8 @@ class Recipe:
             steps.append({"id": s.id, "kind": s.kind, "lane": lane, "deps": s.deps, "map": s.map,
                           "map_param": s.map_param, **({"allow_fail": True} if s.allow_fail else {})})
         return RecipeInfo(id=self.id, name=self.name, description=self.description, inputs=self.inputs,
-                          steps=steps, hash=self.hash)
+                          steps=steps, hash=self.hash, exports=recipe_exports(s.kind for s in self.steps),
+                          preview=self.preview)
 
 
 def coerce_value(name: str, spec: dict[str, Any], v: Any) -> Any:
@@ -207,6 +211,12 @@ def split_lines(v: Any) -> list[str]:
 
 
 RULE_KINDS = ("min_items", "max_lines")
+
+
+def _parse_preview(raw: Any) -> str | None:
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    return raw.strip()
 
 
 def _parse_rules(where: str, raw: Any, inputs: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -433,7 +443,7 @@ def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
     return Recipe(id=rid, name=str(doc.get("name") or rid), description=str(doc.get("description") or ""),
                   inputs=inputs, steps=_toposort(specs, where), outputs=outputs,
                   hash=blake3(raw_bytes).hexdigest(), path=path,
-                  rules=_parse_rules(where, doc.get("rules"), inputs))
+                  rules=_parse_rules(where, doc.get("rules"), inputs), preview=_parse_preview(doc.get("preview")))
 
 
 

@@ -1,5 +1,6 @@
 id: variants-2d
 name: Biến thể 2D (Flux.2 Klein)
+preview: previews/variants-2d.webp
 description: Ảnh gốc + mỗi dòng 1 lệnh sửa → N biến thể (Flux.2 Klein) → tách nền → căn chỉnh → sprite sheet
 inputs:
   image: {type: image, label: Ảnh gốc}

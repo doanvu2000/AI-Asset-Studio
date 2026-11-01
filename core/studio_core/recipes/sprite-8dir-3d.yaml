@@ -1,5 +1,6 @@
 id: sprite-8dir-3d
 name: Sprite 8 hướng (3D)
+preview: previews/sprite-8dir-3d.webp
 description: Text → concept → chọn → TRELLIS mesh → Blender dọn mesh → render 8 hướng ortho → thu nhỏ 2× → sprite sheet (pivot = tâm chân) + JSON
 inputs:
   prompt: {type: text, label: Prompt}

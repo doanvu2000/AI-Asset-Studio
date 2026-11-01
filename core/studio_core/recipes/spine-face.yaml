@@ -1,5 +1,6 @@
 id: spine-face
 name: Biểu cảm mặt Spine (mắt, mày, miệng)
+preview: previews/spine-face.webp
 description: >-
   Skeleton Spine (từ spine-character* hoặc có sẵn) + atlas → tìm attachment đầu → Claude khoanh mắt / mày / miệng →
   Flux.2 Klein vẽ lại từng vùng (mắt nhắm / khép hờ / cười, miệng A / O / M / cười / giận / buồn, mày giận / buồn),

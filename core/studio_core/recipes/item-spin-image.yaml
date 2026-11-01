@@ -1,5 +1,6 @@
 id: item-spin-image
 name: Vật phẩm xoay vòng từ ảnh 2D
+preview: previews/item-spin-image.webp
 description: >-
   Ảnh vật phẩm phẳng (đồng xu, huy hiệu, icon) → giả xoay quanh trục đứng: co ngang theo cos, quá 90° hiện mặt sau
   lật gương tối hơn, viền dày theo sin → 12/16/24 frame lặp liền, trục ở tâm ô → sprite sheet + GIF / WebP xem trước

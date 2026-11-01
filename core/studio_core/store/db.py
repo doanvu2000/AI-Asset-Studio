@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS runs (
     ended_at REAL
 );
 CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs(created_at);
+CREATE INDEX IF NOT EXISTS idx_runs_recipe_id ON runs(recipe_id, created_at);
 -- Must match repo._BATCH_ID verbatim, or SQLite will not use it.
 CREATE INDEX IF NOT EXISTS idx_runs_batch_id ON runs(json_extract(params, '$."$meta".batch_id'));
 

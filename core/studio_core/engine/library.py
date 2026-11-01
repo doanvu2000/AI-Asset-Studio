@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import logging
 import os
+import re
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -21,6 +22,8 @@ log = logging.getLogger(__name__)
 
 Source = Literal["builtin", "user", "override"]
 MAX_RECIPE_BYTES = 512 * 1024
+PREVIEW_TYPES = {".webp": "image/webp", ".png": "image/png"}
+BLOB_HASH = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _signature(d: Path) -> tuple[tuple[str, int, int], ...]:
@@ -176,6 +179,15 @@ class RecipeLibrary:
     def source(self, rid: str) -> Source | None:
         self.maybe_reload()
         return self.sources.get(rid)
+
+    def preview_file(self, r: Recipe) -> Path | None:
+        """The shipped demo image of a recipe. Looked up by file name in the built-in folder only, so a user copy that
+        keeps `preview:` still finds it and no value can point outside that folder."""
+        if not r.preview or BLOB_HASH.match(r.preview):
+            return None
+        name = Path(r.preview.replace("\\", "/")).name
+        path = self.builtin_dir / "previews" / name
+        return path if path.suffix.lower() in PREVIEW_TYPES and path.is_file() else None
 
     def has_builtin(self, rid: str) -> bool:
         return rid in self._builtin_ids

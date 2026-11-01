@@ -36,7 +36,7 @@ from ..contracts import (
 from .cache import cacheable_meta, executor_cache_key
 from .chain import CHAIN_ERROR, CHAIN_KEY, CHAIN_PARENT, CHAIN_RUNS, map_inputs, parse_chain, published_outputs
 from .gates import GATES, gate_enabled
-from .library import RecipeLibrary
+from .library import BLOB_HASH, RecipeLibrary
 from .projects import apply_style
 from . import style_bible as sb
 from .qa import version_qa
@@ -234,6 +234,8 @@ class StudioEngine:
     def recipe_info(self, r: Recipe) -> RecipeInfo:
         info = r.info(self.registry)
         info.source = self.library.sources.get(r.id, "builtin")
+        if r.preview and not BLOB_HASH.match(r.preview):
+            info.preview = "file" if self.library.preview_file(r) else None
         return info
 
     def list_recipes(self) -> list[RecipeInfo]:

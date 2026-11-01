@@ -11,6 +11,7 @@ ICON = CORE.parent / "app" / "resources" / "icon.ico"
 # worker.py / cleanup_math.py / skin_math.py run inside Blender's own Python, so they must exist as real .py files.
 datas = [
     (str(PKG / "recipes" / "*.yaml"), "studio_core/recipes"),
+    (str(PKG / "recipes" / "previews" / "*"), "studio_core/recipes/previews"),
     (str(PKG / "workflows" / "*.json"), "studio_core/workflows"),
     (str(PKG / "bootstrap" / "manifest.json"), "studio_core/bootstrap"),
     (str(PKG / "export" / "engine_scripts" / "*"), "studio_core/export/engine_scripts"),

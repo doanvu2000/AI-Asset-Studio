@@ -1,5 +1,6 @@
 id: tile-animated
 name: Tile động (nước, dung nham, cỏ gió, đuốc, thác)
+preview: previews/tile-animated.webp
 description: >-
   1 tile (hoặc autotile 47 ô kèm autotile.json) + kiểu chuyển động → vòng lặp 4–16 frame. water / lava / grass_wind
   chạy CPU: nhiễu tuần hoàn theo cả không gian lẫn thời gian bẻ cong texture, mép trái-phải, trên-dưới liền tuyệt đối,

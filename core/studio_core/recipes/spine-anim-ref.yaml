@@ -1,5 +1,6 @@
 id: spine-anim-ref
 name: Thêm anim Spine từ video tham chiếu
+preview: previews/spine-anim-ref.webp
 description: >-
   Skeleton Spine 4.2 có sẵn + atlas + video tham chiếu + mô tả → trích frame → hàn khớp cứng (da/áo quanh khuỷu,
   cổ tay thành mesh weight 2 bone để không lộ mối nối) → Claude viết motion spec → thêm anim vào skeleton → render

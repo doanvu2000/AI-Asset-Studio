@@ -19,7 +19,7 @@ from studio_core.api.auth import require_token, require_token_or_query
 from studio_core.api.errors import ApiError, OrjsonResponse
 from studio_core.adapters.translate import MAX_TEXTS
 from studio_core.engine.kinds import describe_kinds
-from studio_core.engine.library import RecipeLibrary, issue, merge_text, to_text, validate
+from studio_core.engine.library import PREVIEW_TYPES, RecipeLibrary, issue, merge_text, to_text, validate
 from studio_core.engine.projects import apply_style
 from studio_core.engine.recipe import Recipe, RecipeError
 from studio_core.ops.presets import ExportPreset, PresetStore
@@ -198,6 +198,16 @@ async def get_recipe(request: Request, rid: str) -> Response:
     return _json({**_recipe_view(request, lib, r), "yaml": text, "doc": yaml.safe_load(text) or {}})
 
 
+@blob_api.get("/recipes/{rid}/preview")
+async def recipe_preview(request: Request, rid: str) -> Response:
+    lib = _library(request)
+    r = await asyncio.to_thread(lib.get, rid)
+    path = lib.preview_file(r) if r is not None else None
+    if path is None:
+        raise ApiError(404, "not_found", f"recipe has no preview image: {rid}")
+    return FileResponse(path, media_type=PREVIEW_TYPES[path.suffix.lower()], headers={"Cache-Control": "no-cache"})
+
+
 @api.post("/recipes/validate")
 async def validate_recipe(request: Request, body: RecipeBody) -> Response:
     recipe, issues = await asyncio.to_thread(_validate, request, body.raw())
@@ -360,10 +370,11 @@ async def create_run(request: Request, body: RunCreate) -> Response:
 @api.get("/runs")
 async def list_runs(request: Request, limit: int = Query(50, ge=1, le=2000), before: float | None = None,
                     status: RunStatus | None = None, batch_id: str | None = None,
-                    batched: bool = False, project_id: str | None = None) -> Response:
+                    batched: bool = False, project_id: str | None = None,
+                    recipe_id: str | None = None) -> Response:
     repo = _repo(request)
     runs = await repo.list_runs(limit=limit, before=before, status=status, batch_id=batch_id, batched=batched,
-                                project_id=project_id)
+                                project_id=project_id, recipe_id=recipe_id or None)
     previews = await repo.run_preview_hashes([r.id for r in runs])
     return _json([{**r.model_dump(mode="json"), "preview_hash": previews.get(r.id)} for r in runs])
 

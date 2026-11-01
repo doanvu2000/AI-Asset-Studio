@@ -1,5 +1,6 @@
 id: texture-seamless
 name: Texture liền mạch (Z-Image)
+preview: previews/texture-seamless.webp
 description: Prompt vật liệu → N ảnh Z-Image → chọn → làm liền mạch (gạch, ván — nắn phối cảnh nhẹ + căn theo chu kỳ hàng; chồng mép phải lên mép trái, cắt theo đường ít lệch nhất) → chấm điểm mối nối + xem lát 3×3 → bản nhỏ, normal map, pixel art, bộ map PBR (tuỳ chọn) → duyệt
 inputs:
   prompt: {type: text, label: Vật liệu, placeholder: "mossy cobblestone floor"}

@@ -1,5 +1,6 @@
 id: sprite-8dir-3d-pixel
 name: Sprite 8 hướng pixel art (3D)
+preview: previews/sprite-8dir-3d-pixel.webp
 description: Text → concept → chọn → TRELLIS mesh → Blender dọn mesh → render 8 hướng ortho → pixel art (bảng màu chung, viền 1px) → sprite sheet (pivot = tâm chân) + JSON + bảng màu; bóng/viền hậu kỳ (tuỳ chọn) có cạnh cứng, bóng dither, màu của chúng nằm ngoài bảng màu
 inputs:
   prompt: {type: text, label: Prompt}

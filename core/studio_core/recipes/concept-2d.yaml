@@ -1,5 +1,6 @@
 id: concept-2d
 name: Concept 2D (Z-Image)
+preview: previews/concept-2d.webp
 description: Text → N ảnh → chọn → tách nền → căn chỉnh
 inputs:
   prompt: {type: text, label: Prompt}

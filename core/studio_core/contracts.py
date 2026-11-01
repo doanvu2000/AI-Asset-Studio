@@ -320,7 +320,7 @@ class Repo(Protocol):
     async def get_run(self, run_id: str) -> RunRow | None: ...
     async def list_runs(self, limit: int = 50, before: float | None = None, status: RunStatus | None = None,
                         batch_id: str | None = None, batched: bool = False,
-                        project_id: str | None = None) -> list[RunRow]: ...
+                        project_id: str | None = None, recipe_id: str | None = None) -> list[RunRow]: ...
 
     async def create_steps(self, steps: list[StepRow]) -> None: ...
     async def update_step(self, step_id: str, **fields: Any) -> None: ...
@@ -355,6 +355,8 @@ class RecipeInfo(BaseModel):
     steps: list[dict[str, Any]] = []  # [{id, kind, lane}]
     hash: str
     source: str = "builtin"  # builtin | user | override (user copy shadowing a built-in)
+    exports: list[str] = []  # unity | godot | spine | glb | fbx | audio, from the step kinds
+    preview: str | None = None  # blob hash, or "file" when GET /recipes/{id}/preview serves a shipped image
 
 
 class GateResolution(BaseModel):

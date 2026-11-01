@@ -92,9 +92,12 @@ class SqliteRepo:
 
     async def list_runs(self, limit: int = 50, before: float | None = None, status: RunStatus | None = None,
                         batch_id: str | None = None, batched: bool = False,
-                        project_id: str | None = None) -> list[RunRow]:
+                        project_id: str | None = None, recipe_id: str | None = None) -> list[RunRow]:
         where: list[str] = []
         params: list[Any] = []
+        if recipe_id:
+            where.append("recipe_id = ?")
+            params.append(recipe_id)
         if project_id is not None:
             where.append("project_id = ?")
             params.append(project_id)
