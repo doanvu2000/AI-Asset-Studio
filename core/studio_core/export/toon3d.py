@@ -251,6 +251,7 @@ public static class AssetStudioToon3D
 
     static Material ToonFor(Material toon, Material src, string dir)
     {
+        // glTFast materials use baseColorTexture/baseColorFactor, not the URP names.
         var name = src != null ? src.name : "default";
         var path = dir + "/" + name + "_Toon.mat";
         var m = AssetDatabase.LoadAssetAtPath<Material>(path);
@@ -263,8 +264,10 @@ public static class AssetStudioToon3D
         {
             if (src.HasProperty("_BaseMap")) m.SetTexture("_BaseMap", src.GetTexture("_BaseMap"));
             else if (src.HasProperty("_MainTex")) m.SetTexture("_BaseMap", src.GetTexture("_MainTex"));
+            else if (src.HasProperty("baseColorTexture")) m.SetTexture("_BaseMap", src.GetTexture("baseColorTexture"));
             if (src.HasProperty("_BaseColor")) m.SetColor("_BaseColor", src.GetColor("_BaseColor"));
             else if (src.HasProperty("_Color")) m.SetColor("_BaseColor", src.GetColor("_Color"));
+            else if (src.HasProperty("baseColorFactor")) m.SetColor("_BaseColor", src.GetColor("baseColorFactor"));
         }
         EditorUtility.SetDirty(m);
         return m;
