@@ -1441,3 +1441,16 @@ Plan: `.planning/PLAN-spine-anim-import.md`. Yêu cầu gốc: `L:\AI\project\sp
 - [~] G5 D5 ui-kit: vùng chữ std brass 15.4→2.2 (lọc), runes/candy prompt mới sạch 1.4/0.6; NineSlice v2; pytest 27 pass. Main xem ảnh: mảng lọc cạnh cứng lộ → vòng sửa feather (SendMessage).
 - [x] L6 QuickView sơ đồ dài: xếp dải ≤5 cột + auto-fit (min zoom 0.4), nút ⛶ dùng chung frame(); RunDetail/editor không đổi; typecheck sạch; commit ab64326. Ảnh scratchpad 408df401…/l6/.
 - [x] G5 D5 ui-kit — mask cosine feather, brass 15.4→4.1 không còn mảng vá; commit 6f9a091. Kết đợt: full pytest 1320 pass / 5 skip, gen_agent_docs OK. Handoff: .planning/HANDOFF-2026-11-01-live.md
+
+## Phiên 2026-11-01 — manager-work-agent (lượt 9: workflow + tối ưu)
+Commit từng phần, không push. Plan: PLAN-2026-11-01-r9.md. Handoff: HANDOFF-2026-11-01-r9.md.
+- [x] M1 vải 2 xương walk 8.8° — 383dccc
+- [x] M2 sơ đồ dọc dễ nhìn (quick view + run detail) — e0cc784
+- [x] M3 toon Unity giữ texture glTFast — 7155aea
+- [x] W5 cache theo op + cached_from — 72b3896
+- [x] W4 style chung project — b8a3025, 887ea8e
+- [~] M4 demo +2 (11/90), còn lại cần restart core bản mới — c4f2083
+- [x] W1 workflow core (review opus, 14 điểm sửa) — 27e62fd
+- [x] W3 3 workflow mẫu — c1afb40
+- [x] W2 app workflow + map sống — 383db7b
+- Full pytest 1367 pass / 5 skip; typecheck sạch; gen_agent_docs rc=0.
