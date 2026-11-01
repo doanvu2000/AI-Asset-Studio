@@ -143,7 +143,7 @@ export function verticalFlow(rows: string[][], parentsOf: (id: string) => string
   return { slots, lanes, size }
 }
 
-// Links run orthogonally through the gaps between rows; one that skips rows drops down a lane no node uses, else takes a side rail.
+// Links run orthogonally through the gaps between rows; one that skips rows drops down a lane no node uses, else a channel between lanes (shared channels fan out).
 export function routeEdges(pairs: Edge[], flow: VerticalFlow): Edge[] {
   const { slots, size: s } = flow
   const occ = new Set<string>()
@@ -160,6 +160,17 @@ export function routeEdges(pairs: Edge[], flow: VerticalFlow): Edge[] {
     const prev = seen.get(key)
     if (!prev || (e.class === 'bind' && prev.class !== 'bind')) seen.set(key, e)
   }
+  const channelUse = new Map<number, number>()
+  const channelCount = new Map<number, number>()
+  const needsChannel = (a: Slot, b: Slot): boolean => b.row > a.row + 1 && !clear(a.lane, a.row, b.row) && !clear(b.lane, a.row, b.row)
+  for (const e of seen.values()) {
+    const a = slots.get(e.source)
+    const b = slots.get(e.target)
+    if (a && b && needsChannel(a, b)) {
+      const m = a.lane === b.lane ? a.lane : Math.min(a.lane, b.lane)
+      channelCount.set(m, (channelCount.get(m) ?? 0) + 1)
+    }
+  }
   const out: Edge[] = []
   let k = 0
   for (const e of seen.values()) {
@@ -174,8 +185,13 @@ export function routeEdges(pairs: Edge[], flow: VerticalFlow): Edge[] {
     else if (clear(a.lane, a.row, b.row)) route = [[cx(a.lane), gutter(b.row - 1) + off], [cx(b.lane), gutter(b.row - 1) + off]]
     else if (clear(b.lane, a.row, b.row)) route = [[cx(a.lane), gutter(a.row) + off], [cx(b.lane), gutter(a.row) + off]]
     else {
-      const rail = cx(flow.lanes) - s.w / 2 + 12 + (n % 3) * 6
-      route = [[cx(a.lane), gutter(a.row) + off], [rail, gutter(a.row) + off], [rail, gutter(b.row - 1) + off], [cx(b.lane), gutter(b.row - 1) + off]]
+      const m = a.lane === b.lane ? a.lane : Math.min(a.lane, b.lane)
+      const users = channelUse.get(m) ?? 0
+      channelUse.set(m, users + 1)
+      const gap = s.laneW - s.w
+      const total = channelCount.get(m) ?? 1
+      const chan = m * s.laneW + s.w + gap / 2 + (users - (total - 1) / 2) * Math.min(8, (gap - 14) / Math.max(1, total - 1))
+      route = [[cx(a.lane), gutter(a.row) + off], [chan, gutter(a.row) + off], [chan, gutter(b.row - 1) + off], [cx(b.lane), gutter(b.row - 1) + off]]
     }
     out.push({ ...e, label: undefined, type: 'band', class: skip ? `${e.class ?? ''} jump`.trim() : e.class, deletable: false, data: { route } })
   }

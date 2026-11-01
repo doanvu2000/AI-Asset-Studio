@@ -540,6 +540,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
           :fit-key="graphFit"
           :focus-id="selected?.key ?? null"
           :min-fit-zoom="0.75"
+          :fit-width-zoom="0.4"
           scroll-pan
           :minimap="steps.length > 6"
           @node-click="selectByKey"

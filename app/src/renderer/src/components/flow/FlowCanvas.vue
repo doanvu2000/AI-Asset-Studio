@@ -17,12 +17,13 @@ import type { StepStatus } from '@/api/types'
 import type { IoNodeData, StepNodeData } from '@/composables/graph'
 import type { WfNodeData } from '@/composables/flowGraph'
 
-const props = withDefaults(defineProps<{ id: string; nodes: Node[]; edges: Edge[]; editable?: boolean; fitKey?: string; minimap?: boolean; focusId?: string | null; minFitZoom?: number; scrollPan?: boolean }>(), {
+const props = withDefaults(defineProps<{ id: string; nodes: Node[]; edges: Edge[]; editable?: boolean; fitKey?: string; minimap?: boolean; focusId?: string | null; minFitZoom?: number; fitWidthZoom?: number; scrollPan?: boolean }>(), {
   editable: false,
   fitKey: '',
   minimap: true,
   focusId: null,
   minFitZoom: 0,
+  fitWidthZoom: 0,
   scrollPan: false
 })
 const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
@@ -40,12 +41,13 @@ const MIN_FIT_ZOOM = 0.45
 const LONG_GRAPH_ZOOM = 0.6
 const FIT_MARGIN = 32
 const MINIMAP_MIN_NODES = 13
+const MINIMAP_MIN_CANVAS = { width: 640, height: 420 }
 
 const root = ref<HTMLElement | null>(null)
 const size = ref({ width: 0, height: 0 })
 // vue-flow's SVG layers compute NaN patterns/viewBoxes at 0×0 (hidden view, pane mid-resize), so they wait for a real size.
 const ready = computed(() => size.value.width > 0 && size.value.height > 0)
-const showMinimap = computed(() => props.minimap && ready.value && props.nodes.length >= MINIMAP_MIN_NODES)
+const showMinimap = computed(() => props.minimap && ready.value && props.nodes.length >= MINIMAP_MIN_NODES && size.value.width >= MINIMAP_MIN_CANVAS.width && size.value.height >= MINIMAP_MIN_CANVAS.height)
 
 async function frame(duration = 200): Promise<void> {
   const nodes = getNodes.value
@@ -66,7 +68,8 @@ async function frame(duration = 200): Promise<void> {
   }
   if (props.minFitZoom) {
     // Tall flows keep readable text (width-fit, 1.0 at most) and scroll: start at the first step or the focused one.
-    const zoom = Math.max(floor, Math.min(1, (width - 2 * FIT_MARGIN) / (maxX - minX)))
+    // fitWidthZoom lets a wide multi-lane graph shrink below the reading floor so no lane is cut off.
+    const zoom = Math.max(props.fitWidthZoom || floor, Math.min(1, (width - 2 * FIT_MARGIN) / (maxX - minX)))
     const x = (maxX - minX) * zoom <= width - 2 * FIT_MARGIN ? (width - (maxX - minX) * zoom) / 2 - minX * zoom : FIT_MARGIN - minX * zoom
     const f = props.focusId ? nodes.find((n) => n.id === props.focusId) : undefined
     const top = FIT_MARGIN - minY * zoom
@@ -232,9 +235,9 @@ function onDragStop(e: NodeDragEvent): void {
         v-if="showMinimap"
         pannable
         zoomable
-        position="top-right"
-        :width="150"
-        :height="96"
+        position="bottom-left"
+        :width="140"
+        :height="90"
         :node-color="miniColor"
         :node-border-radius="6"
         mask-color="color-mix(in srgb, var(--bg-content) 70%, transparent)"
