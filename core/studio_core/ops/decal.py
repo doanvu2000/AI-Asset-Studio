@@ -158,6 +158,74 @@ def stroke_radius(alpha: np.ndarray, name: str, size: int) -> tuple[float, int]:
     return round(out_w, 2), min(grow, max(2, round(min(alpha.shape) * 0.02)))
 
 
+def _noise_field(shape: tuple[int, int], rng: np.random.Generator) -> np.ndarray:
+    """0..1 field with big swells and small ripples, stretched so its extremes are reached."""
+    n = 0.55 * _noise(shape, 5, rng) + 0.3 * _noise(shape, 13, rng) + 0.15 * _noise(shape, 34, rng)
+    return ((n - n.min()) / max(float(n.max() - n.min()), 1e-6)).astype(np.float32)
+
+
+def vary_width(color: np.ndarray, alpha: np.ndarray, radius: int, rng: np.random.Generator
+               ) -> tuple[np.ndarray, np.ndarray]:
+    """thicken() with a radius that swells and pinches along the mark (0.5x..2.9x `radius`), as a real fracture does;
+    a uniform grow made every crack the same ribbon."""
+    if radius <= 0:
+        return color, alpha
+    field = np.clip(0.5 + 2.4 * _noise_field(alpha.shape, rng) ** 1.5, 0, None) * radius
+    top = int(np.ceil(field.max()))
+    out, layer = alpha.copy(), alpha
+    for k in range(1, top + 1):
+        layer = _max_box(layer, 1)
+        out = np.where(field >= k - 0.5, np.maximum(out, layer), out)
+    grown = np.maximum(alpha, np.clip(soft_blur(out, 1, wrap=False), 0, 1))
+    r = top + 1
+    den = soft_blur(alpha, r, wrap=False)[..., None]
+    fill = soft_blur(color * alpha[..., None], r, wrap=False) / np.maximum(den, 1e-4)
+    keep = alpha[..., None]
+    out_c = np.where(den > 1e-4, color * keep + np.clip(fill, 0, 1) * (1 - keep), color)
+    return out_c.astype(np.float32), grown.astype(np.float32)
+
+
+def add_branches(color: np.ndarray, alpha: np.ndarray, width: float, rng: np.random.Generator
+                 ) -> tuple[np.ndarray, np.ndarray, int]:
+    """Forks short tapering twigs off the mark, more of them where the noise field is high, leaving the main line at
+    30-50 degrees to its local direction -> (colour, alpha, branch count)."""
+    h, w = alpha.shape
+    solid = alpha > 0.5
+    length = float(solid.sum()) / max(width, 1.0)
+    count = int(np.clip(round(length / (0.12 * min(h, w))), 2, 12))
+    if solid.sum() < 32:
+        return color, alpha, 0
+    weight = _noise_field(alpha.shape, rng)[solid] ** 3 + 1e-3
+    ys, xs = np.nonzero(solid)
+    picks = rng.choice(len(xs), size=count, p=weight / weight.sum())
+    gy, gx = np.gradient(soft_blur(alpha, max(2, round(min(h, w) * 0.03)), wrap=False))
+    layer = Image.new("L", (w, h), 0)
+    draw = ImageDraw.Draw(layer)
+    reach = min(h, w) * 0.09
+    made = 0
+    for i in picks:
+        y, x = float(ys[i]), float(xs[i])
+        mag = float(np.hypot(gx[int(y), int(x)], gy[int(y), int(x)]))
+        along = np.arctan2(gx[int(y), int(x)], -gy[int(y), int(x)]) if mag > 1e-4 else rng.uniform(0, 2 * np.pi)
+        ang = along + rng.choice((-1, 1)) * rng.uniform(0.5, 0.9)
+        steps = int(rng.integers(6, 10))
+        bend = rng.uniform(-0.18, 0.18)
+        seg = reach * rng.uniform(0.5, 1.0) / steps
+        for s in range(steps):
+            ang += bend + rng.uniform(-0.2, 0.2)
+            ny, nx = y + seg * np.sin(ang), x + seg * np.cos(ang)
+            tw = max(1, round(width * 0.4 * (1 - s / steps)))
+            draw.line([(x, y), (nx, ny)], fill=255, width=tw)
+            y, x = ny, nx
+        made += 1
+    twig = np.asarray(layer, np.float32) / 255
+    twig = np.clip(soft_blur(twig, 1, wrap=False) * 1.6, 0, 1)
+    ink = (color * alpha[..., None]).sum((0, 1)) / max(float(alpha.sum()), 1e-4)
+    # Where a twig overlaps the faint rim of the mark the old colour there is key-light; it must turn to ink too.
+    new = ((twig > 0.02) & (twig >= alpha) & (alpha < 0.5)).astype(np.float32)[..., None]
+    return (color * (1 - new) + ink * new).astype(np.float32), np.maximum(alpha, twig), made
+
+
 def irregular_edge(color: np.ndarray, alpha: np.ndarray, amount: float, seed: int
                    ) -> tuple[np.ndarray, np.ndarray]:
     """Bends the outline with a low-frequency warp and eats into it with noise (big lobes + grainy fringe), so a
@@ -250,9 +318,10 @@ def irregular_amount(setting: Any, name: str, mode: str, round_score: float) -> 
 
 
 def make_decal(src: Image.Image, cut: Image.Image | None, mode: str, size: int, fade: float, strength: float,
-               invert: bool, name: str = "", irregular: Any = "auto", seed: int = 0
+               invert: bool, name: str = "", irregular: Any = "auto", seed: int = 0, vary: bool = True
                ) -> tuple[Image.Image, Image.Image, dict[str, Any]]:
     rgb = np.asarray(src.convert("RGB"), np.float32) / 255
+    branches = 0
     alpha, bg = key_alpha(rgb)
     inked = ink_key(rgb) if mode != "birefnet" and is_linear(name) else None
     if mode == "birefnet" and cut is not None:
@@ -268,8 +337,13 @@ def make_decal(src: Image.Image, cut: Image.Image | None, mode: str, size: int, 
         else:
             color = unpremultiply(rgb, alpha, bg)
         out_w, grow = stroke_radius(alpha, name, size)
-        color, alpha = thicken(color, alpha, grow)
-        stroke = [out_w, stroke_radius(alpha, name, size)[0] if grow else out_w]
+        if vary and is_linear(name) and out_w > 0:
+            rng = np.random.default_rng(seed + 1)
+            color, alpha = vary_width(color, alpha, grow, rng)
+            color, alpha, branches = add_branches(color, alpha, max(stroke_width(alpha), 2.0), rng)
+        else:
+            color, alpha = thicken(color, alpha, grow)
+        stroke = [out_w, stroke_radius(alpha, name, size)[0] if grow or branches else out_w]
     before = roundness(alpha)
     amount = irregular_amount(irregular, name, mode, before)
     color, alpha = irregular_edge(color, alpha, amount, seed)
@@ -279,7 +353,7 @@ def make_decal(src: Image.Image, cut: Image.Image | None, mode: str, size: int, 
     a8 = np.asarray(albedo)[..., 3]
     cov = float((a8 > 128).mean())
     return albedo, normal, {"aspect": [aw, ah], "coverage": round(cov, 4),
-                            "background": [round(float(v), 3) for v in bg], "irregular": amount, "stroke_px": stroke,
+                            "background": [round(float(v), 3) for v in bg], "irregular": amount, "stroke_px": stroke, "branches": branches,
                             "roundness": [round(before, 3), round(roundness(a8 / 255), 3)]}
 
 
@@ -301,6 +375,7 @@ def sheet(decals: list[tuple[str, Image.Image]], cell: int = 256) -> Image.Image
 
 class DecalPack(OpExecutor):
     kind = "op.decal_pack"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = _images_in(inputs)

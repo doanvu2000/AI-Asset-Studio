@@ -220,8 +220,8 @@ def test_decal_hairline_crack_is_inked_and_thickened() -> None:
     alb, _, meta = make_decal(img, None, "key", 512, 0.06, 4.0, False, "wall cracks")
     before, after = meta["stroke_px"]
     assert before < 2 and after >= MIN_STROKE * 512 * 0.9 and meta["irregular"] == 0
-    # The speck is dropped, so the crop stays on the crack (with it the box would reach y=852: aspect ~0.42).
-    assert meta["aspect"][1] < 0.34
+    # The speck is dropped, so the crop stays on the crack (with it the box would reach y=852: aspect ~0.42; twigs add a little height).
+    assert meta["aspect"][1] < 0.37
     a = np.asarray(alb, np.float32)
     solid = a[..., 3] > 128
     # Every opaque pixel is dark ink: no white lip, no light-grey branch.
