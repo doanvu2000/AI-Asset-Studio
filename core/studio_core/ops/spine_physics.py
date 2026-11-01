@@ -27,9 +27,9 @@ from .spine_weld import _deformed
 # mass 1, wind 0, gravity 0, mix 1, limit 5000, fps 60). Damping multiplies velocity every 1/60 s, so < 1 settles.
 PRESETS: dict[str, dict[str, float]] = {
     "hair": {"inertia": 0.5, "strength": 160.0, "damping": 0.85, "mass": 1.0},
-    # Measured with spine-core 4.2.43 on a 2-bone spine-character cape during walk: 50 / 0.9 swung the hem 5°,
-    # 35 / 0.95 (with LINK_DAMPING) 10° and it still settles within ~2 s of idle.
-    "cloth": {"inertia": 1.0, "strength": 35.0, "damping": 0.95, "mass": 1.0},
+    # Unity (spine-unity 4.2.121) run-stop sweep at 1.5 heights/s: 1.0 / 35 / 0.95 swung a 4-bone cape 104° and rang
+    # 5.6 s; 0.8 / 90 / 0.9 with the taper below gives 65° and 2.0 s, and the cape still swings 7° on walk.
+    "cloth": {"inertia": 0.8, "strength": 90.0, "damping": 0.9, "mass": 1.0},
     "tail": {"inertia": 0.6, "strength": 120.0, "damping": 0.88, "mass": 1.5},
     "rope": {"inertia": 0.9, "strength": 60.0, "damping": 0.92, "mass": 3.0},
     "ear": {"inertia": 0.4, "strength": 220.0, "damping": 0.8, "mass": 0.8},
@@ -258,8 +258,8 @@ LINK_DAMPING = 0.015
 # (the share of the host's motion kicked into the swing), stiffer `strength` (spring pulls back faster, ω² =
 # strength / mass), lower `damping` (velocity multiplier per 1/60 s, so a smaller number settles sooner) and a
 # lower `limit` (the cap, in skeleton units / s, on the per-frame displacement that feeds the rotation).
-CLOTH_TAPER = {"inertia": 0.1, "strength": 0.25, "damping": 0.02, "limit": 0.15}
-CLOTH_INERTIA_MIN = 0.5
+CLOTH_TAPER = {"inertia": 0.1, "strength": 0.25, "damping": 0.02, "limit": 0.25}
+CLOTH_INERTIA_MIN = 0.3
 # `limit` scales with the bone (skeleton units are px): 6 bone lengths / s leaves a walk untouched and caps the kick
 # of a run-stop.
 CLOTH_LIMIT_LENGTHS = 6.0
@@ -523,7 +523,7 @@ def _mesh_report(doc: dict[str, Any], meshed: list[list[str]]) -> list[str]:
 
 class SpinePhysics(OpExecutor):
     kind = "op.spine_physics"
-    version = "3"
+    version = "4"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         from . import spine_runtime as rt

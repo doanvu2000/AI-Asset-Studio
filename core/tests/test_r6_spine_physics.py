@@ -242,3 +242,12 @@ def test_export_readme_names_the_runtime(tmp_path: Path) -> None:
     assert "spine-godot 4.2 trở lên" in g
     sk.write_text(json.dumps(auto_rig(False)), encoding="utf-8")
     assert "Physics" not in dict(unity.export(src))["README.txt"].decode()
+
+
+def test_cloth_tip_is_calmer_than_root_and_finite() -> None:
+    new, _ = ph.add_physics(auto_rig())
+    cs = new["physics"]
+    assert len(cs) == 4 and ph.validate_physics(new) == []
+    assert cs[0]["inertia"] > cs[-1]["inertia"] >= ph.CLOTH_INERTIA_MIN
+    assert cs[0]["strength"] < cs[-1]["strength"] and cs[0]["damping"] > cs[-1]["damping"] >= 0.5
+    assert 0 < cs[-1]["limit"] < cs[0]["limit"]
