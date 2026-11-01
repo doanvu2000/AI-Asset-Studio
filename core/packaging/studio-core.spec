@@ -13,6 +13,7 @@ datas = [
     (str(PKG / "recipes" / "*.yaml"), "studio_core/recipes"),
     (str(PKG / "recipes" / "previews" / "*"), "studio_core/recipes/previews"),
     (str(PKG / "workflows" / "*.json"), "studio_core/workflows"),
+    (str(PKG / "flows" / "*.yaml"), "studio_core/flows"),
     (str(PKG / "bootstrap" / "manifest.json"), "studio_core/bootstrap"),
     (str(PKG / "export" / "engine_scripts" / "*"), "studio_core/export/engine_scripts"),
     (str(PKG / "export" / "shader_templates" / "*"), "studio_core/export/shader_templates"),

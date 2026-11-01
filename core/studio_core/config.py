@@ -8,7 +8,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, model_validator
 
-from studio_core.paths import default_data_dir, package_dir, recipes_dir
+from studio_core.paths import default_data_dir, flows_dir, package_dir, recipes_dir
 
 ROOT = Path(__file__).resolve().parents[2]
 TOOL_KEYS = ("comfy_dir", "comfy_python", "comfy_models_dir", "comfy_workflows_dir", "blender_exe", "codex_exe",
@@ -111,6 +111,7 @@ def _unset(p: Path) -> bool:
 class Settings(BaseModel):
     data_dir: Path = Field(default_factory=default_data_dir)
     recipes_dir: Path = recipes_dir()
+    flows_dir: Path = flows_dir()
 
     comfy_dir: Path = Path(r"L:\AI\setup\comfyUI")
     comfy_python: Path = Path(r"L:\AI\setup\comfyUI\.venv\Scripts\python.exe")
@@ -164,6 +165,10 @@ class Settings(BaseModel):
     @property
     def user_recipes_dir(self) -> Path:
         return self.data_dir / "recipes"
+
+    @property
+    def user_flows_dir(self) -> Path:
+        return self.data_dir / "flows"
 
     @property
     def app_exports_dir(self) -> Path:

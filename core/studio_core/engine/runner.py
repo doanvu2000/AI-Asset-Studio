@@ -35,6 +35,7 @@ from ..contracts import (
 )
 from .cache import cacheable_meta, executor_cache_key
 from .chain import CHAIN_ERROR, CHAIN_KEY, CHAIN_PARENT, CHAIN_RUNS, map_inputs, parse_chain, published_outputs
+from .flows import FlowEngine, strip_flow_meta
 from .gates import GATES, gate_enabled
 from .library import BLOB_HASH, RecipeLibrary
 from .projects import apply_style
@@ -225,6 +226,7 @@ class StudioEngine:
         self._bg: set[asyncio.Task[Any]] = set()
         self._qa_sem = asyncio.Semaphore(1)
         self._closed = False
+        self.flows = FlowEngine(self)
 
     # recipes
 
@@ -262,6 +264,8 @@ class StudioEngine:
         await self.repo.update_run(run.id, **fields)
         self.bus.publish("run.updated", {"id": run.id, "status": run.status.value, "error": run.error,
                                          "ended_at": run.ended_at}, run_id=run.id)
+        if "status" in fields:
+            self.flows.on_run_status(run)
 
     def _spawn_bg(self, coro: Any) -> None:
         t = asyncio.ensure_future(coro)
@@ -305,11 +309,15 @@ class StudioEngine:
         return values
 
     async def start_run(self, recipe_id: str, inputs: dict[str, Any], params: dict[str, Any] | None = None,
-                        project_id: str = "default", title: str = "") -> str:
+                        project_id: str = "default", title: str = "", *,
+                        flow_meta: dict[str, Any] | None = None) -> str:
+        """`flow_meta`: workflow tags, passed by FlowEngine only; the same keys in `params.$meta` are dropped."""
         if self._closed:
             raise EngineStateError("engine is shut down")
         recipe = self.get_recipe(recipe_id)
-        overrides = params or {}
+        overrides = strip_flow_meta(params or {})
+        if flow_meta:
+            overrides = {**overrides, META_KEY: {**(overrides.get(META_KEY) or {}), **flow_meta}}
         if project_id != DEFAULT_PROJECT:
             project = await self.repo.get_project(project_id)
             if project is None:
@@ -938,9 +946,11 @@ class StudioEngine:
             run = await self.repo.get_run(run_id)
             if run is not None and run.status not in _RUN_TERMINAL and run.status != RunStatus.INTERRUPTED:
                 await self._set_run(run, status=RunStatus.INTERRUPTED, error=INTERRUPTED, ended_at=now)
+        await self.flows.recover()
 
     async def shutdown(self) -> None:
         self._closed = True
+        await self.flows.close()
         for st in list(self._runs.values()):
             st.closing = True
             if st.driver is not None:

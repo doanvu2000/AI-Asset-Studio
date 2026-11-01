@@ -1,0 +1,16 @@
+id: concept-to-sprite
+title: Concept → Sprite 8 hướng
+description: >-
+  Prompt → concept 2D (chọn 1 ảnh, tách nền) → sprite 8 hướng 2D từ ảnh đã chọn.
+tags: [2d, sprite]
+inputs:
+  prompt: {type: text, label: Mô tả nhân vật}
+nodes:
+  - id: concept
+    recipe_id: concept-2d
+    title: Concept
+    map: {prompt: workflow.inputs.prompt}
+  - id: sprite
+    recipe_id: sprite-8dir-2d
+    title: Sprite 8 hướng
+    map: {image: "concept.outputs.final[0]"}

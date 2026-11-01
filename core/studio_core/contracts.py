@@ -6,7 +6,7 @@ import enum
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable, Protocol, runtime_checkable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Lane(str, enum.Enum):
@@ -159,6 +159,87 @@ class ProjectRow(BaseModel):
     archived: bool = False
 
 
+class WorkflowStatus(str, enum.Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    AWAITING_HUMAN = "awaiting_human"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class WorkflowNodeStatus(str, enum.Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    AWAITING_HUMAN = "awaiting_human"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    BLOCKED = "blocked"  # an upstream node failed or was cancelled
+
+
+class WorkflowInput(BaseModel):
+    """Workflow-level input; `type` uses the recipe input types (image, text, int, ...)."""
+    type: str = "text"
+    label: str = ""
+    default: Any = None
+    required: bool = True
+
+
+class WorkflowNode(BaseModel):
+    """One recipe run in a workflow; `map` feeds an input from `<node>.outputs.<name>[i]`, `<node>.inputs.<name>`
+    or `workflow.inputs.<name>`, and the nodes it names are its dependencies."""
+    id: str
+    recipe_id: str
+    title: str = ""
+    inputs: dict[str, Any] = {}
+    map: dict[str, str] = {}
+    params: dict[str, Any] = {}
+
+
+class WorkflowDef(BaseModel):
+    """Saved graph of recipe runs (builtin core/studio_core/flows/*.yaml or user <data>/flows/*.yaml)."""
+    id: str
+    title: str
+    description: str = ""
+    inputs: dict[str, WorkflowInput] = {}
+    nodes: list[WorkflowNode] = []
+    tags: list[str] = []
+    preview: str | None = None
+    source: str = "builtin"  # builtin | user | override; set by the loader, ignored on save
+
+    @field_validator("inputs", mode="before")
+    @classmethod
+    def _short_inputs(cls, v: Any) -> Any:
+        if isinstance(v, dict):
+            return {k: {"type": s} if isinstance(s, str) else s for k, s in v.items()}
+        return v
+
+
+class WorkflowNodeState(BaseModel):
+    """Live state of one node in a workflow run; `run_id` is the latest child run started for it."""
+    status: WorkflowNodeStatus = WorkflowNodeStatus.PENDING
+    run_id: str | None = None
+    error: str | None = None
+    attempts: int = 0
+
+
+class WorkflowRunRow(BaseModel):
+    """One execution of a workflow; `def_snapshot` is the definition as it was when the run started."""
+    id: str
+    workflow_id: str
+    title: str = ""
+    project_id: str = "default"
+    status: WorkflowStatus = WorkflowStatus.QUEUED
+    def_snapshot: dict[str, Any] = {}
+    inputs: dict[str, Any] = {}
+    nodes: dict[str, WorkflowNodeState] = {}
+    error: str | None = None
+    created_at: float
+    updated_at: float
+    ended_at: float | None = None
+
+
 # ---- events (WS) ----
 
 class Event(BaseModel):
@@ -180,6 +261,7 @@ EVENT_TYPES = (
     "gate.awaiting",  # data: {kind: pick|approve, k, candidates: [BlobRef]}
     "version.updated",  # data: VersionRow
     "resource.updated",  # data: ResourceHealth
+    "workflow.updated",  # data: WorkflowRunRow
 )
 
 

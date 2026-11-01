@@ -23,8 +23,9 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs(created_at);
 CREATE INDEX IF NOT EXISTS idx_runs_recipe_id ON runs(recipe_id, created_at);
--- Must match repo._BATCH_ID verbatim, or SQLite will not use it.
+-- Must match repo._BATCH_ID / _WORKFLOW_RUN_ID verbatim, or SQLite will not use it.
 CREATE INDEX IF NOT EXISTS idx_runs_batch_id ON runs(json_extract(params, '$."$meta".batch_id'));
+CREATE INDEX IF NOT EXISTS idx_runs_workflow_run ON runs(json_extract(params, '$."$meta".workflow_run_id'));
 
 CREATE TABLE IF NOT EXISTS steps (
     id TEXT PRIMARY KEY,
@@ -95,6 +96,23 @@ CREATE TABLE IF NOT EXISTS manifests (
     rows TEXT NOT NULL DEFAULT '[]',
     updated_at REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS workflow_runs (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    project_id TEXT NOT NULL DEFAULT 'default',
+    status TEXT NOT NULL,
+    def_snapshot TEXT NOT NULL DEFAULT '{}',
+    inputs TEXT NOT NULL DEFAULT '{}',
+    nodes TEXT NOT NULL DEFAULT '{}',
+    error TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    ended_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_workflow_runs_created ON workflow_runs(created_at);
+CREATE INDEX IF NOT EXISTS idx_workflow_runs_status ON workflow_runs(status);
 
 CREATE TABLE IF NOT EXISTS style_bibles (
     project_id TEXT PRIMARY KEY,

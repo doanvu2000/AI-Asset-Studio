@@ -18,6 +18,8 @@ from studio_core.contracts import (
     StepStatus,
     VersionRow,
     VersionStatus,
+    WorkflowRunRow,
+    WorkflowStatus,
 )
 from studio_core.store.db import Database
 
@@ -64,8 +66,10 @@ _STEPS = _Table("steps", StepRow, {"deps", "params", "inputs", "outputs", "error
 _VERSIONS = _Table("versions", VersionRow, {"blob", "qa"})
 _BLOBS = _Table("blobs", BlobRow, set(), pk="hash")
 _PROJECTS = _Table("projects", ProjectRow, {"style"})
+_WORKFLOW_RUNS = _Table("workflow_runs", WorkflowRunRow, {"def_snapshot", "inputs", "nodes"})
 _OUTPUTS: TypeAdapter[Outputs] = TypeAdapter(Outputs)
 _BATCH_ID = """json_extract(params, '$."$meta".batch_id')"""
+_WORKFLOW_RUN_ID = """json_extract(params, '$."$meta".workflow_run_id')"""
 
 
 class SqliteRepo:
@@ -290,6 +294,42 @@ class SqliteRepo:
         await self.db.write("INSERT INTO style_bibles (project_id, data, updated_at) VALUES (?, ?, ?) "
                             "ON CONFLICT(project_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
                             (project_id, orjson.dumps(data, default=to_jsonable_python).decode(), time.time()))
+
+    async def create_workflow_run(self, wr: WorkflowRunRow) -> None:
+        await self.db.write(_WORKFLOW_RUNS.insert_sql(), _WORKFLOW_RUNS.to_params(wr))
+
+    async def update_workflow_run(self, wr_id: str, **fields: Any) -> None:
+        await self._update(_WORKFLOW_RUNS, wr_id, fields)
+
+    async def get_workflow_run(self, wr_id: str) -> WorkflowRunRow | None:
+        row = await self.db.fetchone("SELECT * FROM workflow_runs WHERE id = ?", (wr_id,))
+        return _WORKFLOW_RUNS.decode(row) if row else None
+
+    async def list_workflow_runs(self, limit: int = 50, workflow_id: str | None = None,
+                                 project_id: str | None = None,
+                                 statuses: list[WorkflowStatus] | None = None) -> list[WorkflowRunRow]:
+        where: list[str] = []
+        params: list[Any] = []
+        if workflow_id:
+            where.append("workflow_id = ?")
+            params.append(workflow_id)
+        if project_id is not None:
+            where.append("project_id = ?")
+            params.append(project_id)
+        if statuses:
+            where.append(f"status IN ({', '.join('?' for _ in statuses)})")
+            params.extend(WorkflowStatus(s).value for s in statuses)
+        sql = "SELECT * FROM workflow_runs"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        return [_WORKFLOW_RUNS.decode(r) for r in await self.db.fetchall(sql, [*params, limit])]
+
+    async def runs_of_workflow_run(self, wr_id: str) -> list[RunRow]:
+        """Child runs started for a workflow run, oldest first (also those it lost track of in a crash)."""
+        rows = await self.db.fetchall(f"SELECT * FROM runs WHERE {_WORKFLOW_RUN_ID} = ? ORDER BY created_at",
+                                      (wr_id,))
+        return [_RUNS.decode(r) for r in rows]
 
     async def run_states(self, run_ids: list[str]) -> dict[str, dict[str, Any]]:
         """run id -> {status, approved (count of approved versions)}; unknown ids are left out."""

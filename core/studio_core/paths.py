@@ -31,6 +31,11 @@ def recipes_dir() -> Path:
     return package_dir() / "recipes"
 
 
+def flows_dir() -> Path:
+    """Built-in workflow definitions (recipe graphs). Not `workflows/`: that folder holds ComfyUI graphs."""
+    return package_dir() / "flows"
+
+
 def blender_scripts_dir() -> Path:
     """Shipped as plain .py files even when frozen: Blender's own Python runs them."""
     return package_dir() / "adapters" / "blender"
