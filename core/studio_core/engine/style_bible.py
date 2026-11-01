@@ -35,6 +35,13 @@ class BibleRef(BaseModel):
     asset_name: str = ""
 
 
+class StyleLockSource(BaseModel):
+    run_id: str
+    locked_at: float
+    recipe_id: str = "style-lock"
+    palette: list[str] = []
+
+
 class StyleBible(BaseModel):
     version: int = 0
     active: bool = True
@@ -55,6 +62,7 @@ class StyleBible(BaseModel):
     cost_usd: float | None = None
     model: str | None = None
     vision_error: str | None = None
+    lock: StyleLockSource | None = None
 
 
 def pixel_score(img: Image.Image) -> float:
@@ -171,6 +179,18 @@ def new_bible(prev: StyleBible | None, stats: dict[str, Any], refs: list[BibleRe
     return StyleBible(**stats, refs=refs, suffix=suffix.strip()[:2000], negative=negative.strip()[:2000],
                       summary=summary.strip()[:4000], source_count=sources, built_at=now, updated_at=now,
                       version=(prev.version if prev else 0) + 1, active=prev.active if prev else True, **extra)
+
+
+def lock_bible(prev: StyleBible | None, run_id: str, refs: list[BibleRef], palette: list[str], suffix: str
+               ) -> StyleBible:
+    """Bible after "set as project style" from a style-lock run: its anchors become the style refs, the report's
+    palette replaces the measured one; the text of an existing bible is kept unless the run brought its own."""
+    now = time.time()
+    base = prev or StyleBible()
+    return base.model_copy(update={
+        "refs": refs[:MAX_REFS], "palette": palette[:PALETTE_K] or base.palette, "active": True, "edited": True,
+        "suffix": suffix.strip()[:2000] or base.suffix, "version": base.version + 1, "updated_at": now,
+        "built_at": base.built_at or now, "lock": StyleLockSource(run_id=run_id, locked_at=now, palette=palette)})
 
 
 def _empty(v: Any) -> bool:
