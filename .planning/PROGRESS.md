@@ -75,3 +75,9 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [x] U5 chế độ Đơn giản/Nâng cao — typecheck sạch, d20c894 (main thêm: prompt/idea luôn hiện).
 - [x] P4+P5 RunsView tải thêm theo trang (500) + ws subscribe_runs lọc step.log — 26 pass, typecheck sạch.
 - [x] N2 anim-stabilize recipe — 64 pass.
+- [x] Chủ nhân báo gen-pose-line xong → xoá .gpu-lock (GPU 761MB/12GB, 0%).
+- [~] Agent live game-slice (đích flutter) + kiểm visor + dart analyze gói flutter; agent tự giữ .gpu-lock.
+- [x] Live game-slice 15/15 node succeeded ~21,4 phút, không sửa code. Visor: 36 frame không lộ mặt (main xem scratchpad/gs/heads.png). Gói flutter dart analyze lib 0 issue. Output: scratchpad 0bc24b1f…/scratchpad/gs/ (v/, pack_out/default-1.0.0/flutter).
+- [ ] Lỗi chất lượng live: walk gần như đứng yên (main xem cs_walk.png); idle 4 tư thế lặp 3; attack nhỏ hơn idle (bbox 160 vs 234); cỏ concept dính chân; minimap nhãn "SpriteSheet"/"SamplePropCleanSw…"; workflow để version draft → pack phải approve tay.
+- [~] Chủ nhân chốt: sửa prompt video, chấp nhận mất cache. Giao ANIM-1 (executors.py anim prompt + live idle/walk/attack, giữ .gpu-lock) và LIVE-FIX CPU (cỏ dính chân, scale attack, nhãn minimap, auto-approve game-slice).
+- [x] LIVE-FIX bf849ba (ground_strip + cutout node, engine_pack v4 median scale, minimap labels=auto, flows auto_approve) — 163 pass; regen agent docs recipes.md.
