@@ -755,9 +755,12 @@ export class MockCore implements StudioApi, EventStream {
 
     // A live run occupying the GPU so a new run visibly waits for the lane, plus one gate waiting for a pick.
     void this.startRun({ recipe_id: 'concept-2d', inputs: { prompt: 'Kiếm pha lê xanh, low-poly', count: 4, size: 512, seed: -1 }, title: 'Kiếm pha lê xanh' })
+    for (const prompt of ['Cung thủ elf, áo xanh lá', 'Pháp sư băng, áo choàng bạc'])
+      void this.startRun({ recipe_id: 'concept-2d', inputs: { prompt, count: 4, size: 512, seed: -1 }, title: prompt })
     const gateRun = await this.startRun({ recipe_id: 'concept-2d-codex', inputs: { prompt: 'Bình thuốc tím phát sáng', count: 4, transparent: true }, title: 'Bình thuốc tím' })
     void gateRun
     await this.flowsCore.seed()
+    this.flowBatchCore.seed()
   }
 
   private seedProjects(t0: number): void {

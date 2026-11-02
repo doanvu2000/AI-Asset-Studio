@@ -82,6 +82,7 @@ export class MockFlows {
   private runs = new Map<string, WorkflowRunRow>()
   private fake = new Map<string, Record<string, { progress: number | null; preview: string | null }>>()
   private demoId = ''
+  private frozen = new Set<string>()
 
   constructor(private host: FlowsHost) {}
 
@@ -122,6 +123,38 @@ export class MockFlows {
       spine: { progress: 0.5, preview: c.hash }
     })
     window.setInterval(() => void this.tick(), 800)
+  }
+
+  /** Fixed node states that stay put until retried; succeeded nodes borrow a real sample run so retrying a downstream node has a source image. */
+  seedRuns(workflowId: string, items: { id: string; title: string; age: number; status: WorkflowStatus; nodes: Record<string, [WorkflowNodeStatus, string?]> }[]): string[] {
+    const def = this.get(workflowId)
+    const t = now()
+    const sample = this.host.sampleRunIds()[0] ?? null
+    for (const it of items) {
+      const nodes = Object.fromEntries(
+        def.nodes.map((n) => {
+          const [status, error] = it.nodes[n.id] ?? ['pending']
+          return [n.id, { status, run_id: status === 'succeeded' ? sample : null, error: error ?? null, attempts: status === 'pending' || status === 'blocked' ? 0 : 1 } as WorkflowNodeState]
+        })
+      )
+      const ended = ['succeeded', 'failed', 'cancelled'].includes(it.status)
+      this.runs.set(it.id, {
+        id: it.id,
+        workflow_id: def.id,
+        title: it.title,
+        project_id: 'default',
+        status: it.status,
+        def_snapshot: clone(def),
+        inputs: { prompt: it.title },
+        nodes,
+        error: null,
+        created_at: t - it.age,
+        updated_at: t - it.age / 2,
+        ended_at: ended ? t - it.age / 2 : null
+      })
+      this.frozen.add(it.id)
+    }
+    return items.map((it) => it.id)
   }
 
   // ---- definitions ----
@@ -289,6 +322,7 @@ export class MockFlows {
     row.status = 'running'
     row.error = null
     row.ended_at = null
+    this.frozen.delete(id)
     if (id === this.demoId) {
       row.nodes[nodeId] = { status: 'running', run_id: null, error: null, attempts: ns.attempts + 1 }
       this.fake.get(id)![nodeId] = { progress: 0.1, preview: null }
@@ -305,7 +339,7 @@ export class MockFlows {
     row.ended_at = now()
     for (const ns of Object.values(row.nodes)) {
       if (ns.run_id && LIVE.has(ns.status)) void this.host.cancelRun(ns.run_id).catch(() => undefined)
-      if (!ns.run_id && (ns.status === 'pending' || ns.status === 'blocked' || ns.status === 'running')) ns.status = 'cancelled'
+      if (!ns.run_id && (ns.status === 'pending' || ns.status === 'blocked' || ns.status === 'running' || ns.status === 'awaiting_human')) ns.status = 'cancelled'
     }
     this.touch(row)
     return clone(row)
@@ -318,6 +352,7 @@ export class MockFlows {
 
   private async tick(): Promise<void> {
     for (const row of this.runs.values()) {
+      if (this.frozen.has(row.id)) continue
       if (row.id === this.demoId) this.tickDemo(row)
       else if (['queued', 'running', 'awaiting_human'].includes(row.status)) await this.step(row)
     }
@@ -429,6 +464,41 @@ export class MockFlowBatches {
   private batches = new Map<string, MockBatch>()
 
   constructor(private flows: MockFlows) {}
+
+  seed(): void {
+    const mk = (id: string, n: number, title: string, age: number, status: WorkflowStatus, nodes: Record<string, [WorkflowNodeStatus, string?]>) => ({ id: `seed-${id}-${n}`, title: `${title} #${n}`, age, status, nodes })
+    const live = (n: number, status: WorkflowStatus, nodes: Record<string, [WorkflowNodeStatus, string?]>) => mk('fb-live', n, 'Đội quái rừng', 300 - n * 20, status, nodes)
+    const done = (n: number, status: WorkflowStatus, nodes: Record<string, [WorkflowNodeStatus, string?]>) => mk('fb-done', n, 'Bộ NPC làng', 5400 - n * 60, status, nodes)
+    const batches: [string, string, number, ReturnType<typeof mk>[]][] = [
+      [
+        'seed-fb-done',
+        'Bộ NPC làng',
+        5400,
+        [
+          done(1, 'succeeded', { concept: ['succeeded'], sprite: ['succeeded'] }),
+          done(2, 'succeeded', { concept: ['succeeded'], sprite: ['succeeded'] }),
+          done(3, 'failed', { concept: ['succeeded'], sprite: ['failed', 'comfy_node_errors'] }),
+          done(4, 'failed', { concept: ['failed', 'Codex hết hạn mức tạm thời'], sprite: ['blocked'] })
+        ]
+      ],
+      [
+        'seed-fb-live',
+        'Đội quái rừng',
+        300,
+        [
+          live(1, 'succeeded', { concept: ['succeeded'], sprite: ['succeeded'] }),
+          live(2, 'running', { concept: ['succeeded'], sprite: ['running'] }),
+          live(3, 'running', { concept: ['running'] }),
+          live(4, 'queued', {}),
+          live(5, 'awaiting_human', { concept: ['awaiting_human'] })
+        ]
+      ]
+    ]
+    for (const [id, title, age, items] of batches) {
+      const runIds = this.flows.seedRuns('concept-to-sprite', items)
+      this.batches.set(id, { id, workflow_id: 'concept-to-sprite', title, project_id: 'default', created_at: now() - age, run_ids: runIds })
+    }
+  }
 
   async start(body: FlowBatchBody): Promise<FlowBatchDetail> {
     if (!body.items.length) throw new ApiError('invalid', 'batch needs at least one item', 400)
