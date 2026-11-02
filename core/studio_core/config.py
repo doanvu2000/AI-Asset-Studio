@@ -133,6 +133,8 @@ class Settings(BaseModel):
     tool_search_roots: list[Path] = Field(default_factory=fixed_drives)
 
     lane_limits: dict[str, int] = {"gpu": 1, "blender": 1, "cloud": 3, "cpu": 4}
+    # Lanes "Nhường GPU" pauses: Blender renders with OptiX on the same card.
+    gpu_yield_lanes: list[str] = ["gpu", "blender"]
     allowed_origins: list[str] = ["app://studio", "http://localhost:5173", "http://127.0.0.1:5173"]
 
     @model_validator(mode="after")

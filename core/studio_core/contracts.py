@@ -262,6 +262,7 @@ EVENT_TYPES = (
     "version.updated",  # data: VersionRow
     "resource.updated",  # data: ResourceHealth
     "workflow.updated",  # data: WorkflowRunRow
+    "gpu.updated",  # data: {yielding, until, freed, queued: [run_id]}; other queue moves ride on step.updated
 )
 
 
@@ -392,6 +393,28 @@ class Resource(Protocol):
     async def ensure_started(self) -> None: ...
 
     async def stop(self) -> None: ...
+
+
+class GpuSlot(BaseModel):
+    run_id: str
+    step_id: str = ""
+    step_key: str = ""
+    lane: str = "gpu"
+    kind: str = ""
+    title: str = ""
+    recipe_id: str = ""
+    priority: float = 0
+    waiting_s: float | None = None
+
+
+class GpuState(BaseModel):
+    yielding: bool = False
+    until: float | None = None  # epoch seconds the yield ends on its own
+    freed: bool = False  # ComfyUI was asked to unload its models during this yield
+    running: list[GpuSlot] = []
+    queued: list[GpuSlot] = []  # grant order
+    comfy_status: str | None = None
+    comfy_loaded: bool | None = None
 
 
 # ---- repository (SQLite) ----

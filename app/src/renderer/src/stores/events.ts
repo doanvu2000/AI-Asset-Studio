@@ -21,6 +21,7 @@ import { useRecipes } from './recipes'
 import { useProjects } from './projects'
 import { useAgents } from './agents'
 import { useFlows } from './flows'
+import { useGpu } from './gpu'
 import { NO_PROJECT } from '@/api/types'
 
 // One pass per animation frame: each store mutates in place and triggers its shallowRefs once.
@@ -85,6 +86,9 @@ export function applyEvents(events: StudioEvent[]): void {
         break
       case 'workflow.updated':
         flows.onRun(e.data as unknown as WorkflowRunRow)
+        break
+      case 'gpu.updated':
+        useGpu().refresh()
         break
       case 'agent.activity':
         useAgents().push(e.data as unknown as AgentActivity)

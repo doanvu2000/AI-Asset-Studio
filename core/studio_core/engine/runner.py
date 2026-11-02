@@ -37,8 +37,9 @@ from .cache import cacheable_meta, executor_cache_key
 from .chain import CHAIN_ERROR, CHAIN_KEY, CHAIN_PARENT, CHAIN_RUNS, map_inputs, parse_chain, published_outputs
 from .flows import FlowEngine, strip_flow_meta
 from .gates import GATES, gate_enabled
+from .gpu import GpuControl
 from .library import BLOB_HASH, RecipeLibrary
-from .projects import apply_style
+from .projects import BASE_KEY, PROMPT_INPUTS, apply_style
 from . import style_bible as sb
 from .qa import version_qa
 from .recipe import BLOB_TYPES, Recipe, RecipeError, find_step_refs, ref_value, substitute_refs
@@ -227,6 +228,7 @@ class StudioEngine:
         self._qa_sem = asyncio.Semaphore(1)
         self._closed = False
         self.flows = FlowEngine(self)
+        self.gpu = GpuControl(self, settings.gpu_yield_lanes)
 
     # recipes
 
@@ -265,7 +267,17 @@ class StudioEngine:
         self.bus.publish("run.updated", {"id": run.id, "status": run.status.value, "error": run.error,
                                          "ended_at": run.ended_at}, run_id=run.id)
         if "status" in fields:
+            if run.status in _RUN_TERMINAL:
+                self.scheduler.forget(run.id)
             self.flows.on_run_status(run)
+
+    def live_run(self, run_id: str) -> RunRow | None:
+        st = self._runs.get(run_id)
+        return st.run if st else None
+
+    def live_step(self, run_id: str, key: str) -> StepRow | None:
+        st = self._runs.get(run_id)
+        return st.steps.get(key) if st else None
 
     def _spawn_bg(self, coro: Any) -> None:
         t = asyncio.ensure_future(coro)
@@ -325,6 +337,7 @@ class StudioEngine:
             user_inputs = inputs or {}
             inputs, applied = apply_style(recipe, inputs, project.style)
             meta = {**(overrides.get(META_KEY) or {}), "project_id": project_id, "project_applied": applied}
+            meta[BASE_KEY] = {k: user_inputs[k] for k in PROMPT_INPUTS if isinstance(user_inputs.get(k), str)}
             inputs = await self._apply_style_bible(recipe, inputs, user_inputs, project_id, meta)
             overrides = {**overrides, META_KEY: meta}
         values = await self.check_inputs(recipe, inputs)
@@ -638,7 +651,10 @@ class StudioEngine:
                                      meta={**step.meta, "waiting_for": lane.value})
 
             await self.scheduler.acquire(lane, step.meta.get("ready_at", _now()), on_wait,
-                                         hint={"group": model_group(ex, step.kind)})
+                                         hint={"group": model_group(ex, step.kind), "run_id": step.run_id,
+                                               "step_id": step.id, "step_key": step.key})
+            if lane in self.gpu.lanes:
+                self.gpu.holders[step.id] = (step.run_id, step.key, lane)
             try:
                 await self._ensure_resource(ex, step)
                 job_dir = self.settings.jobs_dir / step.run_id / f"{step.key}-{step.attempt}"
@@ -649,6 +665,7 @@ class StudioEngine:
                 await self._set_step(step, status=StepStatus.RUNNING, started_at=_now(), progress=0.0, meta=meta)
                 result = await self._run_with_auto_retry(ex, ctx, step, inputs, params)
             finally:
+                self.gpu.holders.pop(step.id, None)
                 self.scheduler.release(lane)
             kept = {k: v for k, v in step.meta.items() if k != LIVE_COST}
             await self._set_step(step, status=StepStatus.SUCCEEDED, outputs=result.outputs, progress=1.0,
@@ -951,6 +968,7 @@ class StudioEngine:
     async def shutdown(self) -> None:
         self._closed = True
         await self.flows.close()
+        await self.gpu.close()
         for st in list(self._runs.values()):
             st.closing = True
             if st.driver is not None:

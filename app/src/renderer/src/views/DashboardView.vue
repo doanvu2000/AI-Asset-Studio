@@ -11,6 +11,7 @@ import RelTime from '@/components/RelTime.vue'
 import GettingStarted from '@/components/GettingStarted.vue'
 import AgentConnectCard from '@/components/AgentConnectCard.vue'
 import DeviceCard from '@/components/DeviceCard.vue'
+import GpuPanel from '@/components/GpuPanel.vue'
 import CostStats from '@/components/CostStats.vue'
 import { useResources } from '@/stores/resources'
 import { useRuns } from '@/stores/runs'
@@ -138,6 +139,8 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
 
         <DeviceCard />
 
+        <GpuPanel />
+
         <GettingStarted v-if="firstTime" />
 
         <template v-else>
@@ -252,6 +255,7 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
 }
 .sec {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 .sec-head {
