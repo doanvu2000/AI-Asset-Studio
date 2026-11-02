@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Boxes } from '@lucide/vue'
+import { Boxes, FileText } from '@lucide/vue'
 import type { RecipeInfo, WorkflowDef } from '@/api/types'
 import { useRecipes } from '@/stores/recipes'
 import { useFlows } from '@/stores/flows'
 import { recipeDemo, type RecipeDemo } from '@/composables/recipePeek'
 import RecipeDemoImage from './RecipeDemoImage.vue'
 
-type Goal = { id: string; title: string; text: string; flow?: string; recipes?: string[] }
+type Goal = { id: string; title: string; text: string; flow?: string; recipes?: string[]; gdd?: boolean }
 
 const GOALS: Goal[] = [
   { id: 'character', title: 'Nhân vật game', text: 'Từ một ý tưởng ra nhân vật biết đi, chạy, đánh, dùng được ngay trong game.', flow: 'character-pack' },
@@ -16,10 +16,11 @@ const GOALS: Goal[] = [
   { id: 'slice', title: 'Bản chơi thử đủ bộ', text: 'Một lần làm xong nhân vật, màn chơi và giao diện từ cùng một ý tưởng.', flow: 'game-slice' },
   { id: 'icons', title: 'Icon / ảnh UI lẻ', text: 'Làm nhanh một bộ icon hoặc vài ảnh giao diện riêng lẻ.', recipes: ['icon-pack', 'ui-kit', 'ui-screen'] },
   { id: 'prop3d', title: 'Vật phẩm 3D', text: 'Tạo một món đồ 3D như kiếm, thùng, cây rồi xuất ra ảnh hoặc mô hình.', recipes: ['prop-3d', 'icon-3d'] },
+  { id: 'gdd', title: 'Từ tài liệu GDD', text: 'Dán GDD, Claude tách danh sách asset và chọn cách làm cho từng mục.', gdd: true },
   { id: 'pixel', title: 'Làm sạch pixel-art', text: 'Đưa ảnh pixel bị nhòe hoặc lẫn màu về điểm ảnh sắc nét, đúng bảng màu.', recipes: ['pixel-cleanup'] }
 ]
 
-const emit = defineEmits<{ recipe: [id: string]; flow: [id: string]; count: [n: number] }>()
+const emit = defineEmits<{ recipe: [id: string]; flow: [id: string]; gdd: []; count: [n: number] }>()
 
 const recipes = useRecipes()
 const flows = useFlows()
@@ -39,6 +40,7 @@ interface Card {
 
 const cards = computed<Card[]>(() =>
   GOALS.flatMap((goal) => {
+    if (goal.gdd) return [{ goal, options: [], previewFrom: [] }]
     if (goal.flow) {
       const flowDef = flows.byId(goal.flow)
       if (!flowDef) return []
@@ -73,7 +75,8 @@ async function loadDemo(c: Card): Promise<void> {
 }
 
 function open(c: Card): void {
-  if (c.flowDef) emit('flow', c.flowDef.id)
+  if (c.goal.gdd) emit('gdd')
+  else if (c.flowDef) emit('flow', c.flowDef.id)
   else if (c.options[0]) emit('recipe', c.options[0].id)
 }
 </script>
@@ -86,6 +89,7 @@ function open(c: Card): void {
         <button type="button" class="g-main" @click="open(c)">
           <span class="g-art checker">
             <RecipeDemoImage v-if="demos[c.goal.id]" :demo="demos[c.goal.id]!" :alt="`Ảnh mẫu: ${c.goal.title}`" @failed="demos[c.goal.id] = null" />
+            <FileText v-else-if="c.goal.gdd" :size="28" :stroke-width="1.5" aria-hidden="true" />
             <Boxes v-else :size="28" :stroke-width="1.5" aria-hidden="true" />
           </span>
           <span class="headline">{{ c.goal.title }}</span>

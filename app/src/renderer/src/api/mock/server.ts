@@ -43,7 +43,7 @@ import { renderWalkSheet } from './walkSheet'
 import { mockStatsOverview } from './stats'
 import type { StatsOverview, StatsQuery } from '../types'
 import type { QaPart, QaRecomputeResult, QaResult } from '../types'
-import type { GddProposal, ManifestFormat, ManifestRow, ManifestStatus, ManifestView } from '../types'
+import type { GddPlan, GddPlanBody, GddPlanItem, GddProposal, GddStartBody, GddStartResult, ManifestFormat, ManifestRow, ManifestStatus, ManifestView } from '../types'
 import type { SetupJob, SetupPlan, SetupStartBody } from '../types'
 import type { ProjectQaAsset, ProjectQaFixResult, ProjectQaReport } from '../types'
 import type { StyleBible, StyleBibleEdit, StyleBibleView, StyleDriftAsset, StyleDriftReport, StyleRestyleResult } from '../types'
@@ -2278,6 +2278,52 @@ export class MockCore implements StudioApi, EventStream {
 
   async cancelFlowBatch(id: string): Promise<FlowBatchDetail> {
     return this.flowBatchCore.cancel(id)
+  }
+
+  private gddPlans = new Map<string, GddPlan>()
+
+  async gddPlan(body: GddPlanBody): Promise<GddPlan> {
+    await sleep(1400)
+    const text = body.text ?? ''
+    if (!text.trim()) throw new ApiError('invalid', 'send `text` or `blob_id`', 400)
+    const words = [...new Set(text.split(/[\s,.;:()]+/).filter((w) => w.length > 4))].slice(0, 6)
+    const recipe = [...this.builtins.keys()].find((k) => k === 'icon-pack') ?? [...this.builtins.keys()][0] ?? 'concept-2d'
+    const items: GddPlanItem[] = words.map((w, i) =>
+      i === 0
+        ? { id: uid('gi'), name: `Nhân vật ${w}`, kind: 'flow', target_id: 'character-pack', inputs: { prompt: w }, notes: 'mock · nhân vật chính', missing: [] }
+        : i === 1
+          ? { id: uid('gi'), name: `Màn ${w}`, kind: 'flow', target_id: 'level-pack', inputs: {}, notes: 'mock · cần ảnh địa hình và mesh', missing: ['tile_a', 'prop_mesh', 'scenery'] }
+          : { id: uid('gi'), name: `Icon ${w}`, kind: 'recipe', target_id: recipe, inputs: { prompt: w }, notes: 'mock', missing: [] }
+    )
+    const plan: GddPlan = { id: uid('gp'), project_id: body.project_id ?? 'default', items, dropped: [], cost_usd: 0.04, model: 'mock' }
+    this.gddPlans.set(plan.id, plan)
+    return clone(plan)
+  }
+
+  async gddStart(planId: string, body: GddStartBody): Promise<GddStartResult> {
+    await sleep(300)
+    const plan = this.gddPlans.get(planId)
+    if (!plan) throw new ApiError('not_found', `unknown plan: ${planId}`, 404)
+    const items = body.items ?? plan.items
+    if (!items.length) throw new ApiError('invalid', 'no items to start', 400)
+    const bad = items.find((i) => i.missing.length)
+    if (bad) throw new ApiError('invalid', `'${bad.name}': missing ${bad.missing.join(', ')}`, 400)
+    const project_id = body.project_id ?? plan.project_id
+    const flow_batch_ids: string[] = []
+    for (const fid of new Set(items.filter((i) => i.kind === 'flow').map((i) => i.target_id))) {
+      const group = items.filter((i) => i.kind === 'flow' && i.target_id === fid)
+      const b = await this.startFlowBatch({ flow_id: fid, project_id, title: body.title || 'Gói asset từ GDD', items: group.map((i) => ({ inputs: i.inputs, title: i.name })) })
+      flow_batch_ids.push(b.id)
+    }
+    const run_ids: string[] = []
+    let recipe_batch_id: string | null = null
+    for (const rid of new Set(items.filter((i) => i.kind === 'recipe').map((i) => i.target_id))) {
+      const group = items.filter((i) => i.kind === 'recipe' && i.target_id === rid)
+      const r = await this.startBatch({ recipe_id: rid, project_id, title: body.title || 'Gói asset từ GDD', items: group.map((i) => ({ inputs: i.inputs, title: i.name })) })
+      recipe_batch_id ??= r.batch_id
+      run_ids.push(...r.run_ids)
+    }
+    return { plan_id: planId, project_id, flow_batch_ids, recipe_batch_id, run_ids }
   }
 
   async retryFailedFlowBatch(id: string): Promise<FlowBatchDetail> {

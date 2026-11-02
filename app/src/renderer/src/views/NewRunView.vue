@@ -564,7 +564,7 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
             <ArrowRight :size="16" class="chev" />
           </button>
           <p v-if="selectedId && recipes.loaded" class="caption warn">Không tìm thấy quy trình này. Chọn một quy trình khác.</p>
-          <GoalCards @recipe="pick" @flow="openFlow" @count="goalCount = $event" />
+          <GoalCards @recipe="pick" @flow="openFlow" @gdd="router.push('/gdd')" @count="goalCount = $event" />
           <button v-if="goalCount" type="button" class="all-toggle" :aria-expanded="listOpen" aria-controls="all-recipes" @click="showAll = !showAll">
             <ChevronDown :size="15" class="all-chev" :class="{ up: listOpen }" aria-hidden="true" />
             Xem tất cả công thức

@@ -82,3 +82,5 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [~] Chủ nhân chốt: sửa prompt video, chấp nhận mất cache. Giao ANIM-1 (executors.py anim prompt + live idle/walk/attack, giữ .gpu-lock) và LIVE-FIX CPU (cỏ dính chân, scale attack, nhãn minimap, auto-approve game-slice).
 - [x] LIVE-FIX bf849ba (ground_strip + cutout node, engine_pack v4 median scale, minimap labels=auto, flows auto_approve) — 163 pass; regen agent docs recipes.md.
 - [x] ANIM-1 prompt walk/idle theo pha bước (adapters/anim_motion.py GUIDES, executor v2 → mất cache) + anim_loop lấy nhiều chu kỳ nguyên. Walk diff TB 1742→9874 (main xem scratchpad/an/cs_new_walk.png: chân xen kẽ rõ). Idle 4→8 tư thế, vẫn nhẹ. Slash: frame 9–12 kiếm cong/dài + nhiễu màu (main xem cs_new_slash.png) — cần xem tiếp.
+- [~] ANIM-2 (attack prompt + live slash + rerun full game-slice kiểm cutout/scale/minimap/auto_approve, giữ .gpu-lock); N5 GDD→batch (api/gdd.py, app dialog); full pytest nền → scratchpad/full_pytest.log.
+- [x] N5 GDD→plan (Opus JSON schema)→GddPlanView xác nhận→flow-batch + recipe-batch trong dự án — 14 pass, typecheck sạch; plan lưu RAM.

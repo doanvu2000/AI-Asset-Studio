@@ -59,7 +59,7 @@ import type {
 import type { FlowValidateResult, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from './types'
 import type { CoreDiagnostics } from '../../../preload/types'
 import type { AgentActivitySnapshot, GpuState } from './types'
-import type { FlowBatchBody, FlowBatchDetail, FlowBatchSummary } from './types'
+import type { FlowBatchBody, FlowBatchDetail, FlowBatchSummary, GddPlan, GddPlanBody, GddStartBody, GddStartResult } from './types'
 import type { EnginePreviewBody, EnginePreviewJob, OpenInEngineResult, PreviewEngine, PreviewEngines } from './enginePreview'
 import type { HitVfx, StepHits } from './hitFx'
 import { devlog } from '@/composables/devlog'
@@ -228,6 +228,9 @@ export interface StudioApi {
   flowBatch(id: string): Promise<FlowBatchDetail>
   cancelFlowBatch(id: string): Promise<FlowBatchDetail>
   retryFailedFlowBatch(id: string): Promise<FlowBatchDetail>
+  /** GDD text → Claude → asset plan (workflow or recipe per item); nothing runs until gddStart. */
+  gddPlan(body: GddPlanBody): Promise<GddPlan>
+  gddStart(planId: string, body: GddStartBody): Promise<GddStartResult>
   gpu(): Promise<GpuState>
   /** New GPU steps wait, running ones finish, then ComfyUI unloads its models; ends on its own after `minutes`. */
   yieldGpu(minutes: number): Promise<GpuState>
@@ -433,6 +436,8 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     flowBatch: (id) => call('GET', `/api/flow-batches/${enc(id)}`),
     cancelFlowBatch: (id) => call('POST', `/api/flow-batches/${enc(id)}/cancel`, undefined, SLOW_TIMEOUT_MS),
     retryFailedFlowBatch: (id) => call('POST', `/api/flow-batches/${enc(id)}/retry-failed`, undefined, SLOW_TIMEOUT_MS),
+    gddPlan: (body) => call('POST', '/api/gdd/plan', body, GDD_TIMEOUT_MS),
+    gddStart: (planId, body) => call('POST', `/api/gdd/plan/${enc(planId)}/start`, body, SLOW_TIMEOUT_MS),
     gpu: () => call('GET', '/api/gpu'),
     yieldGpu: (minutes) => call('POST', '/api/gpu/yield', { minutes }),
     resumeGpu: () => call('POST', '/api/gpu/resume'),

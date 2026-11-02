@@ -543,6 +543,47 @@ export interface GddProposal {
 
 export type ManifestFormat = 'csv' | 'yaml'
 
+export interface GddPlanItem {
+  id: string
+  name: string
+  kind: 'flow' | 'recipe'
+  target_id: string
+  inputs: Record<string, unknown>
+  notes: string
+  /** Required inputs still empty (usually files the owner has to attach); such an item cannot start. */
+  missing: string[]
+}
+
+export interface GddPlan {
+  id: string
+  project_id: string
+  items: GddPlanItem[]
+  dropped: string[]
+  cost_usd?: number | null
+  model?: string | null
+}
+
+export interface GddPlanBody {
+  text?: string
+  blob_id?: string
+  project_id?: string
+  limit?: number
+}
+
+export interface GddStartBody {
+  items?: GddPlanItem[]
+  project_id?: string
+  title?: string
+}
+
+export interface GddStartResult {
+  plan_id: string
+  project_id: string
+  flow_batch_ids: string[]
+  recipe_batch_id: string | null
+  run_ids: string[]
+}
+
 export type ToolKey = 'comfy_dir' | 'comfy_python' | 'comfy_models_dir' | 'comfy_workflows_dir' | 'blender_exe' | 'codex_exe' | 'claude_exe' | 'ffmpeg_exe' | 'godot_exe' | 'unity_exe' | 'unity_project'
 
 export interface ToolPath {
