@@ -70,3 +70,4 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [~] Giao 3 agent nền (CPU): N4 khai báo AI (store/ai_credits.py, AiCreditsDialog), N6 bóng+viền (ops/shadow_outline, recipe), FL-2 Flutter icon/tiled/SVG (export/flutter*, FlutterPack).
 - [x] N6 shadow-outline recipe — 84 pass, d9d87f4. Chưa: sheet+atlas input, qa.py chưa nhận op.shadow_outline.
 - [x] N4 khai báo AI (AI_CREDITS.md trong gói, provenance.ai_disclosure, GET /api/projects/{id}/ai-credits, AiCreditsDialog) — 21 pass, typecheck sạch.
+- [x] FL-2 flutter_launcher_icons.yaml + flame_tiled (.tmx từ playable/room_kit) + SVG — 50 pass, dart analyze 0 error. Chưa: SVG có tới exporter không (bundle lọc mime?), TMX chưa chạy thật.

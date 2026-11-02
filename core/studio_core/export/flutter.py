@@ -3,19 +3,30 @@ from __future__ import annotations
 
 import io
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from PIL import Image
 
-from studio_core.export.flutter_dart import assets_dart, flame_dart, nine_slices_dart, pubspec_snippet
+from studio_core.export.android import APP_ICON_NAMES
+from studio_core.export.flutter_dart import asset_paths, assets_dart, flame_dart, nine_slices_dart, pubspec_snippet
 from studio_core.export.sheet import ident, layout
 from studio_core.export.source import Files, Source
 
 DENSITIES = ((1, ""), (2, "2.0x/"), (3, "3.0x/"))
+ICON_SIZE = 1024
+ADAPTIVE_SAFE = 66 / 108
+ICON_YAML = """flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  remove_alpha_ios: true
+"""
 
 README = """{asset} — xuất từ AI Asset Studio cho Flutter / Flame. Chép các thư mục assets/ và lib/gen/ vào project.
 
-1. Dán nội dung pubspec_assets.yaml vào pubspec.yaml (gộp vào khối flutter: có sẵn). Flutter không đệ quy thư mục
+1. Dán nội dung pubspec_assets.yaml vào pubspec.yaml (khối flutter: gộp vào khối có sẵn, dependencies: nếu có thì thêm). Flutter không đệ quy thư mục
    nên mỗi thư mục được liệt kê riêng; thư mục 2.0x/ 3.0x/ tự được nhận qua thư mục cha.
 2. Package: {packages}.
 3. lib/gen/asset_studio_assets.dart: hằng đường dẫn (AssetStudioAssets.xxx) dùng với Image.asset / rootBundle.
@@ -34,6 +45,11 @@ NOTE_FONT = """- assets/fonts/{asset}.fnt + _font.json, assets/images/fonts/{ass
   rồi BitmapTextComponent(font, 'text'). Flame không có đọc BMFont sẵn nên helper tự vẽ glyph (có kerning)."""
 NOTE_SPINE = """- assets/spine/{asset}/: json + atlas + ảnh trang cho spine_flutter (package spine_flutter của Esoteric): nạp
   bằng SkeletonDrawable / loadSkeleton từ các đường dẫn này; giữ nguyên tên file vì atlas tham chiếu ảnh theo tên."""
+NOTE_ICON = """- flutter_launcher_icons.yaml + assets/icon/: thêm flutter_launcher_icons vào dev_dependencies rồi chạy
+  `dart run flutter_launcher_icons` (Android adaptive + iOS bỏ kênh alpha). Mỗi project chỉ dùng được 1 icon."""
+NOTE_TILED = """- assets/tiles/: {maps} + ảnh tileset nằm cạnh nhau; loadTiledMap('{name}', Vector2.all(16)) (flame_tiled) trả
+  TiledComponent, tham số 2 là kích thước ô khi vẽ."""
+NOTE_SVG = """- assets/svg/: ảnh vector, hiển thị bằng package flutter_svg: SvgPicture.asset(AssetStudioAssets.xxx)."""
 
 
 def _unique(names: list[str], fallback: str) -> list[str]:
@@ -74,6 +90,28 @@ def density_images(path: Path, stem: str, folder: str, pixel: bool, webp: bool) 
         pic = img if size == (w, h) else img.resize(size, flt)
         out.append((f"{folder}{sub}{stem}.{ext}", _encode(pic, webp)))
     return out
+
+
+def icon_files(path: Path) -> Files:
+    """Square 1024 master plus an adaptive foreground shrunk into the 66/108 safe zone."""
+    img = Image.open(path).convert("RGBA").resize((ICON_SIZE, ICON_SIZE), Image.LANCZOS)
+    inner = round(ICON_SIZE * ADAPTIVE_SAFE)
+    fg = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    fg.paste(img.resize((inner, inner), Image.LANCZOS), ((ICON_SIZE - inner) // 2,) * 2)
+    return [("assets/icon/app_icon.png", _encode(img, False)), ("assets/icon/app_icon_foreground.png", _encode(fg, False)),
+            ("flutter_launcher_icons.yaml", ICON_YAML.encode())]
+
+
+def tile_files(src: Source) -> tuple[Files, list[str]]:
+    """Tiled maps (.tmx only, not LDtk) with the tileset / prop images they reference, relative paths kept."""
+    if src.playable and src.playable_files:
+        from studio_core.export.playable_scene import extra_files
+    elif src.room_kit and src.room_kit_files:
+        from studio_core.export.room_kit import extra_files
+    else:
+        return [], []
+    got = [(f"assets/tiles/{n.removeprefix('Tiled/')}", d) for n, d in extra_files(src) if not n.endswith(".ldtk")]
+    return got, [PurePosixPath(n).stem for n, _ in got if n.endswith(".tmx")]
 
 
 def _json(doc: object) -> bytes:
@@ -117,7 +155,7 @@ def export(src: Source, webp: bool = False) -> Files:
     files: Files = []
     notes: list[str] = []
     packages = ["flame"]
-    use_anim = use_nine = use_parallax = use_font = False
+    use_anim = use_nine = use_parallax = use_font = use_tiled = False
     pixel = src.is_pixel()
 
     if src.sheet is not None and src.meta is not None:
@@ -127,8 +165,15 @@ def export(src: Source, webp: bool = False) -> Files:
 
     names = _unique([n for n, *_ in src.ui], "ui")
     sliced: list[tuple[str, str, tuple[int, int, int, int], tuple[int, int]]] = []
-    icons = False
+    icons = svg = icon = False
     for nm, (_, p, border, _state) in zip(names, src.ui):
+        if p.suffix.lower() == ".svg":
+            files.append((f"assets/svg/{nm}.svg", p))
+            svg = True
+            continue
+        if nm.lower() in APP_ICON_NAMES and not any(border) and not icon:
+            files += icon_files(p)
+            icon = True
         if any(border):
             with Image.open(p) as im:
                 size = im.size
@@ -140,11 +185,23 @@ def export(src: Source, webp: bool = False) -> Files:
             icons = True
     if icons:
         notes.append(NOTE_IMAGES.format(scale=NOTE_SCALE[1] if pixel else NOTE_SCALE[0]))
+    if svg:
+        notes.append(NOTE_SVG)
+        packages.append("flutter_svg")
+    if icon:
+        notes.append(NOTE_ICON)
     if sliced:
         doc = [{"name": n, "l": b[0], "t": b[1], "r": b[2], "b": b[3], "w": s[0], "h": s[1]} for n, _, b, s in sliced]
         files += [("assets/ui/ui_9slice.json", _json(doc)), ("lib/gen/asset_studio_ui.dart", nine_slices_dart(sliced).encode())]
         notes.append(NOTE_NINE)
         use_nine = True
+
+    tiles, maps = tile_files(src)
+    if maps:
+        files += tiles
+        notes.append(NOTE_TILED.format(maps=", ".join(f"{m}.tmx" for m in maps), name=maps[0]))
+        packages.append("flame_tiled")
+        use_tiled = True
 
     if src.parallax:
         base = f"assets/images/parallax/{a}"
@@ -175,10 +232,12 @@ def export(src: Source, webp: bool = False) -> Files:
 
     if not files:
         return []
-    if use_anim or use_nine or use_parallax or use_font:
-        files.append(("lib/gen/asset_studio_flame.dart", flame_dart(use_anim, use_nine, use_parallax, use_font).encode()))
+    if use_anim or use_nine or use_parallax or use_font or use_tiled:
+        files.append(("lib/gen/asset_studio_flame.dart",
+                      flame_dart(use_anim, use_nine, use_parallax, use_font, use_tiled).encode()))
     paths = [n for n, _ in files if n.startswith("assets/")]
-    files += [("pubspec_assets.yaml", pubspec_snippet(paths).encode()),
-              ("lib/gen/asset_studio_assets.dart", assets_dart(paths).encode()),
-              ("README_FLUTTER.md", README.format(asset=a, packages=", ".join(packages), notes="\n".join(notes)).encode())]
+    if asset_paths(paths):
+        files += [("pubspec_assets.yaml", pubspec_snippet(paths, packages).encode()),
+                  ("lib/gen/asset_studio_assets.dart", assets_dart(paths).encode())]
+    files += [("README_FLUTTER.md", README.format(asset=a, packages=", ".join(packages), notes="\n".join(notes)).encode())]
     return files

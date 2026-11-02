@@ -51,7 +51,7 @@ def _q(s: str) -> str:
 def asset_paths(paths: list[str]) -> list[str]:
     seen: dict[str, None] = {}
     for p in paths:
-        if p.startswith("assets/") and not is_density_variant(p):
+        if p.startswith("assets/") and not p.startswith(BUILD_ONLY_DIR) and not is_density_variant(p):
             seen.setdefault(p, None)
     return list(seen)
 
@@ -65,11 +65,18 @@ def assets_dart(paths: list[str], class_name: str = "AssetStudioAssets") -> str:
     return "\n".join(lines)
 
 
-def pubspec_snippet(paths: list[str]) -> str:
-    """`flutter: assets:` lists every directory (Flutter does not recurse) plus `fonts:` for .ttf / .otf files."""
+PACKAGE_VERSIONS = {"flame_tiled": "^3.1.2", "flutter_svg": "^2.3.0"}
+BUILD_ONLY_DIR = "assets/icon/"
+
+
+def pubspec_snippet(paths: list[str], packages: list[str] | None = None) -> str:
+    """`flutter: assets:` lists every directory (Flutter does not recurse) plus `fonts:` for .ttf / .otf files;
+    `packages` adds a `dependencies:` block for those with a known version."""
     keep = asset_paths(paths)
     dirs = list(dict.fromkeys(str(PurePosixPath(p).parent) + "/" for p in keep))
-    lines = ["flutter:", "  assets:"] + [f"    - {d}" for d in dirs]
+    deps = [p for p in packages or [] if p in PACKAGE_VERSIONS]
+    lines = ["dependencies:"] + [f"  {p}: {PACKAGE_VERSIONS[p]}" for p in deps] + [""] if deps else []
+    lines += ["flutter:", "  assets:"] + [f"    - {d}" for d in dirs]
     fonts = [p for p in keep if p.lower().endswith(FONT_EXT)]
     if fonts:
         lines.append("  fonts:")
@@ -154,6 +161,8 @@ import 'package:flutter/services.dart' show rootBundle;
 """
 
 FLAME_UI_IMPORT = "\nimport 'asset_studio_ui.dart';\n"
+TILED_IMPORT = "import 'package:flame_tiled/flame_tiled.dart';\n"
+FLUTTER_IMPORT = "import 'package:flutter/services.dart'"
 
 FLAME_ANIM = """
 /// Clips of `assets/images/sprites/<name>_anim.json`, keyed like the file (8-direction sheets: `walk_S`, `walk_NE`...).
@@ -391,9 +400,23 @@ class BitmapTextComponent extends PositionComponent {
 """
 
 
-def flame_dart(anim: bool, nine: bool, parallax: bool, font: bool) -> str:
-    out = FLAME_HEAD + (FLAME_UI_IMPORT if nine else "")
-    for on, body in ((anim, FLAME_ANIM), (nine, FLAME_NINE), (parallax, FLAME_PARALLAX), (font, FLAME_FONT)):
+FLAME_TILED = """
+/// Loads `assets/tiles/<name>.tmx`. Tileset images sit next to the map, so they use a cache rooted there.
+Future<TiledComponent> loadTiledMap(String name, Vector2 tileSize) {
+  return TiledComponent.load(
+    '$name.tmx',
+    tileSize,
+    images: Images(prefix: 'assets/tiles/'),
+  );
+}
+"""
+
+
+def flame_dart(anim: bool, nine: bool, parallax: bool, font: bool, tiled: bool = False) -> str:
+    head = FLAME_HEAD.replace(FLUTTER_IMPORT, TILED_IMPORT + FLUTTER_IMPORT) if tiled else FLAME_HEAD
+    out = head + (FLAME_UI_IMPORT if nine else "")
+    for on, body in ((anim, FLAME_ANIM), (nine, FLAME_NINE), (parallax, FLAME_PARALLAX), (font, FLAME_FONT),
+                     (tiled, FLAME_TILED)):
         if on:
             out += body
     return out

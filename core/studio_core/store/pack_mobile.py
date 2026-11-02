@@ -56,6 +56,7 @@ class _Tree:
 
 _FL_IMG = re.compile(r"^assets/images/(?:(?:2\.0x|3\.0x)/)?([^/]+)$")
 _FL_UI = re.compile(r"^assets/ui/([^/]+)$")
+_FL_SVG = re.compile(r"^assets/svg/([^/]+)$")
 _FL_OWN = {"pubspec_assets.yaml", "lib/gen/asset_studio_assets.dart", "lib/gen/asset_studio_flame.dart",
            "lib/gen/asset_studio_ui.dart", "README_FLUTTER.md", "assets/ui/ui_9slice.json"}
 
@@ -65,29 +66,33 @@ class FlutterPack:
         self.tree, self.title = _Tree(root, warnings), title
         self.img: set[str] = set()
         self.ui: set[str] = set()
+        self.svg: set[str] = set()
         self.nine: list[dict] = []
         self.packages = ["flame"]
         self.notes: dict[str, str] = {}
-        self.flags = {"anim": False, "nine": False, "parallax": False, "font": False}
+        self.flags = {"anim": False, "nine": False, "parallax": False, "font": False, "tiled": False}
 
     def add(self, folder: str, d: Path) -> list[str]:
         rels = _staged(d)
         imgs = {m[1] for r in rels if (m := _FL_IMG.match(r))}
         uis = {m[1] for r in rels if (m := _FL_UI.match(r)) and r not in _FL_OWN}
-        prefix = f"{ident(folder, 'asset')}_" if imgs & self.img or uis & self.ui else ""
+        svgs = {m[1] for r in rels if (m := _FL_SVG.match(r))}
+        prefix = f"{ident(folder, 'asset')}_" if imgs & self.img or uis & self.ui or svgs & self.svg else ""
         self.img |= {prefix + n for n in imgs}
         self.ui |= {prefix + n for n in uis}
+        self.svg |= {prefix + n for n in svgs}
         got: list[str] = []
         for rel in rels:
             if rel in _FL_OWN:
                 continue
-            m = _FL_IMG.match(rel) or _FL_UI.match(rel)
+            m = _FL_IMG.match(rel) or _FL_UI.match(rel) or _FL_SVG.match(rel)
             out = f"{PurePosixPath(rel).parent.as_posix()}/{prefix}{PurePosixPath(rel).name}" if m and prefix else rel
             if self.tree.put(out, d / rel, folder):
                 got.append(out)
             self.flags["anim"] |= rel.endswith("_anim.json")
             self.flags["parallax"] |= rel.endswith("/parallax.json")
             self.flags["font"] |= rel.endswith("_font.json")
+            self.flags["tiled"] |= rel.startswith("assets/tiles/") and rel.endswith(".tmx")
         nine = d / "assets/ui/ui_9slice.json"
         if nine.is_file():
             self.nine += [{**e, "name": prefix + e["name"]} for e in json.loads(nine.read_text(encoding="utf-8"))]
@@ -111,14 +116,15 @@ class FlutterPack:
             put("lib/gen/asset_studio_ui.dart", fd.nine_slices_dart(entries).encode())
         if any(self.flags.values()):
             put("lib/gen/asset_studio_flame.dart",
-                fd.flame_dart(*(self.flags[k] for k in ("anim", "nine", "parallax", "font"))).encode())
+                fd.flame_dart(*(self.flags[k] for k in ("anim", "nine", "parallax", "font", "tiled"))).encode())
         root = self.tree.root
         paths = sorted(p.relative_to(root).as_posix() for p in (root / "assets").rglob("*") if p.is_file())
-        put("pubspec_assets.yaml", fd.pubspec_snippet(paths).encode())
-        put("lib/gen/asset_studio_assets.dart", fd.assets_dart(paths).encode())
+        if fd.asset_paths(paths):
+            put("pubspec_assets.yaml", fd.pubspec_snippet(paths, self.packages).encode())
+            put("lib/gen/asset_studio_assets.dart", fd.assets_dart(paths).encode())
         put("README_FLUTTER.md", fl.README.format(asset=self.title, packages=", ".join(self.packages),
                                                   notes=_sections(self.notes)).encode())
-        return ["pubspec_assets.yaml", "lib/gen/asset_studio_assets.dart"]
+        return ["pubspec_assets.yaml", "lib/gen/asset_studio_assets.dart"] if fd.asset_paths(paths) else []
 
 
 _KT_SECTION = re.compile(r"object (Images|NinePatches|Clips) \{")

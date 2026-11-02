@@ -122,3 +122,30 @@ async def test_project_engine_targets(app_ctx) -> None:  # noqa: F811
 def test_recipe_exports_tag_mobile_targets() -> None:
     assert recipe_exports(["op.sheet"])[:5] == ["flutter", "android", "ios", "unity", "godot"]
     assert "flutter" not in recipe_exports(["blender.game_ready"])
+
+
+def _stage(root: Path, files: dict[str, bytes]) -> Path:
+    for rel, data in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_bytes(data)
+    return root
+
+
+def test_flutter_pack_merges_icon_tiles_and_svg(tmp_path: Path) -> None:
+    from studio_core.store.pack_mobile import FlutterPack
+
+    warnings: list[str] = []
+    pack = FlutterPack(tmp_path / "out", "Game", warnings)
+    icon = {"flutter_launcher_icons.yaml": b"y", "assets/icon/app_icon.png": b"A", "assets/svg/logo.svg": b"<svg/>"}
+    pack.add("One", _stage(tmp_path / "a", {**icon, "assets/tiles/m.tmx": b"<map/>", "assets/tiles/m_tiles.png": b"P",
+                                            "README_FLUTTER.md": b"x\n\n2. Package: flame, flame_tiled, flutter_svg.\n\n- n\n"}))
+    pack.add("Two", _stage(tmp_path / "b", {**icon, "assets/icon/app_icon.png": b"B", "assets/svg/logo.svg": b"<svg id='2'/>"}))
+    pack.finish()
+    out = tmp_path / "out"
+    assert (out / "assets/icon/app_icon.png").read_bytes() == b"A" and (out / "flutter_launcher_icons.yaml").read_bytes() == b"y"
+    assert any("assets/icon/app_icon.png" in w for w in warnings)
+    assert (out / "assets/svg/logo.svg").is_file() and (out / "assets/svg/Two_logo.svg").read_bytes() == b"<svg id='2'/>"
+    yaml = (out / "pubspec_assets.yaml").read_text(encoding="utf-8")
+    assert "flame_tiled: ^" in yaml and "flutter_svg: ^" in yaml and "assets/icon" not in yaml and "    - assets/tiles/\n" in yaml
+    assert "TiledComponent.load" in (out / "lib/gen/asset_studio_flame.dart").read_text(encoding="utf-8")
+    assert "assets/icon" not in (out / "lib/gen/asset_studio_assets.dart").read_text(encoding="utf-8")
