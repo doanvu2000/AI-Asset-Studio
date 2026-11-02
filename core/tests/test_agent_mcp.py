@@ -76,6 +76,15 @@ async def test_new_tools_and_activity(core: Path, tmp_path: Path) -> None:
         st = payload(await c.call_tool("system_status", {}))
         assert st["core"]["version"] and st["mcp"]["data_dir"] == str(core.resolve())
 
+        assert payload(await c.call_tool("gpu_status", {}))["yielding"] is False
+        y = payload(await c.call_tool("yield_gpu", {"minutes": 5}))
+        assert y["yielding"] is True and y["until"]
+        assert payload(await c.call_tool("resume_gpu", {}))["yielding"] is False
+        for tool, args, word in (("yield_gpu", {"minutes": 0}, "minutes"), ("yield_gpu", {"minutes": 99999}, "minutes"),
+                                 ("prioritize_run", {"run_id": "nope"}, "exactly one")):
+            res = await c.call_tool(tool, args)
+            assert res.is_error and word in res.content[0].text
+
         proj = payload(await c.call_tool("create_project", {"name": "Agent game", "prompt_suffix": "cel shaded",
                                                             "reference_image": str(png)}))
         pid = proj["project_id"]

@@ -25,6 +25,8 @@ No MCP? Same actions via `studio-core agent …` (see bottom).
 - File inputs = **absolute paths** (or blob hashes from earlier outputs). Text prompts in English.
 - GPU/Blender recipes take 1–15 min and run one GPU job at a time; a step in `waiting_resource` is queued, not stuck
   (check `system_status.lanes`). CPU/Claude recipes finish in seconds.
+- Another project/app needs the GPU: `yield_gpu(minutes)` (GPU/Blender work waits, ComfyUI unloads models, auto-ends),
+  `resume_gpu` when done, `gpu_status` to inspect the queue, `prioritize_run(run_id, delta|position)` to reorder.
 - Failure: read the step `error`, fix inputs, `retry_step(step_id)`. `cancel_run` to stop.
 - Results land in the Library as draft versions; `set_version_status(approved)` what the user keeps.
 

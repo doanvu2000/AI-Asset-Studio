@@ -19,6 +19,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import CallToolResult, ImageContent, TextContent, ToolAnnotations
 
 from studio_core.config import load_settings
+from studio_core.engine.gpu import MAX_YIELD_MIN
 from studio_core.mcp.catalog import catalog_markdown
 from studio_core.mcp.activity import ActivityReporter, run_id_of, summarize
 from studio_core.mcp.followup import ANIM, ANIM_ACTIONS, KIT, follow_ups, kit_available
@@ -1037,6 +1038,34 @@ def build_server(link: CoreLink) -> MCPServer:
         is busy with (one GPU job at a time), open gates, missing model packs, GPU name/VRAM, which engines
         (Unity/Godot) can preview, and which agents are connected. Check it when a run sits in waiting_resource."""
         return await tools.system_status()
+
+    @mcp.tool(annotations=read_only)
+    async def gpu_status() -> dict[str, Any]:
+        """GPU lane state: whether the studio is yielding the GPU to another app (and until when), which runs hold
+        or wait for the GPU/Blender lanes in grant order, and whether ComfyUI has models loaded."""
+        return await tools._call("GET", "/api/gpu")
+
+    @mcp.tool(annotations=acts)
+    async def yield_gpu(minutes: float = 15) -> dict[str, Any]:
+        """Lend the GPU to another project or app on this machine: new GPU/Blender work waits, ComfyUI unloads its
+        models, and the yield ends by itself after `minutes` (max 1440). Call resume_gpu as soon as you are done."""
+        if not 0 < minutes <= MAX_YIELD_MIN:
+            raise ToolError(f"minutes must be between 0 and {MAX_YIELD_MIN}")
+        return await tools._call("POST", "/api/gpu/yield", json={"minutes": minutes})
+
+    @mcp.tool(annotations=acts)
+    async def resume_gpu() -> dict[str, Any]:
+        """End a GPU yield now so queued GPU/Blender runs continue."""
+        return await tools._call("POST", "/api/gpu/resume")
+
+    @mcp.tool(annotations=acts)
+    async def prioritize_run(run_id: str, delta: int | None = None, position: int | None = None) -> dict[str, Any]:
+        """Move a run waiting for the GPU in the queue: delta = priority change (positive = sooner), or position =
+        0-based place in the grant order. Give exactly one."""
+        if (delta is None) == (position is None):
+            raise ToolError("give exactly one of delta or position")
+        body = {"delta": delta} if delta is not None else {"position": position}
+        return await tools._call("POST", f"/api/gpu/queue/{_safe_id(run_id, 'run_id')}/priority", json=body)
 
     @mcp.tool(annotations=acts)
     async def control_service(name: Literal["comfyui", "blender"], action: Literal["start", "stop"],
