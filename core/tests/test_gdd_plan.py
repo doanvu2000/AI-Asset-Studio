@@ -169,3 +169,15 @@ def test_helpers() -> None:
                                          {}, {"r": {}}, 2)
     assert len(items) == 2 and dropped == ["A: over the 2-item limit"]
     assert "(none)" in build_prompt("g", [], [], 5)
+
+
+async def test_plan_excludes_audio_recipes(tmp_path: Path) -> None:
+    recipes = [{"id": "icon-pack", "inputs": {}}, {"id": "audio-sfx", "inputs": {}}, {"id": "npc-voice-csv", "inputs": {}},
+               {"id": "scene-soundscape", "inputs": {}}]
+    items = [{"name": n, "kind": "recipe", "target_id": t, "notes": "", "inputs": []}
+             for n, t in (("Icons", "icon-pack"), ("Sfx", "audio-sfx"), ("Voice", "npc-voice-csv"))]
+    query = _reply(items)
+    got, meta = await GddPlanner(tmp_path / "gdd", query).plan("A game.", [], recipes)
+    assert [i.target_id for i in got] == ["icon-pack"] and len(meta["dropped"]) == 2
+    assert "- icon-pack:" in query.prompts[0]
+    assert not any(x in query.prompts[0] for x in ("- audio-sfx:", "- npc-voice-csv:", "- scene-soundscape:"))

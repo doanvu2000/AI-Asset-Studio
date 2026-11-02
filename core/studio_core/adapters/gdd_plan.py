@@ -3,6 +3,7 @@ could fill. The plan is a draft for the user to edit; nothing runs until it is s
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 from typing import Any, Literal
 
@@ -15,6 +16,13 @@ from .gdd import MAX_GDD_CHARS, STYLE_OWNED, _input_line, catalog
 
 MAX_ITEMS = 40
 TIMEOUT_S = 240
+# Audio/TTS is paused for the project, so these recipes never reach Claude nor the plan.
+AUDIO_ID = re.compile(r"(^|[-_])(audio|tts|voice|sfx|music|soundscape|sound)([-_]|$)")
+
+
+def is_audio(recipe_id: str) -> bool:
+    return bool(AUDIO_ID.search(recipe_id))
+
 
 SYSTEM = (
     "You are the art producer of a game studio. From a game design document you list the concrete assets the game "
@@ -22,7 +30,9 @@ SYSTEM = (
     "Prefer a workflow when it covers the whole asset (a character pack makes a full character). Only use ids from "
     "the catalogs. Fill only inputs the catalog lists; leave file inputs (image/mesh/file/video) out, the owner "
     "attaches them. Prompts are English, describe the subject only (shape, material, colors, pose), never the art "
-    "style: the project style is added automatically. One item = one asset; prefer fewer, important assets over filler."
+    "style: the project style is added automatically. One item = one asset. List only assets the GDD names, or that are strictly required by something it names; "
+    "no filler: never add weather, fonts, audio or music unless the GDD mentions them. Never plan audio, music, "
+    "voice or sound assets."
 )
 
 PROMPT = """Workflows (a workflow runs several recipes for one asset):
@@ -137,6 +147,7 @@ class GddPlanner:
     async def plan(self, gdd: str, flows: list[Any], recipes: list[dict[str, Any]], *, limit: int = MAX_ITEMS,
                    project: str = "", model: str | None = None) -> tuple[list[PlanItem], dict[str, Any]]:
         limit = max(1, min(limit, MAX_ITEMS))
+        recipes = [r for r in recipes if not is_audio(str(r["id"]))]
         await asyncio.to_thread(self.work_dir.mkdir, parents=True, exist_ok=True)
         reply = await ask(self.query, {"model": model or DEFAULT_MODEL, "max_turns": 2, "system": SYSTEM,
                                        "schema": SCHEMA, "_timeout_s": TIMEOUT_S},
