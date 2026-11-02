@@ -10,6 +10,7 @@ inputs:
   prop_mesh: {type: mesh, label: Mesh prop}
   scenery: {type: text, label: Mô tả phong cảnh nền parallax}
   brief: {type: text, label: Gợi ý bố cục màn, default: ""}
+  character: {type: file, label: "Sprite sheet nhân vật 8 hướng (+ .json); bỏ trống = lấy từ run sprite-8dir trong project", required: false}
 nodes:
   - id: terrain
     recipe_id: autotile-terrain-prompt
@@ -32,6 +33,7 @@ nodes:
       props: "prop.outputs.final[0]"
       background: "parallax.outputs.final[0]"
       brief: workflow.inputs.brief
+      character: workflow.inputs.character
   - id: minimap
     recipe_id: minimap
     title: Minimap

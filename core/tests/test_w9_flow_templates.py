@@ -45,3 +45,11 @@ def test_map_outputs_exist(libs, fid):
                 assert name in d.inputs
             elif kind == "outputs":
                 assert name in recipes.get(by_id[ref].recipe_id).outputs
+
+
+def test_level_pack_character_is_optional_and_reaches_scene(libs):
+    _, flows = libs
+    d = flows.flows["level-pack"]
+    assert d.inputs["character"].required is False
+    scene = next(n for n in d.nodes if n.id == "scene")
+    assert scene.map["character"] == "workflow.inputs.character"
