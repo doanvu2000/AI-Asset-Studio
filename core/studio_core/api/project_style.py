@@ -18,6 +18,7 @@ from studio_core.api.routes import META_KEY
 from studio_core.api.style_bible import _real_project, load_bible
 from studio_core.contracts import StepStatus
 from studio_core.engine import project_qa as pq
+from studio_core.engine.projects import BASE_KEY, strip_style
 from studio_core.engine import style_bible as sb
 from studio_core.ops.style_audit import DEFAULT_STYLE, REPORT_TYPE
 
@@ -141,9 +142,13 @@ async def drift(request: Request, project_id: str, limit: int = Query(30, ge=1, 
 @router.post("/restyle")
 async def restyle(request: Request, project_id: str, body: RestyleBody) -> Response:
     """Starts the runs behind the given assets again with the current project style. Inputs the old style filled
-    are cleared so the new one applies; prompt text the old style was appended to stays as it was."""
-    await _real_project(request, project_id)
+    are cleared so the new one applies; prompts go back to their unstyled text (recorded in `$meta.style_base`, else
+    the current style strings are cut off the end/start when they match exactly)."""
+    project = await _real_project(request, project_id)
     repo = request.app.state.repo
+    style = project.style
+    bible = await load_bible(repo, project_id)
+    bible_suffix = bible.suffix if bible else ""
     run_ids = list(body.run_ids)
     skipped: list[dict[str, str]] = []
     for vid in body.version_ids:
@@ -166,7 +171,14 @@ async def restyle(request: Request, project_id: str, body: RestyleBody) -> Respo
         meta = run.params.get(META_KEY) or {}
         filled = set(meta.get("project_applied") or []) | set((meta.get(sb.RECORD_KEY) or {}).get("applied") or [])
         inputs = {k: v for k, v in run.inputs.items() if k not in filled or k in sb.PROMPT_INPUTS}
-        params = {META_KEY: {"source": "style_restyle", "restyled_from": run.id}}
+        recorded = meta.get(BASE_KEY) or {}
+        base: dict[str, str] = {}
+        for name in sb.PROMPT_INPUTS:
+            text = inputs.get(name)
+            if name in filled and isinstance(text, str):
+                base[name] = inputs[name] = recorded[name] if isinstance(recorded.get(name), str) else strip_style(
+                    text, style, bible_suffix)
+        params = {META_KEY: {"source": "style_restyle", "restyled_from": run.id, **({BASE_KEY: base} if base else {})}}
         try:
             new_id = await request.app.state.engine.start_run(
                 run.recipe_id, inputs, params, project_id=project_id, title=f"Style mới · {run.title}".strip(" ·"))

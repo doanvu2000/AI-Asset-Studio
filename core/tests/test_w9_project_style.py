@@ -110,5 +110,36 @@ async def test_from_run_drift_restyle_and_apply(app_client: tuple[Any, httpx.Asy
     assert new["project_id"] == pid and new["params"]["$meta"]["restyled_from"] == run
     assert new["inputs"]["image"] == anchor.hash and new["inputs"]["negative"] == ""
 
+    assert new["inputs"]["prompt"] == "a chest, soft painted forest, thin dark outline"
+    assert new["params"]["$meta"]["style_base"] == {"prompt": "a chest"}
+
     assert (await c.post(f"{url}/restyle", json={}, headers=AUTH)).status_code == 400
+
+
+async def test_restyle_swaps_style_and_is_idempotent(app_client: tuple[Any, httpx.AsyncClient]) -> None:
+    app, c = app_client
+    pid = (await c.post("/api/projects", json={"name": "Swap", "style": {"prompt_prefix": "OLD", "prompt_suffix": "oldsfx"}},
+                        headers=AUTH)).json()["id"]
+    await app.state.repo.save_style_bible(pid, {"version": 1, "suffix": "bible sfx"})
+    run = (await c.post("/api/runs", json={"recipe_id": "styled", "inputs": {"prompt": "a chest"}, "project_id": pid},
+                        headers=AUTH)).json()["run_id"]
+    got = (await c.get(f"/api/runs/{run}", headers=AUTH)).json()["run"]["inputs"]["prompt"]
+    assert got == "OLD, a chest, oldsfx, bible sfx"
+
+    async def restyle(source: str) -> dict[str, Any]:
+        r = await c.post(f"/api/projects/{pid}/style/restyle", json={"run_ids": [source]}, headers=AUTH)
+        assert r.status_code == 201, r.text
+        rid = r.json()["started"][0]["run_id"]
+        return (await c.get(f"/api/runs/{rid}", headers=AUTH)).json()["run"]
+
+    # Old run recorded no base: the current style strings are cut off exactly, so an unchanged style does not double.
+    first = await restyle(run)
+    assert first["inputs"]["prompt"] == got
+    assert first["params"]["$meta"]["style_base"] == {"prompt": "a chest"}
+
+    await c.patch(f"/api/projects/{pid}", json={"style": {"prompt_prefix": "NEW", "prompt_suffix": "newsfx"}}, headers=AUTH)
+    second = await restyle(first["id"])
+    assert second["inputs"]["prompt"] == "NEW, a chest, newsfx, bible sfx"
+    third = await restyle(second["id"])
+    assert third["inputs"]["prompt"] == second["inputs"]["prompt"]
 

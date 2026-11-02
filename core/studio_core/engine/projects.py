@@ -6,6 +6,7 @@ from ..contracts import ProjectStyle
 from .recipe import Recipe, RecipeError, coerce_value
 
 PROMPT_INPUTS = ("prompt", "idea")
+BASE_KEY = "style_base"
 
 
 def _empty(v: Any) -> bool:
@@ -67,6 +68,28 @@ def apply_style(recipe: Recipe, inputs: dict[str, Any], style: ProjectStyle) -> 
     for name, value in style.inputs.items():
         fill(name, value)
     return out, applied
+
+
+def _clean(add: str) -> str:
+    return add.strip().strip(",").strip()
+
+
+def _drop_tail(text: str, add: str) -> str:
+    add = _clean(add)
+    return text[: -len(add) - 2] if add and text.endswith(f", {add}") else text
+
+
+def _drop_head(text: str, add: str) -> str:
+    add = _clean(add)
+    return text[len(add) + 2:] if add and text.startswith(f"{add}, ") else text
+
+
+def strip_style(text: str, style: ProjectStyle, bible_suffix: str = "") -> str:
+    """Removes the style text `apply_style` / `apply_bible` appended to a prompt, matching those exact strings (the
+    bible suffix went on each line, the project prefix/suffix once around the whole text). Used only for runs that
+    did not record their unstyled prompt (`BASE_KEY`)."""
+    text = "\n".join(_drop_tail(ln, bible_suffix) for ln in text.split("\n"))
+    return _drop_head(_drop_tail(text, style.prompt_suffix), style.prompt_prefix)
 
 
 def style_blobs(style: ProjectStyle) -> list[str]:
