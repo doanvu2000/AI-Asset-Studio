@@ -852,12 +852,14 @@ Màn chơi thử (playable_scene.json từ recipe playable-scene: atlas ô + pro
 
 ## `shadow-outline` — Bóng chân + viền đồng bộ cho bộ sprite
 
-Thư mục / nhiều sprite PNG → thêm bóng chân (ellipse mờ dưới chân, theo bbox alpha, cùng cỡ cho cả bộ) và viền N px (none / dark / #rrggbb; "dark" lấy màu tối nhất của ảnh palette, vd ảnh neo style bible) → canvas nới vừa đủ để không cắt bóng / viền, mọi sprite cùng kích thước → JSON meta: pad mỗi cạnh, pivot mới, offset từng frame để engine căn lại → duyệt. Chạy CPU.
+Thư mục / nhiều sprite PNG (hoặc sprite sheet + atlas JSON, cắt theo atlas rồi xuất lại sheet + atlas cùng định dạng, ô mới) → thêm bóng chân (ellipse mờ dưới chân, theo bbox alpha, cùng cỡ cho cả bộ) và viền N px (none / dark / #rrggbb; "dark" lấy màu tối nhất của ảnh palette, vd ảnh neo style bible) → canvas nới vừa đủ để không cắt bóng / viền, mọi sprite cùng kích thước → JSON meta: pad mỗi cạnh, pivot mới, offset từng frame để engine căn lại → duyệt. Chạy CPU.
 
 - runs on: CPU only; gates: approve
-- outputs: `final`, `meta`
+- outputs: `final`, `meta`, `atlas`
 - inputs:
-  - `image` (image; required) — Sprite (chọn nhiều)
+  - `image` (image) — Sprite (chọn nhiều)
+  - `sheet` (image) — Hoặc sprite sheet (kèm atlas JSON bên dưới)
+  - `atlas` (file; .json) — Atlas JSON TexturePacker của sheet (frames x/y/w/h, sourceSize, pivot)
   - `pivot` (file; .json) — Pivot JSON {pivot:[x,y], width, height} (tuỳ chọn, mặc định = chân theo bbox)
   - `palette_image` (image) — Ảnh lấy màu viền 'dark' (tuỳ chọn, vd ảnh neo style bible)
   - `shadow` (enum; default 'blob'; one of blob, drop, none) — Bóng

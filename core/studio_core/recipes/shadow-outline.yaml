@@ -1,12 +1,14 @@
 id: shadow-outline
 name: Bóng chân + viền đồng bộ cho bộ sprite
 description: >-
-  Thư mục / nhiều sprite PNG → thêm bóng chân (ellipse mờ dưới chân, theo bbox alpha, cùng cỡ cho cả bộ) và viền N px
+  Thư mục / nhiều sprite PNG (hoặc sprite sheet + atlas JSON, cắt theo atlas rồi xuất lại sheet + atlas cùng định dạng, ô mới) → thêm bóng chân (ellipse mờ dưới chân, theo bbox alpha, cùng cỡ cho cả bộ) và viền N px
   (none / dark / #rrggbb; "dark" lấy màu tối nhất của ảnh palette, vd ảnh neo style bible) → canvas nới vừa đủ để
   không cắt bóng / viền, mọi sprite cùng kích thước → JSON meta: pad mỗi cạnh, pivot mới, offset từng frame để engine
   căn lại → duyệt. Chạy CPU.
 inputs:
-  image: {type: image, siblings: multi, label: Sprite (chọn nhiều)}
+  image: {type: image, siblings: multi, required: false, label: Sprite (chọn nhiều)}
+  sheet: {type: image, required: false, label: "Hoặc sprite sheet (kèm atlas JSON bên dưới)"}
+  atlas: {type: file, ext: [json], required: false, label: "Atlas JSON TexturePacker của sheet (frames x/y/w/h, sourceSize, pivot)"}
   pivot: {type: file, ext: [json], required: false, label: "Pivot JSON {pivot:[x,y], width, height} (tuỳ chọn, mặc định = chân theo bbox)"}
   palette_image: {type: image, required: false, label: "Ảnh lấy màu viền 'dark' (tuỳ chọn, vd ảnh neo style bible)"}
   shadow: {type: enum, default: blob, options: [blob, drop, none], label: Bóng}
@@ -18,13 +20,14 @@ inputs:
 steps:
   - id: fx
     kind: op.shadow_outline
-    in: {images: inputs.image, pivot: inputs.pivot, palette_image: inputs.palette_image}
+    in: {images: inputs.image, sheet: inputs.sheet, atlas: inputs.atlas, pivot: inputs.pivot, palette_image: inputs.palette_image}
     params: {shadow: "${inputs.shadow}", shadow_opacity: "${inputs.shadow_opacity}", outline: "${inputs.outline}",
              width: "${inputs.width}", pixel: "${inputs.pixel}"}
   - id: approve
     kind: gate.approve
-    in: {preview: fx.images, meta: fx.meta}
+    in: {preview: fx.images, meta: fx.meta, atlas: fx.atlas}
     params: {enabled: "${inputs.review}"}
 outputs:
   final: approve.preview
   meta: approve.meta
+  atlas: approve.atlas

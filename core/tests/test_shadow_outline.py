@@ -89,4 +89,32 @@ def test_no_frames():
 def test_recipe_loads_and_uses_registered_kind():
     r = load_recipes(RECIPES)["shadow-outline"]
     assert r.step("fx").kind == "op.shadow_outline"
-    assert set(r.outputs) == {"final", "meta"}
+    assert set(r.outputs) == {"final", "meta", "atlas"}
+
+
+def test_cut_and_repack_atlas_roundtrip():
+    from studio_core.ops.shadow_outline import cut_atlas, repack_atlas
+    sheet = Image.new("RGBA", (64, 32), (0, 0, 0, 0))
+    sheet.paste(sprite(24, 24, (4, 2, 20, 24)), (0, 0))
+    sheet.paste(sprite(24, 24, (6, 2, 18, 24)).crop((4, 0, 20, 24)), (30, 4))
+    doc = {"frames": {
+        "a": {"frame": {"x": 0, "y": 0, "w": 24, "h": 24}, "rotated": False, "sourceSize": {"w": 24, "h": 24},
+              "spriteSourceSize": {"x": 0, "y": 0, "w": 24, "h": 24}, "pivot": {"x": 0.5, "y": 1}},
+        "b": {"frame": {"x": 30, "y": 4, "w": 16, "h": 24}, "rotated": False, "sourceSize": {"w": 24, "h": 24},
+              "spriteSourceSize": {"x": 4, "y": 0, "w": 16, "h": 24}, "pivot": {"x": 0.5, "y": 1}}},
+        "meta": {"image": "s.png"}}
+    names, frames, entries = cut_atlas(sheet, doc)
+    assert names == ["a", "b"] and all(f.size == (24, 24) for f in frames)
+    res = shadow_outline(frames, fx())
+    out, new = repack_atlas(doc, names, entries, res, "s_fx.png")
+    assert set(new["frames"]) == {"a", "b"} and new["meta"]["image"] == "s_fx.png"
+    fa = new["frames"]["a"]["frame"]
+    assert (fa["w"], fa["h"]) == res.canvas
+    fb = new["frames"]["b"]["frame"]
+    assert np.asarray(out.crop((fb["x"], fb["y"], fb["x"] + fb["w"], fb["y"] + fb["h"]))).tobytes() \
+        == np.asarray(res.images[1]).tobytes()
+
+
+def test_recipe_accepts_sheet_and_atlas():
+    r = load_recipes(RECIPES)["shadow-outline"]
+    assert {"sheet", "atlas"} <= set(r.inputs) and "atlas" in r.outputs
