@@ -225,7 +225,7 @@ async def test_mcp_projects_tools() -> None:
 
 async def test_project_engine_target(client: httpx.AsyncClient) -> None:
     r = await client.post("/api/projects", json={"name": "A"}, headers=AUTH)
-    assert r.json()["engine_target"] == "none"
+    assert r.json()["engine_target"] == "flutter"
     pid = r.json()["id"]
     r = await client.patch(f"/api/projects/{pid}", json={"engine_target": "godot"}, headers=AUTH)
     assert r.json()["engine_target"] == "godot"

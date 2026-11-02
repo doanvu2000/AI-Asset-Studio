@@ -93,8 +93,8 @@ async def test_preview_endpoint_serves_the_image_and_404s_otherwise(ctx) -> None
 
 def test_exports_come_from_step_kinds_not_the_description() -> None:
     assert recipe_exports(["comfy.t2i_zimage_turbo", "gate.pick"]) == []
-    assert recipe_exports(["blender.render_dirs", "op.sheet"]) == ["unity", "godot"]
-    assert recipe_exports(["op.spine_export"]) == ["unity", "godot", "spine"]
+    assert recipe_exports(["blender.render_dirs", "op.sheet"]) == ["flutter", "android", "ios", "unity", "godot"]
+    assert recipe_exports(["op.spine_export"]) == ["flutter", "ios", "unity", "godot", "spine"]
     assert recipe_exports(["blender.rig_export"]) == ["unity", "godot", "glb", "fbx"]
     assert recipe_exports(["op.audio_post"]) == ["unity", "godot", "audio"]
 
@@ -103,7 +103,7 @@ def test_builtin_recipes_declare_exports_through_their_steps() -> None:
     recipes = load_recipes(BUILTIN_DIR)
     assert recipes["spine-character"].info().exports[-1] == "spine"
     assert recipes["concept-2d"].info().exports == []
-    assert recipes["sprite-8dir-glb"].info().exports == ["unity", "godot"]
+    assert recipes["sprite-8dir-glb"].info().exports == ["flutter", "android", "ios", "unity", "godot"]
     assert any("glb" in r.info().exports for r in recipes.values())
 
 

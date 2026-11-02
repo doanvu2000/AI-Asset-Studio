@@ -171,7 +171,7 @@ async def test_api_engine_export_with_sibling_normal(app_ctx) -> None:  # noqa: 
         await _step(app, sid, key, "op.sheet", {"sheet": [sheet], "meta": [meta]})
 
     opts = (await client.get("/api/steps/walk-1/export", headers=AUTH)).json()
-    assert opts["engines"] == ["unity", "godot"]
+    assert opts["engines"] == ["flutter", "android", "ios", "unity", "godot"]
     r = await client.post("/api/steps/walk-1/export", json={"engine": "unity", "name": "Hiệp sĩ"}, headers=AUTH)
     assert r.status_code == 200, r.text
     out = r.json()

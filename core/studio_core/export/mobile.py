@@ -153,6 +153,8 @@ def _godot_format(b: Budget, alpha: bool, normal: bool) -> tuple[str, float]:
 
 def apply(files: Files, engine: str, pixel: bool = False, uid: str = "", asset: str = "") -> tuple[Files, dict[str, Any]]:
     """Rewrites/adds import settings for every texture in an engine export; returns the files and the size report."""
+    if engine not in ("unity", "godot"):
+        return files, {"engine": engine, "rows": [], "totals": {"files": 0, "file_bytes": 0, "gpu_before": 0, "gpu_after": 0}}
     by_name = {rel: i for i, (rel, _) in enumerate(files)}
     out = list(files)
     rows: list[dict[str, Any]] = []

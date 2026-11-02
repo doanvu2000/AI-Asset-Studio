@@ -244,6 +244,9 @@ function toggleActive(): void {
 }
 
 const ENGINE_TARGETS: Array<[EngineTarget, string]> = [
+  ['flutter', 'Flutter'],
+  ['android', 'Android (Compose)'],
+  ['ios', 'iOS (SwiftUI)'],
   ['unity', 'Unity'],
   ['godot', 'Godot'],
   ['none', 'Chưa chọn']

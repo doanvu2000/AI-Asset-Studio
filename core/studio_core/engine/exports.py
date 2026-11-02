@@ -20,7 +20,7 @@ _SPINE = {"op.spine_export"}
 _AUDIO = {"op.audio_post", "op.soundscape"}
 
 # Display order of the tags the app shows.
-_ORDER = ("unity", "godot", "spine", "glb", "fbx", "audio")
+_ORDER = ("flutter", "android", "ios", "unity", "godot", "spine", "glb", "fbx", "audio")
 
 
 def recipe_exports(kinds: Iterable[str]) -> list[str]:
@@ -28,6 +28,10 @@ def recipe_exports(kinds: Iterable[str]) -> list[str]:
     tags: set[str] = set()
     if ks & (_SHEET | _TEXTURE | _UI | _GLB | _SPINE | _AUDIO):
         tags.update(_ENGINES)
+    if ks & (_SHEET | _UI | _SPINE | {"op.parallax_layers"}):
+        tags.update(("flutter", "ios"))
+    if ks & (_SHEET | _UI):
+        tags.add("android")
     if ks & _SPINE:
         tags.add("spine")
     if ks & _GLB:

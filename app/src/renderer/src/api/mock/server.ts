@@ -1,7 +1,7 @@
 import { ApiError, type ListRunsQuery, type RecipeBody, type StudioApi, type VersionsQuery } from '../client'
 import { FrameBatcher, type EventSink, type EventStream } from '../ws'
 import type { CoreDiagnostics } from '../../../../preload/types'
-import type { AgentActivitySnapshot, FlowValidateResult, GpuSlot, GpuState, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from '../types'
+import type { AgentActivitySnapshot, FlowValidateResult, GameEngine, GpuSlot, GpuState, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from '../types'
 import type { EnginePreviewJob, OpenInEngineResult, PreviewEngines } from '../enginePreview'
 import type { HitVfx, StepHits } from '../hitFx'
 import {
@@ -1818,7 +1818,7 @@ export class MockCore implements StudioApi, EventStream {
       items: items.map((a, i) => ({ name: a.name, folder: a.name.replace(/\W+/g, '_'), commercial: i === 0 ? 'restricted' : 'yes' })),
       atlas: body.atlas ? { folder: 'Atlas', name: `${listing.slug}_atlas`, sprites: items.length * 8, unique: items.length * 8, pages: 1, page_sizes: [[1024, 1024]], fill: 0.74,
         before: { textures: items.length, file_bytes: items.length * 380_000, gpu_bytes: items.length * 2_097_152 }, after: { textures: 1, file_bytes: items.length * 240_000, gpu_bytes: 4_194_304 } } : null,
-      mobile: body.mobile ? Object.fromEntries(body.engines.map((e) => [e, { engine: e, rows: [], totals: { files: items.length, file_bytes: items.length * 380_000,
+      mobile: body.mobile ? Object.fromEntries(body.engines.filter((e): e is GameEngine => e === 'unity' || e === 'godot').map((e) => [e, { engine: e, rows: [], totals: { files: items.length, file_bytes: items.length * 380_000,
         gpu_before: items.length * 2_097_152, gpu_after: Math.round(items.length * 2_097_152 / (e === 'unity' ? 9 : 4)) } }])) : undefined })
   }
 

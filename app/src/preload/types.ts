@@ -169,6 +169,10 @@ export interface MobileTotals {
 }
 
 export interface EngineExportOptions {
+  /** Android package of the Kotlin helper (engine android). */
+  package?: string
+  /** Flutter: density images as lossless WebP. */
+  webp?: boolean
   /** Android/iOS texture budget: ASTC/ETC2 overrides, max size, mipmaps per asset type. */
   mobile?: boolean
   ppu?: number
@@ -214,7 +218,7 @@ export interface ShaderPresetInfo {
 }
 
 /** Drop-in folder for a game engine: sliced sheet + clips + controller/scene, Spine and GLB copied by convention. */
-export type BundleEngine = 'unity' | 'godot'
+export type BundleEngine = 'flutter' | 'android' | 'ios' | 'unity' | 'godot'
 
 export interface BundleOptions {
   step_id: string

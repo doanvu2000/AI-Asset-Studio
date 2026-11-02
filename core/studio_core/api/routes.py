@@ -508,7 +508,7 @@ async def export_blob(request: Request, hash: str, body: BlobExport) -> Response
 class StepExport(BaseModel):
     name: str | None = None
     preset: str | None = None
-    engine: Literal["unity", "godot"] | None = None
+    engine: Literal["flutter", "android", "ios", "unity", "godot"] | None = None
     ppu: float = Field(100.0, gt=0, le=10000)
     pixel: bool | None = None
     # None = the recipe's default (on for sprite-8dir recipes); only sprite sheets get a collider.
@@ -530,6 +530,9 @@ class StepExport(BaseModel):
     hits: HitsBody | None = None
     # Mobile texture budget (export/mobile.py): ASTC/ETC2 import overrides + GPU memory table.
     mobile: bool = False
+    # Android package of the Kotlin helper (engine=android) and WebP density images (engine=flutter).
+    package: str | None = Field(None, max_length=120, pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
+    webp: bool = False
     # Aseprite copy of the sheet / layers (export/aseprite.py): .aseprite + Aseprite JSON array sheet + PNG.
     aseprite: bool = False
 
@@ -592,7 +595,8 @@ async def export_step(request: Request, step_id: str, body: StepExport) -> Respo
         try:
             out = await asyncio.to_thread(export_engine, step, siblings, _blobs(request), Path(root), body.name,
                                           body.engine, body.ppu, body.pixel, collider, shaders, normal2d,
-                                          body.mobile, aseprite=body.aseprite, hits=hits, toon=toon)
+                                          body.mobile, aseprite=body.aseprite, hits=hits, toon=toon, package=body.package,
+                                          webp=body.webp)
         except BundleError as e:
             raise ApiError(422, "not_exportable", str(e)) from e
         return _json(out)

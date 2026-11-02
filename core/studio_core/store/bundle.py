@@ -4,13 +4,14 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import shutil
 import uuid
 from pathlib import Path
 from typing import Any
 
 from studio_core.contracts import BlobRef, BlobStore, StepRow
-from studio_core.export import godot, rig3d, unity
+from studio_core.export import android, flutter, godot, ios, rig3d, unity
 from studio_core.export.sheet import ident
 from studio_core.export.source import Source
 from studio_core.ops import image as im
@@ -22,7 +23,12 @@ class BundleError(ValueError):
     pass
 
 
-ENGINES = {"unity": unity.export, "godot": godot.export}
+ENGINES = {"flutter": flutter.export, "android": android.export, "ios": ios.export, "unity": unity.export,
+           "godot": godot.export}
+# Mobile targets take plain image/sheet/UI exports: the Unity/Godot-only steps (shaders, toon, hit FX, texture budget,
+# normal map companion) do not apply to them.
+MOBILE_ENGINES = ("flutter", "android", "ios")
+_PACKAGE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
 
 def sheet_meta(step: StepRow, blobs: BlobStore) -> dict[str, Any] | None:
@@ -435,7 +441,8 @@ def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,
                   engine: str, ppu: float = 100.0, pixel: bool | None = None, collider: Any = None,
                   shaders: list[Any] | None = None, normal2d: Any = None, mobile: bool = False,
-                  hits: Any = None, aseprite: bool = False, toon: Any = None) -> dict[str, Any]:
+                  hits: Any = None, aseprite: bool = False, toon: Any = None, package: str | None = None,
+                  webp: bool = False) -> dict[str, Any]:
     exporter = ENGINES.get(engine)
     if exporter is None:
         raise BundleError(f"unknown engine '{engine}' (use {', '.join(ENGINES)})")
@@ -445,12 +452,24 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
     src.collider = collider
     from studio_core.export.normal2d import apply as apply_normal2d, append_readme
 
+    mobile_target = engine in MOBILE_ENGINES
+    if mobile_target:
+        normal2d = None
+        shaders = hits = toon = None
+        mobile = False
     normal_note = apply_normal2d(src, normal2d)
-    files = exporter(src)
+    if engine == "flutter":
+        files = exporter(src, webp=webp)
+    elif engine == "android":
+        if package and not _PACKAGE.match(package):
+            raise BundleError(f"invalid Android package '{package}' (use lowercase dotted name, e.g. com.example.app)")
+        files = exporter(src, package or android.PACKAGE)
+    else:
+        files = exporter(src)
     if normal_note:
         files = append_readme(files, normal_note)
     if not files:
-        raise BundleError("nothing to export for a game engine (needs a sprite sheet, Spine export, GLB, tileable "
+        raise BundleError("nothing to export for this target (needs a sprite sheet, Spine export, GLB, tileable "
                           "texture, PBR material, sound, UI kit, rarity set, LUT pack, parallax or image layers)")
     if shaders:
         from studio_core.export.shaders import ShaderError, apply

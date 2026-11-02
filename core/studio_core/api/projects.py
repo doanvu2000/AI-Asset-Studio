@@ -31,7 +31,7 @@ class ProjectCreate(BaseModel):
     name: str = Field(max_length=120)
     description: str = Field("", max_length=4000)
     style: ProjectStyle = ProjectStyle()
-    engine_target: Literal["unity", "godot", "none"] = "none"
+    engine_target: Literal["flutter", "android", "ios", "unity", "godot", "none"] = "flutter"
 
     _check_name = field_validator("name")(_name)
 
@@ -41,7 +41,7 @@ class ProjectPatch(BaseModel):
     description: str | None = Field(None, max_length=4000)
     style: ProjectStyle | None = None
     archived: bool | None = None
-    engine_target: Literal["unity", "godot", "none"] | None = None
+    engine_target: Literal["flutter", "android", "ios", "unity", "godot", "none"] | None = None
 
     @field_validator("name")
     @classmethod

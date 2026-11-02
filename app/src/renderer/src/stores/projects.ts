@@ -115,7 +115,7 @@ export const useProjects = defineStore('projects', () => {
     if (seeding || readSeeded()) return
     seeding = true
     try {
-      const p = await create({ name: FIRST_PROJECT })
+      const p = await create({ name: FIRST_PROJECT, engine_target: 'flutter' })
       setActive(p.id)
       localStorage.setItem(SEEDED_KEY, '1')
     } catch {

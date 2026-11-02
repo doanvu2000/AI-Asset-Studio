@@ -157,7 +157,7 @@ class ProjectRow(BaseModel):
     created_at: float
     updated_at: float
     archived: bool = False
-    engine_target: Literal["unity", "godot", "none"] = "none"
+    engine_target: Literal["flutter", "android", "ios", "unity", "godot", "none"] = "none"
 
 
 class WorkflowStatus(str, enum.Enum):

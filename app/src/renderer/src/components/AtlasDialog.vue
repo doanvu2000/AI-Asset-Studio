@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { FolderOpen, LayoutGrid, LoaderCircle, X } from '@lucide/vue'
-import type { AtlasPageSize, AtlasResult, PackEngine } from '@/api/types'
+import type { AtlasPageSize, AtlasResult, GameEngine } from '@/api/types'
 import MobileStats from './MobileStats.vue'
 import { api } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
@@ -17,7 +17,7 @@ const closeBtn = ref<HTMLButtonElement | null>(null)
 const isOpen = computed(() => props.open)
 const trap = useFocusTrap(root, isOpen, closeBtn)
 
-type Target = PackEngine | 'json'
+type Target = GameEngine | 'json'
 const TARGETS: { id: Target; label: string; hint: string }[] = [
   { id: 'unity', label: 'Unity', hint: 'Trang atlas Sprite Mode Multiple, rect + pivot từng sprite trong .meta' },
   { id: 'godot', label: 'Godot', hint: 'Mỗi sprite một AtlasTexture .tres (giữ kích thước gốc + pivot)' },

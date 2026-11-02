@@ -57,6 +57,7 @@ const toolsOk = computed(() => !!tools.value?.length && tools.value.every((t) =>
 const toolsFound = computed(() => tools.value?.filter((t) => t.ok).length ?? 0)
 const recipeChosen = computed(() => !!lastRecipe && !!recipes.byId(lastRecipe))
 const firstAsset = computed(() => runs.runList.some((r) => r.status === 'succeeded'))
+const ENGINE_NAMES: Record<string, string> = { flutter: 'Flutter', android: 'Android', ios: 'iOS', unity: 'Unity', godot: 'Godot' }
 const engineChosen = computed(() => !!projects.active && projects.active.engine_target !== 'none')
 const exported = computed(() => (packCount.value ?? 0) > 0)
 const projectLink = computed(() => (projects.active ? `/projects/${projects.active.id}` : '/projects'))
@@ -84,8 +85,8 @@ const steps = computed(() => [
     done: engineChosen.value,
     busy: false,
     text: engineChosen.value
-      ? `Dự án “${projects.active?.name}” xuất ra ${projects.active?.engine_target === 'unity' ? 'Unity' : 'Godot'}.`
-      : 'Chọn Unity hoặc Godot cho dự án hiện tại để nút Xuất ra engine chọn sẵn giúp bạn.',
+      ? `Dự án “${projects.active?.name}” xuất ra ${ENGINE_NAMES[projects.active?.engine_target ?? ''] ?? 'engine đã chọn'}.`
+      : 'Chọn Flutter, Android, iOS, Unity hoặc Godot cho dự án hiện tại để nút Xuất ra chọn sẵn giúp bạn.',
     to: projectLink.value,
     action: 'Chọn engine'
   },

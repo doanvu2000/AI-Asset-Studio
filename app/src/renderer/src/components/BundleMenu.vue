@@ -42,6 +42,9 @@ watch(
 )
 
 const ENGINES: Record<BundleEngine, { label: string; hint: string; hint3d: string }> = {
+  flutter: { label: 'Xuất cho Flutter', hint: 'Ảnh 1x/2x/3x + sprite Flame + Assets.dart', hint3d: 'Chưa hỗ trợ model 3D' },
+  android: { label: 'Xuất cho Android (Compose)', hint: 'drawable-*dpi + .9.png + Kotlin helper', hint3d: 'Chưa hỗ trợ model 3D' },
+  ios: { label: 'Xuất cho iOS (SwiftUI)', hint: 'xcassets + Swift helper', hint3d: 'Chưa hỗ trợ model 3D' },
   unity: { label: 'Xuất cho Unity', hint: 'Sprite + anim + prefab', hint3d: 'Model GLB + prefab' },
   godot: { label: 'Xuất cho Godot', hint: 'SpriteFrames + scene', hint3d: 'Model GLB + scene' }
 }
@@ -284,7 +287,7 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
       :aria-haspopup="hasMenu ? 'menu' : undefined"
       :aria-expanded="hasMenu ? open : undefined"
       :aria-label="compact ? 'Xuất thư mục' : undefined"
-      :title="hasMenu ? 'Xuất cho engine: Unity, Godot hoặc sheet theo preset' : `Lưu cả ${opts?.files} tệp vào một thư mục`"
+      :title="hasMenu ? 'Xuất cho Flutter, Android, iOS, Unity, Godot hoặc sheet theo preset' : `Lưu cả ${opts?.files} tệp vào một thư mục`"
       @click="onButton"
     >
       <LoaderCircle v-if="file.busy.value === 'bundle'" class="spin" />

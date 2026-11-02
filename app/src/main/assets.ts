@@ -20,7 +20,7 @@ export function checkPreset(v: unknown): string | undefined {
 }
 export function checkEngine(v: unknown): BundleEngine | undefined {
   if (v === undefined || v === null || v === '') return undefined
-  if (v !== 'unity' && v !== 'godot') throw new Error('invalid engine')
+  if (v !== 'flutter' && v !== 'android' && v !== 'ios' && v !== 'unity' && v !== 'godot') throw new Error('invalid engine')
   return v
 }
 
@@ -78,6 +78,15 @@ export function checkEngineOptions(v: unknown): EngineExportOptions {
   if (mobile !== undefined && mobile !== null) {
     if (typeof mobile !== 'boolean') throw new Error('invalid mobile flag')
     out.mobile = mobile
+  }
+  const { package: pkg, webp } = v as Record<string, unknown>
+  if (pkg !== undefined && pkg !== null) {
+    if (typeof pkg !== 'string' || !/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(pkg) || pkg.length > 120) throw new Error('invalid package')
+    out.package = pkg
+  }
+  if (webp !== undefined && webp !== null) {
+    if (typeof webp !== 'boolean') throw new Error('invalid webp flag')
+    out.webp = webp
   }
   const { aseprite } = v as Record<string, unknown>
   if (aseprite !== undefined && aseprite !== null) {

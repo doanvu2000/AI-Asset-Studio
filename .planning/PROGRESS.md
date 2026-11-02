@@ -64,3 +64,5 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [x] G1 flows/game-slice.yaml (15 node, concept/sprite dùng chung) + N1 pixel-cleanup (dò pixel size, khoá palette, gỡ pixel lẻ); test 48 pass; palette từ style bible chưa (dùng palette_image/file)
 - [x] FL-V Flame 1.38.2: dart analyze 1 error → 0 issue, flutter test 3/3 (NineSliceImage, loadAsAnimations, BitmapFont, NineSliceComponent, loadParallax); project tạm scratchpad 0bc24b1f…/flv/flv_app — 0f4b140
 - [x] 12:23 Handoff mới: .planning/HANDOFF-2026-11-02-1223.md
+- [x] W2-app GoalCards + NextStepChips — typecheck sạch, 979ffee (pushed). Chưa xem bằng mắt.
+- [x] REG-1/APP-1 đích flutter/android/ios cho đóng gói + UI nhiều đích — 92 pytest pass (pack/export/projects), typecheck sạch. Còn: mcp/server.py + api/atlas.py vẫn unity/godot; BundleMenu chưa có ô webp/package.

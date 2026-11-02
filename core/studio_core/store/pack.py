@@ -19,7 +19,8 @@ from typing import Any, Callable
 from studio_core import __version__
 from studio_core.contracts import BlobStore, RunRow, StepRow, VersionRow
 from studio_core.export.sheet import CS_NAMESPACE, stable_hex
-from studio_core.store.bundle import BundleError, _is_glb, engine_ready, export_engine
+from studio_core.store.bundle import BundleError, MOBILE_ENGINES, _is_glb, engine_ready, export_engine
+from studio_core.store.pack_mobile import AndroidPack, FlutterPack, IosPack
 from studio_core.store.export import safe_filename
 from studio_core.store.model_licenses import model_license, worst
 
@@ -29,7 +30,8 @@ class PackError(ValueError):
 
 
 LICENSES = ("cc0", "cc-by-4.0", "proprietary")
-PACK_ENGINES = ("unity", "godot")
+PACK_ENGINES = ("flutter", "android", "ios", "unity", "godot")
+ANDROID_PACKAGE = "com.example.assets"
 _SEMVER = re.compile(r"^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$")
 _GUID_LINE = re.compile(r"^guid:\s*([0-9a-fA-F]{32})\s*$", re.M)
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -60,6 +62,8 @@ class EngineOptions:
     normal2d: Any = None
     mobile: bool = False
     toon: Any = None
+    package: str = ANDROID_PACKAGE
+    webp: bool = False
 
 
 @dataclass
@@ -602,8 +606,23 @@ def diff_assets(prev: dict[str, str], cur: dict[str, str]) -> dict[str, list[str
 
 
 def readme(title: str, version: str, desc: str, pkg_name: str, addon: str, engines: list[str], lic: str,
-           prov: list[dict[str, Any]], plugin: bool) -> str:
+           prov: list[dict[str, Any]], plugin: bool, skipped: dict[str, list[str]] | None = None,
+           package: str = ANDROID_PACKAGE) -> str:
     lines = [f"# {title}", "", f"Version {version}. {desc}".strip(), ""]
+    if "flutter" in engines:
+        lines += ["## Flutter", "", "Copy `flutter/assets/` and `flutter/lib/gen/` into your project and merge "
+                  "`flutter/pubspec_assets.yaml` into `pubspec.yaml`. See `flutter/README_FLUTTER.md`.", ""]
+    if "android" in engines:
+        lines += ["## Android (Jetpack Compose)", "", "Copy `android/res/` into `app/src/main/` and "
+                  f"`android/kotlin/AssetStudioAssets.kt` into `app/src/main/java/{package.replace('.', '/')}/` "
+                  f"(package `{package}`). Resource names are prefixed with the asset folder name. "
+                  "See `android/README_ANDROID.md`.", ""]
+    if "ios" in engines:
+        lines += ["## iOS (SwiftUI)", "", "Drag `ios/AssetStudio.xcassets`, `ios/Sources/`, `ios/Resources/` and "
+                  "`ios/Fonts/` into your Xcode target. See `ios/README_IOS.md`.", ""]
+    for eng, names in (skipped or {}).items():
+        if names:
+            lines += [f"Skipped for {eng} (no {eng} export for this kind of asset): {', '.join(names)}.", ""]
     if "unity" in engines:
         lines += ["## Unity (6000.0+)", "",
                   f"Package `{pkg_name}`. Window > Package Manager > + > *Add package from disk…* and pick "
@@ -650,6 +669,13 @@ def _export_one(a: PackAsset, blobs: BlobStore, staging: Path, folder: str, engi
     if not engine_ready(a.step, blobs):
         return None
     args = (a.step, a.siblings, blobs, staging, folder, engine, opts.ppu, opts.pixel, opts.collider(a))
+    if engine in MOBILE_ENGINES:
+        try:
+            out = export_engine(*args, None, None, False, package=opts.package, webp=opts.webp)
+        except BundleError as e:
+            warnings.append(f"{folder} ({engine}): {e}; skipped")
+            return None
+        return Path(out["dir"])
     # A pack mixes 2D and 3D assets: the toon material only goes on the ones that carry a model.
     toon = opts.toon if opts.toon is not None and any(_is_glb(r) for rs in a.step.outputs.values() for r in rs)         else None
     try:
@@ -667,6 +693,8 @@ def _export_one(a: PackAsset, blobs: BlobStore, staging: Path, folder: str, engi
 def _pack_atlas(assets: list[PackAsset], folders: list[str], blobs: BlobStore, opts: PackOptions, name: str,
                 roots: dict[str, Path], warnings: list[str], budgets: dict[str, list[dict[str, Any]]]
                 ) -> dict[str, Any] | None:
+    from dataclasses import replace
+
     from studio_core.export import atlas as at
     from studio_core.export import mobile as mob
 
@@ -685,7 +713,9 @@ def _pack_atlas(assets: list[PackAsset], folders: list[str], blobs: BlobStore, o
         warnings.append("atlas: no 2D sprites in the selected assets")
         return None
     try:
-        atlas = at.pack(sprites, f"{name}_atlas", opts.atlas, sources)
+        # JSON atlases of the mobile targets are read by generic TexturePacker loaders that cannot sample a turned region.
+        atlas_opts = replace(opts.atlas, rotate=False) if any(e in MOBILE_ENGINES for e in roots) else opts.atlas
+        atlas = at.pack(sprites, f"{name}_atlas", atlas_opts, sources)
     except at.AtlasError as e:
         warnings.append(f"atlas: {e}")
         return None
@@ -694,7 +724,15 @@ def _pack_atlas(assets: list[PackAsset], folders: list[str], blobs: BlobStore, o
     while sub.lower() in used:
         sub, n = f"Atlas_{n}", n + 1
     for engine, base in roots.items():
-        files = at.engine_files(atlas, engine, opts.export.ppu, f"pack-atlas:{name}")
+        mobile_target = engine in MOBILE_ENGINES
+        files = at.engine_files(atlas, None if mobile_target else engine, opts.export.ppu, f"pack-atlas:{name}")
+        if mobile_target:
+            where = {"flutter": base / "assets" / "images" / sub}.get(engine, base / sub)
+            for rel, data in files:
+                p = (base / "README_ATLAS.txt") if rel == "README.txt" and engine == "flutter" else where / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_bytes(data) if isinstance(data, bytes) else shutil.copyfile(data, p)
+            continue
         if opts.export.mobile:
             files, rep = mob.apply(files, engine, atlas.pixel, f"pack-atlas:{name}", atlas.name)
             budgets.setdefault(engine, []).append(
@@ -770,9 +808,29 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
             roots["unity"] = work / "unity" / pkg_name / "Runtime"
         if "godot" in engines:
             roots["godot"] = work / "godot" / "addons" / addon
+        title = project_name or slug
+        merges: dict[str, Any] = {}
+        skipped: dict[str, list[str]] = {}
+        for e in MOBILE_ENGINES:
+            if e in engines:
+                roots[e] = work / e
+        if "flutter" in roots:
+            merges["flutter"] = FlutterPack(roots["flutter"], title, warnings)
+        if "android" in roots:
+            merges["android"] = AndroidPack(roots["android"], title, opts.export.package, warnings)
+        if "ios" in roots:
+            merges["ios"] = IosPack(roots["ios"], title, warnings)
         for engine, base_dir in roots.items():
             for a, f in zip(assets, folders):
                 dst = base_dir / f
+                if engine in merges:
+                    src = _export_one(a, blobs, staging / engine, f, engine, opts.export, warnings)
+                    if src is None:
+                        skipped.setdefault(engine, []).append(f)
+                        files[f][engine] = []
+                    else:
+                        files[f][engine] = merges[engine].add(f, src)
+                    continue
                 src = _export_one(a, blobs, staging / engine, f, engine, opts.export, warnings,
                                   budgets.setdefault(engine, []))
                 if src is None:
@@ -783,10 +841,14 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
         shutil.rmtree(staging, ignore_errors=True)
         if opts.atlas is not None:
             result["atlas"] = _pack_atlas(assets, folders, blobs, opts, addon, roots, warnings, budgets)
+        for engine, m in merges.items():
+            shared = m.finish()
+            if shared:
+                result.setdefault("shared", {})[engine] = shared
         if opts.export.mobile:
             from studio_core.export.mobile import merge_reports
 
-            result["mobile"] = {e: merge_reports(budgets.get(e, []), e) for e in roots}
+            result["mobile"] = {e: merge_reports(budgets.get(e, []), e) for e in roots if e not in MOBILE_ENGINES}
         g_report: dict[str, Any] = {"classes": {}}
         if "godot" in roots:
             g_report = finalize_godot(roots["godot"], addon, godot_class_prefix(slug))
@@ -810,7 +872,6 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
         log_entries = sorted([entry, *others], key=lambda h: parse_semver(str(h["version"])) if _SEMVER.match(
             str(h.get("version", ""))) else (0, 0, 0), reverse=True)
 
-        title = project_name or slug
         provenance = {"format": "asset-studio-provenance/1", "generator": f"AI Asset Studio {__version__}",
                       "project": {"id": project_id, "name": project_name},
                       "pack": {"name": pkg_name, "version": version, "created_at": now,
@@ -818,7 +879,7 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
                       "summary": {"commercial": entry["commercial"], **flagged}, "assets": prov}
         docs = {
             "README.md": readme(title, version, opts.description, pkg_name, addon, engines, opts.license, prov,
-                                False),
+                                False, skipped, opts.export.package),
             "CHANGELOG.md": changelog(log_entries),
             "LICENSE.md": license_text(opts.license, opts.author, time.localtime(now).tm_year, title),
             "provenance.json": json.dumps(provenance, indent=1, ensure_ascii=False) + "\n",
@@ -854,13 +915,16 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
                     encoding="utf-8")
                 (addon_dir / "plugin.gd").write_text("@tool\nextends EditorPlugin\n", encoding="utf-8")
             docs_g = {**docs, "README.md": readme(title, version, opts.description, pkg_name, addon, engines,
-                                                  opts.license, prov, plugin)}
+                                                  opts.license, prov, plugin, skipped, opts.export.package)}
             for n, text in docs_g.items():
                 (groot / n).write_text(text, encoding="utf-8")
             (addon_dir / "LICENSE.md").write_text(docs["LICENSE.md"], encoding="utf-8")
             (addon_dir / "provenance.json").write_text(docs["provenance.json"], encoding="utf-8")
             result["godot"] = {"dir": str(final / "godot"), "addon": f"addons/{addon}", "plugin": plugin,
                                "classes": g_report["classes"]}
+        for engine, m in merges.items():
+            result[engine] = {"dir": str(final / engine), "skipped": skipped.get(engine, []),
+                              **({"package": opts.export.package} if engine == "android" else {})}
         (work / "provenance.json").write_text(docs["provenance.json"], encoding="utf-8")
         (work / "README.md").write_text(docs["README.md"], encoding="utf-8")
         (work / "CHANGELOG.md").write_text(docs["CHANGELOG.md"], encoding="utf-8")

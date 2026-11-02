@@ -465,7 +465,7 @@ export interface ProjectStyle {
   notes: string
 }
 
-export type EngineTarget = 'unity' | 'godot' | 'none'
+export type EngineTarget = 'flutter' | 'android' | 'ios' | 'unity' | 'godot' | 'none'
 
 export interface ProjectRow {
   id: string
@@ -909,7 +909,9 @@ export interface SimilarIndexStatus {
   hint?: string
 }
 
-export type PackEngine = 'unity' | 'godot'
+export type PackEngine = 'flutter' | 'android' | 'ios' | 'unity' | 'godot'
+/** Engines with an atlas / texture-budget export (Flutter, Android and iOS take plain images). */
+export type GameEngine = 'unity' | 'godot'
 export type PackLicense = 'cc0' | 'cc-by-4.0' | 'proprietary'
 /** Commercial use of the models behind an asset: restricted = conditional terms, unknown = not verified. */
 export type PackCommercial = 'yes' | 'restricted' | 'unknown' | 'no'
@@ -964,8 +966,12 @@ export interface PackBody {
   /** Absolute folder; omitted = <data>/packs. */
   out_dir?: string
   zip?: boolean
-  /** Android/iOS texture budget (ASTC/ETC2, max size, mipmaps per asset type). */
+  /** Unity/Godot only: Android/iOS texture budget (ASTC/ETC2, max size, mipmaps per asset type). */
   mobile?: boolean
+  /** Android package of AssetStudioAssets.kt (engines includes android). */
+  package?: string
+  /** Flutter: density images as lossless WebP instead of PNG. */
+  webp?: boolean
   /** One shared trimmed atlas of every 2D sprite, beside the per-asset exports. */
   atlas?: boolean
   atlas_max_size?: AtlasPageSize
@@ -1005,7 +1011,7 @@ export interface MobileBudgetRow {
 }
 
 export interface MobileBudget {
-  engine: PackEngine
+  engine: GameEngine
   rows: MobileBudgetRow[]
   totals: { files: number; file_bytes: number; gpu_before: number; gpu_after: number }
 }
@@ -1014,7 +1020,7 @@ export interface AtlasBody {
   steps: { step_id: string; name?: string }[]
   name: string
   /** null = engine-neutral PNG + JSON only. */
-  engine: PackEngine | null
+  engine: GameEngine | null
   mobile?: boolean
   atlas_max_size?: AtlasPageSize
   atlas_padding?: number
@@ -1027,7 +1033,7 @@ export interface AtlasBody {
 export interface AtlasResult {
   dir: string
   name: string
-  engine: PackEngine | null
+  engine: GameEngine | null
   stats: AtlasStats
   files: string[]
   mobile: MobileBudget | null
@@ -1042,7 +1048,17 @@ export interface PackResult extends PackRecord {
   items: { name: string; folder: string; commercial: PackCommercial }[]
   skipped: { name: string; step_id: string; reason: string }[]
   atlas?: (AtlasStats & { folder: string; name: string }) | null
-  mobile?: Partial<Record<PackEngine, MobileBudget>>
+  mobile?: Partial<Record<GameEngine, MobileBudget>>
+  /** Per mobile target: assets with no export for it (3D, audio…) and the Android package used. */
+  flutter?: PackTargetInfo
+  android?: PackTargetInfo
+  ios?: PackTargetInfo
+}
+
+export interface PackTargetInfo {
+  dir: string
+  skipped: string[]
+  package?: string
 }
 
 export type WorkflowStatus = 'queued' | 'running' | 'awaiting_human' | 'succeeded' | 'failed' | 'cancelled'

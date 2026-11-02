@@ -10,7 +10,7 @@ import { api } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { useFocusTrap } from '@/composables/focusTrap'
 
-const props = defineProps<{ open: boolean; projectId: string; engine?: 'unity' | 'godot' }>()
+const props = defineProps<{ open: boolean; projectId: string; engine?: PackEngine }>()
 const emit = defineEmits<{ close: [] }>()
 
 const toasts = useToasts()
@@ -19,11 +19,14 @@ const closeBtn = ref<HTMLButtonElement | null>(null)
 const isOpen = computed(() => props.open)
 const trap = useFocusTrap(root, isOpen, closeBtn)
 
-const ENGINES: { id: 'unity' | 'godot' | 'both'; label: string }[] = [
-  { id: 'unity', label: 'Unity' },
-  { id: 'godot', label: 'Godot' },
-  { id: 'both', label: 'Cả hai' }
+const ENGINES: { id: PackEngine; label: string; hint: string }[] = [
+  { id: 'flutter', label: 'Flutter', hint: 'assets/ + pubspec + Assets.dart (Flame: sprite, parallax, 9-slice)' },
+  { id: 'android', label: 'Android (Compose)', hint: 'res/drawable-*dpi + .9.png + AssetStudioAssets.kt' },
+  { id: 'ios', label: 'iOS (SwiftUI)', hint: 'AssetStudio.xcassets + AssetStudioAssets.swift' },
+  { id: 'unity', label: 'Unity', hint: 'UPM package' },
+  { id: 'godot', label: 'Godot', hint: 'addon' }
 ]
+const PACKAGE_RE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/
 const LICENSES: { id: PackLicense; label: string; hint: string }[] = [
   { id: 'cc0', label: 'CC0', hint: 'Tặng công chúng, ai cũng dùng được, không cần ghi công' },
   { id: 'cc-by-4.0', label: 'CC BY 4.0', hint: 'Dùng tự do kể cả thương mại, phải ghi công tác giả' },
@@ -39,7 +42,9 @@ const COMMERCIAL: Record<PackCommercial, string> = {
 const listing = ref<PackListing | null>(null)
 const loading = ref(false)
 const loadError = ref<string | null>(null)
-const engine = ref<'unity' | 'godot' | 'both'>('unity')
+const picks = ref<Set<PackEngine>>(new Set(['flutter']))
+const webp = ref(false)
+const androidPackage = ref('com.example.assets')
 const license = ref<PackLicense>('cc0')
 const version = ref('')
 const author = ref('')
@@ -57,9 +62,16 @@ const budgets = computed<MobileBudget[]>(() => Object.values(result.value?.mobil
 
 const assets = computed(() => listing.value?.assets ?? [])
 const allPicked = computed(() => assets.value.length > 0 && assets.value.every((a) => picked.value.has(a.step_id)))
-const engines = computed<PackEngine[]>(() => (engine.value === 'both' ? ['unity', 'godot'] : [engine.value]))
+const engines = computed<PackEngine[]>(() => ENGINES.map((e) => e.id).filter((id) => picks.value.has(id)))
+const hasGameEngine = computed(() => picks.value.has('unity') || picks.value.has('godot'))
+const packageOk = computed(() => !picks.value.has('android') || PACKAGE_RE.test(androidPackage.value.trim()))
 const versionOk = computed(() => !version.value.trim() || /^\d+\.\d+\.\d+$/.test(version.value.trim()))
-const canBuild = computed(() => !building.value && picked.value.size > 0 && versionOk.value)
+const canBuild = computed(() => !building.value && picked.value.size > 0 && versionOk.value && engines.value.length > 0 && packageOk.value)
+const skippedTargets = computed(() =>
+  (['flutter', 'android', 'ios'] as const)
+    .map((id) => ({ id, label: ENGINES.find((e) => e.id === id)?.label ?? id, names: result.value?.[id]?.skipped ?? [] }))
+    .filter((s) => s.names.length)
+)
 const flagged = computed(() => (result.value ? result.value.items.filter((i) => i.commercial !== 'yes') : []))
 
 async function load(): Promise<void> {
@@ -80,11 +92,18 @@ watch(
   (on) => {
     if (!on) return
     result.value = null
-    if (props.engine) engine.value = props.engine
+    if (props.engine) picks.value = new Set([props.engine])
     void load()
   },
   { immediate: true }
 )
+
+function togglePick(id: PackEngine): void {
+  const next = new Set(picks.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  picks.value = next
+}
 
 function toggle(stepId: string): void {
   const next = new Set(picked.value)
@@ -126,10 +145,12 @@ async function build(): Promise<void> {
       author: author.value.trim() || undefined,
       org: org.value.trim() || undefined,
       out_dir: outDir.value ?? undefined,
-      mobile: mobile.value || undefined,
+      mobile: hasGameEngine.value && mobile.value ? true : undefined,
+      package: picks.value.has('android') ? androidPackage.value.trim() : undefined,
+      webp: picks.value.has('flutter') && webp.value ? true : undefined,
       atlas: atlas.value || undefined,
       atlas_max_size: atlas.value ? atlasSize.value : undefined,
-      material_style: toon.value ? 'toon' : undefined
+      material_style: hasGameEngine.value && toon.value ? 'toon' : undefined
     })
     version.value = ''
     toasts.push(`Đã đóng gói bản ${result.value.version}`, 'success')
@@ -175,9 +196,24 @@ useEventListener(
             <p v-else-if="loadError" class="caption state err">{{ loadError }} <button type="button" class="btn btn-plain" @click="load">Thử lại</button></p>
             <template v-else-if="listing">
               <div class="row">
-                <span class="section-label">Engine</span>
-                <div class="seg" role="radiogroup" aria-label="Engine">
-                  <button v-for="e in ENGINES" :key="e.id" type="button" role="radio" :aria-checked="engine === e.id" @click="engine = e.id">{{ e.label }}</button>
+                <span class="section-label">Đích xuất</span>
+                <div class="mob-opts" role="group" aria-label="Đích xuất">
+                  <label v-for="e in ENGINES" :key="e.id" class="chk" :title="e.hint">
+                    <input type="checkbox" :checked="picks.has(e.id)" @change="togglePick(e.id)" /> {{ e.label }}
+                  </label>
+                </div>
+              </div>
+              <p v-if="!engines.length" class="caption hint err">Chọn ít nhất một đích.</p>
+              <div v-if="picks.has('flutter') || picks.has('android')" class="row">
+                <span class="section-label">Tuỳ chọn</span>
+                <div class="mob-opts">
+                  <label v-if="picks.has('flutter')" class="chk" title="Ảnh 1x/2.0x/3.0x lưu WebP không mất dữ liệu thay vì PNG">
+                    <input v-model="webp" type="checkbox" /> Flutter: ảnh WebP
+                  </label>
+                  <label v-if="picks.has('android')" class="chk" title="Package của AssetStudioAssets.kt, trùng namespace của app">
+                    Android package
+                    <input v-model="androidPackage" class="field num" :class="{ bad: !packageOk }" spellcheck="false" placeholder="com.example.app" />
+                  </label>
                 </div>
               </div>
               <div class="row">
@@ -222,10 +258,10 @@ useEventListener(
                       <button v-for="n in PAGE_SIZES" :key="n" type="button" role="radio" :aria-checked="atlasSize === n" @click="atlasSize = n">{{ n }}</button>
                     </div>
                   </Transition>
-                  <label class="chk" title="Unity: override Android + iOS ASTC theo loại ảnh, crunch tắt; Godot: .import VRAM + ETC2/ASTC, size_limit, mipmap tắt cho 2D. Kèm bảng RAM GPU trước/sau">
+                  <label v-if="hasGameEngine" class="chk" title="Unity: override Android + iOS ASTC theo loại ảnh, crunch tắt; Godot: .import VRAM + ETC2/ASTC, size_limit, mipmap tắt cho 2D. Kèm bảng RAM GPU trước/sau">
                     <input v-model="mobile" type="checkbox" /> Ngân sách mobile
                   </label>
-                  <label class="chk" title="Chỉ asset 3D (GLB): vật liệu toon dải sáng + viền inverted hull (Unity URP / Godot). Asset 2D giữ nguyên">
+                  <label v-if="hasGameEngine" class="chk" title="Chỉ asset 3D (GLB): vật liệu toon dải sáng + viền inverted hull (Unity URP / Godot). Asset 2D giữ nguyên">
                     <input v-model="toon" type="checkbox" /> Vật liệu toon 3D
                   </label>
                 </div>
@@ -259,6 +295,7 @@ useEventListener(
                   <span>Kiểm tra trước khi dùng thương mại: {{ flagged.map((f) => `${f.name} (${COMMERCIAL[f.commercial]})`).join(', ') }}. Chi tiết model + giấy phép trong provenance.json.</span>
                 </div>
                 <MobileStats v-if="result.atlas || budgets.length" :atlas="result.atlas" :budgets="budgets" />
+                <p v-for="s in skippedTargets" :key="s.id" class="caption">Bỏ qua cho {{ s.label }} (chưa có bản xuất cho loại asset này): {{ s.names.join(', ') }}.</p>
                 <p v-for="w in result.warnings" :key="w" class="caption">{{ w }}</p>
                 <div class="actions">
                   <button type="button" class="btn" @click="reveal(result.dir)"><FolderOpen /> Mở thư mục</button>

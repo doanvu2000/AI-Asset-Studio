@@ -28,7 +28,8 @@ MAX_VERSIONS = 5000
 
 
 class PackBody(BaseModel):
-    engines: list[Literal["unity", "godot"]] = Field(default_factory=lambda: ["unity"], min_length=1, max_length=2)
+    engines: list[Literal["flutter", "android", "ios", "unity", "godot"]] = Field(default_factory=lambda: ["unity"],
+                                                                                   min_length=1, max_length=5)
     license: Literal["cc0", "cc-by-4.0", "proprietary"] = "cc0"
     version: str | None = Field(None, max_length=32)
     # Approved version ids to pack; None = every approved version of the project.
@@ -50,6 +51,8 @@ class PackBody(BaseModel):
     normal2d_strength: float = Field(1.0, gt=0, le=10)
     normal2d_bevel: float | None = Field(None, gt=0, le=64)
     mobile: bool = False
+    package: str = Field(pk.ANDROID_PACKAGE, max_length=120, pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
+    webp: bool = False
     material_style: Literal["pbr", "toon"] = "pbr"
     toon: dict[str, float | int | str] | None = None
     atlas: bool = False
@@ -116,7 +119,7 @@ def _engine_options(body: PackBody) -> pk.EngineOptions:
     except ShaderError as e:
         raise ApiError(422, "invalid", str(e)) from e
     return pk.EngineOptions(ppu=body.ppu, pixel=body.pixel, collider=collider, shaders=shaders, normal2d=normal2d,
-                            mobile=body.mobile, toon=toon)
+                            mobile=body.mobile, toon=toon, package=body.package, webp=body.webp)
 
 
 @router.get("/packs")
