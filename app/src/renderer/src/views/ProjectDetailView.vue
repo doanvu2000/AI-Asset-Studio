@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
-import { Archive, ArchiveRestore, ArrowLeft, BookMarked, Check, ClipboardList, FolderKanban, Images, Languages, ListChecks, LoaderCircle, Package, Plus, RotateCw, Save, ScanSearch, X } from '@lucide/vue'
+import { Archive, ArchiveRestore, ArrowLeft, BookMarked, Check, ClipboardList, FolderKanban, Images, Languages, ListChecks, LoaderCircle, ShieldCheck, Package, Plus, RotateCw, Save, ScanSearch, X } from '@lucide/vue'
 import type { BlobRef, EngineTarget, PixelStyle, ProjectStyle } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -14,6 +14,7 @@ import QaPanel from '@/components/QaPanel.vue'
 import StyleBiblePanel from '@/components/StyleBiblePanel.vue'
 import StyleLockPanel from '@/components/StyleLockPanel.vue'
 import PackDialog from '@/components/PackDialog.vue'
+import AiCreditsDialog from '@/components/AiCreditsDialog.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import RelTime from '@/components/RelTime.vue'
 import { useProjects } from '@/stores/projects'
@@ -36,6 +37,7 @@ const router = useRouter()
 
 const project = computed(() => projects.byId(props.id))
 const packOpen = ref(false)
+const aiOpen = ref(false)
 const loadError = ref<string | null>(null)
 const loading = ref(false)
 
@@ -299,6 +301,7 @@ function newAsset(): void {
         </button>
         <button v-if="!project.archived" type="button" class="btn btn-plain" :disabled="archiving" aria-label="Lưu trữ" title="Lưu trữ dự án" @click="setArchived(true)"><Archive /> <span class="lbl">Lưu trữ</span></button>
         <button v-else type="button" class="btn btn-plain" :disabled="archiving" aria-label="Khôi phục" title="Khôi phục dự án" @click="setArchived(false)"><ArchiveRestore /> <span class="lbl">Khôi phục</span></button>
+        <button type="button" class="btn" title="Xem bản khai báo dùng AI (Steam, Itch, Google Play, App Store) của asset đã duyệt" @click="aiOpen = true"><ShieldCheck /> Khai báo AI</button>
         <button type="button" class="btn" title="Đóng gói asset đã duyệt thành Unity package / Godot addon + zip trên máy" @click="packOpen = true"><Package /> Đóng gói</button>
         <button type="button" class="btn btn-primary" @click="newAsset"><Plus /> Tạo asset trong dự án</button>
       </template>
@@ -540,6 +543,7 @@ function newAsset(): void {
         </section>
       </div>
     </div>
+    <AiCreditsDialog :open="aiOpen" :project-id="id" @close="aiOpen = false" />
     <PackDialog :open="packOpen" :project-id="id" :engine="project?.engine_target === 'unity' || project?.engine_target === 'godot' ? project.engine_target : undefined" @close="packOpen = false" />
   </div>
 </template>

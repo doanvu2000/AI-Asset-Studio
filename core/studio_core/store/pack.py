@@ -22,6 +22,7 @@ from studio_core.export.sheet import CS_NAMESPACE, stable_hex
 from studio_core.store.bundle import BundleError, MOBILE_ENGINES, _is_glb, engine_ready, export_engine
 from studio_core.store.pack_mobile import AndroidPack, FlutterPack, IosPack
 from studio_core.store.export import safe_filename
+from studio_core.store.ai_credits import build_ai_credits, disclosure
 from studio_core.store.model_licenses import model_license, worst
 
 
@@ -876,7 +877,10 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
                       "project": {"id": project_id, "name": project_name},
                       "pack": {"name": pkg_name, "version": version, "created_at": now,
                                "license": _LICENSE_SPDX[opts.license]},
-                      "summary": {"commercial": entry["commercial"], **flagged}, "assets": prov}
+                      "summary": {"commercial": entry["commercial"], **flagged}, "ai_disclosure": disclosure(prov),
+                      "assets": prov}
+        ai_credits, license_warnings = build_ai_credits(title, prov, version, now)
+        warnings += license_warnings
         docs = {
             "README.md": readme(title, version, opts.description, pkg_name, addon, engines, opts.license, prov,
                                 False, skipped, opts.export.package),
@@ -927,6 +931,7 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
                               **({"package": opts.export.package} if engine == "android" else {})}
         (work / "provenance.json").write_text(docs["provenance.json"], encoding="utf-8")
         (work / "README.md").write_text(docs["README.md"], encoding="utf-8")
+        (work / "AI_CREDITS.md").write_text(ai_credits, encoding="utf-8")
         (work / "CHANGELOG.md").write_text(docs["CHANGELOG.md"], encoding="utf-8")
         _replace_dir(work, final)
     finally:

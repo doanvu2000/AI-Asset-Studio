@@ -19,6 +19,7 @@ from studio_core.export.normal2d import Normal2DOptions
 from studio_core.export import toon3d
 from studio_core.export.shaders import ShaderError, resolve as resolve_shaders
 from studio_core.store import pack as pk
+from studio_core.store.ai_credits import build_ai_credits, disclosure
 from studio_core.store.bundle import engine_ready
 from studio_core.store.repo import SqliteRepo
 
@@ -141,6 +142,17 @@ async def list_packs(request: Request, project_id: str) -> Response:
                            "next_version": pk.next_version(history),
                            "default_dir": str(_data_dir(request) / "packs"),
                            "packs": list(reversed(history)), "assets": items, "skipped": skipped})
+
+
+@router.get("/ai-credits")
+async def ai_credits(request: Request, project_id: str) -> Response:
+    """AI usage disclosure (markdown) of the project's approved assets plus model license warnings."""
+    p = await _project(request, project_id)
+    assets, skipped = await _assets(request, await _approved(request, project_id))
+    prov = [pk.asset_provenance(a, pk.folder_name(a.name, "asset")) for a in assets]
+    markdown, warnings = await asyncio.to_thread(build_ai_credits, p.name if p else project_id, prov)
+    return OrjsonResponse({"project_id": project_id, "markdown": markdown, "warnings": warnings,
+                           "summary": disclosure(prov), "skipped": skipped})
 
 
 @router.post("/pack")

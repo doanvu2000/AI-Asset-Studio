@@ -1055,6 +1055,13 @@ export interface PackResult extends PackRecord {
   ios?: PackTargetInfo
 }
 
+export interface AiCredits {
+  project_id: string
+  markdown: string
+  warnings: string[]
+  summary: { pre_generated: boolean; live_generated: boolean; ai_assets: number; total_assets: number; human_approved: boolean; models: string[] }
+}
+
 export interface PackTargetInfo {
   dir: string
   skipped: string[]

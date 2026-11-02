@@ -20,6 +20,7 @@ import type {
   AtlasBody,
   AtlasResult,
   PackListing,
+  AiCredits,
   PackResult,
   MoreLikePlan,
   SimilarIndexStatus,
@@ -188,6 +189,8 @@ export interface StudioApi {
   projectDuplicates(projectId: string, q?: { threshold?: number; only_approved?: boolean }): Promise<DuplicatesReport>
   /** Packs built so far, the next auto version and the approved assets a pack would include. */
   projectPacks(projectId: string): Promise<PackListing>
+  /** AI usage disclosure (markdown) and model license warnings of the project's approved assets. */
+  projectAiCredits(projectId: string): Promise<AiCredits>
   /** Writes the Unity package / Godot addon + zip to local disk only. */
   buildPack(projectId: string, body: PackBody): Promise<PackResult>
   /** Trimmed texture atlas of the given steps' sprites, written under the app's export folder. */
@@ -401,6 +404,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     projectDuplicates: (id, q = {}) =>
       call('GET', `/api/projects/${enc(id)}/duplicates${query({ threshold: q.threshold, only_approved: q.only_approved ? 'true' : undefined })}`, undefined, SLOW_TIMEOUT_MS),
     projectPacks: (id) => call('GET', `/api/projects/${enc(id)}/packs`),
+    projectAiCredits: (id) => call('GET', `/api/projects/${enc(id)}/ai-credits`),
     buildPack: (id, body) => call('POST', `/api/projects/${enc(id)}/pack`, body, SLOW_TIMEOUT_MS),
     buildAtlas: (body) => call('POST', '/api/atlas', body, SLOW_TIMEOUT_MS),
     restyleScan: (body) => call('POST', '/api/restyle/scan', body, SLOW_TIMEOUT_MS),

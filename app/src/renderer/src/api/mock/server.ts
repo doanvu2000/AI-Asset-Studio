@@ -48,7 +48,7 @@ import type { SetupJob, SetupPlan, SetupStartBody } from '../types'
 import type { ProjectQaAsset, ProjectQaFixResult, ProjectQaReport } from '../types'
 import type { StyleBible, StyleBibleEdit, StyleBibleView, StyleDriftAsset, StyleDriftReport, StyleRestyleResult } from '../types'
 import type { DuplicateGroup, DuplicatesReport, MoreLikePlan, SimilarAsset, SimilarIndexStatus, SimilarQuery, SimilarResult } from '../types'
-import type { AtlasBody, AtlasResult, PackBody, PackListing, PackRecord, PackResult } from '../types'
+import type { AtlasBody, AtlasResult, PackBody, AiCredits, PackListing, PackRecord, PackResult } from '../types'
 import type { RestyleApplyResult, RestyleBackup, RestyleScan, RestyleUndoResult } from '../restyleTypes'
 import type { AuditBackup, AuditFix, AuditFixResult, AuditReport } from '../auditTypes'
 import { MOCK_KINDS, MOCK_PRESETS, MOCK_TOOLS, mockValidate, stepDeps } from './catalog'
@@ -1797,6 +1797,21 @@ export class MockCore implements StudioApi, EventStream {
     const slug = this.project(projectId).name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'pack'
     return clone({ project_id: projectId, slug, next_version: this.nextPackVersion(projectId), default_dir: 'D:\\StudioData\\packs',
       packs: this.packMap.get(projectId) ?? [], assets: this.packCandidates(projectId), skipped: [] })
+  }
+
+  async projectAiCredits(projectId: string): Promise<AiCredits> {
+    await this.ready
+    const name = this.project(projectId).name
+    const items = this.packCandidates(projectId)
+    const warnings = items.length ? [`${items[0]!.name}: check model license before shipping a commercial game: dino_v3_L_naf_fp32.safetensors (DINOv3 License (custom), commercial use under conditions)`] : []
+    const rows = items.map((a) => `| ${a.name} | ${a.recipe_id ?? '-'} | comfy.t2i_zimage_turbo; post-processing: op.sheet | z_image_turbo_bf16.safetensors | yes |`)
+    const markdown = [`# AI Credits: ${name}`, '', '## AI generated content disclosure', '',
+      items.length ? `- **Pre-generated content:** yes. ${items.length} of ${items.length} assets were created during development with generative AI models listed below.` : '- **Pre-generated content:** none of the packed assets used a generative AI step.',
+      '- **Live-generated content:** no. The shipped product does not call generative AI at runtime.', '', '## Assets', '',
+      '| Asset | Recipe | Pipeline | Models | Commercial |', '|---|---|---|---|---|', ...rows,
+      ...(warnings.length ? ['', '## License warnings', '', ...warnings.map((w) => `- ${w}`)] : []), ''].join('\n')
+    return clone({ project_id: projectId, markdown, warnings,
+      summary: { pre_generated: items.length > 0, live_generated: false, ai_assets: items.length, total_assets: items.length, human_approved: true, models: items.length ? ['z_image_turbo_bf16.safetensors'] : [] } })
   }
 
   async buildPack(projectId: string, body: PackBody): Promise<PackResult> {
