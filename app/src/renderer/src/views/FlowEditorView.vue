@@ -56,6 +56,9 @@ function setDoc(d: WorkflowDef): void {
   baseline.value = snapshot()
 }
 
+// declared before the immediate watch below, which calls validate() synchronously on setup
+let validateSeq = 0
+
 async function load(): Promise<void> {
   loaded.value = false
   loadError.value = null
@@ -111,7 +114,6 @@ const fitKey = computed(() => `${doc.nodes.length}:${Object.keys(doc.inputs).len
 const node = computed(() => doc.nodes.find((n) => n.id === selected.value) ?? null)
 const nodeRecipe = computed(() => (node.value ? recipes.byId(node.value.recipe_id) : undefined))
 
-let validateSeq = 0
 async function validate(announce: boolean): Promise<void> {
   const seq = ++validateSeq
   checking.value = announce
