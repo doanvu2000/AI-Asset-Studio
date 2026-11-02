@@ -1454,3 +1454,13 @@ Commit từng phần, không push. Plan: PLAN-2026-11-01-r9.md. Handoff: HANDOFF
 - [x] W3 3 workflow mẫu — c1afb40
 - [x] W2 app workflow + map sống — 383db7b
 - Full pytest 1367 pass / 5 skip; typecheck sạch; gen_agent_docs rc=0.
+
+## Phiên 2026-11-02 — manager-work-agent (lượt 10)
+Commit từng phần, không push. Plan: PLAN-2026-11-02-r10.md.
+- [~] WP-A RecipeInfo.outputs, WP-B sơ đồ, WP-C character-pack atlas+engine giao (sonnet, nền).
+- [x] WP-B sơ đồ — FlowCanvas fitWidthZoom (RunDetail 0.4), minimap góc dưới trái ẩn khi canvas <640x420, dây nhảy hàng đi kênh giữa lane (graph.ts routeEdges dùng chung workflow); typecheck sạch; chưa chụp ảnh — 69d5d06
+- [~] WP-D/E1 hàng đợi GPU (demo recipe + level-pack/ui-pack live) giao sonnet trong worktree HEAD, .gpu-lock.
+- [x] WP-A RecipeInfo.outputs — contracts/recipe.info, app editor bỏ getRecipe; pytest l5 7 pass, typecheck sạch — 36cfba3. Ghi chú: test_w17_fx_qa fail KeyError fx_shadow do WP-C đang sửa kinds/ops — kiểm khi WP-C về.
+- [x] WP-C character-pack gom atlas + xuất engine — op.engine_pack v2 (atlas MaxRects, zip Unity/Godot deterministic, clips.json), recipe character-engine-pack, node cuối character-pack, tag unity/godot; review sonnet 1 HIGH + 4 MED đã sửa; pytest 67 pass liên quan, full 1375/5 skip (agent), docs rc=0 — 95ca96a
+- [~] 07:06 chủ nhân bảo nhả GPU ~5 phút cho gen-pose-line; đã nhắn agent GPU: huỷ job dở, tắt ComfyUI/core, xoá .gpu-lock, chờ ≥5 phút + nvidia-smi rảnh rồi chạy tiếp.
+- Chủ nhân cho tự test + commit + push; giao đợt 1 r10b: F1 nhường GPU (opus), O1 issue có mã (sonnet), F3 thông báo + ETA (sonnet). Plan: PLAN-2026-11-02-r10b.md
