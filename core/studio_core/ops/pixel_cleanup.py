@@ -151,6 +151,12 @@ def lock_palette(rgba: np.ndarray, pal: np.ndarray) -> np.ndarray:
     return out
 
 
+# Smooth-painted sprites of 128px+ turn to mush at 16 colours; true low-res pixel art keeps the small budget.
+DEFAULT_COLORS = 16
+BIG_CELL_COLORS = 64
+BIG_CELL = 128
+
+
 def choose_palette(grids: list[np.ndarray], colors: int, preset: str, given: np.ndarray | None) -> np.ndarray | None:
     if given is not None:
         return given
@@ -172,12 +178,12 @@ def _outline_color(spec: str, pal: np.ndarray | None) -> tuple[int, int, int] | 
     return parse_hex(spec)
 
 
-def pixel_cleanup(frames: list[Image.Image], colors: int = 16, palette: str = "auto",
+def pixel_cleanup(frames: list[Image.Image], colors: int = 0, palette: str = "auto",
                   palette_colors: np.ndarray | None = None, pixel_size: int = 0, outline: str = "none"
                   ) -> list[CleanResult]:
     if not frames:
         raise ValueError("no frames")
-    if not 2 <= colors <= 256:
+    if colors and not 2 <= colors <= 256:
         raise ValueError("colors must be within 2..256")
     if palette != "auto" and palette not in PALETTES:
         raise ValueError(f"unknown palette '{palette}'")
@@ -201,6 +207,7 @@ def pixel_cleanup(frames: list[Image.Image], colors: int = 16, palette: str = "a
                 notes.append("no pixel grid found (not pixel art?): pixel size 1")
         infos.append((size, off, notes))
         grids.append(_cell_median(arr[off[1]:, off[0]:], size) if size > 1 else _cell_median(arr, 1))
+    colors = colors or (BIG_CELL_COLORS if max(max(g.shape[:2]) for g in grids) >= BIG_CELL else DEFAULT_COLORS)
     pal = choose_palette(grids, colors, palette, palette_colors)
     line = _outline_color(outline, pal)
     results = []
@@ -235,6 +242,7 @@ async def _read_palette(ctx: StepContext, inputs: Outputs) -> np.ndarray | None:
 
 class PixelCleanup(OpExecutor):
     kind = "op.pixel_cleanup"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = _images_in(inputs)
@@ -245,7 +253,7 @@ class PixelCleanup(OpExecutor):
         given = await _read_palette(ctx, inputs)
         try:
             results = await asyncio.to_thread(
-                pixel_cleanup, imgs, int(params.get("colors") or 16), str(params.get("palette") or "auto"), given,
+                pixel_cleanup, imgs, int(params.get("colors") or 0), str(params.get("palette") or "auto"), given,
                 int(params.get("pixel_size") or 0), str(params.get("outline") or "none"))
         except ValueError as e:
             raise StepError("op_bad_params", str(e)) from e

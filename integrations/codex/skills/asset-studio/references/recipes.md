@@ -709,7 +709,7 @@ Prompt cảnh (+ ảnh tham chiếu màu, tuỳ chọn) → Z-Image vẽ riêng 
   - `palette_file` (file; .hex/.gpl/.txt) — Palette .hex / .gpl (tuỳ chọn)
   - `palette_image` (image) — Ảnh lấy palette (tuỳ chọn, vd ảnh neo của style bible)
   - `palette` (enum; default 'auto'; one of auto, pico8, sweetie16, db16, db32, endesga32) — Bảng màu
-  - `colors` (int; default 16; 2..256) — Số màu
+  - `colors` (int; default 0; 0..256) — Số màu (0 = tự chọn: 16, ô ≥128px thì 64)
   - `pixel_size` (int; default 0; 0..16) — Cỡ pixel (0 = tự dò)
   - `outline` (text; default 'none') — Viền 1px (none / dark / #rrggbb)
   - `review` (bool; default True) — Duyệt trước khi xong

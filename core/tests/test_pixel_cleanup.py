@@ -111,3 +111,12 @@ def test_gpl_palette_and_upscale():
     pal = read_palette_text("GIMP Palette\nName: t\n#\n255 0 0 red\n0 0 255 blue\n")
     assert len(pal) == 2
     assert upscale(Image.new("RGBA", (3, 2)), 4).size == (12, 8)
+
+
+def test_auto_colors_use_64_for_large_cells():
+    rng = np.random.default_rng(1)
+    big = Image.fromarray(rng.integers(0, 256, (160, 160, 4), dtype=np.uint8) | np.array([0, 0, 0, 255], np.uint8), "RGBA")
+    small = big.crop((0, 0, 40, 40))
+    assert pixel_cleanup([big], pixel_size=1)[0].colors_after > 32
+    assert pixel_cleanup([small], pixel_size=1)[0].colors_after <= 16
+    assert pixel_cleanup([big], colors=8, pixel_size=1)[0].colors_after <= 8

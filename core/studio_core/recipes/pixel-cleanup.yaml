@@ -10,7 +10,7 @@ inputs:
   palette_file: {type: file, ext: [hex, gpl, txt], required: false, label: "Palette .hex / .gpl (tuỳ chọn)"}
   palette_image: {type: image, required: false, label: "Ảnh lấy palette (tuỳ chọn, vd ảnh neo của style bible)"}
   palette: {type: enum, default: auto, options: [auto, pico8, sweetie16, db16, db32, endesga32], label: Bảng màu}
-  colors: {type: int, default: 16, min: 2, max: 256, label: Số màu}
+  colors: {type: int, default: 0, min: 0, max: 256, label: "Số màu (0 = tự chọn: 16, ô ≥128px thì 64)"}
   pixel_size: {type: int, default: 0, min: 0, max: 16, label: "Cỡ pixel (0 = tự dò)"}
   outline: {type: text, default: none, label: "Viền 1px (none / dark / #rrggbb)"}
   review: {type: bool, default: true, label: Duyệt trước khi xong}

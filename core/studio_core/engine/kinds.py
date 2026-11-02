@@ -120,7 +120,7 @@ CATALOG: dict[str, P] = {
                          "in": {"images": "image[]", "palette_image": "image", "palette_file": "file"},
                          "out": {"images": "image[]", "grid": "image[]", "report": "json"},
                          "params": {"pixel_size": _int(0, min=0, max=16, label="Cỡ pixel (0 = tự dò)"),
-                                    "colors": _int(16, min=2, max=256, label="Số màu"),
+                                    "colors": _int(0, min=0, max=256, label="Số màu (0 = tự chọn)"),
                                     "palette": _enum(PALETTE_CHOICES, "auto", label="Bảng màu"),
                                     "outline": _text("none", label="Viền 1px (none / dark / #rrggbb)"),
                                     "scale": _int(0, min=0, max=16, label="Phóng bản xuất (x, 0 = theo cỡ pixel)",
