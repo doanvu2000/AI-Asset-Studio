@@ -137,39 +137,40 @@ export class MockFlows {
 
   validate(d: WorkflowDef): FlowValidateResult {
     const issues: FlowIssue[] = []
-    const err = (message: string, node: string | null = null, field: string | null = null): number => issues.push({ level: 'error', node, field, message })
-    if (!ID.test(d.id)) err(`invalid workflow id '${d.id}'`, null, 'id')
-    if (!d.title.trim()) err('title must not be empty', null, 'title')
-    if (!d.nodes.length) err('a workflow needs at least one node', null, 'nodes')
+    const err = (code: string, message: string, node: string | null, field: string | null, params: Record<string, unknown> = {}): number =>
+      issues.push({ level: 'error', node, field, code, params, message })
+    if (!ID.test(d.id)) err('invalid_flow_id', `invalid workflow id '${d.id}'`, null, 'id', { id: d.id })
+    if (!d.title.trim()) err('title_empty', 'title must not be empty', null, 'title')
+    if (!d.nodes.length) err('no_nodes', 'a workflow needs at least one node', null, 'nodes')
     const ids = d.nodes.map((n) => n.id)
     for (const n of d.nodes) {
-      if (!ID.test(n.id) || n.id === 'workflow') err(`invalid node id '${n.id}'`, n.id, 'id')
-      if (ids.indexOf(n.id) !== ids.lastIndexOf(n.id)) err(`duplicate node id '${n.id}'`, n.id, 'id')
+      if (!ID.test(n.id) || n.id === 'workflow') err('invalid_node_id', `invalid node id '${n.id}'`, n.id, 'id', { id: n.id })
+      if (ids.indexOf(n.id) !== ids.lastIndexOf(n.id)) err('duplicate_node_id', `duplicate node id '${n.id}'`, n.id, 'id', { id: n.id })
       const r = this.host.recipe(n.recipe_id)
       if (!r) {
-        err(`unknown recipe '${n.recipe_id}'`, n.id, 'recipe_id')
+        err('unknown_recipe', `unknown recipe '${n.recipe_id}'`, n.id, 'recipe_id', { recipe: n.recipe_id })
         continue
       }
       for (const [target, src] of Object.entries(n.map)) {
         const p = parseSource(src)
         const tt = r.info.inputs[target]?.type
-        if (!tt) err(`map target '${target}' is not an input of ${r.info.id}`, n.id, `map.${target}`)
-        else if (!p) err(`map.${target}: bad source '${src}'`, n.id, `map.${target}`)
+        if (!tt) err('map_target_unknown', `map target '${target}' is not an input of ${r.info.id}`, n.id, `map.${target}`, { target, recipe: r.info.id })
+        else if (!p) err('bad_source', `map.${target}: bad source '${src}'`, n.id, `map.${target}`, { target, source: src })
         else if (p.ref === 'workflow') {
           const spec = d.inputs[p.name]
-          if (!spec) err(`${src}: workflow has no input '${p.name}'`, n.id, `map.${target}`)
-          else if (isBlobType(spec.type) !== isBlobType(tt)) err(`${src} is ${spec.type} but '${target}' is ${tt}`, n.id, `map.${target}`)
-        } else if (p.ref === n.id) err(`${src}: a node cannot feed itself`, n.id, `map.${target}`)
-        else if (!ids.includes(p.ref)) err(`${src}: unknown node '${p.ref}'`, n.id, `map.${target}`)
+          if (!spec) err('workflow_no_input', `${src}: workflow has no input '${p.name}'`, n.id, `map.${target}`, { source: src, name: p.name })
+          else if (isBlobType(spec.type) !== isBlobType(tt)) err('type_mismatch', `${src} is ${spec.type} but '${target}' is ${tt}`, n.id, `map.${target}`, { source: src, source_type: spec.type, target, target_type: tt })
+        } else if (p.ref === n.id) err('self_feed', `${src}: a node cannot feed itself`, n.id, `map.${target}`, { source: src })
+        else if (!ids.includes(p.ref)) err('unknown_node', `${src}: unknown node '${p.ref}'`, n.id, `map.${target}`, { source: src, ref: p.ref })
         else if (p.kind === 'outputs') {
           const outs = this.host.recipe(d.nodes.find((x) => x.id === p.ref)!.recipe_id)?.outputs ?? []
-          if (outs.length && !outs.includes(p.name)) err(`${src}: no output '${p.name}' (has: ${outs.join(', ')})`, n.id, `map.${target}`)
-          else if (!isBlobType(tt)) err(`'${target}' is ${tt}; only file inputs take a node's outputs`, n.id, `map.${target}`)
+          if (outs.length && !outs.includes(p.name)) err('recipe_no_output', `${src}: no output '${p.name}' (has: ${outs.join(', ')})`, n.id, `map.${target}`, { source: src, name: p.name, outputs: outs })
+          else if (!isBlobType(tt)) err('outputs_need_file', `'${target}' is ${tt}; only file inputs take a node's outputs`, n.id, `map.${target}`, { target, target_type: tt })
         }
       }
       for (const [name, spec] of Object.entries(r.info.inputs)) {
         if (spec.required !== false && spec.default === undefined && !(name in n.map) && (n.inputs[name] ?? '') === '')
-          err(`required input '${name}' of ${r.info.id} is neither set nor mapped`, n.id, `inputs.${name}`)
+          err('required_unset', `required input '${name}' of ${r.info.id} is neither set nor mapped`, n.id, `inputs.${name}`, { name, recipe: r.info.id })
       }
     }
     const deps = new Map(d.nodes.map((n) => [n.id, nodeDeps(n)]))
@@ -184,7 +185,7 @@ export class MockFlows {
       done.add(id)
       return hit
     }
-    if (ids.some(cyc)) err('nodes form a cycle', null, 'nodes')
+    if (ids.some(cyc)) err('cycle', 'nodes form a cycle', null, 'nodes', { nodes: [] })
     return { ok: !issues.some((i) => i.level === 'error'), issues }
   }
 

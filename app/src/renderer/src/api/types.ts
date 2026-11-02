@@ -1045,6 +1045,8 @@ export interface FlowIssue {
   level: 'error' | 'warning'
   node: string | null
   field: string | null
+  code: string
+  params: Record<string, unknown>
   message: string
 }
 

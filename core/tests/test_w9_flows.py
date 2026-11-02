@@ -421,6 +421,40 @@ def test_validation_errors(tmp_path: Path, nodes: list[dict[str, Any]], inputs: 
     assert any(msg in e for e in errs), errs
 
 
+@pytest.mark.parametrize("d, code, params", [
+    (_flow("f", [{"id": "a", "recipe_id": "nope"}]), "unknown_recipe", {"recipe": "nope"}),
+    (_flow("f", [{"id": "a", "recipe_id": "img", "map": {"zz": "workflow.inputs.p"}}], {"p": "image"}),
+     "map_target_unknown", {"target": "zz", "recipe": "img"}),
+    (_flow("f", [{"id": "a", "recipe_id": "gen"}, {"id": "b", "recipe_id": "gen", "map": {"n": "a.outputs.final"}}]),
+     "outputs_need_file", {"target": "n"}),
+    (_flow("f", [{"id": "a", "recipe_id": "img", "map": {"image": "x.outputs.final"}}]), "unknown_node", {"ref": "x"}),
+    (_flow("f", [{"id": "a", "recipe_id": "img", "map": {"image": "a.outputs.final"}}]), "self_feed", {}),
+    (_flow("f", [{"id": "a", "recipe_id": "gen"}, {"id": "b", "recipe_id": "img", "map": {"image": "a.outputs.nope"}}]),
+     "recipe_no_output", {"name": "nope", "recipe": "gen"}),
+    (_flow("f", [{"id": "a", "recipe_id": "img", "map": {"image": "b.outputs.final"}},
+                 {"id": "b", "recipe_id": "img", "map": {"image": "a.outputs.final"}}]), "cycle", {"nodes": ["a", "b"]}),
+    (_flow("f", [{"id": "a", "recipe_id": "img"}]), "required_unset", {"name": "image", "recipe": "img"}),
+    (_flow("f", [{"id": "a", "recipe_id": "img", "map": {"image": "workflow.inputs.p"}}]), "workflow_no_input",
+     {"name": "p"}),
+    (_flow("f", [{"id": "a", "recipe_id": "img", "map": {"image": "workflow.inputs.p"}}], {"p": "text"}),
+     "type_mismatch", {"source_type": "text", "target": "image"}),
+    (_flow("f", [{"id": "a", "recipe_id": "img", "map": {"image": "steps.a.images"}}]), "bad_source",
+     {"target": "image", "source": "steps.a.images"}),
+    (_flow("f", [{"id": "a", "recipe_id": "gen"}, {"id": "a", "recipe_id": "gen"}]), "duplicate_node_id", {"id": "a"}),
+    (_flow("f", [{"id": f"n{i}", "recipe_id": "gen"} for i in range(25)]), "too_many_nodes", {"max": 24, "count": 25}),
+    (_flow("f", []), "no_nodes", {}),
+    (_flow("Bad Id", [{"id": "a", "recipe_id": "gen"}]), "invalid_flow_id", {"id": "Bad Id"}),
+    ({**_flow("f", [{"id": "a", "recipe_id": "gen"}]), "title": " "}, "title_empty", {}),
+])
+def test_validation_issue_codes(tmp_path: Path, d: dict[str, Any], code: str, params: dict[str, Any]) -> None:
+    env = _env(tmp_path)
+    issues = validate_def(WorkflowDef.model_validate(d), env.engine.library.get)
+    hit = [i for i in issues if i["code"] == code]
+    assert hit, issues
+    assert all(i["message"] and isinstance(i["params"], dict) for i in issues)
+    assert params.items() <= hit[0]["params"].items(), hit[0]
+
+
 def test_valid_flows_and_builtin_sample(tmp_path: Path) -> None:
     env = _env(tmp_path)
     for d in (LINEAR, DIAMOND, FLAKY, GATED):

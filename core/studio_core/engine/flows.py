@@ -90,8 +90,9 @@ def strip_flow_meta(params: dict[str, Any]) -> dict[str, Any]:
     return params
 
 
-def _issue(message: str, node: str | None = None, field: str | None = None, level: str = "error") -> dict[str, Any]:
-    return {"level": level, "node": node, "field": field, "message": message}
+def _issue(code: str, message: str, node: str | None = None, field: str | None = None, level: str = "error",
+           **params: Any) -> dict[str, Any]:
+    return {"level": level, "node": node, "field": field, "code": code, "params": params, "message": message}
 
 
 def parse_source(src: str) -> tuple[str, str, str, int | None] | None:
@@ -142,59 +143,63 @@ def _cycle(deps: dict[str, list[str]]) -> list[str]:
 def validate_def(d: WorkflowDef, get_recipe: Callable[[str], Recipe | None]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     if not valid_flow_id(d.id):
-        out.append(_issue(f"invalid workflow id {d.id!r}", field="id"))
+        out.append(_issue("invalid_flow_id", f"invalid workflow id {d.id!r}", field="id", id=d.id))
     if not d.title.strip():
-        out.append(_issue("title must not be empty", field="title"))
+        out.append(_issue("title_empty", "title must not be empty", field="title"))
     if not d.nodes:
-        out.append(_issue("a workflow needs at least one node", field="nodes"))
+        out.append(_issue("no_nodes", "a workflow needs at least one node", field="nodes"))
     if len(d.nodes) > MAX_NODES:
-        out.append(_issue(f"at most {MAX_NODES} nodes ({len(d.nodes)} given)", field="nodes"))
+        out.append(_issue("too_many_nodes", f"at most {MAX_NODES} nodes ({len(d.nodes)} given)", field="nodes",
+                          max=MAX_NODES, count=len(d.nodes)))
         return out
     for name, spec in d.inputs.items():
         if not valid_name(name):
-            out.append(_issue(f"bad input name {name!r}", field=f"inputs.{name}"))
+            out.append(_issue("bad_input_name", f"bad input name {name!r}", field=f"inputs.{name}", name=name))
         if spec.type not in INPUT_TYPES:
-            out.append(_issue(f"input '{name}' has unknown type {spec.type!r}", field=f"inputs.{name}"))
+            out.append(_issue("unknown_input_type", f"input '{name}' has unknown type {spec.type!r}", field=f"inputs.{name}",
+                              name=name, type=spec.type))
         elif spec.default is not None:
             try:
                 coerce_value(name, {"type": spec.type}, spec.default)
             except RecipeError as e:
-                out.append(_issue(f"default: {e}", field=f"inputs.{name}"))
+                out.append(_issue("bad_default", f"default: {e}", field=f"inputs.{name}", name=name, detail=str(e)))
     counts = Counter(n.id for n in d.nodes)
     nodes = {n.id: n for n in d.nodes}
     recipes = {n.id: get_recipe(n.recipe_id) for n in d.nodes}
     for i, n in enumerate(d.nodes):
         if not valid_name(n.id) or n.id == WORKFLOW_REF:
-            out.append(_issue(f"node #{i} has invalid id {n.id!r}", n.id, "id"))
+            out.append(_issue("invalid_node_id", f"node #{i} has invalid id {n.id!r}", n.id, "id", index=i, id=n.id))
         if counts[n.id] > 1:
             counts[n.id] = 0
-            out.append(_issue(f"duplicate node id {n.id!r}", n.id, "id"))
+            out.append(_issue("duplicate_node_id", f"duplicate node id {n.id!r}", n.id, "id", id=n.id))
         r = recipes[n.id]
         if r is None:
-            out.append(_issue(f"unknown recipe {n.recipe_id!r}", n.id, "recipe_id"))
+            out.append(_issue("unknown_recipe", f"unknown recipe {n.recipe_id!r}", n.id, "recipe_id", recipe=n.recipe_id))
             continue
         for name in n.inputs:
             if name not in r.inputs:
-                out.append(_issue(f"recipe {r.id} has no input '{name}'", n.id, f"inputs.{name}"))
+                out.append(_issue("recipe_no_input", f"recipe {r.id} has no input '{name}'", n.id, f"inputs.{name}",
+                                  recipe=r.id, name=name))
         for target, src in n.map.items():
             out.extend(_check_map(d, nodes, recipes, n.id, r, target, src))
             if target in n.inputs:
-                out.append(_issue(f"'{target}' is both set and mapped; the mapped value wins", n.id,
-                                  f"map.{target}", "warning"))
+                out.append(_issue("set_and_mapped", f"'{target}' is both set and mapped; the mapped value wins", n.id,
+                                  f"map.{target}", "warning", target=target))
         for name, spec in r.inputs.items():
             if not spec.get("required", True) or "default" in spec or n.inputs.get(name) not in (None, ""):
                 continue
             if name not in n.map:
-                out.append(_issue(f"required input '{name}' of {r.id} is neither set nor mapped", n.id,
-                                  f"inputs.{name}"))
+                out.append(_issue("required_unset", f"required input '{name}' of {r.id} is neither set nor mapped", n.id,
+                                  f"inputs.{name}", name=name, recipe=r.id))
                 continue
             p = parse_source(n.map[name])
             w = d.inputs.get(p[2]) if p and p[0] == WORKFLOW_REF else None
             if p and w is not None and not w.required and w.default is None:
-                out.append(_issue(f"'{name}' of {r.id} is required but workflow input '{p[2]}' is optional "
-                                  "without a default", n.id, f"map.{name}", "warning"))
+                out.append(_issue("required_from_optional", f"'{name}' of {r.id} is required but workflow input '{p[2]}' is optional "
+                                  "without a default", n.id, f"map.{name}", "warning", name=name, recipe=r.id,
+                                  input=p[2]))
     if cyc := _cycle(flow_deps(d)):
-        out.append(_issue(f"nodes form a cycle: {', '.join(cyc)}", field="nodes"))
+        out.append(_issue("cycle", f"nodes form a cycle: {', '.join(cyc)}", field="nodes", nodes=cyc))
     return out
 
 
@@ -202,39 +207,45 @@ def _check_map(d: WorkflowDef, nodes: dict[str, Any], recipes: dict[str, Recipe 
                target: str, src: str) -> list[dict[str, Any]]:
     field = f"map.{target}"
     if target not in r.inputs:
-        return [_issue(f"map target '{target}' is not an input of {r.id}", nid, field)]
+        return [_issue("map_target_unknown", f"map target '{target}' is not an input of {r.id}", nid, field,
+                       target=target, recipe=r.id)]
     target_type = r.inputs[target].get("type", "text")
     p = parse_source(src)
     if p is None:
-        return [_issue(f"map.{target} must be '<node>.outputs.<name>[i]', '<node>.inputs.<name>' or "
-                       f"'workflow.inputs.<name>', got {src!r}", nid, field)]
+        return [_issue("bad_source", f"map.{target} must be '<node>.outputs.<name>[i]', '<node>.inputs.<name>' or "
+                       f"'workflow.inputs.<name>', got {src!r}", nid, field, target=target, source=src)]
     ref, kind, name, _ = p
     if ref == WORKFLOW_REF:
         spec = d.inputs.get(name)
         if kind != "inputs" or spec is None:
-            return [_issue(f"{src}: workflow has no input '{name}'", nid, field)]
+            return [_issue("workflow_no_input", f"{src}: workflow has no input '{name}'", nid, field, source=src, name=name)]
         if (spec.type in BLOB_TYPES) != (target_type in BLOB_TYPES):
-            return [_issue(f"{src} is {spec.type} but '{target}' is {target_type}", nid, field)]
+            return [_issue("type_mismatch", f"{src} is {spec.type} but '{target}' is {target_type}", nid, field,
+                           source=src, source_type=spec.type, target=target, target_type=target_type)]
         return []
     if ref == nid:
-        return [_issue(f"{src}: a node cannot feed itself", nid, field)]
+        return [_issue("self_feed", f"{src}: a node cannot feed itself", nid, field, source=src)]
     if ref not in nodes:
-        return [_issue(f"{src}: unknown node '{ref}'", nid, field)]
+        return [_issue("unknown_node", f"{src}: unknown node '{ref}'", nid, field, source=src, ref=ref)]
     src_recipe = recipes.get(ref)
     if src_recipe is None:
         return []
     if kind == "outputs":
         if name not in src_recipe.outputs:
-            return [_issue(f"{src}: recipe {src_recipe.id} has no output '{name}' "
-                           f"(has: {', '.join(src_recipe.outputs) or '-'})", nid, field)]
+            return [_issue("recipe_no_output", f"{src}: recipe {src_recipe.id} has no output '{name}' "
+                           f"(has: {', '.join(src_recipe.outputs) or '-'})", nid, field, source=src,
+                           recipe=src_recipe.id, name=name, outputs=list(src_recipe.outputs))]
         if target_type not in BLOB_TYPES:
-            return [_issue(f"'{target}' is {target_type}; only file inputs take a node's outputs", nid, field)]
+            return [_issue("outputs_need_file", f"'{target}' is {target_type}; only file inputs take a node's outputs", nid, field,
+                           target=target, target_type=target_type)]
         return []
     if name not in src_recipe.inputs:
-        return [_issue(f"{src}: recipe {src_recipe.id} has no input '{name}'", nid, field)]
+        return [_issue("source_recipe_no_input", f"{src}: recipe {src_recipe.id} has no input '{name}'", nid, field,
+                       source=src, recipe=src_recipe.id, name=name)]
     src_type = src_recipe.inputs[name].get("type", "text")
     if (src_type in BLOB_TYPES) != (target_type in BLOB_TYPES):
-        return [_issue(f"{src} is {src_type} but '{target}' is {target_type}", nid, field)]
+        return [_issue("type_mismatch", f"{src} is {src_type} but '{target}' is {target_type}", nid, field,
+                       source=src, source_type=src_type, target=target, target_type=target_type)]
     return []
 
 

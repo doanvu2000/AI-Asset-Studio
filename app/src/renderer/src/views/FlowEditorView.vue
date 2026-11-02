@@ -494,7 +494,7 @@ const showWorkflowPanel = computed(() => !node.value)
             <li v-for="(i, k) in nodeIssueList" :key="k" :class="i.level">
               <CircleAlert v-if="i.level === 'error'" :size="14" />
               <TriangleAlert v-else :size="14" />
-              <span>{{ issueText(i.message) }}</span>
+              <span>{{ issueText(i) }}</span>
             </li>
           </ul>
 
@@ -596,7 +596,7 @@ const showWorkflowPanel = computed(() => !node.value)
             <button type="button" class="issue-btn" @click="focusIssue(i)">
               <CircleAlert v-if="i.level === 'error'" :size="14" />
               <TriangleAlert v-else :size="14" />
-              <span>{{ issueText(i.message) }}</span>
+              <span>{{ issueText(i) }}</span>
             </button>
           </li>
         </ul>

@@ -123,25 +123,23 @@ export function slugId(text: string): string {
   return s.slice(0, 40)
 }
 
-const ISSUE_TEXT: Array<[RegExp, (m: RegExpExecArray) => string]> = [
-  [/^required input '(.+)' of (\S+) is neither set nor mapped$/, (m) => `Ô bắt buộc "${m[1]}" của quy trình ${m[2]} chưa có giá trị và chưa được nối`],
-  [/^unknown recipe '(.+)'$/, (m) => `Quy trình "${m[1]}" không còn tồn tại`],
-  [/^nodes form a cycle(?:: (.+))?$/, (m) => `Các node nối thành vòng lặp${m[1] ? `: ${m[1]}` : ''}`],
-  [/^a workflow needs at least one node$/, () => 'Workflow cần ít nhất một node'],
-  [/^title must not be empty$/, () => 'Cần đặt tên cho workflow'],
-  [/^invalid workflow id '(.*)'$/, (m) => `Mã workflow "${m[1]}" không hợp lệ (chữ không dấu, số, gạch ngang, bắt đầu bằng chữ)`],
-  [/^duplicate node id '(.+)'$/, (m) => `Mã node "${m[1]}" bị trùng`],
-  [/^(.+): a node cannot feed itself$/, () => 'Một node không thể tự nối vào chính nó'],
-  [/^(.+): unknown node '(.+)'$/, (m) => `${m[1]}: không có node "${m[2]}"`],
-  [/^(.+): workflow has no input '(.+)'$/, (m) => `${m[1]}: workflow chưa khai báo đầu vào "${m[2]}"`],
-  [/^at most (\d+) nodes/, (m) => `Tối đa ${m[1]} node trong một workflow`]
-]
+const str = (v: unknown): string => String(v ?? '')
 
-/** The core reports issues in English; known ones are shown translated, the rest verbatim. */
-export function issueText(message: string): string {
-  for (const [re, fn] of ISSUE_TEXT) {
-    const m = re.exec(message)
-    if (m) return fn(m)
-  }
-  return message
+const ISSUE_TEXT: Record<string, (p: Record<string, unknown>) => string> = {
+  required_unset: (p) => `Ô bắt buộc "${str(p.name)}" của quy trình ${str(p.recipe)} chưa có giá trị và chưa được nối`,
+  unknown_recipe: (p) => `Quy trình "${str(p.recipe)}" không còn tồn tại`,
+  cycle: (p) => `Các node nối thành vòng lặp${Array.isArray(p.nodes) && p.nodes.length ? `: ${p.nodes.join(', ')}` : ''}`,
+  no_nodes: () => 'Workflow cần ít nhất một node',
+  title_empty: () => 'Cần đặt tên cho workflow',
+  invalid_flow_id: (p) => `Mã workflow "${str(p.id)}" không hợp lệ (chữ không dấu, số, gạch ngang, bắt đầu bằng chữ)`,
+  duplicate_node_id: (p) => `Mã node "${str(p.id)}" bị trùng`,
+  self_feed: () => 'Một node không thể tự nối vào chính nó',
+  unknown_node: (p) => `${str(p.source)}: không có node "${str(p.ref)}"`,
+  workflow_no_input: (p) => `${str(p.source)}: workflow chưa khai báo đầu vào "${str(p.name)}"`,
+  too_many_nodes: (p) => `Tối đa ${str(p.max)} node trong một workflow`
+}
+
+/** Known issue codes are shown in Vietnamese; unknown codes fall back to the core's English message. */
+export function issueText(issue: FlowIssue): string {
+  return ISSUE_TEXT[issue.code]?.(issue.params ?? {}) ?? issue.message
 }
