@@ -1,0 +1,30 @@
+id: pixel-cleanup
+name: Làm sạch pixel art AI (dò lưới, khoá palette)
+description: >-
+  Ảnh / sprite sheet pixel art do AI vẽ (ô pixel lệch, viền mờ, màu nhiễu) → tự dò cỡ pixel thật → gom về lưới thật →
+  khoá N màu (hoặc palette .hex / .gpl / ảnh palette, không dither) → bỏ pixel lẻ → alpha nhị phân, viền 1px tuỳ
+  chọn → xuất bản lưới gốc + bản phóng lại nearest + báo cáo JSON (cỡ pixel, số màu trước / sau) → duyệt. Ảnh không
+  phải pixel art giữ cỡ pixel 1 và có cảnh báo.
+inputs:
+  image: {type: image, label: Ảnh / sheet pixel art}
+  palette_file: {type: file, ext: [hex, gpl, txt], required: false, label: "Palette .hex / .gpl (tuỳ chọn)"}
+  palette_image: {type: image, required: false, label: "Ảnh lấy palette (tuỳ chọn, vd ảnh neo của style bible)"}
+  palette: {type: enum, default: auto, options: [auto, pico8, sweetie16, db16, db32, endesga32], label: Bảng màu}
+  colors: {type: int, default: 16, min: 2, max: 256, label: Số màu}
+  pixel_size: {type: int, default: 0, min: 0, max: 16, label: "Cỡ pixel (0 = tự dò)"}
+  outline: {type: text, default: none, label: "Viền 1px (none / dark / #rrggbb)"}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: clean
+    kind: op.pixel_cleanup
+    in: {images: inputs.image, palette_file: inputs.palette_file, palette_image: inputs.palette_image}
+    params: {pixel_size: "${inputs.pixel_size}", colors: "${inputs.colors}", palette: "${inputs.palette}",
+             outline: "${inputs.outline}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: clean.images, grid: clean.grid, report: clean.report}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.preview
+  grid: approve.grid
+  report: approve.report
