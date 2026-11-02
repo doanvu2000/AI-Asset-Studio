@@ -134,3 +134,13 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [x] NF-C demo Flame: pytest 325 pass, demo từ gói thật analyze 0 + flutter test pass + APK debug build OK (scratchpad/nfc/demo_app). Lỗi: vệt dọc mảnh giữa ô tile; chưa có option API/UI. [~] NF-C2.
 - [ ] Cuối đợt (chủ nhân): viết lại README ngắn dạng liệt kê + release note, bump 1.4.0 (changelog có 1.2/1.3 chưa tag; GitHub chỉ có v1.1.0), npm run dist, gh release v1.4.0 (Setup exe + Portable zip).
 - [x] 02:29 Handoff mới: .planning/HANDOFF-2026-11-03-0229.md (4 agent đang chạy: NF-C2, UI-3, VOICE-V0, DEMO-5)
+- [x] 02:4x NF-C2 flutter_demo option + vệt tile — golden scratchpad/nfc2/golden.png sạch, pytest 18 pass, typecheck sạch, commit 5ed9408
+- [x] 03:1x DEMO-5 live 21 recipe 2D chưa thử: 21/21 OK (scratchpad/demo5/overview.png), không sửa repo. Yếu: decal wall_cracks, mist đặc, time-season màu nặng/winter/dusk seam, icon nhỏ+potion nâu, parallax sương. GPU dọn, .gpu-lock xoá.
+- [~] DEMO-6 chỉnh 5 recipe yếu (sonnet, nền, giữ .gpu-lock khi chạy) → scratchpad/demo6/compare.png
+- [x] 03:2x UI-3 minh hoạ stageshow GettingStarted + empty Library/History/Projects (light/dark webp), typecheck sạch, ảnh scratchpad/ui3/shots/cmp_*.png, commit 88e3af6
+- [x] 03:3x VOICE-V0 trang nghe L:/AI/tts-lab/voice-compare.html (132 clip, VieNeu/Kokoro/edge/Chatterbox; Chatterbox không có VI) — chờ chủ nhân chọn giọng
+- [~] REL-1 README + release note + bump 1.4.0 + changelog (sonnet, nền)
+- [x] 03:4x REL-1 README 80 dòng + .planning/release-1.4.0.md + bump 1.4.0 + changelog, test_version 2 pass, commit 61e8230. Chờ DEMO-6 → full pytest → dist → tag
+- [x] 04:2x DEMO-6 decal nứt thật, mist mỏng, season nhẹ + winter tuyết, icon khung đơn to hơn (còn dao động màu), parallax hết sương; scratchpad/demo6/compare.png; 29+247 pass; commit 1e8f9d0
+- [~] REL-2 full pytest → npm run dist + dist:portable → tag v1.4.0 → gh release
+- [x] 04:5x REL-2 full pytest 1625 pass/6 skip; npm run dist OK; portable zip 223.6MB; tag v1.4.0; release https://github.com/doanvu2000/AI-Asset-Studio/releases/tag/v1.4.0
