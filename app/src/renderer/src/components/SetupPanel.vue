@@ -395,7 +395,7 @@ const claudeReady = computed(() => !!plan.value?.components.claude.installed)
 }
 .row + .row,
 .tool + .tool {
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .lbl {
   padding-top: 7px;
@@ -560,7 +560,7 @@ const claudeReady = computed(() => !!plan.value?.components.claude.installed)
   padding: 11px 0;
 }
 .item + .item {
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .ic {
   flex: none;

@@ -29,8 +29,8 @@ export interface WfNodeData {
 
 export const WF_RUN_SIZE: Size = { w: 280, h: 140, laneW: 324, rowH: 212 }
 const COL_W = 350
-const EDIT_HEAD = 50
-const PORT_H = 24
+const EDIT_HEAD = 58
+const PORT_H = 28
 const EDIT_GAP = 64
 
 const blank = (): Pick<WfNodeData, 'ins' | 'outs' | 'inputs' | 'issues'> => ({ ins: [], outs: [], inputs: [], issues: [] })

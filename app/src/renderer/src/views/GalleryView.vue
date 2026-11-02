@@ -229,9 +229,9 @@ function clearFilters(): void {
 
 const scroller = ref<HTMLElement | null>(null)
 const { width } = useElementSize(scroller)
-const GAP = 16
-const TILE_MIN = 176
-const CAPTION_H = 74
+const GAP = 20
+const TILE_MIN = 184
+const CAPTION_H = 92
 const inner = computed(() => Math.max(0, width.value))
 const cols = computed(() => Math.max(1, Math.floor((inner.value + GAP) / (TILE_MIN + GAP))))
 const tileW = computed(() => (inner.value - GAP * (cols.value - 1)) / cols.value)
@@ -545,17 +545,13 @@ function move(d: -1 | 1): void {
             <div class="meta">
               <div class="m1">
                 <span class="name" :title="g.name">{{ g.name }}</span>
-                <QaBadge :qa="g.qa" />
-                <Transition name="fade" mode="out-in">
-                  <span :key="g.status" class="pill">{{ STATUS_TEXT[g.status] }}</span>
-                </Transition>
               </div>
               <p class="caption sub" :title="g.recipe">
-                <RelTime :ts="g.created_at" />
-                <template v-if="g.recipe">
-                  <span>·</span>
-                  <span class="sub-recipe">{{ g.recipe }}</span>
-                </template>
+                <Transition name="fade" mode="out-in">
+                  <span :key="g.status" class="ui-pill" :class="g.status === 'approved' ? 't-ok' : g.status === 'rejected' ? 't-fail' : 't-run'">{{ STATUS_TEXT[g.status] }}</span>
+                </Transition>
+                <QaBadge :qa="g.qa" />
+                <RelTime :ts="g.created_at" class="when" />
               </p>
             </div>
           </article>
@@ -626,9 +622,9 @@ function move(d: -1 | 1): void {
 .bar {
   flex: none;
   display: grid;
-  gap: 10px;
-  padding: 12px 24px;
-  border-bottom: 0.5px solid var(--separator);
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-6);
+  border-bottom: 1px solid var(--hair-soft);
 }
 .bar-row {
   display: flex;
@@ -648,12 +644,12 @@ function move(d: -1 | 1): void {
   gap: 6px;
   flex: 0 1 240px;
   min-width: 160px;
-  height: 26px;
-  padding: 0 8px;
-  border-radius: 6px;
+  height: var(--ctl-h);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-sm);
   color: var(--text-3);
   background: var(--bg-control);
-  box-shadow: inset 0 0 0 0.5px var(--separator-strong);
+  box-shadow: inset 0 0 0 1px var(--hair);
   transition: box-shadow var(--t-fast);
 }
 .search:focus-within {
@@ -672,10 +668,10 @@ function move(d: -1 | 1): void {
   color: var(--text-3);
 }
 .sort select {
-  height: 26px;
-  padding: 0 6px;
+  height: var(--ctl-h);
+  padding: 0 var(--sp-2);
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   color: var(--text);
   background: var(--bg-control);
   box-shadow: var(--control-shadow);
@@ -684,11 +680,11 @@ function move(d: -1 | 1): void {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 26px;
-  padding: 0 10px;
+  height: var(--ctl-h);
+  padding: 0 var(--sp-3);
   border: 0;
-  border-radius: 6px;
-  font-weight: 400;
+  border-radius: var(--r-sm);
+  font-weight: 500;
   color: var(--text);
   background: var(--bg-control);
   box-shadow: var(--control-shadow);
@@ -727,7 +723,7 @@ function move(d: -1 | 1): void {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 16px 24px;
+  padding: var(--sp-5) var(--sp-6);
 }
 .inner {
   position: relative;
@@ -927,9 +923,9 @@ function move(d: -1 | 1): void {
 .meta {
   display: grid;
   align-content: start;
-  gap: 2px;
-  padding: 9px 12px 0;
-  height: 74px;
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-3) 0;
+  height: 92px;
 }
 .m1 {
   display: flex;
@@ -950,35 +946,15 @@ function move(d: -1 | 1): void {
 }
 .sub {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: var(--sp-2);
   min-width: 0;
   white-space: nowrap;
 }
-.sub-recipe {
+.sub .when {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.pill {
-  flex: none;
-  font-size: var(--fs-caption);
-  font-weight: 600;
-  padding: 1px 7px;
-  border-radius: 999px;
-  color: var(--text-2);
-  background: var(--bg-active);
-}
-.vs-approved .pill {
-  color: var(--st-ok);
-  background: var(--st-ok-soft);
-}
-.vs-rejected .pill {
-  color: var(--st-fail);
-  background: var(--st-fail-soft);
-}
-.vs-draft .pill {
-  color: var(--accent);
-  background: var(--accent-soft);
 }
 .stage {
   position: relative;

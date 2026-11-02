@@ -137,7 +137,7 @@ async function remove(d: WorkflowDef): Promise<void> {
               <div class="wc-top">
                 <h2 class="headline name" :title="d.title">{{ d.title }}</h2>
                 <FitBadge :entry="fit.flow(d.id)" />
-                <span v-if="SOURCE[d.source ?? 'builtin']" class="src-badge" :class="SOURCE[d.source ?? 'builtin']!.tone">{{ SOURCE[d.source ?? 'builtin']!.label }}</span>
+                <span v-if="SOURCE[d.source ?? 'builtin']" class="ui-pill src-badge" :class="SOURCE[d.source ?? 'builtin']!.tone">{{ SOURCE[d.source ?? 'builtin']!.label }}</span>
               </div>
               <p v-if="d.description" class="callout desc">{{ d.description }}</p>
               <p class="caption chain" :title="chain(d).join(' → ')">
@@ -205,7 +205,7 @@ async function remove(d: WorkflowDef): Promise<void> {
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  gap: 14px;
+  gap: var(--sp-4);
 }
 .wc {
   display: grid;
@@ -214,13 +214,13 @@ async function remove(d: WorkflowDef): Promise<void> {
   transition: box-shadow var(--t-base) var(--ease-out);
 }
 .wc:hover {
-  box-shadow: var(--shadow-2), var(--hairline);
+  box-shadow: var(--shadow-2);
 }
 .wc-main {
   display: grid;
-  gap: 8px;
+  gap: var(--sp-2);
   align-content: start;
-  padding: 16px 16px 12px;
+  padding: var(--sp-4);
 }
 .wc-top {
   display: flex;
@@ -256,29 +256,20 @@ async function remove(d: WorkflowDef): Promise<void> {
   align-items: center;
   gap: 6px;
 }
-.src-badge {
-  flex: none;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: var(--fs-caption);
-  font-weight: 650;
-  color: var(--text-2);
-  background: var(--bg-active);
-}
 .src-badge.user {
   color: var(--accent);
   background: var(--accent-soft);
 }
 .src-badge.edit {
-  color: var(--st-waiting);
-  background: var(--st-waiting-soft);
+  color: var(--warn);
+  background: var(--warn-bg);
 }
 .wc-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   padding: 8px 10px 10px;
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .wc-actions .btn {
   height: 28px;

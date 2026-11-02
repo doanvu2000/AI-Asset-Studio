@@ -354,7 +354,7 @@ useEventListener(
   align-items: center;
   gap: 12px;
   padding: 12px 10px 12px 16px;
-  border-bottom: 0.5px solid var(--separator);
+  border-bottom: 1px solid var(--hair-soft);
 }
 .ico {
   color: var(--accent);
@@ -367,16 +367,28 @@ useEventListener(
 }
 .body {
   overflow: auto;
-  padding: 14px 16px;
+  padding: var(--sp-4) var(--sp-5);
   display: grid;
-  gap: 10px;
+  gap: var(--sp-3);
   align-content: start;
 }
 .row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--sp-3);
+}
+.row > .section-label {
+  flex: 0 0 84px;
+}
+.row > .mob-opts,
+.row > .seg {
+  flex: 1;
+  min-width: 0;
+}
+.row > .seg {
+  flex: 0 1 auto;
+  margin-left: auto;
 }
 .hint {
   margin-top: -4px;
@@ -452,7 +464,7 @@ useEventListener(
   background: var(--bg-hover);
 }
 li + li .item {
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .thumb {
   width: 32px;
@@ -517,7 +529,7 @@ li + li .item {
   justify-content: flex-end;
   gap: 8px;
   padding: 10px 16px;
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .state {
   display: flex;

@@ -92,13 +92,13 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
               <div class="rc-text">
                 <div class="rc-top">
                   <h2 class="headline name" :title="r.name">{{ r.name }}</h2>
-                  <span v-if="SOURCE[r.source ?? 'builtin']" class="badge" :class="SOURCE[r.source ?? 'builtin']!.tone">{{ SOURCE[r.source ?? 'builtin']!.label }}</span>
+                  <span v-if="SOURCE[r.source ?? 'builtin']" class="ui-pill" :class="SOURCE[r.source ?? 'builtin']!.tone">{{ SOURCE[r.source ?? 'builtin']!.label }}</span>
                 </div>
                 <p class="caption desc" :title="flowNames(r).join(' → ')">{{ flow(r) }}</p>
                 <div class="meta">
-                  <span class="caption num">{{ r.steps.length }} bước</span>
+                  <span class="caption num steps">{{ r.steps.length }} bước</span>
                   <LaneTag v-for="l in lanes(r)" :key="l" :lane="l" />
-                  <FitBadge :entry="fit.recipe(r.id)" />
+                  <FitBadge class="fit-end" :entry="fit.recipe(r.id)" />
                 </div>
               </div>
             </RouterLink>
@@ -129,22 +129,22 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 14px;
+  gap: var(--sp-4);
 }
 .rc {
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-width: 0;
   overflow: hidden;
-  transition:
-    transform var(--t-fast) var(--ease-spring),
-    box-shadow var(--t-base) var(--ease-out);
+  transition: box-shadow var(--t-base) var(--ease-out);
 }
 .rc:hover {
-  box-shadow: var(--shadow-2), var(--hairline);
+  box-shadow: var(--shadow-2);
 }
 .rc-main {
   display: flex;
-  gap: 14px;
-  padding: 16px 16px 10px;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
   color: inherit;
   text-decoration: none;
 }
@@ -152,15 +152,16 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
   transform: scale(0.99);
 }
 .rc-text {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
   min-width: 0;
   flex: 1;
 }
 .rc-top {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 .name {
   flex: 1;
@@ -168,44 +169,44 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
   overflow-wrap: anywhere;
 }
 .desc {
-  min-height: 4.3em;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 4.2em;
 }
 .meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  margin-top: 4px;
+  gap: var(--sp-2);
+  margin-top: auto;
+  padding-top: var(--sp-2);
 }
-.badge {
-  flex: none;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: var(--fs-caption);
-  font-weight: 650;
-  color: var(--text-2);
-  background: var(--bg-active);
+.steps {
+  margin-right: var(--sp-1);
 }
-.badge.user {
+.fit-end {
+  margin-left: auto;
+}
+.ui-pill.user {
   color: var(--accent);
   background: var(--accent-soft);
 }
-.badge.edit {
-  color: var(--st-waiting);
-  background: var(--st-waiting-soft);
+.ui-pill.edit {
+  color: var(--warn);
+  background: var(--warn-bg);
 }
 .rc-actions {
-  display: flex;
-  gap: 4px;
-  padding: 6px 10px 10px;
-  border-top: 0.5px solid var(--separator);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--hair-soft);
 }
 .rc-actions .btn {
-  height: 28px;
+  padding: 0 var(--sp-2);
   font-size: var(--fs-callout);
-}
-.rc-actions {
-  flex-wrap: wrap;
 }
 .peek-enter-active,
 .peek-leave-active {

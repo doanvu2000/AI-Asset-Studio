@@ -622,7 +622,7 @@ const showWorkflowPanel = computed(() => !node.value)
   position: relative;
   flex: 1;
   min-width: 0;
-  border-right: 0.5px solid var(--separator);
+  border-right: 1px solid var(--hair-soft);
 }
 .hint-empty,
 .hint {

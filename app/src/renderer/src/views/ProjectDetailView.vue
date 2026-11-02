@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
-import { Archive, ArchiveRestore, ArrowLeft, BookMarked, Check, ClipboardList, FolderKanban, Images, Languages, ListChecks, LoaderCircle, ShieldCheck, Package, Plus, RotateCw, Save, ScanSearch, X } from '@lucide/vue'
+import { Archive, ArchiveRestore, ArrowLeft, Check, FolderKanban, Images, Languages, ListChecks, LoaderCircle, ShieldCheck, Package, Plus, RotateCw, Save, X } from '@lucide/vue'
 import type { BlobRef, EngineTarget, PixelStyle, ProjectStyle } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
@@ -295,12 +295,6 @@ function newAsset(): void {
         Cập nhật <RelTime :ts="project.updated_at" />
       </template>
       <template v-if="project">
-        <button type="button" class="btn btn-plain" :aria-pressed="isActive" :title="isActive ? 'Bỏ chọn: lượt chạy mới không thuộc dự án' : 'Lượt chạy mới mặc định thuộc dự án này'" :aria-label="isActive ? 'Đang chọn làm dự án hiện tại' : 'Chọn làm dự án hiện tại'" @click="toggleActive">
-          <Check v-if="isActive" /> <FolderKanban v-else />
-          <span class="lbl">{{ isActive ? 'Đang chọn' : 'Chọn làm dự án hiện tại' }}</span>
-        </button>
-        <button v-if="!project.archived" type="button" class="btn btn-plain" :disabled="archiving" aria-label="Lưu trữ" title="Lưu trữ dự án" @click="setArchived(true)"><Archive /> <span class="lbl">Lưu trữ</span></button>
-        <button v-else type="button" class="btn btn-plain" :disabled="archiving" aria-label="Khôi phục" title="Khôi phục dự án" @click="setArchived(false)"><ArchiveRestore /> <span class="lbl">Khôi phục</span></button>
         <button type="button" class="btn" aria-label="Khai báo AI" title="Xem bản khai báo dùng AI (Steam, Itch, Google Play, App Store) của asset đã duyệt" @click="aiOpen = true"><ShieldCheck /> <span class="lbl">Khai báo AI</span></button>
         <button type="button" class="btn" aria-label="Đóng gói" title="Đóng gói asset đã duyệt thành Unity package / Godot addon + zip trên máy" @click="packOpen = true"><Package /> <span class="lbl">Đóng gói</span></button>
         <button type="button" class="btn btn-primary" aria-label="Tạo asset trong dự án" title="Tạo asset trong dự án" @click="newAsset"><Plus /> <span class="lbl">Tạo asset trong dự án</span></button>
@@ -315,7 +309,8 @@ function newAsset(): void {
       </EmptyState>
 
       <div v-else class="page">
-        <dl class="stats card">
+        <div class="overview card hair-list">
+        <dl class="stats">
           <div>
             <dt class="caption">Lượt chạy</dt>
             <dd class="num"><TweenNumber :value="summary?.runs_total ?? projectRuns.length" /></dd>
@@ -329,41 +324,51 @@ function newAsset(): void {
             <dd class="num ok"><TweenNumber :value="summary?.approved_versions ?? 0" /></dd>
           </div>
           <div>
-            <dt class="caption">Nháp chờ duyệt</dt>
+            <dt class="caption">Chờ duyệt</dt>
             <dd class="num"><TweenNumber :value="summary?.versions.draft ?? 0" /></dd>
           </div>
           <div>
-            <dt class="caption">Hoạt động gần nhất</dt>
+            <dt class="caption">Gần nhất</dt>
             <dd class="when"><RelTime :ts="Math.max(summary?.last_activity ?? 0, project.updated_at)" /></dd>
           </div>
         </dl>
 
         <div class="engine-row">
-          <span class="callout">Engine đích</span>
-          <div class="seg" role="radiogroup" aria-label="Engine đích của dự án">
+          <span class="section-label">Engine đích</span>
+          <div class="seg" role="radiogroup" aria-label="Engine đích của dự án" title="Nút Xuất ra engine sẽ chọn sẵn engine này">
             <button v-for="[id, label] in ENGINE_TARGETS" :key="id" type="button" role="radio" :aria-checked="project.engine_target === id" :class="{ on: project.engine_target === id }" @click="setEngine(id)">{{ label }}</button>
           </div>
-          <span class="caption">Nút Xuất ra engine sẽ chọn sẵn engine này.</span>
+        </div>
+        <div class="engine-row acts">
+          <div class="row-acts">
+            <button type="button" class="btn btn-ghost" :aria-pressed="isActive" :title="isActive ? 'Bỏ chọn: lượt chạy mới không thuộc dự án' : 'Lượt chạy mới mặc định thuộc dự án này'" @click="toggleActive">
+              <Check v-if="isActive" /> <FolderKanban v-else />
+              {{ isActive ? 'Đang chọn' : 'Chọn làm dự án hiện tại' }}
+            </button>
+            <button v-if="!project.archived" type="button" class="btn btn-ghost" :disabled="archiving" title="Lưu trữ dự án" @click="setArchived(true)"><Archive /> Lưu trữ</button>
+            <button v-else type="button" class="btn btn-ghost" :disabled="archiving" title="Khôi phục dự án" @click="setArchived(false)"><ArchiveRestore /> Khôi phục</button>
+          </div>
+        </div>
         </div>
 
-        <div class="seg tabs" role="tablist" aria-label="Phần của dự án">
+        <div class="tabs" role="tablist" aria-label="Phần của dự án">
           <button role="tab" :aria-selected="tab === 'style'" :class="{ on: tab === 'style' }" @click="tab = 'style'">
             Phong cách <span v-if="dirty" class="dirty-dot" aria-label="chưa lưu" />
           </button>
           <button role="tab" :aria-selected="tab === 'assets'" :class="{ on: tab === 'assets' }" @click="tab = 'assets'">
-            <ClipboardList :size="13" /> Danh sách asset
+            Danh sách asset
           </button>
           <button role="tab" :aria-selected="tab === 'qa'" :class="{ on: tab === 'qa' }" @click="tab = 'qa'">
-            <ScanSearch :size="13" /> Kiểm tra đồng bộ
+            Kiểm tra đồng bộ
           </button>
           <button role="tab" :aria-selected="tab === 'bible'" :class="{ on: tab === 'bible' }" @click="tab = 'bible'">
-            <BookMarked :size="13" /> Style bible
+            Style bible
           </button>
           <button role="tab" :aria-selected="tab === 'runs'" :class="{ on: tab === 'runs' }" @click="tab = 'runs'">
-            <ListChecks :size="13" /> Lượt chạy <span class="num c">{{ projectRuns.length }}</span>
+            Lượt chạy <span class="num c">{{ projectRuns.length }}</span>
           </button>
           <button role="tab" :aria-selected="tab === 'gallery'" :class="{ on: tab === 'gallery' }" @click="tab = 'gallery'">
-            <Images :size="13" /> Thư viện <span class="num c">{{ projectVersions.length }}</span>
+            Thư viện <span class="num c">{{ projectVersions.length }}</span>
           </button>
         </div>
 
@@ -562,33 +567,54 @@ function newAsset(): void {
   align-items: center;
   gap: 6px;
 }
+.overview {
+  min-width: 0;
+}
 .engine-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+}
+.row-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+.engine-row.acts {
+  padding-block: var(--sp-2);
 }
 .stats {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--sp-3);
   margin: 0;
-  padding: 14px 18px;
+  padding: var(--sp-4);
 }
 .stats div {
   display: grid;
-  gap: 2px;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.stats dt {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
 }
 .stats dd {
   margin: 0;
-  font-size: var(--fs-title1);
-  font-weight: 650;
-  letter-spacing: -0.015em;
+  font-size: var(--fs-large);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 .stats dd.when {
   font-size: var(--fs-body);
   font-weight: 500;
-  padding-top: 6px;
+  padding-top: var(--sp-2);
 }
 .stats dd.ok {
   color: var(--st-ok);
@@ -597,13 +623,39 @@ function newAsset(): void {
   color: var(--st-running);
 }
 .tabs {
-  justify-self: start;
-  max-width: 100%;
+  display: flex;
   flex-wrap: wrap;
+  gap: var(--sp-1);
+  border-bottom: 1px solid var(--hair-soft);
+}
+.tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 38px;
+  padding: 0 var(--sp-3);
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: var(--fs-callout);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out);
+}
+.tabs button:hover:not(.on) {
+  color: var(--ink);
+}
+.tabs button.on {
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
 }
 .c {
-  font-size: 12px;
-  color: var(--text-3);
+  font-size: var(--fs-caption);
+  color: var(--ink-3);
 }
 .dirty-dot {
   width: 6px;
@@ -636,7 +688,7 @@ function newAsset(): void {
   align-items: start;
 }
 .f + .f {
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .f-label {
   padding-top: 7px;
@@ -767,7 +819,7 @@ function newAsset(): void {
   gap: 10px;
   margin: 0 -24px;
   padding: 12px 24px 16px;
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
   background: color-mix(in srgb, var(--bg-content) 88%, transparent);
   backdrop-filter: saturate(1.6) blur(16px);
 }
@@ -787,7 +839,7 @@ function newAsset(): void {
   padding: 4px 8px;
 }
 .lrow + .lrow {
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .more-link {
   display: inline-block;

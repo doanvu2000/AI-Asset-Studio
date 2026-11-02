@@ -155,7 +155,7 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
             <RouterLink :to="`/projects/${p.id}`" class="name headline" :title="p.name">{{ p.name }}</RouterLink>
             <p class="desc callout" :title="p.description">{{ p.description || (styleIsEmpty(normalizeStyle(p.style)) ? 'Chưa khoá phong cách' : 'Không có mô tả') }}</p>
             <div v-if="styleTags(p).length" class="tags">
-              <span v-for="t in styleTags(p)" :key="t" class="tag">{{ t }}</span>
+              <span v-for="t in styleTags(p)" :key="t" class="ui-pill t-c6">{{ t }}</span>
             </div>
             <dl class="stats">
               <div>
@@ -241,7 +241,7 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
     transform var(--t-fast) var(--ease-spring);
 }
 .pcard:hover {
-  box-shadow: var(--shadow-2), var(--hairline);
+  box-shadow: var(--shadow-2);
 }
 .pcard.current {
   box-shadow: 0 0 0 1.5px var(--accent), var(--shadow-1);
@@ -254,7 +254,7 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
   display: block;
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  background: radial-gradient(circle at 50% 40%, var(--accent-soft), transparent 70%), var(--bg-sunken);
+  background: var(--bg-sunken);
 }
 .cover :deep(.blob) {
   width: 100%;
@@ -282,8 +282,8 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px 12px;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
 }
 .name {
   color: var(--text);
@@ -308,22 +308,15 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
 .tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-}
-.tag {
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: var(--fs-caption);
-  color: var(--accent);
-  background: var(--accent-soft);
+  gap: var(--sp-1);
 }
 .stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: var(--sp-2);
   margin: auto 0 0;
-  padding-top: 8px;
-  border-top: 0.5px solid var(--separator);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--hair-soft);
 }
 .stats div {
   display: grid;
@@ -331,9 +324,10 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
 }
 .stats dd {
   margin: 0;
-  font-size: var(--fs-title);
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-size: var(--fs-title1);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
 }
 .stats dd.ok {
   color: var(--st-ok);

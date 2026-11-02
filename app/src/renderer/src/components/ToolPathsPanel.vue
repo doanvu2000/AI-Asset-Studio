@@ -217,7 +217,7 @@ watch(
   align-items: start;
 }
 .row + .row {
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .lbl {
   padding-top: 7px;

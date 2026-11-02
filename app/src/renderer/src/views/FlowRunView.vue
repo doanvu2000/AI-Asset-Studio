@@ -312,7 +312,7 @@ async function cancel(): Promise<void> {
   flex: 1;
   min-width: 0;
   position: relative;
-  border-right: 0.5px solid var(--separator);
+  border-right: 1px solid var(--hair-soft);
 }
 .rail:not(.graph) {
   max-width: 560px;
@@ -379,7 +379,7 @@ async function cancel(): Promise<void> {
   align-items: center;
   gap: 12px;
   padding: 6px var(--sp-6);
-  border-bottom: 0.5px solid var(--separator);
+  border-bottom: 1px solid var(--hair-soft);
 }
 .segs {
   flex: 1;

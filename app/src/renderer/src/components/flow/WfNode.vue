@@ -98,7 +98,7 @@ const tooltip = computed(() => `${props.data.title}\n${props.data.recipe}\nMã n
   border-radius: 14px;
   background: var(--bg-elevated);
   color: var(--text);
-  box-shadow: var(--shadow-1), 0 0 0 1px var(--separator-strong);
+  box-shadow: var(--shadow-1), 0 0 0 1px var(--hair);
   transition:
     box-shadow var(--t-base) var(--ease-out),
     background var(--t-base) var(--ease-out),
@@ -321,7 +321,7 @@ const tooltip = computed(() => `${props.data.title}\n${props.data.recipe}\nMã n
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 50px;
+  min-height: 58px;
   padding: 8px 12px 6px 16px;
 }
 .io-ic {
@@ -337,7 +337,7 @@ const tooltip = computed(() => `${props.data.title}\n${props.data.recipe}\nMã n
   display: grid;
   grid-template-columns: 1fr 1fr;
   padding-bottom: 8px;
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .ports {
   list-style: none;
@@ -347,17 +347,17 @@ const tooltip = computed(() => `${props.data.title}\n${props.data.recipe}\nMã n
 }
 .io .ports {
   padding-bottom: 8px;
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .port {
   position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 24px;
-  padding: 0 14px;
+  height: 28px;
+  padding: 0 16px;
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-2);
 }
 .col-out .port {
@@ -388,7 +388,7 @@ const tooltip = computed(() => `${props.data.title}\n${props.data.recipe}\nMã n
   display: flex;
   gap: 10px;
   padding: 6px 14px 8px;
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
   font-size: 12px;
   font-weight: 600;
 }

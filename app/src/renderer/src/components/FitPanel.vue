@@ -95,29 +95,33 @@ async function install(id: string): Promise<void> {
     <p v-if="!fit.report" class="secondary" role="status">{{ refreshing ? 'Đang đọc cấu hình máy…' : 'Core chưa trả về thông tin cấu hình máy (cần bản core mới hơn).' }}</p>
 
     <template v-else>
-      <section class="card hw" aria-label="Cấu hình máy">
+      <section class="card hw hair-list" aria-label="Cấu hình máy">
         <div class="hw-cell">
-          <span class="caption secondary">GPU</span>
-          <span class="headline">{{ fit.report.hardware.gpu?.name ?? 'Không có GPU NVIDIA' }}</span>
-          <span v-if="fit.report.hardware.gpu" class="caption secondary">{{ mb(fit.report.hardware.gpu.vram_total_mb) }} VRAM · trống {{ mb(fit.report.hardware.gpu.vram_free_mb) }}<template v-if="fit.report.hardware.gpu.driver"> · driver {{ fit.report.hardware.gpu.driver }}</template></span>
-          <span v-else class="caption secondary">Các bước GPU sẽ không chạy được</span>
+          <span class="k">GPU</span>
+          <span class="v">
+            <span class="headline">{{ fit.report.hardware.gpu?.name ?? 'Không có GPU NVIDIA' }}</span>
+            <span v-if="fit.report.hardware.gpu" class="caption secondary">{{ mb(fit.report.hardware.gpu.vram_total_mb) }} VRAM · trống {{ mb(fit.report.hardware.gpu.vram_free_mb) }}<template v-if="fit.report.hardware.gpu.driver"> · driver {{ fit.report.hardware.gpu.driver }}</template></span>
+            <span v-else class="caption secondary">Các bước GPU sẽ không chạy được</span>
+          </span>
         </div>
         <div class="hw-cell">
-          <span class="caption secondary">RAM</span>
-          <span class="headline">{{ mb(fit.report.hardware.ram_total_mb) }}</span>
-          <span class="caption secondary">trống {{ mb(fit.report.hardware.ram_free_mb) }}</span>
+          <span class="k">RAM</span>
+          <span class="v">
+            <span class="headline">{{ mb(fit.report.hardware.ram_total_mb) }}</span>
+            <span class="caption secondary">trống {{ mb(fit.report.hardware.ram_free_mb) }}</span>
+          </span>
         </div>
         <div class="hw-cell">
-          <span class="caption secondary">CPU</span>
-          <span class="headline"><TweenNumber :value="fit.report.hardware.cpu_threads" /> luồng</span>
+          <span class="k">CPU</span>
+          <span class="v"><span class="headline"><TweenNumber :value="fit.report.hardware.cpu_threads" /> luồng</span></span>
         </div>
         <div class="hw-cell">
-          <span class="caption secondary">Ổ đĩa còn trống</span>
-          <span class="headline">{{ mb(fit.report.hardware.disk_free_mb) }}</span>
+          <span class="k">Ổ đĩa còn trống</span>
+          <span class="v"><span class="headline">{{ mb(fit.report.hardware.disk_free_mb) }}</span></span>
         </div>
         <div class="hw-cell">
-          <span class="caption secondary">Đánh giá chung</span>
-          <span class="headline">{{ TIER[fit.report.hardware.tier] ?? fit.report.hardware.tier }}</span>
+          <span class="k">Đánh giá chung</span>
+          <span class="v"><span class="headline">{{ TIER[fit.report.hardware.tier] ?? fit.report.hardware.tier }}</span></span>
         </div>
       </section>
       <ul v-if="fit.report.recommend?.notes?.length" class="notes secondary">
@@ -152,9 +156,9 @@ async function install(id: string): Promise<void> {
             {{ l.label }} <TweenNumber :value="count(l.id)" class="caption" />
           </button>
         </div>
-        <ul class="list">
+        <ul class="list card hair-list">
           <li v-for="x in shown" :key="x.key">
-            <button type="button" class="card row" @click="open(x)">
+            <button type="button" class="row" @click="open(x)">
               <FitBadge :entry="x.entry" />
               <span class="r-text">
                 <span class="headline">{{ x.name }}<span v-if="x.kind === 'flow'" class="caption secondary"> · workflow</span></span>
@@ -174,7 +178,7 @@ async function install(id: string): Promise<void> {
   max-width: 860px;
   margin: 0 auto;
   display: grid;
-  gap: 18px;
+  gap: var(--sp-6);
   animation: fade-up var(--t-slow) var(--ease-out);
 }
 .content-title {
@@ -189,17 +193,23 @@ async function install(id: string): Promise<void> {
   justify-content: space-between;
   gap: 16px;
 }
-.hw {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 14px 18px;
-  padding: 14px 16px;
-}
 .hw-cell {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  align-items: start;
+}
+.hw-cell .k {
+  padding-top: 1px;
+  font-size: var(--fs-callout);
+  color: var(--ink-2);
+}
+.hw-cell .v {
   display: grid;
   gap: 2px;
   min-width: 0;
-  align-content: start;
+  font-variant-numeric: tabular-nums;
 }
 .notes {
   margin: 0;
@@ -207,18 +217,18 @@ async function install(id: string): Promise<void> {
   font-size: var(--fs-callout);
 }
 .section-label {
-  margin-bottom: 8px;
+  margin-bottom: var(--sp-2);
 }
 .packs {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 10px;
+  gap: var(--sp-3);
 }
 .pack {
   display: grid;
-  gap: 4px;
+  gap: var(--sp-1);
   align-content: start;
-  padding: 12px 14px;
+  padding: var(--sp-4);
 }
 .pk-line,
 .pk-foot {
@@ -239,17 +249,18 @@ async function install(id: string): Promise<void> {
 }
 .list {
   display: grid;
-  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
+  overflow: hidden;
 }
 .row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sp-3);
   width: 100%;
-  padding: 9px 14px;
+  padding: var(--sp-3) var(--sp-4);
+  background: transparent;
   border: 0;
   font: inherit;
   color: inherit;
@@ -261,7 +272,7 @@ async function install(id: string): Promise<void> {
   background: var(--bg-hover);
 }
 .row :deep(.fit) {
-  min-width: 76px;
+  min-width: 84px;
   justify-content: flex-start;
 }
 .r-text {

@@ -127,7 +127,7 @@ useEventListener(
   align-items: center;
   gap: 12px;
   padding: 12px 10px 12px 16px;
-  border-bottom: 0.5px solid var(--separator);
+  border-bottom: 1px solid var(--hair-soft);
 }
 .ico {
   color: var(--accent);
@@ -180,7 +180,7 @@ useEventListener(
   justify-content: flex-end;
   gap: 8px;
   padding: 10px 16px;
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .dlg-enter-active,
 .dlg-leave-active {

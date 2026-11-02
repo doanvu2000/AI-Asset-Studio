@@ -366,7 +366,7 @@ onBeforeUnmount(stopPoll)
   align-items: center;
   gap: 8px;
   padding: 12px 12px 12px 18px;
-  border-bottom: 0.5px solid var(--separator);
+  border-bottom: 1px solid var(--hair-soft);
 }
 .h-ic {
   flex: none;
@@ -425,7 +425,7 @@ onBeforeUnmount(stopPoll)
   gap: 16px;
   padding: 12px 14px;
   overflow: auto;
-  border-left: 0.5px solid var(--separator);
+  border-left: 1px solid var(--hair-soft);
 }
 .sec {
   margin: 0 0 6px;
@@ -453,7 +453,7 @@ onBeforeUnmount(stopPoll)
   resize: vertical;
   padding: 8px 10px;
   border-radius: var(--r-md);
-  border: 0.5px solid var(--separator);
+  border: 1px solid var(--hair-soft);
   background: var(--bg-input, var(--bg));
   color: var(--text);
   font: inherit;
@@ -480,7 +480,7 @@ onBeforeUnmount(stopPoll)
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .grow {
   flex: 1;
@@ -513,7 +513,7 @@ onBeforeUnmount(stopPoll)
   }
   .side {
     border-left: 0;
-    border-top: 0.5px solid var(--separator);
+    border-top: 1px solid var(--hair-soft);
   }
 }
 @media (prefers-reduced-motion: reduce) {

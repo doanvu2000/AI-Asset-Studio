@@ -195,40 +195,36 @@ async function remove(): Promise<void> {
     <div class="split">
       <aside class="list" aria-label="Cài đặt" :style="{ '--pane-w': `${listW}px` }">
         <p class="section-label pad">Hệ thống</p>
-        <button v-if="theme.available" class="item" :class="{ on: pane === 'look' }" @click="pane = 'look'">
+        <button v-if="theme.available" class="item sys" :class="{ on: pane === 'look' }" @click="pane = 'look'">
+          <SunMoon :size="15" class="i-ico" aria-hidden="true" />
           <span class="i-name">Giao diện</span>
-          <SunMoon :size="13" class="lock" aria-hidden="true" />
-          <span class="i-sub caption">{{ THEME_OPTIONS.find((o) => o[0] === theme.mode.value)?.[1] }}</span>
+          <span class="i-val caption">{{ THEME_OPTIONS.find((o) => o[0] === theme.mode.value)?.[1] }}</span>
         </button>
-        <button v-if="notifyAvailable" class="item" :class="{ on: pane === 'notify' }" @click="pane = 'notify'">
+        <button v-if="notifyAvailable" class="item sys" :class="{ on: pane === 'notify' }" @click="pane = 'notify'">
+          <Bell :size="15" class="i-ico" aria-hidden="true" />
           <span class="i-name">Thông báo</span>
-          <Bell :size="13" class="lock" aria-hidden="true" />
-          <span class="i-sub caption">{{ notifyEnabled ? 'Đang bật' : 'Đã tắt' }}</span>
+          <span class="i-val caption">{{ notifyEnabled ? 'Đang bật' : 'Đã tắt' }}</span>
         </button>
-        <button class="item" :class="{ on: pane === 'setup' }" @click="pane = 'setup'">
+        <button class="item sys" :class="{ on: pane === 'setup' }" @click="pane = 'setup'">
+          <Download :size="15" class="i-ico" aria-hidden="true" />
           <span class="i-name">Cài tự động</span>
-          <Download :size="13" class="lock" aria-hidden="true" />
-          <span class="i-sub caption">ComfyUI · model · Blender · Claude</span>
         </button>
-        <button class="item" :class="{ on: pane === 'fit' }" @click="pane = 'fit'">
+        <button class="item sys" :class="{ on: pane === 'fit' }" @click="pane = 'fit'">
+          <Gauge :size="15" class="i-ico" aria-hidden="true" />
           <span class="i-name">Phù hợp với máy</span>
-          <Gauge :size="13" class="lock" aria-hidden="true" />
-          <span class="i-sub caption">Cấu hình · gói đề xuất · chức năng</span>
         </button>
-        <button class="item" :class="{ on: pane === 'tools' }" @click="pane = 'tools'">
+        <button class="item sys" :class="{ on: pane === 'tools' }" @click="pane = 'tools'">
+          <FolderCog :size="15" class="i-ico" aria-hidden="true" />
           <span class="i-name">Đường dẫn công cụ</span>
-          <FolderCog :size="13" class="lock" aria-hidden="true" />
-          <span class="i-sub caption">ComfyUI · Blender · Codex</span>
         </button>
-        <button class="item" :class="{ on: pane === 'diag' }" @click="pane = 'diag'">
+        <button class="item sys" :class="{ on: pane === 'diag' }" @click="pane = 'diag'">
+          <ScrollText :size="15" class="i-ico" aria-hidden="true" />
           <span class="i-name">Nhật ký chẩn đoán</span>
-          <ScrollText :size="13" class="lock" aria-hidden="true" />
-          <span class="i-sub caption">Copy · xuất log khi báo lỗi</span>
         </button>
-        <button class="item" @click="whatsNewOpen = true">
+        <button class="item sys" @click="whatsNewOpen = true">
+          <Sparkles :size="15" class="i-ico" aria-hidden="true" />
           <span class="i-name">Có gì mới</span>
-          <Sparkles :size="13" class="lock" aria-hidden="true" />
-          <span class="i-sub caption">Thay đổi từng bản · đang dùng {{ APP_VERSION }}</span>
+          <span class="i-val caption num">{{ APP_VERSION }}</span>
         </button>
         <div class="group-head">
           <p class="section-label">Preset xuất sprite sheet</p>
@@ -255,6 +251,7 @@ async function remove(): Promise<void> {
               <h2 class="content-title">Giao diện</h2>
             </div>
           </header>
+          <div class="card fields">
           <div class="f">
             <span class="lbl">Chế độ màu</span>
             <div>
@@ -293,6 +290,7 @@ async function remove(): Promise<void> {
               <p class="caption help">Đơn giản: chỉ hiện thông tin cần thiết, tham số tuỳ chọn được gập lại. Nâng cao: hiện thêm làn xử lý, công thức, kiểm tra lỗi và mọi tham số.</p>
             </div>
           </div>
+          </div>
         </div>
       </section>
       <section v-else-if="pane === 'notify'" class="scroll pane">
@@ -303,12 +301,14 @@ async function remove(): Promise<void> {
               <h2 class="content-title">Thông báo</h2>
             </div>
           </header>
+          <div class="card fields">
           <div class="f">
             <span class="lbl">Thông báo Windows</span>
             <div>
               <label class="check"><input v-model="notifyEnabled" type="checkbox" /> Báo khi lượt chạy hoặc workflow xong, lỗi hay cần duyệt</label>
               <p class="caption help">Chỉ báo khi cửa sổ không được focus; từ 3 lượt cùng lúc thì gộp thành một thông báo. Bấm thông báo để mở lượt đó.</p>
             </div>
+          </div>
           </div>
         </div>
       </section>
@@ -429,11 +429,11 @@ async function remove(): Promise<void> {
   max-width: 40%;
   flex: none;
   overflow: auto;
-  padding: 16px 10px;
-  border-right: 0.5px solid var(--separator);
+  padding: var(--sp-4) var(--sp-2);
+  border-right: 1px solid var(--hair-soft);
   display: grid;
   align-content: start;
-  gap: 3px;
+  gap: 2px;
 }
 .pad {
   padding: 0 8px 6px;
@@ -444,9 +444,9 @@ async function remove(): Promise<void> {
 .item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1px 6px;
+  gap: 1px var(--sp-2);
   text-align: left;
-  padding: 8px 12px;
+  padding: var(--sp-2) var(--sp-3);
   border: 0;
   border-radius: var(--r-md);
   background: transparent;
@@ -459,8 +459,24 @@ async function remove(): Promise<void> {
 .item.on {
   background: var(--bg-selected);
 }
+.item.sys {
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding-block: 7px;
+}
+.i-ico {
+  color: var(--ink-2);
+}
+.item.on .i-ico {
+  color: var(--accent);
+}
+.i-val {
+  color: var(--ink-3);
+}
 .i-name {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .lock {
   color: var(--text-3);
@@ -472,9 +488,9 @@ async function remove(): Promise<void> {
 .group-head {
   display: grid;
   gap: 2px;
-  margin-top: 18px;
-  padding: 10px 8px 6px;
-  border-top: 0.5px solid var(--separator);
+  margin-top: var(--sp-4);
+  padding: var(--sp-4) var(--sp-3) var(--sp-2);
+  border-top: 1px solid var(--hair-soft);
 }
 .eyebrow {
   margin-bottom: 2px;
@@ -539,7 +555,7 @@ async function remove(): Promise<void> {
   align-items: center;
 }
 .f + .f {
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .lbl {
   font-weight: 500;
@@ -579,31 +595,9 @@ async function remove(): Promise<void> {
   padding: 3px 8px;
 }
 .seg {
-  display: inline-flex;
   flex-wrap: wrap;
   max-width: 100%;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
   justify-self: start;
-}
-.seg button {
-  height: 28px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast),
-    box-shadow var(--t-fast);
-}
-.seg button.on {
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-1), var(--hairline);
-  font-weight: 600;
 }
 .two {
   display: grid;
@@ -629,7 +623,7 @@ async function remove(): Promise<void> {
   min-height: 40px;
 }
 .dir + .dir {
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .d-idx {
   color: var(--text-3);
@@ -674,7 +668,7 @@ async function remove(): Promise<void> {
 .c-name {
   max-width: 100%;
   padding: 0 3px;
-  font-size: 9.5px;
+  font-size: var(--fs-caption);
   color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
