@@ -181,3 +181,58 @@ async def test_plan_excludes_audio_recipes(tmp_path: Path) -> None:
     assert [i.target_id for i in got] == ["icon-pack"] and len(meta["dropped"]) == 2
     assert "- icon-pack:" in query.prompts[0]
     assert not any(x in query.prompts[0] for x in ("- audio-sfx:", "- npc-voice-csv:", "- scene-soundscape:"))
+
+
+async def test_plans_persist_across_restart_and_list(tmp_path: Path) -> None:
+    rdir = tmp_path / "builtin"
+    rdir.mkdir()
+    (rdir / "styled.yaml").write_text(STYLED, encoding="utf-8")
+    settings = Settings(data_dir=tmp_path / "data", recipes_dir=rdir, comfy_workflows_dir=tmp_path / "none",
+                        flows_dir=tmp_path / "noflows")
+    for d in (settings.blobs_dir, settings.thumbs_dir, settings.jobs_dir):
+        d.mkdir(parents=True, exist_ok=True)
+    icon = [{"name": "Icon", "kind": "recipe", "target_id": "styled", "notes": "",
+             "inputs": [{"name": "prompt", "value": "potion"}]}]
+    ids: list[str] = []
+    for boot in range(2):
+        app = build_app(settings, TOKEN)
+        async with app.router.lifespan_context(app):
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+                if boot == 0:
+                    app.state.gdd_planner = GddPlanner(tmp_path / "gdd", _reply(icon))
+                    for _ in range(2):
+                        ids.append((await c.post("/api/gdd/plan", json={"text": "g"}, headers=AUTH)).json()["id"])
+                    assert (await c.post(f"/api/gdd/plan/{ids[0]}/start", json={}, headers=AUTH)).status_code == 201
+                    continue
+                got = await c.get(f"/api/gdd/plan/{ids[0]}", headers=AUTH)
+                assert got.status_code == 200 and got.json()["items"][0]["inputs"] == {"prompt": "potion"}
+                assert got.json()["items"][0]["id"]
+                listed = (await c.get("/api/gdd/plans", headers=AUTH)).json()
+                assert [p["id"] for p in listed] == ids[::-1]
+                by = {p["id"]: p for p in listed}
+                assert by[ids[0]]["status"] == "started" and by[ids[0]]["batch_ids"]["recipe_batch_id"]
+                assert by[ids[1]]["status"] == "planned"
+                assert (await c.get("/api/gdd/plans?project_id=other", headers=AUTH)).json() == []
+
+
+async def test_plans_pruned_per_project(app_client: tuple[Any, httpx.AsyncClient], tmp_path: Path, monkeypatch: Any) -> None:
+    import studio_core.api.gdd as gdd_api
+    monkeypatch.setattr(gdd_api, "MAX_PLANS", 2)
+    app, c = app_client
+    app.state.gdd_planner = GddPlanner(tmp_path / "gdd", _reply(ITEMS))
+    made = [(await c.post("/api/gdd/plan", json={"text": "g"}, headers=AUTH)).json()["id"] for _ in range(3)]
+    assert (await c.get(f"/api/gdd/plan/{made[0]}", headers=AUTH)).status_code == 404
+    assert [p["id"] for p in (await c.get("/api/gdd/plans?limit=2", headers=AUTH)).json()] == made[:0:-1]
+
+
+async def test_plan_excludes_flows_with_audio_nodes(tmp_path: Path) -> None:
+    from studio_core.contracts import WorkflowDef
+    mk = lambda fid, rid: WorkflowDef.model_validate(  # noqa: E731
+        {"id": fid, "title": fid, "inputs": {}, "nodes": [{"id": "a", "recipe_id": rid}]})
+    flows = [mk("art-pack", "concept-2d"), mk("sound-pack", "audio-sfx")]
+    items = [{"name": n, "kind": "flow", "target_id": t, "notes": "", "inputs": []}
+             for n, t in (("Art", "art-pack"), ("Snd", "sound-pack"))]
+    query = _reply(items)
+    got, meta = await GddPlanner(tmp_path / "gdd", query).plan("A game.", flows, [])
+    assert [i.target_id for i in got] == ["art-pack"] and len(meta["dropped"]) == 1
+    assert "- art-pack:" in query.prompts[0] and "sound-pack" not in query.prompts[0]

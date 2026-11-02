@@ -3,11 +3,12 @@ items one recipe batch, all attached to the project."""
 from __future__ import annotations
 
 import asyncio
+import time
 import uuid
-from collections import OrderedDict
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+import orjson
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
@@ -21,7 +22,7 @@ from studio_core.contracts import DEFAULT_PROJECT, StepError
 from studio_core.engine.flow_batch import FlowBatchCreate, FlowBatchItem
 
 router = APIRouter(prefix="/api/gdd", dependencies=[Depends(require_token)])
-MAX_PLANS = 30
+MAX_PLANS = 50  # per project
 
 
 class PlanBody(BaseModel):
@@ -45,11 +46,20 @@ def _planner(request: Request) -> GddPlanner:
     return st.gdd_planner
 
 
-def _plans(request: Request) -> OrderedDict[str, dict[str, Any]]:
-    st = request.app.state
-    if getattr(st, "gdd_plans", None) is None:
-        st.gdd_plans = OrderedDict()
-    return st.gdd_plans
+async def _save_plan(request: Request, plan: dict[str, Any], gdd: str) -> None:
+    db = request.app.state.repo.db
+    stored = {k: v for k, v in _plan_view(plan).items() if k not in ("id", "project_id")}
+    await db.write("INSERT INTO gdd_plans (id, project_id, gdd, plan, created_at) VALUES (?, ?, ?, ?, ?)",
+                   (plan["id"], plan["project_id"], gdd, orjson.dumps(stored).decode(), time.time()))
+    await db.write("DELETE FROM gdd_plans WHERE project_id = ? AND id NOT IN "
+                   "(SELECT id FROM gdd_plans WHERE project_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?)",
+                   (plan["project_id"], plan["project_id"], MAX_PLANS))
+
+
+def _plan_from_row(row: Any) -> dict[str, Any]:
+    data = orjson.loads(row["plan"])
+    data["items"] = [PlanItem.model_validate(i) for i in data.get("items", [])]
+    return {"id": row["id"], "project_id": row["project_id"], **data}
 
 
 def _recipes(request: Request) -> list[dict[str, Any]]:
@@ -97,31 +107,41 @@ async def make_plan(request: Request, body: PlanBody) -> Response:
     except StepError as e:
         status = 504 if e.code == "claude_timeout" else 502
         raise ApiError(status, e.code, e.message) from e
-    plans = _plans(request)
     plan = {"id": uuid.uuid4().hex, "project_id": body.project_id, "items": items, **meta}
     for it in items:
         it.id = uuid.uuid4().hex[:12]
-    plans[plan["id"]] = plan
-    while len(plans) > MAX_PLANS:
-        plans.popitem(last=False)
+    await _save_plan(request, plan, text)
     return OrjsonResponse(_plan_view(plan), status_code=201)
 
 
-def _plan(request: Request, plan_id: str) -> dict[str, Any]:
-    plan = _plans(request).get(plan_id)
-    if plan is None:
+async def _plan(request: Request, plan_id: str) -> dict[str, Any]:
+    row = await request.app.state.repo.db.fetchone("SELECT * FROM gdd_plans WHERE id = ?", (plan_id,))
+    if row is None:
         raise ApiError(404, "not_found", f"unknown plan: {plan_id}")
-    return plan
+    return _plan_from_row(row)
+
+
+@router.get("/plans")
+async def list_plans(request: Request, project_id: str = DEFAULT_PROJECT,
+                     limit: int = Query(MAX_PLANS, ge=1, le=MAX_PLANS)) -> Response:
+    rows = await request.app.state.repo.db.fetchall(
+        "SELECT * FROM gdd_plans WHERE project_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?", (project_id, limit))
+    out = []
+    for row in rows:
+        view = _plan_view(_plan_from_row(row))
+        out.append({**view, "status": row["status"], "created_at": row["created_at"],
+                    "batch_ids": orjson.loads(row["batch_ids"])})
+    return OrjsonResponse(out)
 
 
 @router.get("/plan/{plan_id}")
 async def get_plan(request: Request, plan_id: str) -> Response:
-    return OrjsonResponse(_plan_view(_plan(request, plan_id)))
+    return OrjsonResponse(_plan_view(await _plan(request, plan_id)))
 
 
 @router.post("/plan/{plan_id}/start")
 async def start_plan(request: Request, plan_id: str, body: StartBody) -> Response:
-    plan = _plan(request, plan_id)
+    plan = await _plan(request, plan_id)
     items = body.items if body.items is not None else plan["items"]
     if not items:
         raise ApiError(400, "invalid", "no items to start")
@@ -158,6 +178,8 @@ async def start_plan(request: Request, plan_id: str, body: StartBody) -> Respons
         recipe_batch = await start_batch(request, BatchCreate(
             project_id=project_id, title=base, params={"$meta": {"source": "gdd"}},
             items=[BatchItem(recipe_id=i.target_id, inputs=i.inputs, title=i.name) for i in recipe_items]))
-    return OrjsonResponse({"plan_id": plan_id, "project_id": project_id, "flow_batch_ids": flow_batch_ids,
-                           "recipe_batch_id": recipe_batch.get("batch_id"),
-                           "run_ids": recipe_batch.get("run_ids", [])}, status_code=201)
+    result = {"plan_id": plan_id, "project_id": project_id, "flow_batch_ids": flow_batch_ids,
+              "recipe_batch_id": recipe_batch.get("batch_id"), "run_ids": recipe_batch.get("run_ids", [])}
+    await request.app.state.repo.db.write("UPDATE gdd_plans SET status = 'started', batch_ids = ? WHERE id = ?",
+                                          (orjson.dumps(result).decode(), plan_id))
+    return OrjsonResponse(result, status_code=201)

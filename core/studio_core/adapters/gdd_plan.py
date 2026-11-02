@@ -92,6 +92,11 @@ def missing_inputs(specs: dict[str, dict[str, Any]], inputs: dict[str, Any]) -> 
             if n not in STYLE_OWNED and s.get("required", True) and s.get("default") in (None, "") and inputs.get(n) in (None, "")]
 
 
+def has_audio_node(flow: Any) -> bool:
+    """Workflow nodes cannot be optional, so one audio node makes the whole flow unusable while audio is paused."""
+    return any(is_audio(n.recipe_id) for n in flow.nodes)
+
+
 def flow_catalog(flows: list[Any]) -> str:
     lines = []
     for d in flows:
@@ -148,6 +153,7 @@ class GddPlanner:
                    project: str = "", model: str | None = None) -> tuple[list[PlanItem], dict[str, Any]]:
         limit = max(1, min(limit, MAX_ITEMS))
         recipes = [r for r in recipes if not is_audio(str(r["id"]))]
+        flows = [d for d in flows if not has_audio_node(d)]
         await asyncio.to_thread(self.work_dir.mkdir, parents=True, exist_ok=True)
         reply = await ask(self.query, {"model": model or DEFAULT_MODEL, "max_turns": 2, "system": SYSTEM,
                                        "schema": SCHEMA, "_timeout_s": TIMEOUT_S},

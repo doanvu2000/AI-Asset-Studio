@@ -125,6 +125,17 @@ CREATE TABLE IF NOT EXISTS workflow_batches (
 );
 CREATE INDEX IF NOT EXISTS idx_workflow_batches_created ON workflow_batches(created_at);
 
+CREATE TABLE IF NOT EXISTS gdd_plans (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    gdd TEXT NOT NULL DEFAULT '',
+    plan TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'planned',
+    batch_ids TEXT NOT NULL DEFAULT '{}',
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gdd_plans_project ON gdd_plans(project_id, created_at);
+
 CREATE TABLE IF NOT EXISTS style_bibles (
     project_id TEXT PRIMARY KEY,
     data TEXT NOT NULL DEFAULT '{}',
