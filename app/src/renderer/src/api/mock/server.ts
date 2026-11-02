@@ -1,7 +1,7 @@
 import { ApiError, type ListRunsQuery, type RecipeBody, type StudioApi, type VersionsQuery } from '../client'
 import { FrameBatcher, type EventSink, type EventStream } from '../ws'
 import type { CoreDiagnostics } from '../../../../preload/types'
-import type { AgentActivitySnapshot, FlowValidateResult, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from '../types'
+import type { AgentActivitySnapshot, FlowValidateResult, GpuSlot, GpuState, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from '../types'
 import type { EnginePreviewJob, OpenInEngineResult, PreviewEngines } from '../enginePreview'
 import type { HitVfx, StepHits } from '../hitFx'
 import {
@@ -36,7 +36,8 @@ import {
   type StepRow,
   type VersionRow
 } from '../types'
-import { MockFlows } from './flows'
+import { MockFlowBatches, MockFlows } from './flows'
+import type { FlowBatchBody, FlowBatchDetail, FlowBatchSummary } from '../types'
 import { renderArt, renderPreviewB64 } from './art'
 import { renderWalkSheet } from './walkSheet'
 import { mockStatsOverview } from './stats'
@@ -98,6 +99,15 @@ interface MockRecipe {
 }
 
 const LANE_LIMITS: Record<Lane, number> = { gpu: 1, blender: 1, cloud: 3, cpu: 4, none: Infinity }
+
+const YIELD_LANES: Lane[] = ['gpu', 'blender']
+
+interface LaneWaiter {
+  resolve: () => void
+  step: StepRow
+  seq: number
+  at: number
+}
 
 // Mirrors the core recipes: normal steps are optional pass-throughs that come back empty when normals are off.
 function normalChain(prefix: string, frames: string, pivot: string, mirror: boolean): MockStepDef[] {
@@ -434,7 +444,11 @@ export class MockCore implements StudioApi, EventStream {
   private resourcesMap = new Map<string, ResourceHealth>()
   private cache = new Map<string, Outputs>()
   private laneBusy: Record<Lane, number> = { gpu: 0, blender: 0, cloud: 0, cpu: 0, none: 0 }
-  private laneQueue: Record<Lane, Array<() => void>> = { gpu: [], blender: [], cloud: [], cpu: [], none: [] }
+  private laneQueue: Record<Lane, LaneWaiter[]> = { gpu: [], blender: [], cloud: [], cpu: [], none: [] }
+  private waiterSeq = 0
+  private gpuHolders = new Set<string>()
+  private gpuPriority = new Map<string, number>()
+  private gpuYield: { until: number; freed: boolean; timer: number } | null = null
   private cancelled = new Set<string>()
   private builtins = new Map(RECIPES.map((r) => [r.info.id, r]))
   private userRecipes = new Map<string, MockRecipe>()
@@ -832,21 +846,43 @@ export class MockCore implements StudioApi, EventStream {
   // ---- lanes ----
 
   private tryAcquire(lane: Lane): boolean {
-    if (this.laneBusy[lane] < LANE_LIMITS[lane]) {
+    if (this.gpuYield && YIELD_LANES.includes(lane)) return false
+    if (this.laneBusy[lane] < LANE_LIMITS[lane] && !this.laneQueue[lane].length) {
       this.laneBusy[lane] += 1
       return true
     }
     return false
   }
 
-  private acquire(lane: Lane): Promise<void> {
-    return new Promise((resolve) => this.laneQueue[lane].push(() => resolve()))
+  private acquire(lane: Lane, step: StepRow): Promise<void> {
+    return new Promise((resolve) => {
+      this.laneQueue[lane].push({ resolve, step, seq: this.waiterSeq++, at: now() })
+      this.dispatch(lane)
+    })
   }
 
   private release(lane: Lane): void {
-    const next = this.laneQueue[lane].shift()
-    if (next) next()
-    else this.laneBusy[lane] -= 1
+    this.laneBusy[lane] -= 1
+    this.dispatch(lane)
+    if (this.gpuYield && !this.gpuYield.freed && YIELD_LANES.every((l) => this.laneBusy[l] === 0)) {
+      this.gpuYield.freed = true
+      this.emitGpu()
+    }
+  }
+
+  private dispatch(lane: Lane): void {
+    const q = this.laneQueue[lane]
+    while (q.length && this.laneBusy[lane] < LANE_LIMITS[lane] && !(this.gpuYield && YIELD_LANES.includes(lane))) {
+      const next = lane === 'gpu' ? this.gpuOrder()[0]! : q[0]!
+      q.splice(q.indexOf(next), 1)
+      this.laneBusy[lane] += 1
+      next.resolve()
+    }
+  }
+
+  private gpuOrder(): LaneWaiter[] {
+    const prio = (w: LaneWaiter): number => this.gpuPriority.get(w.step.run_id) ?? 0
+    return [...this.laneQueue.gpu].sort((a, b) => prio(b) - prio(a) || a.seq - b.seq)
   }
 
   // ---- engine ----
@@ -926,8 +962,9 @@ export class MockCore implements StudioApi, EventStream {
 
     if (!this.tryAcquire(s.lane)) {
       this.patchStep(s, { status: 'waiting_resource', meta: { waiting_for: s.lane } })
-      await this.acquire(s.lane)
+      await this.acquire(s.lane, s)
     }
+    if (YIELD_LANES.includes(s.lane)) this.gpuHolders.add(s.id)
     try {
       this.checkCancel(s)
       this.patchStep(s, { status: 'running', started_at: now(), progress: 0, meta: {} })
@@ -942,6 +979,7 @@ export class MockCore implements StudioApi, EventStream {
         this.patchStep(s, { status: 'failed', ended_at: now(), error: { code: err.code ?? 'mock_error', message: err.message ?? String(e), retryable: true } })
       }
     } finally {
+      this.gpuHolders.delete(s.id)
       this.release(s.lane)
     }
     this.advance(s.run_id)
@@ -2121,5 +2159,107 @@ export class MockCore implements StudioApi, EventStream {
 
   async cancelFlowRun(runId: string): Promise<WorkflowRunRow> {
     return this.flowsCore.cancel(runId)
+  }
+
+  // ---- GPU yield / queue ----
+
+  private gpuSlot(s: StepRow, since: number | null): GpuSlot {
+    const run = this.runs.get(s.run_id)
+    return {
+      run_id: s.run_id, step_id: s.id, step_key: s.key, lane: s.lane, kind: s.kind, title: run?.title ?? '', recipe_id: run?.recipe_id ?? '',
+      priority: this.gpuPriority.get(s.run_id) ?? 0, waiting_s: since === null ? null : now() - since
+    }
+  }
+
+  private gpuState(): GpuState {
+    const comfy = this.resourcesMap.get('comfyui')
+    const status = comfy?.status ?? null
+    return clone({
+      yielding: !!this.gpuYield,
+      until: this.gpuYield?.until ?? null,
+      freed: this.gpuYield?.freed ?? false,
+      running: [...this.gpuHolders].map((id) => this.steps.get(id)).filter((s): s is StepRow => !!s).map((s) => this.gpuSlot(s, null)),
+      queued: this.gpuOrder().filter((w) => !this.cancelled.has(w.step.run_id)).map((w) => this.gpuSlot(w.step, w.at)),
+      comfy_status: status,
+      comfy_loaded: status === null ? null : ['up', 'busy'].includes(status) && !this.gpuYield?.freed
+    })
+  }
+
+  private emitGpu(): void {
+    this.emit('gpu.updated', {
+      yielding: !!this.gpuYield,
+      until: this.gpuYield?.until ?? null,
+      freed: this.gpuYield?.freed ?? false,
+      queued: [...new Set(this.gpuOrder().map((w) => w.step.run_id))]
+    })
+  }
+
+  private endYield(): void {
+    if (!this.gpuYield) return
+    window.clearTimeout(this.gpuYield.timer)
+    this.gpuYield = null
+    this.emitGpu()
+    for (const l of YIELD_LANES) this.dispatch(l)
+  }
+
+  async gpu(): Promise<GpuState> {
+    await this.ready
+    return this.gpuState()
+  }
+
+  async yieldGpu(minutes: number): Promise<GpuState> {
+    if (!(minutes > 0 && minutes <= 1440)) throw new ApiError('invalid', 'minutes must be in (0, 1440]', 422)
+    const freed = this.gpuYield?.freed ?? YIELD_LANES.every((l) => this.laneBusy[l] === 0)
+    if (this.gpuYield) window.clearTimeout(this.gpuYield.timer)
+    this.gpuYield = { until: now() + minutes * 60, freed, timer: window.setTimeout(() => this.endYield(), minutes * 60_000) }
+    this.emitGpu()
+    await sleep(120)
+    return this.gpuState()
+  }
+
+  async resumeGpu(): Promise<GpuState> {
+    this.endYield()
+    await sleep(80)
+    return this.gpuState()
+  }
+
+  async prioritizeGpu(runId: string, body: { delta: number } | { position: number }): Promise<GpuState> {
+    const runs = [...new Set(this.gpuOrder().map((w) => w.step.run_id))]
+    if (!runs.includes(runId)) throw new ApiError('not_found', `run ${runId} is not waiting for the gpu lane`, 404)
+    const prio = (r: string): number => this.gpuPriority.get(r) ?? 0
+    if ('delta' in body) this.gpuPriority.set(runId, prio(runId) + body.delta)
+    else if (body.position <= 0) this.gpuPriority.set(runId, Math.max(...runs.map(prio)) + 1)
+    else {
+      const rest = runs.filter((r) => r !== runId)
+      rest.splice(Math.min(body.position, rest.length), 0, runId)
+      const base = Math.min(...rest.map(prio))
+      rest.forEach((r, i) => this.gpuPriority.set(r, base + rest.length - i))
+    }
+    this.emitGpu()
+    return this.gpuState()
+  }
+
+  private flowBatchCore = new MockFlowBatches(this.flowsCore)
+
+  async startFlowBatch(body: FlowBatchBody): Promise<FlowBatchDetail> {
+    return this.flowBatchCore.start(body)
+  }
+
+  async flowBatches(limit?: number): Promise<FlowBatchSummary[]> {
+    await this.ready
+    return this.flowBatchCore.list(limit)
+  }
+
+  async flowBatch(id: string): Promise<FlowBatchDetail> {
+    await this.ready
+    return this.flowBatchCore.detail(id)
+  }
+
+  async cancelFlowBatch(id: string): Promise<FlowBatchDetail> {
+    return this.flowBatchCore.cancel(id)
+  }
+
+  async retryFailedFlowBatch(id: string): Promise<FlowBatchDetail> {
+    return this.flowBatchCore.retryFailed(id)
   }
 }

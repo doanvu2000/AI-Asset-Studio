@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowRight, ChevronRight, Copy, Pencil, Play, Plus, RotateCw, Trash2, Waypoints } from '@lucide/vue'
-import type { WorkflowDef, WorkflowRunRow } from '@/api/types'
+import type { FlowBatchSummary, WorkflowDef, WorkflowRunRow } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FlowStatusBadge from '@/components/FlowStatusBadge.vue'
@@ -20,6 +20,10 @@ const conn = useConnection()
 const toasts = useToasts()
 const router = useRouter()
 
+const batches = ref<FlowBatchSummary[]>([])
+let batchTimer: ReturnType<typeof setTimeout> | undefined
+let alive = true
+
 watch(
   () => conn.transport,
   (t) => {
@@ -27,9 +31,32 @@ watch(
     void recipes.load()
     void flows.loadDefs()
     void flows.loadRuns()
+    void loadBatches()
   },
   { immediate: true }
 )
+
+async function loadBatches(): Promise<void> {
+  clearTimeout(batchTimer)
+  try {
+    batches.value = await api().flowBatches(8)
+  } catch {
+    // the list is optional chrome; the page works without it
+  }
+  if (alive && batches.value.some((b) => b.status === 'running')) batchTimer = setTimeout(() => void loadBatches(), 3000)
+}
+onBeforeUnmount(() => {
+  alive = false
+  clearTimeout(batchTimer)
+})
+const doneOf = (b: FlowBatchSummary): number => b.counts.succeeded ?? 0
+const BATCH_LABEL: Record<FlowBatchSummary['status'], string> = {
+  running: 'Đang chạy',
+  awaiting_human: 'Chờ bạn duyệt',
+  failed: 'Có lượt lỗi',
+  succeeded: 'Xong',
+  cancelled: 'Đã huỷ'
+}
 
 const SOURCE: Record<string, { label: string; tone: string } | undefined> = {
   user: { label: 'Của tôi', tone: 'user' },
@@ -112,6 +139,23 @@ async function remove(d: WorkflowDef): Promise<void> {
             </div>
           </article>
         </div>
+
+        <section v-if="batches.length" class="recent" aria-labelledby="batch-h">
+          <h2 id="batch-h" class="section-label">Lô hàng loạt gần đây</h2>
+          <ul class="runs card">
+            <li v-for="b in batches" :key="b.id">
+              <RouterLink :to="`/flows/batches/${b.id}`" class="run">
+                <div class="r-main">
+                  <span class="r-title" :title="b.title">{{ b.title }}</span>
+                  <span class="caption"><RelTime :ts="b.created_at" /></span>
+                </div>
+                <span class="caption num prog"><TweenNumber :value="doneOf(b)" :duration="200" />/{{ b.total }} lượt</span>
+                <span class="caption">{{ BATCH_LABEL[b.status] }}</span>
+                <ChevronRight :size="16" class="chev" aria-hidden="true" />
+              </RouterLink>
+            </li>
+          </ul>
+        </section>
 
         <section v-if="recent.length" class="recent" aria-labelledby="recent-h">
           <h2 id="recent-h" class="section-label">Lượt chạy gần đây</h2>

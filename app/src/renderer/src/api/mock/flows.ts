@@ -1,6 +1,10 @@
 import { ApiError } from '../client'
 import type {
   BlobRef,
+  FlowBatchBody,
+  FlowBatchDetail,
+  FlowBatchStatus,
+  FlowBatchSummary,
   EventType,
   FlowIssue,
   FlowValidateResult,
@@ -407,5 +411,101 @@ export class MockFlows {
       if (list.length) return list
     }
     return []
+  }
+}
+
+const MAX_BATCH = 200
+
+interface MockBatch {
+  id: string
+  workflow_id: string
+  title: string
+  project_id: string
+  created_at: number
+  run_ids: string[]
+}
+
+export class MockFlowBatches {
+  private batches = new Map<string, MockBatch>()
+
+  constructor(private flows: MockFlows) {}
+
+  async start(body: FlowBatchBody): Promise<FlowBatchDetail> {
+    if (!body.items.length) throw new ApiError('invalid', 'batch needs at least one item', 400)
+    if (body.items.length > MAX_BATCH) throw new ApiError('invalid', `batch limited to ${MAX_BATCH} items`, 400)
+    const def = this.flows.get(body.flow_id)
+    const base = body.title || def.title
+    const runIds: string[] = []
+    for (const [i, it] of body.items.entries()) {
+      const row = await this.flows.start(def.id, {
+        inputs: { ...body.shared_params, ...it.inputs },
+        project_id: body.project_id,
+        title: it.title || `${base} #${i + 1}`
+      })
+      runIds.push(row.id)
+    }
+    const b: MockBatch = { id: `fb_${uid()}`, workflow_id: def.id, title: base, project_id: body.project_id ?? 'default', created_at: now(), run_ids: runIds }
+    this.batches.set(b.id, b)
+    return this.detail(b.id)
+  }
+
+  private rows(b: MockBatch): WorkflowRunRow[] {
+    const byId = new Map(this.flows.list_runs({ limit: 10000 }).map((r) => [r.id, r]))
+    return b.run_ids.flatMap((id) => byId.get(id) ?? [])
+  }
+
+  private summary(b: MockBatch, rows: WorkflowRunRow[]): FlowBatchSummary {
+    const counts: Partial<Record<WorkflowStatus, number>> = {}
+    for (const r of rows) counts[r.status] = (counts[r.status] ?? 0) + 1
+    const n = (s: WorkflowStatus): number => counts[s] ?? 0
+    const status: FlowBatchStatus =
+      n('queued') + n('running') ? 'running' : n('awaiting_human') ? 'awaiting_human' : n('failed') ? 'failed' : n('succeeded') ? 'succeeded' : 'cancelled'
+    return { id: b.id, workflow_id: b.workflow_id, title: b.title, project_id: b.project_id, created_at: b.created_at, total: b.run_ids.length, counts, status }
+  }
+
+  private get(id: string): MockBatch {
+    const b = this.batches.get(id)
+    if (!b) throw new ApiError('not_found', `unknown batch: ${id}`, 404)
+    return b
+  }
+
+  list(limit = 50): FlowBatchSummary[] {
+    return [...this.batches.values()]
+      .sort((a, b) => b.created_at - a.created_at)
+      .slice(0, limit)
+      .map((b) => this.summary(b, this.rows(b)))
+  }
+
+  detail(id: string): FlowBatchDetail {
+    const b = this.get(id)
+    const rows = this.rows(b)
+    const runs = rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      status: r.status,
+      error: r.error,
+      created_at: r.created_at,
+      ended_at: r.ended_at,
+      nodes: Object.fromEntries(Object.entries(r.nodes).map(([k, n]) => [k, n.status]))
+    }))
+    return { ...this.summary(b, rows), runs }
+  }
+
+  async cancel(id: string): Promise<FlowBatchDetail> {
+    for (const r of this.rows(this.get(id))) await this.flows.cancel(r.id)
+    return this.detail(id)
+  }
+
+  async retryFailed(id: string): Promise<FlowBatchDetail> {
+    let retried = 0
+    for (const r of this.rows(this.get(id))) {
+      if (r.status !== 'failed') continue
+      for (const [nodeId, ns] of Object.entries(r.nodes)) {
+        if (ns.status !== 'failed') continue
+        await this.flows.retry(r.id, nodeId).catch(() => undefined)
+        retried += 1
+      }
+    }
+    return { ...this.detail(id), retried }
   }
 }

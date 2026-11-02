@@ -325,6 +325,34 @@ class SqliteRepo:
         sql += " ORDER BY created_at DESC LIMIT ?"
         return [_WORKFLOW_RUNS.decode(r) for r in await self.db.fetchall(sql, [*params, limit])]
 
+    async def create_workflow_batch(self, batch: dict[str, Any]) -> None:
+        await self.db.write("INSERT INTO workflow_batches (id, workflow_id, title, project_id, run_ids, created_at) "
+                            "VALUES (?, ?, ?, ?, ?, ?)",
+                            (batch["id"], batch["workflow_id"], batch["title"], batch["project_id"],
+                             orjson.dumps(batch["run_ids"]).decode(), batch["created_at"]))
+
+    @staticmethod
+    def _batch(row: Any) -> dict[str, Any]:
+        return {**{k: row[k] for k in ("id", "workflow_id", "title", "project_id", "created_at")},
+                "run_ids": orjson.loads(row["run_ids"])}
+
+    async def get_workflow_batch(self, batch_id: str) -> dict[str, Any] | None:
+        row = await self.db.fetchone("SELECT * FROM workflow_batches WHERE id = ?", (batch_id,))
+        return self._batch(row) if row else None
+
+    async def list_workflow_batches(self, limit: int = 50) -> list[dict[str, Any]]:
+        rows = await self.db.fetchall("SELECT * FROM workflow_batches ORDER BY created_at DESC LIMIT ?", (limit,))
+        return [self._batch(r) for r in rows]
+
+    async def workflow_runs_by_ids(self, ids: list[str]) -> list[WorkflowRunRow]:
+        out: list[WorkflowRunRow] = []
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            rows = await self.db.fetchall(
+                f"SELECT * FROM workflow_runs WHERE id IN ({', '.join('?' for _ in chunk)})", chunk)
+            out.extend(_WORKFLOW_RUNS.decode(r) for r in rows)
+        return out
+
     async def runs_of_workflow_run(self, wr_id: str) -> list[RunRow]:
         """Child runs started for a workflow run, oldest first (also those it lost track of in a crash)."""
         rows = await self.db.fetchall(f"SELECT * FROM runs WHERE {_WORKFLOW_RUN_ID} = ? ORDER BY created_at",

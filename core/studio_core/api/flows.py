@@ -11,6 +11,7 @@ from starlette.responses import Response
 from studio_core.api.auth import require_token
 from studio_core.api.errors import ApiError, OrjsonResponse
 from studio_core.contracts import DEFAULT_PROJECT, WorkflowDef
+from studio_core.engine.flow_batch import FlowBatchCreate
 from studio_core.engine.flows import FlowEngine, FlowInvalid, FlowStateError
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)])
@@ -138,3 +139,28 @@ async def retry_flow_node(request: Request, rid: str, node_id: str) -> Response:
 async def cancel_flow_run(request: Request, rid: str) -> Response:
     wr = await _call(_flows(request).cancel(rid))
     return OrjsonResponse(wr.model_dump(mode="json"))
+
+
+@router.post("/flow-batches")
+async def start_flow_batch(request: Request, body: FlowBatchCreate) -> Response:
+    return OrjsonResponse(await _call(_flows(request).batches.start(body)), status_code=201)
+
+
+@router.get("/flow-batches")
+async def list_flow_batches(request: Request, limit: int = 50) -> Response:
+    return OrjsonResponse(await _flows(request).batches.list_all(max(1, min(limit, 200))))
+
+
+@router.get("/flow-batches/{bid}")
+async def get_flow_batch(request: Request, bid: str) -> Response:
+    return OrjsonResponse(await _call(_flows(request).batches.detail(bid)))
+
+
+@router.post("/flow-batches/{bid}/cancel")
+async def cancel_flow_batch(request: Request, bid: str) -> Response:
+    return OrjsonResponse(await _call(_flows(request).batches.cancel(bid)))
+
+
+@router.post("/flow-batches/{bid}/retry-failed")
+async def retry_failed_flow_batch(request: Request, bid: str) -> Response:
+    return OrjsonResponse(await _call(_flows(request).batches.retry_failed(bid)))

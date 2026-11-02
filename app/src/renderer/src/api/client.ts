@@ -57,7 +57,8 @@ import type {
 } from './types'
 import type { FlowValidateResult, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from './types'
 import type { CoreDiagnostics } from '../../../preload/types'
-import type { AgentActivitySnapshot } from './types'
+import type { AgentActivitySnapshot, GpuState } from './types'
+import type { FlowBatchBody, FlowBatchDetail, FlowBatchSummary } from './types'
 import type { EnginePreviewBody, EnginePreviewJob, OpenInEngineResult, PreviewEngine, PreviewEngines } from './enginePreview'
 import type { HitVfx, StepHits } from './hitFx'
 import { devlog } from '@/composables/devlog'
@@ -218,6 +219,18 @@ export interface StudioApi {
   flowRun(id: string): Promise<WorkflowRunDetail>
   retryFlowNode(runId: string, nodeId: string): Promise<WorkflowRunRow>
   cancelFlowRun(runId: string): Promise<WorkflowRunRow>
+  /** One workflow run per item (max 200); `shared_params` are inputs every item gets unless it sets its own. */
+  startFlowBatch(body: FlowBatchBody): Promise<FlowBatchDetail>
+  flowBatches(limit?: number): Promise<FlowBatchSummary[]>
+  flowBatch(id: string): Promise<FlowBatchDetail>
+  cancelFlowBatch(id: string): Promise<FlowBatchDetail>
+  retryFailedFlowBatch(id: string): Promise<FlowBatchDetail>
+  gpu(): Promise<GpuState>
+  /** New GPU steps wait, running ones finish, then ComfyUI unloads its models; ends on its own after `minutes`. */
+  yieldGpu(minutes: number): Promise<GpuState>
+  resumeGpu(): Promise<GpuState>
+  /** `position: 0` moves the run to the front of the GPU queue; 404 when it is not waiting. */
+  prioritizeGpu(runId: string, body: { delta: number } | { position: number }): Promise<GpuState>
 }
 
 export type RecipeBody = { yaml: string } | { doc: RecipeDoc }
@@ -410,6 +423,15 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     flowRuns: (q = {}) => call('GET', `/api/flow-runs${query({ workflow_id: q.workflow_id, project_id: q.project_id, limit: q.limit })}`),
     flowRun: (id) => call('GET', `/api/flow-runs/${enc(id)}`),
     retryFlowNode: (runId, nodeId) => call('POST', `/api/flow-runs/${enc(runId)}/nodes/${enc(nodeId)}/retry`),
-    cancelFlowRun: (runId) => call('POST', `/api/flow-runs/${enc(runId)}/cancel`)
+    cancelFlowRun: (runId) => call('POST', `/api/flow-runs/${enc(runId)}/cancel`),
+    startFlowBatch: (body) => call('POST', '/api/flow-batches', body, SLOW_TIMEOUT_MS),
+    flowBatches: (limit) => call('GET', `/api/flow-batches${query({ limit })}`),
+    flowBatch: (id) => call('GET', `/api/flow-batches/${enc(id)}`),
+    cancelFlowBatch: (id) => call('POST', `/api/flow-batches/${enc(id)}/cancel`, undefined, SLOW_TIMEOUT_MS),
+    retryFailedFlowBatch: (id) => call('POST', `/api/flow-batches/${enc(id)}/retry-failed`, undefined, SLOW_TIMEOUT_MS),
+    gpu: () => call('GET', '/api/gpu'),
+    yieldGpu: (minutes) => call('POST', '/api/gpu/yield', { minutes }),
+    resumeGpu: () => call('POST', '/api/gpu/resume'),
+    prioritizeGpu: (runId, body) => call('POST', `/api/gpu/queue/${enc(runId)}/priority`, body)
   }
 }

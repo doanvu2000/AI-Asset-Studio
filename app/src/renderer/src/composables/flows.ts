@@ -136,7 +136,22 @@ const ISSUE_TEXT: Record<string, (p: Record<string, unknown>) => string> = {
   self_feed: () => 'Một node không thể tự nối vào chính nó',
   unknown_node: (p) => `${str(p.source)}: không có node "${str(p.ref)}"`,
   workflow_no_input: (p) => `${str(p.source)}: workflow chưa khai báo đầu vào "${str(p.name)}"`,
-  too_many_nodes: (p) => `Tối đa ${str(p.max)} node trong một workflow`
+  too_many_nodes: (p) => `Tối đa ${str(p.max)} node trong một workflow`,
+  bad_input_name: (p) => `Tên đầu vào "${str(p.name)}" không hợp lệ (chữ không dấu, số, gạch dưới, bắt đầu bằng chữ)`,
+  unknown_input_type: (p) => `Đầu vào "${str(p.name)}" có kiểu "${str(p.type)}" không được hỗ trợ`,
+  bad_default: (p) => `Giá trị mặc định của đầu vào "${str(p.name)}" không hợp lệ: ${str(p.detail)}`,
+  invalid_node_id: (p) => `Mã node thứ ${str(p.index)} ("${str(p.id)}") không hợp lệ`,
+  recipe_no_input: (p) => `Quy trình ${str(p.recipe)} không có ô "${str(p.name)}"`,
+  set_and_mapped: (p) => `Ô "${str(p.target)}" vừa nhập tay vừa được nối; giá trị được nối sẽ được dùng`,
+  required_from_optional: (p) =>
+    `Ô bắt buộc "${str(p.name)}" của ${str(p.recipe)} nối từ đầu vào "${str(p.input)}" của workflow, nhưng đầu vào này không bắt buộc và không có mặc định`,
+  map_target_unknown: (p) => `Ô đích "${str(p.target)}" không có trong quy trình ${str(p.recipe)}`,
+  bad_source: (p) => `Nguồn nối "${str(p.source)}" sai định dạng (cần node.outputs.tên, node.inputs.tên hoặc workflow.inputs.tên)`,
+  type_mismatch: (p) =>
+    `${str(p.source)} là ${str(p.source_type)} nhưng ô "${str(p.target)}" là ${str(p.target_type)}; file chỉ nối được với file`,
+  recipe_no_output: (p) => `${str(p.source)}: quy trình ${str(p.recipe)} không có đầu ra "${str(p.name)}"`,
+  outputs_need_file: (p) => `Ô "${str(p.target)}" kiểu ${str(p.target_type)}; chỉ ô file mới nhận đầu ra của node khác`,
+  source_recipe_no_input: (p) => `${str(p.source)}: quy trình ${str(p.recipe)} không có ô "${str(p.name)}"`
 }
 
 /** Known issue codes are shown in Vietnamese; unknown codes fall back to the core's English message. */

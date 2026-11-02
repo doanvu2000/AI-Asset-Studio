@@ -139,6 +139,34 @@ export type EventType =
   | 'project.updated'
   | 'agent.activity'
   | 'workflow.updated'
+  | 'gpu.updated'
+
+/** A step holding or waiting for the GPU lane; core/studio_core/engine/gpu.py. */
+export interface GpuSlot {
+  run_id: string
+  step_id: string
+  step_key: string
+  /** gpu, or another lane a yield pauses (blender renders on the same card). */
+  lane: Lane
+  kind: string
+  title: string
+  recipe_id: string
+  priority: number
+  waiting_s: number | null
+}
+
+export interface GpuState {
+  yielding: boolean
+  /** Epoch seconds the yield ends on its own. */
+  until: number | null
+  /** ComfyUI was asked to unload its models during this yield. */
+  freed: boolean
+  running: GpuSlot[]
+  /** In grant order. */
+  queued: GpuSlot[]
+  comfy_status: string | null
+  comfy_loaded: boolean | null
+}
 
 /** An MCP client (Claude Code, Codex…) driving the studio; core/studio_core/api/agent.py. */
 export type AgentPhase = 'connect' | 'disconnect' | 'start' | 'end' | 'error' | 'wait'
@@ -1097,3 +1125,41 @@ export interface WorkflowChild {
 export interface WorkflowRunDetail extends WorkflowRunRow {
   children: WorkflowChild[]
 }
+
+export interface FlowBatchRun {
+  id: string
+  title: string
+  status: WorkflowStatus
+  error: string | null
+  created_at: number
+  ended_at: number | null
+  nodes: Record<string, WorkflowNodeStatus>
+}
+
+export type FlowBatchStatus = 'running' | 'awaiting_human' | 'failed' | 'succeeded' | 'cancelled'
+
+export interface FlowBatchSummary {
+  id: string
+  workflow_id: string
+  title: string
+  project_id: string
+  created_at: number
+  total: number
+  counts: Partial<Record<WorkflowStatus, number>>
+  status: FlowBatchStatus
+}
+
+export interface FlowBatchDetail extends FlowBatchSummary {
+  runs: FlowBatchRun[]
+  /** Only on retry-failed: how many failed nodes were restarted. */
+  retried?: number
+}
+
+export interface FlowBatchBody {
+  flow_id: string
+  items: { inputs: Record<string, unknown>; title?: string }[]
+  shared_params?: Record<string, unknown>
+  project_id?: string
+  title?: string
+}
+

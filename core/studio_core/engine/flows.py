@@ -369,6 +369,8 @@ class FlowEngine:
         self._tasks: set[asyncio.Task[Any]] = set()
         self._adopted: set[str] = set()
         self._closed = False
+        from .flow_batch import FlowBatches  # flow_batch imports this module's errors
+        self.batches = FlowBatches(self)
 
     @property
     def repo(self) -> Any:

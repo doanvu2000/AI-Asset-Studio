@@ -114,6 +114,16 @@ CREATE TABLE IF NOT EXISTS workflow_runs (
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_created ON workflow_runs(created_at);
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_status ON workflow_runs(status);
 
+CREATE TABLE IF NOT EXISTS workflow_batches (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    project_id TEXT NOT NULL DEFAULT 'default',
+    run_ids TEXT NOT NULL DEFAULT '[]',
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_workflow_batches_created ON workflow_batches(created_at);
+
 CREATE TABLE IF NOT EXISTS style_bibles (
     project_id TEXT PRIMARY KEY,
     data TEXT NOT NULL DEFAULT '{}',

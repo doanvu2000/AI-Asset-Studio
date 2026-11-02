@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, LoaderCircle, Play } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, FolderOpen, ImagePlus, Layers, LoaderCircle, Play } from '@lucide/vue'
 import type { BlobRef, WorkflowDef, WorkflowInputSpec } from '@/api/types'
 import { NO_PROJECT } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
@@ -10,6 +10,7 @@ import BlobDropZone from '@/components/BlobDropZone.vue'
 import PresetSelect from '@/components/PresetSelect.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
 import { chainNames, isBlobType } from '@/composables/flows'
+import { settlePool } from '@/composables/pool'
 import { useFlows } from '@/stores/flows'
 import { useRecipes } from '@/stores/recipes'
 import { useProjects } from '@/stores/projects'
@@ -53,10 +54,45 @@ const title = ref('')
 const projectId = ref<string>(projects.activeId ?? NO_PROJECT)
 const submitting = ref(false)
 
+const MAX_BATCH = 200
+const UPLOAD_CONCURRENCY = 4
+type Source = 'images' | 'prompts'
+const batchMode = ref(false)
+const source = ref<Source>('images')
+const files = ref<File[]>([])
+const promptText = ref('')
+const uploaded = ref(0)
+const folderInput = ref<HTMLInputElement | null>(null)
+const filesInput = ref<HTMLInputElement | null>(null)
+
 const isNum = (t: string): boolean => t === 'int' || t === 'float'
 const label = (name: string, spec: WorkflowInputSpec): string => spec.label || name
 const entries = computed(() => Object.entries(def.value?.inputs ?? {}))
 const chain = computed(() => (def.value ? chainNames(def.value, recipes.byId) : []))
+
+const imageInput = computed(() => entries.value.find(([, s]) => s.type === 'image' || s.type === 'images')?.[0] ?? null)
+const promptInput = computed(() => entries.value.find(([, s]) => s.type === 'text')?.[0] ?? null)
+const canBatch = computed(() => !!imageInput.value || !!promptInput.value)
+const targetName = computed(() => (source.value === 'images' ? imageInput.value : promptInput.value))
+const formEntries = computed(() => (batchMode.value ? entries.value.filter(([n]) => n !== targetName.value) : entries.value))
+const prompts = computed(() =>
+  promptText.value
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+)
+const itemCount = computed(() => (source.value === 'images' ? files.value.length : prompts.value.length))
+const overLimit = computed(() => itemCount.value > MAX_BATCH)
+
+const IMAGE_EXT = /\.(png|jpe?g|webp)$/i
+function takeFiles(e: Event): void {
+  const el = e.target as HTMLInputElement
+  const picked = [...(el.files ?? [])].filter((f) => IMAGE_EXT.test(f.name))
+  el.value = ''
+  const key = (f: File): string => f.webkitRelativePath || f.name
+  files.value = picked.sort((a, b) => key(a).localeCompare(key(b), undefined, { numeric: true }))
+}
+const stem = (name: string): string => name.replace(/\.[^.]+$/, '')
 
 watch(
   def,
@@ -65,6 +101,14 @@ watch(
       if (isBlobType(spec.type)) blobs[name] = []
       else values[name] = (spec.default as Value | undefined) ?? (spec.type === 'bool' ? false : isNum(spec.type) ? 0 : '')
     }
+  },
+  { immediate: true }
+)
+watch(
+  [imageInput, promptInput],
+  () => {
+    if (source.value === 'images' && !imageInput.value && promptInput.value) source.value = 'prompts'
+    else if (source.value === 'prompts' && !promptInput.value && imageInput.value) source.value = 'images'
   },
   { immediate: true }
 )
@@ -83,24 +127,66 @@ function check(name: string, spec: WorkflowInputSpec): boolean {
   return !err
 }
 
-async function submit(): Promise<void> {
-  if (!def.value || submitting.value) return
-  const ok = entries.value.map(([n, s]) => check(n, s)).every(Boolean)
-  if (!ok) return
+function collect(list: [string, WorkflowInputSpec][]): Record<string, unknown> {
   const inputs: Record<string, unknown> = {}
-  for (const [name, spec] of entries.value) {
+  for (const [name, spec] of list) {
     if (isBlobType(spec.type)) {
       if (blobs[name]?.length) inputs[name] = blobs[name]![0]!.hash
     } else if (isNum(spec.type)) inputs[name] = Number(values[name])
     else if (values[name] !== '') inputs[name] = values[name]
   }
+  return inputs
+}
+
+const projectArg = (): string | undefined => (projectId.value === NO_PROJECT ? undefined : projectId.value)
+
+async function submitBatch(): Promise<void> {
+  const target = targetName.value
+  const spec = def.value?.inputs[target ?? '']
+  if (!def.value || !target || !spec) return
+  if (!itemCount.value) return void toasts.push(source.value === 'images' ? 'Chọn thư mục hoặc ảnh trước' : 'Nhập ít nhất một dòng prompt', 'error', 2500)
+  if (overLimit.value) return void toasts.push(`Một lô tối đa ${MAX_BATCH} lượt`, 'error', 2500)
+  if (!formEntries.value.map(([n, s]) => check(n, s)).every(Boolean)) return
   submitting.value = true
+  uploaded.value = 0
   try {
-    const row = await flows.start(def.value.id, {
-      inputs,
-      project_id: projectId.value === NO_PROJECT ? undefined : projectId.value,
+    let items: { inputs: Record<string, unknown>; title?: string }[]
+    if (source.value === 'images') {
+      const res = await settlePool(files.value, UPLOAD_CONCURRENCY, async (f) => {
+        const ref = await api().uploadBlob(f)
+        uploaded.value += 1
+        return ref
+      })
+      const bad = res.filter((r) => r.status === 'rejected').length
+      if (bad) throw new Error(`${bad} ảnh tải lên thất bại`)
+      items = res.map((r, i) => {
+        const hash = (r as PromiseFulfilledResult<BlobRef>).value.hash
+        return { inputs: { [target]: spec.type === 'images' ? [hash] : hash }, title: stem(files.value[i]!.name) }
+      })
+    } else items = prompts.value.map((p) => ({ inputs: { [target]: p } }))
+    const batch = await api().startFlowBatch({
+      flow_id: def.value.id,
+      items,
+      shared_params: collect(formEntries.value),
+      project_id: projectArg(),
       title: title.value.trim() || undefined
     })
+    void router.push(`/flows/batches/${batch.id}`)
+  } catch (e) {
+    toasts.error(e, 'Không chạy được lô workflow')
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function submit(): Promise<void> {
+  if (!def.value || submitting.value) return
+  if (batchMode.value) return submitBatch()
+  const ok = entries.value.map(([n, s]) => check(n, s)).every(Boolean)
+  if (!ok) return
+  submitting.value = true
+  try {
+    const row = await flows.start(def.value.id, { inputs: collect(entries.value), project_id: projectArg(), title: title.value.trim() || undefined })
     void router.push(`/flows/runs/${row.id}`)
   } catch (e) {
     toasts.error(e, 'Không chạy được workflow')
@@ -132,6 +218,38 @@ async function submit(): Promise<void> {
           </p>
         </header>
 
+        <div v-if="canBatch" class="mode" role="tablist" aria-label="Chế độ chạy">
+          <button type="button" role="tab" class="btn" :class="batchMode ? 'btn-plain' : 'btn-primary'" :aria-selected="!batchMode" @click="batchMode = false"><Play /> Một lượt</button>
+          <button type="button" role="tab" class="btn" :class="batchMode ? 'btn-primary' : 'btn-plain'" :aria-selected="batchMode" @click="batchMode = true"><Layers /> Hàng loạt</button>
+        </div>
+
+        <div v-if="batchMode && canBatch" class="fields card">
+          <div v-if="imageInput && promptInput" class="f">
+            <span class="f-label">Mỗi lượt lấy từ</span>
+            <div class="mode">
+              <button type="button" class="btn" :class="source === 'images' ? 'btn-primary' : 'btn-plain'" @click="source = 'images'">Thư mục ảnh</button>
+              <button type="button" class="btn" :class="source === 'prompts' ? 'btn-primary' : 'btn-plain'" @click="source = 'prompts'">Danh sách prompt</button>
+            </div>
+          </div>
+          <div v-if="source === 'images'" class="f">
+            <span class="f-label">Ảnh cho “{{ imageInput ? label(imageInput, def.inputs[imageInput]!) : '' }}” <span class="caption">(mỗi ảnh một lượt)</span></span>
+            <div class="pick">
+              <button type="button" class="btn" @click="folderInput?.click()"><FolderOpen /> Chọn thư mục</button>
+              <button type="button" class="btn btn-plain" @click="filesInput?.click()"><ImagePlus /> Chọn nhiều ảnh</button>
+            </div>
+            <input ref="folderInput" class="hidden" type="file" webkitdirectory multiple @change="takeFiles" />
+            <input ref="filesInput" class="hidden" type="file" accept="image/png,image/jpeg,image/webp" multiple @change="takeFiles" />
+            <p v-if="files.length" class="caption">{{ files.slice(0, 3).map((f) => f.name).join(', ') }}{{ files.length > 3 ? '…' : '' }}</p>
+          </div>
+          <div v-else class="f">
+            <label for="wf-prompts" class="f-label">Prompt cho “{{ promptInput ? label(promptInput, def.inputs[promptInput]!) : '' }}” <span class="caption">(mỗi dòng một lượt)</span></label>
+            <textarea id="wf-prompts" v-model="promptText" class="field" rows="6" />
+          </div>
+          <p class="caption num count" :class="{ err: overLimit }" role="status">
+            {{ itemCount }} lượt sẽ được tạo{{ overLimit ? ` — vượt giới hạn ${MAX_BATCH} lượt` : '' }}
+          </p>
+        </div>
+
         <div class="fields card">
           <div class="f">
             <span class="f-label">Dự án</span>
@@ -142,7 +260,7 @@ async function submit(): Promise<void> {
             <input id="wf-title" v-model="title" class="field" type="text" :placeholder="def.title" />
           </div>
           <p v-if="!entries.length" class="caption">Workflow này không cần đầu vào.</p>
-          <div v-for="[name, spec] in entries" :key="name" class="f">
+          <div v-for="[name, spec] in formEntries" :key="name" class="f">
             <label :for="`in-${name}`" class="f-label">
               {{ label(name, spec) }}
               <span v-if="spec.required !== false && spec.default == null" class="req" aria-hidden="true">*</span>
@@ -187,7 +305,8 @@ async function submit(): Promise<void> {
           <button type="submit" class="btn btn-primary btn-lg" :disabled="submitting">
             <LoaderCircle v-if="submitting" class="spin" />
             <Play v-else />
-            Chạy workflow
+            {{ batchMode ? `Chạy ${itemCount} lượt` : 'Chạy workflow' }}
+            <span v-if="submitting && batchMode && source === 'images'" class="caption num">({{ uploaded }}/{{ files.length }} ảnh)</span>
           </button>
         </div>
       </form>
@@ -197,6 +316,18 @@ async function submit(): Promise<void> {
 </template>
 
 <style scoped>
+.mode,
+.pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hidden {
+  display: none;
+}
+.count {
+  color: var(--text-2);
+}
 .form {
   max-width: 720px;
 }
