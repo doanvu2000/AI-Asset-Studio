@@ -301,6 +301,8 @@ export interface RecipeInfo {
   preview?: string | null
   /** Output names of the recipe, in document order. */
   outputs?: string[]
+  /** Default follow-up runs (`$meta.then` entry shape), e.g. 8-dir → Spine. */
+  then?: { recipe_id: string; map?: Record<string, string>; inputs?: Record<string, unknown>; title?: string }[]
 }
 
 export interface GateResolution {
@@ -463,6 +465,8 @@ export interface ProjectStyle {
   notes: string
 }
 
+export type EngineTarget = 'unity' | 'godot' | 'none'
+
 export interface ProjectRow {
   id: string
   name: string
@@ -471,6 +475,7 @@ export interface ProjectRow {
   created_at: number
   updated_at: number
   archived: boolean
+  engine_target: EngineTarget
 }
 
 export interface ProjectSummary {
@@ -491,6 +496,7 @@ export interface ProjectCreateBody {
   name: string
   description?: string
   style?: Partial<ProjectStyle>
+  engine_target?: EngineTarget
 }
 
 export interface ProjectPatchBody {
@@ -498,6 +504,7 @@ export interface ProjectPatchBody {
   description?: string
   style?: ProjectStyle
   archived?: boolean
+  engine_target?: EngineTarget
 }
 
 /** Status of an asset-list row, from its last run (core engine/manifest.row_status). */
@@ -1107,6 +1114,8 @@ export interface WorkflowRunRow {
   created_at: number
   updated_at: number
   ended_at: number | null
+  /** Set when the run belongs to a workflow batch. */
+  batch_id?: string | null
 }
 
 export interface WorkflowChild {

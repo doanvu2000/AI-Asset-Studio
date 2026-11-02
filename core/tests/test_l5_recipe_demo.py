@@ -121,3 +121,9 @@ def test_shipped_previews_exist_are_small_webp_and_are_packaged() -> None:
     assert on_disk == {f"{rid}.webp" for rid in declared}, "orphan or missing preview files"
     spec = (BUILTIN_DIR.parents[1] / "packaging" / "studio-core.spec").read_text(encoding="utf-8")
     assert re.search(r'"recipes" / "previews" / "\*".*"studio_core/recipes/previews"', spec)
+
+
+def test_recipe_then_reaches_info():
+    from studio_core.engine.recipe import parse_recipe
+    info = parse_recipe((BUILTIN_DIR / "sprite-8dir-2d.yaml").read_bytes()).info()
+    assert info.then and info.then[0]["recipe_id"] == "spine-character-image"

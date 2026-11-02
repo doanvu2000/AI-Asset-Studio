@@ -81,7 +81,8 @@ CREATE TABLE IF NOT EXISTS projects (
     style TEXT NOT NULL DEFAULT '{}',
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL,
-    archived INTEGER NOT NULL DEFAULT 0
+    archived INTEGER NOT NULL DEFAULT 0,
+    engine_target TEXT NOT NULL DEFAULT 'none'
 );
 
 CREATE TABLE IF NOT EXISTS cache (
@@ -166,12 +167,27 @@ class Database:
         async with self.conn.execute("PRAGMA table_info(versions)") as cur:
             if "qa" not in {r["name"] for r in await cur.fetchall()}:
                 await self.conn.execute("ALTER TABLE versions ADD COLUMN qa TEXT")
+        async with self.conn.execute("PRAGMA table_info(projects)") as cur:
+            if "engine_target" not in {r["name"] for r in await cur.fetchall()}:
+                await self.conn.execute("ALTER TABLE projects ADD COLUMN engine_target TEXT NOT NULL DEFAULT 'none'")
+        # Generated (virtual) so no write path or backfill is needed and old rows are covered at once.
+        # table_xinfo, not table_info: the latter hides generated columns.
+        async with self.conn.execute("PRAGMA table_xinfo(versions)") as cur:
+            if "mime" not in {r["name"] for r in await cur.fetchall()}:
+                await self.conn.execute(
+                    "ALTER TABLE versions ADD COLUMN mime TEXT GENERATED ALWAYS AS (json_extract(blob, '$.mime')) VIRTUAL")
+        # NULL = not computed yet (lazy backfill in run_preview_hashes); '' = computed, run has no image output.
+        async with self.conn.execute("PRAGMA table_info(runs)") as cur:
+            if "preview_hash" not in {r["name"] for r in await cur.fetchall()}:
+                await self.conn.execute("ALTER TABLE runs ADD COLUMN preview_hash TEXT")
         async with self.conn.execute("PRAGMA table_info(cache)") as cur:
             if "meta" not in {r["name"] for r in await cur.fetchall()}:
                 await self.conn.execute("ALTER TABLE cache ADD COLUMN meta TEXT")
         # After the ALTER: a DB from before projects has no column for these indexes to name.
         await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_runs_project ON runs(project_id, created_at)")
         await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_versions_project ON versions(project_id, created_at)")
+        await self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_versions_project_mime ON versions(project_id, mime, status, created_at)")
 
     async def close(self) -> None:
         if self._conn is not None:

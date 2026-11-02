@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { ArrowRight, ChevronRight, Copy, Pencil, Play, Plus, RotateCw, Trash2, Waypoints } from '@lucide/vue'
 import type { FlowBatchSummary, WorkflowDef, WorkflowRunRow } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
+import SectionTabs from '@/components/SectionTabs.vue'
+import { RECIPE_TABS } from '@/composables/navTabs'
 import EmptyState from '@/components/EmptyState.vue'
 import FlowStatusBadge from '@/components/FlowStatusBadge.vue'
 import RelTime from '@/components/RelTime.vue'
@@ -43,8 +45,22 @@ async function loadBatches(): Promise<void> {
   } catch {
     // the list is optional chrome; the page works without it
   }
-  if (alive && batches.value.some((b) => b.status === 'running')) batchTimer = setTimeout(() => void loadBatches(), 3000)
+  // workflow.updated events drive the refresh while the socket is up; the timer only covers a dropped socket.
+  if (alive && conn.socket !== 'open' && batches.value.some((b) => b.status === 'running'))
+    batchTimer = setTimeout(() => void loadBatches(), 3000)
 }
+watch(
+  () => flows.runList,
+  () => {
+    if (!batches.value.some((b) => b.status === 'running')) return
+    clearTimeout(batchTimer)
+    batchTimer = setTimeout(() => void loadBatches(), 400)
+  }
+)
+watch(
+  () => conn.socket,
+  (s) => s !== 'open' && void loadBatches()
+)
 onBeforeUnmount(() => {
   alive = false
   clearTimeout(batchTimer)
@@ -96,6 +112,7 @@ async function remove(d: WorkflowDef): Promise<void> {
     <PageHeader title="Workflow" subtitle="Nối nhiều quy trình thành một chuỗi chạy tự động">
       <button class="btn btn-primary" @click="router.push('/flows/new')"><Plus /> Workflow mới</button>
     </PageHeader>
+    <SectionTabs :tabs="RECIPE_TABS" current="/flows" label="Công thức" />
     <div class="scroll">
       <div class="stack stack-wide">
         <EmptyState

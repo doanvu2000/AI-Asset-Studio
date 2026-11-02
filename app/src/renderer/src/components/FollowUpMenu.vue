@@ -26,14 +26,15 @@ const clicked = ref<BlobRef | null>(null)
 const siblings = ref<Outputs>({})
 const run = ref<RunRow | null>(null)
 
-// The character kit chains 8-dir → Spine in core (`$meta.then`), so it keeps going even if the app is closed.
-const KIT = { first: 'sprite-8dir-2d', then: 'spine-character-image' }
+// The character kit chains 8-dir → Spine in core (`$meta.then`, default taken from the recipe's `then`), so it keeps going even if the app is closed.
+const KIT_FIRST = 'sprite-8dir-2d'
+const kitThen = computed(() => recipes.byId(KIT_FIRST)?.then ?? [])
 const kitOk = computed(
   () =>
     !!clicked.value?.mime.startsWith('image/') &&
     /^(concept|variants)-/.test(run.value?.recipe_id ?? '') &&
-    !!recipes.byId(KIT.first) &&
-    !!recipes.byId(KIT.then)
+    kitThen.value.length > 0 &&
+    kitThen.value.every((t) => !!recipes.byId(t.recipe_id))
 )
 
 // A still character image goes straight to a sprite animation with the action already chosen.
@@ -111,11 +112,11 @@ async function startKit(): Promise<void> {
   starting.value = true
   try {
     const { run_id } = await api().startRun({
-      recipe_id: KIT.first,
+      recipe_id: KIT_FIRST,
       inputs: { image: props.hash },
       title: run.value?.title || undefined,
       project_id: run.value?.project_id,
-      params: { $meta: { source: 'app', then: [{ recipe_id: KIT.then, map: { image: 'inputs.image' } }] } }
+      params: { $meta: { source: 'app', then: JSON.parse(JSON.stringify(kitThen.value)) } }
     })
     toasts.push('Đã bắt đầu bộ nhân vật: Spine tự chạy sau khi 8 hướng xong', 'success', 3200)
     await router.push(`/runs/${run_id}`)

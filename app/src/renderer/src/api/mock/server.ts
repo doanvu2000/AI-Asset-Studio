@@ -764,8 +764,8 @@ export class MockCore implements StudioApi, EventStream {
   }
 
   private seedProjects(t0: number): void {
-    const mk = (name: string, description: string, style: Partial<ProjectRow['style']>, created: number, archived = false): ProjectRow => {
-      const p: ProjectRow = { id: uid('prj'), name, description, style: normalizeStyle(style), created_at: created, updated_at: created, archived }
+    const mk = (name: string, description: string, style: Partial<ProjectRow['style']>, created: number, archived = false, engineTarget: ProjectRow['engine_target'] = 'none'): ProjectRow => {
+      const p: ProjectRow = { id: uid('prj'), name, description, style: normalizeStyle(style), created_at: created, updated_at: created, archived, engine_target: engineTarget }
       this.projectMap.set(p.id, p)
       return p
     }
@@ -779,7 +779,9 @@ export class MockCore implements StudioApi, EventStream {
       'Hiệp sĩ Bóng Đêm',
       'Nhân vật và đạo cụ dark fantasy, xuất cho Godot.',
       { prompt_prefix: 'dark fantasy', prompt_suffix: 'painterly, rim light, muted palette', negative: 'cartoon, low quality', preset: 'godot' },
-      t0 - 86400 * 12
+      t0 - 86400 * 12,
+      false,
+      'godot'
     )
     mk('Thử nghiệm cũ', 'Dự án đã lưu trữ.', { prompt_suffix: 'flat vector style' }, t0 - 86400 * 40, true)
     const runs = [...this.runs.values()].sort((a, b) => b.created_at - a.created_at)
@@ -1529,7 +1531,7 @@ export class MockCore implements StudioApi, EventStream {
     const name = body.name.trim()
     if (!name) throw new ApiError('invalid', 'name must not be empty', 400)
     const t = now()
-    const p: ProjectRow = { id: uid('prj'), name, description: body.description ?? '', style: normalizeStyle(body.style), created_at: t, updated_at: t, archived: false }
+    const p: ProjectRow = { id: uid('prj'), name, description: body.description ?? '', style: normalizeStyle(body.style), created_at: t, updated_at: t, archived: false, engine_target: body.engine_target ?? 'none' }
     this.projectMap.set(p.id, p)
     this.emit('project.updated', p)
     return clone(p)
@@ -1547,6 +1549,7 @@ export class MockCore implements StudioApi, EventStream {
     if (body.description !== undefined) p.description = body.description
     if (body.style) p.style = normalizeStyle(body.style)
     if (body.archived !== undefined) p.archived = body.archived
+    if (body.engine_target !== undefined) p.engine_target = body.engine_target
     p.updated_at = now()
     this.emit('project.updated', p)
     return clone(p)

@@ -127,3 +127,47 @@ async def test_batch_filter_uses_expression_index(repo: SqliteRepo) -> None:
 
     plan = await repo.db.fetchall(f"EXPLAIN QUERY PLAN SELECT * FROM runs WHERE {_BATCH_ID} = ?", ("b",))
     assert any("idx_runs_batch_id" in str(tuple(r)) for r in plan)
+
+
+async def test_run_preview_hash_cached_invalidated_and_matches_scan(repo: SqliteRepo) -> None:
+    await repo.create_run(RunRow(id="r1", recipe_id="x", recipe_hash="h", created_at=1.0))
+    await repo.create_run(RunRow(id="r2", recipe_id="x", recipe_hash="h", created_at=2.0))
+    await repo.create_steps([
+        StepRow(id="s0", run_id="r1", key="gen", kind="op.x", lane=Lane.GPU, order=0,
+                outputs={"images": [_blob("1" * 64)]}),
+        StepRow(id="s1", run_id="r1", key="fit", kind="op.x", lane=Lane.CPU, order=1),
+    ])
+    first = await repo.run_preview_hashes(["r1", "r2"])
+    assert first == {"r1": "1" * 64} == await repo._compute_preview_hashes(["r1", "r2"])
+    cols = {r["id"]: r["preview_hash"] for r in await repo.db.fetchall("SELECT id, preview_hash FROM runs")}
+    assert cols == {"r1": "1" * 64, "r2": ""}
+    await repo.update_step("s1", outputs={"images": [_blob("2" * 64)]})
+    assert (await repo.db.fetchone("SELECT preview_hash FROM runs WHERE id = 'r1'"))["preview_hash"] is None
+    assert await repo.run_preview_hashes(["r1"]) == {"r1": "2" * 64}
+
+
+async def test_old_db_migrates_mime_and_preview_columns(tmp_path: Path) -> None:
+    import sqlite3
+    path = tmp_path / "old.db"
+    con = sqlite3.connect(path)
+    con.executescript(
+        "CREATE TABLE runs (id TEXT PRIMARY KEY, recipe_id TEXT NOT NULL, recipe_hash TEXT NOT NULL,"
+        " title TEXT NOT NULL DEFAULT '', inputs TEXT NOT NULL DEFAULT '{}', params TEXT NOT NULL DEFAULT '{}',"
+        " status TEXT NOT NULL, error TEXT, created_at REAL NOT NULL, ended_at REAL);"
+        "CREATE TABLE versions (id TEXT PRIMARY KEY, asset_name TEXT NOT NULL, run_id TEXT NOT NULL,"
+        " step_id TEXT NOT NULL, blob TEXT NOT NULL, status TEXT NOT NULL, created_at REAL NOT NULL);"
+        "INSERT INTO versions VALUES ('v1','a','r','s','{\"hash\":\"h\",\"mime\":\"image/png\",\"size\":1}','draft',1.0);"
+        "INSERT INTO versions VALUES ('v2','b','r','s','{\"hash\":\"m\",\"mime\":\"model/gltf-binary\",\"size\":1}','draft',2.0);")
+    con.commit()
+    con.close()
+    db = Database(path)
+    await db.open()
+    await db.close()
+    await db.open()  # idempotent
+    try:
+        got = await SqliteRepo(db).versions_to_score()
+        assert [v.id for v in got] == ["v1"]
+        plan = await db.fetchall("EXPLAIN QUERY PLAN SELECT * FROM versions WHERE project_id = 'p' AND mime LIKE 'image/%'")
+        assert any("idx_versions_project" in r["detail"] for r in plan), [r["detail"] for r in plan]
+    finally:
+        await db.close()

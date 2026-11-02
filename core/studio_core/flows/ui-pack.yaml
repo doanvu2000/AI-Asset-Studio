@@ -31,3 +31,8 @@ nodes:
     recipe_id: store-kit
     title: Bộ ảnh store
     map: {title: workflow.inputs.game_title, prompt: workflow.inputs.store_prompt}
+  - id: style
+    recipe_id: style-lock
+    title: Kiểm style bộ UI
+    inputs: {review: false}
+    map: {anchor: "kit.outputs.final[0]", anchor_2: "screen.outputs.final[0]", anchor_3: "store.outputs.final[0]"}

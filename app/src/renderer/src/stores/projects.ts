@@ -5,6 +5,8 @@ import { NO_PROJECT } from '@/api/types'
 import { api } from './connection'
 
 const ACTIVE_KEY = 'studio.project.active'
+const SEEDED_KEY = 'studio.project.seeded'
+const FIRST_PROJECT = 'Dự án đầu tiên'
 const SUMMARY_DEBOUNCE_MS = 2000
 const SUMMARY_MAX_WAIT_MS = 5000
 
@@ -13,6 +15,14 @@ function readActive(): string | null {
     return localStorage.getItem(ACTIVE_KEY)
   } catch {
     return null
+  }
+}
+
+function readSeeded(): boolean {
+  try {
+    return localStorage.getItem(SEEDED_KEY) === '1'
+  } catch {
+    return true
   }
 }
 
@@ -88,6 +98,7 @@ export const useProjects = defineStore('projects', () => {
         loaded.value = true
         const a = activeId.value ? next.get(activeId.value) : undefined
         if (activeId.value && (!a || a.archived)) setActive(null)
+        if (!next.size) void seedFirst()
       }
       error.value = null
     } catch (e) {
@@ -95,6 +106,22 @@ export const useProjects = defineStore('projects', () => {
       throw e
     } finally {
       if (!opts.archived) loading.value = false
+    }
+  }
+
+  // The flag outlives the project: archiving it must not make a new one appear on every launch.
+  let seeding = false
+  async function seedFirst(): Promise<void> {
+    if (seeding || readSeeded()) return
+    seeding = true
+    try {
+      const p = await create({ name: FIRST_PROJECT })
+      setActive(p.id)
+      localStorage.setItem(SEEDED_KEY, '1')
+    } catch {
+      /* the next load tries again */
+    } finally {
+      seeding = false
     }
   }
 

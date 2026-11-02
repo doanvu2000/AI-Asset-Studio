@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { Archive, ArchiveRestore, ArrowLeft, BookMarked, Check, ClipboardList, FolderKanban, Images, Languages, ListChecks, LoaderCircle, Package, Plus, RotateCw, Save, ScanSearch, X } from '@lucide/vue'
-import type { BlobRef, PixelStyle, ProjectStyle } from '@/api/types'
+import type { BlobRef, EngineTarget, PixelStyle, ProjectStyle } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import BlobDropZone from '@/components/BlobDropZone.vue'
@@ -243,6 +243,20 @@ function toggleActive(): void {
   projects.setActive(isActive.value ? null : props.id)
 }
 
+const ENGINE_TARGETS: Array<[EngineTarget, string]> = [
+  ['unity', 'Unity'],
+  ['godot', 'Godot'],
+  ['none', 'Chưa chọn']
+]
+async function setEngine(t: EngineTarget): Promise<void> {
+  if (!project.value || project.value.engine_target === t) return
+  try {
+    await projects.patch(props.id, { engine_target: t })
+  } catch (e) {
+    toasts.error(e, 'Không lưu được engine đích')
+  }
+}
+
 const archiving = ref(false)
 async function setArchived(on: boolean): Promise<void> {
   if (archiving.value || !project.value) return
@@ -317,6 +331,14 @@ function newAsset(): void {
             <dd class="when"><RelTime :ts="Math.max(summary?.last_activity ?? 0, project.updated_at)" /></dd>
           </div>
         </dl>
+
+        <div class="engine-row">
+          <span class="callout">Engine đích</span>
+          <div class="seg" role="radiogroup" aria-label="Engine đích của dự án">
+            <button v-for="[id, label] in ENGINE_TARGETS" :key="id" type="button" role="radio" :aria-checked="project.engine_target === id" :class="{ on: project.engine_target === id }" @click="setEngine(id)">{{ label }}</button>
+          </div>
+          <span class="caption">Nút Xuất ra engine sẽ chọn sẵn engine này.</span>
+        </div>
 
         <div class="seg tabs" role="tablist" aria-label="Phần của dự án">
           <button role="tab" :aria-selected="tab === 'style'" :class="{ on: tab === 'style' }" @click="tab = 'style'">
@@ -515,7 +537,7 @@ function newAsset(): void {
         </section>
       </div>
     </div>
-    <PackDialog :open="packOpen" :project-id="id" @close="packOpen = false" />
+    <PackDialog :open="packOpen" :project-id="id" :engine="project?.engine_target === 'unity' || project?.engine_target === 'godot' ? project.engine_target : undefined" @close="packOpen = false" />
   </div>
 </template>
 
@@ -532,6 +554,12 @@ function newAsset(): void {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.engine-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
 }
 .stats {
   display: grid;

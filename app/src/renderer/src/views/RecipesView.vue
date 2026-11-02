@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { BookOpen, Copy, Eye, Pencil, Plus, RotateCw } from '@lucide/vue'
 import type { RecipeInfo } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
+import SectionTabs from '@/components/SectionTabs.vue'
+import { RECIPE_TABS } from '@/composables/navTabs'
 import EmptyState from '@/components/EmptyState.vue'
 import RecipeThumb from '@/components/RecipeThumb.vue'
 import LaneTag from '@/components/LaneTag.vue'
@@ -65,6 +67,7 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
     <PageHeader title="Quy trình" subtitle="Các bước để tạo ra từng loại asset">
       <button class="btn btn-primary" aria-label="Quy trình mới" title="Quy trình mới" @click="router.push('/recipes/new')"><Plus /> <span class="lbl">Quy trình mới</span></button>
     </PageHeader>
+    <SectionTabs :tabs="RECIPE_TABS" current="/recipes" label="Công thức" />
     <div class="scroll">
       <div class="stack stack-wide">
         <EmptyState

@@ -4,9 +4,9 @@ from __future__ import annotations
 import asyncio
 import enum
 from pathlib import Path
-from typing import Any, AsyncIterator, Awaitable, Callable, Protocol, runtime_checkable
+from typing import Any, Literal, AsyncIterator, Awaitable, Callable, Protocol, runtime_checkable
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 
 class Lane(str, enum.Enum):
@@ -157,6 +157,7 @@ class ProjectRow(BaseModel):
     created_at: float
     updated_at: float
     archived: bool = False
+    engine_target: Literal["unity", "godot", "none"] = "none"
 
 
 class WorkflowStatus(str, enum.Enum):
@@ -238,6 +239,12 @@ class WorkflowRunRow(BaseModel):
     created_at: float
     updated_at: float
     ended_at: float | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def batch_id(self) -> str | None:
+        # Kept in def_snapshot (a JSON column) so a batch needs no workflow_runs column.
+        return self.def_snapshot.get("$batch_id")
 
 
 # ---- events (WS) ----
@@ -463,6 +470,7 @@ class RecipeInfo(BaseModel):
     exports: list[str] = []  # unity | godot | spine | glb | fbx | audio, from the step kinds
     preview: str | None = None  # blob hash, or "file" when GET /recipes/{id}/preview serves a shipped image
     outputs: list[str] = []  # output names, so list consumers need not fetch every recipe document
+    then: list[dict[str, Any]] = []  # default follow-up runs, `$meta.then` entry shape
 
 
 class GateResolution(BaseModel):

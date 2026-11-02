@@ -221,3 +221,33 @@ async def test_mcp_projects_tools() -> None:
     assert link.calls[-1][2]["json"]["project_id"] == "p1"
     await tools.start_run("styled", {"prompt": "x"}, None, "human")
     assert "project_id" not in link.calls[-1][2]["json"]
+
+
+async def test_project_engine_target(client: httpx.AsyncClient) -> None:
+    r = await client.post("/api/projects", json={"name": "A"}, headers=AUTH)
+    assert r.json()["engine_target"] == "none"
+    pid = r.json()["id"]
+    r = await client.patch(f"/api/projects/{pid}", json={"engine_target": "godot"}, headers=AUTH)
+    assert r.json()["engine_target"] == "godot"
+    assert (await client.get(f"/api/projects/{pid}", headers=AUTH)).json()["engine_target"] == "godot"
+    assert (await client.patch(f"/api/projects/{pid}", json={"engine_target": "gamemaker"}, headers=AUTH)).status_code == 422
+    r = await client.post("/api/projects", json={"name": "B", "engine_target": "unity"}, headers=AUTH)
+    assert r.json()["engine_target"] == "unity"
+
+
+async def test_migration_adds_engine_target(tmp_path: Path) -> None:
+    path = tmp_path / "old.db"
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE projects (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', "
+                "style TEXT NOT NULL DEFAULT '{}', created_at REAL NOT NULL, updated_at REAL NOT NULL, "
+                "archived INTEGER NOT NULL DEFAULT 0)")
+    con.execute("INSERT INTO projects (id, name, created_at, updated_at) VALUES ('p1', 'Old', 1, 1)")
+    con.commit()
+    con.close()
+    db = Database(path)
+    await db.open()
+    try:
+        p = await SqliteRepo(db).get_project("p1")
+        assert p is not None and p.engine_target == "none"
+    finally:
+        await db.close()

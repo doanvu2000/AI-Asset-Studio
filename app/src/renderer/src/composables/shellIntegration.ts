@@ -6,6 +6,7 @@ import type { AppNotification, ProgressMode } from '../../../preload/types'
 import { useRuns } from '@/stores/runs'
 import { useRecipes } from '@/stores/recipes'
 import { useFlows } from '@/stores/flows'
+import { api } from '@/stores/connection'
 import { notifyEnabled } from './notifyPrefs'
 
 const NOTIFY_ON: ReadonlySet<string> = new Set(['awaiting_human', 'succeeded', 'failed'])
@@ -121,6 +122,39 @@ export function useShellIntegration(): void {
     { immediate: true }
   )
 
+  // A batch of workflow runs is announced once, not once per run.
+  const batchState = new Map<string, { done: boolean; human: boolean; timer: number }>()
+
+  async function checkBatch(id: string): Promise<void> {
+    const st = batchState.get(id)
+    if (!st) return
+    try {
+      const b = await api().flowBatch(id)
+      const route = `/flows/batches/${id}`
+      const awaiting = b.counts.awaiting_human ?? 0
+      if (!awaiting) st.human = false
+      if (b.status === 'running') st.done = false
+      if (awaiting && !st.human) {
+        st.human = true
+        if (notifyEnabled.value) bridge!.notify({ title: 'Cần bạn duyệt', body: `Lô ${b.title}: ${awaiting} lượt đang chờ bạn duyệt.`, route })
+      }
+      if (st.done || b.status === 'running' || b.status === 'awaiting_human' || b.status === 'cancelled') return
+      st.done = true
+      const ok = b.counts.succeeded ?? 0
+      const bad = b.counts.failed ?? 0
+      if (notifyEnabled.value) bridge!.notify({ title: 'Lô đã xong', body: `Lô ${b.title} xong: ${ok}/${b.total}${bad ? `, ${bad} lỗi` : ''}.`, route })
+    } catch {
+      // Core briefly unreachable: the next run event checks again.
+    }
+  }
+
+  function onBatchRun(batchId: string): void {
+    const st = batchState.get(batchId) ?? { done: false, human: false, timer: 0 }
+    batchState.set(batchId, st)
+    window.clearTimeout(st.timer)
+    st.timer = window.setTimeout(() => void checkBatch(batchId), COALESCE_MS)
+  }
+
   watch(
     () => flows.runList,
     (list) => {
@@ -129,6 +163,10 @@ export function useShellIntegration(): void {
         seenFlows.set(r.id, r.status)
         const fresh = prev === undefined && r.created_at >= primedAt
         if ((prev === undefined && !fresh) || prev === r.status || !NOTIFY_ON.has(r.status)) continue
+        if (r.batch_id) {
+          onBatchRun(r.batch_id)
+          continue
+        }
         queue({ label: r.title || 'Workflow', status: r.status, route: `/flows/runs/${r.id}`, error: r.error, flow: true })
       }
     }
@@ -138,6 +176,7 @@ export function useShellIntegration(): void {
   onBeforeUnmount(() => {
     off()
     window.clearTimeout(timer)
+    for (const st of batchState.values()) window.clearTimeout(st.timer)
     bridge.setProgress(null)
   })
 }

@@ -17,6 +17,8 @@ import { useResources } from '@/stores/resources'
 import { useRuns } from '@/stores/runs'
 import { useGates, type GateItem } from '@/stores/gates'
 import { useRecipes } from '@/stores/recipes'
+import ExportToEngine from '@/components/ExportToEngine.vue'
+import { useProjects } from '@/stores/projects'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { stepName } from '@/composables/format'
@@ -28,11 +30,20 @@ const runs = useRuns()
 const gates = useGates()
 const recipes = useRecipes()
 const conn = useConnection()
+const projects = useProjects()
+const exportable = computed(() => {
+  const id = projects.activeId
+  return id && (projects.summaryOf(id)?.approved_versions ?? 0) > 0 ? id : null
+})
 const toasts = useToasts()
 
 watch(
   () => conn.transport,
-  (t) => t && void recipes.load(),
+  (t) => {
+    if (!t) return
+    void recipes.load()
+    if (!projects.loaded && !projects.loading) void projects.load().catch(() => undefined)
+  },
   { immediate: true }
 )
 
@@ -123,6 +134,7 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
       <button class="btn search-btn" aria-label="Tìm nhanh" title="Tìm nhanh (Ctrl+K)" @click="openPalette">
         <Search /> <span class="lbl">Tìm…</span> <span class="kbd lbl">Ctrl K</span>
       </button>
+      <ExportToEngine v-if="exportable" :project-id="exportable" />
       <RouterLink to="/new" class="btn btn-primary" aria-label="Tạo mới" title="Tạo mới (Ctrl+N)"><Plus /> <span class="lbl">Tạo mới</span></RouterLink>
     </PageHeader>
     <div class="scroll">
@@ -141,9 +153,9 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
 
         <GpuPanel />
 
-        <GettingStarted v-if="firstTime" />
+        <GettingStarted />
 
-        <template v-else>
+        <template v-if="!firstTime">
           <Transition name="section">
             <section v-if="gates.count" class="sec" aria-labelledby="sec-you">
               <div class="sec-head">

@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field, field_validator
@@ -31,6 +31,7 @@ class ProjectCreate(BaseModel):
     name: str = Field(max_length=120)
     description: str = Field("", max_length=4000)
     style: ProjectStyle = ProjectStyle()
+    engine_target: Literal["unity", "godot", "none"] = "none"
 
     _check_name = field_validator("name")(_name)
 
@@ -40,6 +41,7 @@ class ProjectPatch(BaseModel):
     description: str | None = Field(None, max_length=4000)
     style: ProjectStyle | None = None
     archived: bool | None = None
+    engine_target: Literal["unity", "godot", "none"] | None = None
 
     @field_validator("name")
     @classmethod
@@ -97,7 +99,7 @@ async def create_project(request: Request, body: ProjectCreate) -> Response:
     await _check_style(request, body.style)
     now = time.time()
     p = ProjectRow(id=uuid.uuid4().hex, name=body.name, description=body.description, style=body.style,
-                   created_at=now, updated_at=now)
+                   engine_target=body.engine_target, created_at=now, updated_at=now)
     await _repo(request).create_project(p)
     _publish(request, p)
     return OrjsonResponse(p.model_dump(mode="json"), status_code=201)

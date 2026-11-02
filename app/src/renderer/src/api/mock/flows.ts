@@ -496,7 +496,9 @@ export class MockFlowBatches {
     ]
     for (const [id, title, age, items] of batches) {
       const runIds = this.flows.seedRuns('concept-to-sprite', items)
-      this.batches.set(id, { id, workflow_id: 'concept-to-sprite', title, project_id: 'default', created_at: now() - age, run_ids: runIds })
+      const b: MockBatch = { id, workflow_id: 'concept-to-sprite', title, project_id: 'default', created_at: now() - age, run_ids: runIds }
+      this.batches.set(id, b)
+      for (const r of this.rows(b)) r.batch_id = id
     }
   }
 
@@ -516,6 +518,7 @@ export class MockFlowBatches {
     }
     const b: MockBatch = { id: `fb_${uid()}`, workflow_id: def.id, title: base, project_id: body.project_id ?? 'default', created_at: now(), run_ids: runIds }
     this.batches.set(b.id, b)
+    for (const r of this.rows(b)) r.batch_id = b.id
     return this.detail(b.id)
   }
 

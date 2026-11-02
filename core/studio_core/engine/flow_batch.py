@@ -73,17 +73,18 @@ class FlowBatches:
         if body.project_id != DEFAULT_PROJECT and await self.repo.get_project(body.project_id) is None:
             raise FlowNotFound(f"unknown project: {body.project_id}")
         base = body.title or d.title
+        batch_id = uuid.uuid4().hex
         run_ids: list[str] = []
         try:
             for i, (it, values) in enumerate(zip(body.items, merged)):
                 wr = await flows.start(d.id, values, project_id=body.project_id,
-                                       title=it.title or f"{base} #{i + 1}")
+                                       title=it.title or f"{base} #{i + 1}", batch_id=batch_id)
                 run_ids.append(wr.id)
         except Exception:
             for rid in run_ids:
                 await flows.cancel(rid)
             raise
-        batch = {"id": uuid.uuid4().hex, "workflow_id": d.id, "title": base, "project_id": body.project_id,
+        batch = {"id": batch_id, "workflow_id": d.id, "title": base, "project_id": body.project_id,
                  "run_ids": run_ids, "created_at": time.time()}
         await self.repo.create_workflow_batch(batch)
         return await self.detail(batch["id"])

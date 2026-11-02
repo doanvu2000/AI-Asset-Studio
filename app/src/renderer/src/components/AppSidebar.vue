@@ -3,7 +3,7 @@ import { ART } from '@/assets/art'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { motion } from 'motion-v'
-import { FolderKanban, Images, Inbox, Layers, LayoutDashboard, ListChecks, Plus, ScanSearch, Settings, Waypoints, Workflow } from '@lucide/vue'
+import { FolderKanban, Images, Inbox, LayoutDashboard, ListChecks, Plus, ScanSearch, Settings, Workflow } from '@lucide/vue'
 import { WORKFLOW_ACTIVE } from '@/api/types'
 import { useRuns } from '@/stores/runs'
 import { useFlows } from '@/stores/flows'
@@ -28,24 +28,22 @@ const groups = computed(() => [
     items: [
       { to: '/', name: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard, badge: 0, busy: false, key: '1' },
       { to: '/new', name: 'new', label: 'Tạo mới', icon: Plus, badge: 0, busy: false, key: '2' },
-      { to: '/runs', name: 'runs', label: 'Lượt chạy', icon: ListChecks, badge: 0, busy: runs.runningRuns.length > 0, key: '3' },
-      { to: '/gates', name: 'gates', label: 'Cần duyệt', icon: Inbox, badge: gates.count, busy: false, key: '4' }
+      { to: '/gates', name: 'gates', label: 'Cần duyệt', icon: Inbox, badge: gates.count, busy: false, key: '3' }
     ]
   },
   {
     title: 'Kho',
     items: [
-      { to: '/gallery', name: 'gallery', label: 'Thư viện', icon: Images, badge: 0, busy: false, key: '5' },
-      { to: '/projects', name: 'projects', label: 'Dự án', icon: FolderKanban, badge: 0, busy: false, key: '8' }
+      { to: '/gallery', name: 'gallery', label: 'Thư viện', icon: Images, badge: 0, busy: false, key: '4' },
+      { to: '/projects', name: 'projects', label: 'Dự án', icon: FolderKanban, badge: 0, busy: false, key: '5' },
+      { to: '/runs', name: 'history', label: 'Lịch sử', icon: ListChecks, badge: 0, busy: runs.runningRuns.length > 0, key: '6' }
     ]
   },
   {
-    title: 'Công cụ',
+    title: 'Nâng cao',
     items: [
-      { to: '/recipes', name: 'recipes', label: 'Quy trình', icon: Workflow, badge: 0, busy: false, key: '6' },
-      { to: '/flows', name: 'flows', label: 'Workflow', icon: Waypoints, badge: 0, busy: flows.runList.some((r) => WORKFLOW_ACTIVE.has(r.status)), key: '' },
-      { to: '/batch', name: 'batch', label: 'Hàng loạt', icon: Layers, badge: 0, busy: false, key: '7' },
-      { to: '/audit', name: 'audit', label: 'Kiểm tra project', icon: ScanSearch, badge: 0, busy: false, key: '9' }
+      { to: '/recipes', name: 'recipes', label: 'Công thức', icon: Workflow, badge: 0, busy: flows.runList.some((r) => WORKFLOW_ACTIVE.has(r.status)), key: '7' },
+      { to: '/audit', name: 'audit', label: 'Kiểm tra lỗi', icon: ScanSearch, badge: 0, busy: false, key: '8' }
     ]
   }
 ])
@@ -55,9 +53,15 @@ function tip(it: { label: string; badge: number; busy: boolean; key: string }): 
   return it.key ? `${it.label}${extra}  (Ctrl+${it.key})` : `${it.label}${extra}`
 }
 
+const ROUTE_GROUP: Record<string, string[]> = {
+  history: ['runs', 'run', 'batch', 'batch-detail'],
+  recipes: ['recipes', 'recipe']
+}
+
 function isActive(name: string): boolean {
   const r = String(route.name ?? '')
-  return r === name || (name === 'runs' && r === 'run') || (name === 'recipes' && r === 'recipe') || (name === 'batch' && r === 'batch-detail') || (name === 'projects' && r === 'project') || (name === 'flows' && r.startsWith('flow-'))
+  if (name === 'recipes') return r.startsWith('flow') || ROUTE_GROUP.recipes!.includes(r)
+  return r === name || (ROUTE_GROUP[name]?.includes(r) ?? false) || (name === 'projects' && r === 'project')
 }
 
 const status = computed(() => {

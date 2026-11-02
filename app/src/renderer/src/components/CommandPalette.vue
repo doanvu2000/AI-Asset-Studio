@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { onKeyStroke } from '@vueuse/core'
-import { CornerDownLeft, FolderKanban, Images, Inbox, Keyboard, Layers, LayoutDashboard, ListChecks, Monitor, Moon, Plus, Search, Settings, Sparkles, Sun, Workflow } from '@lucide/vue'
+import { CornerDownLeft, FolderKanban, Images, Inbox, Keyboard, Layers, LayoutDashboard, ListChecks, Monitor, Moon, Plus, ScanSearch, Search, Settings, Sparkles, Sun, Workflow } from '@lucide/vue'
 import { useRecipes } from '@/stores/recipes'
 import { useRuns } from '@/stores/runs'
 import { RUN_LABEL } from '@/composables/format'
@@ -38,12 +38,14 @@ const go = (to: string) => () => void router.push(to)
 const NAV: Item[] = [
   { id: 'nav-dash', group: 'Đi tới', label: 'Tổng quan', hint: 'Ctrl 1', icon: LayoutDashboard, run: go('/') },
   { id: 'nav-new', group: 'Đi tới', label: 'Tạo mới', hint: 'Ctrl N', icon: Plus, run: go('/new') },
-  { id: 'nav-runs', group: 'Đi tới', label: 'Lượt chạy', hint: 'Ctrl 3', icon: ListChecks, run: go('/runs') },
-  { id: 'nav-gates', group: 'Đi tới', label: 'Cần duyệt', hint: 'Ctrl 4', icon: Inbox, run: go('/gates') },
-  { id: 'nav-gallery', group: 'Đi tới', label: 'Thư viện', hint: 'Ctrl 5', icon: Images, run: go('/gallery') },
-  { id: 'nav-recipes', group: 'Đi tới', label: 'Quy trình', hint: 'Ctrl 6', icon: Workflow, run: go('/recipes') },
-  { id: 'nav-batch', group: 'Đi tới', label: 'Hàng loạt', hint: 'Ctrl 7', icon: Layers, run: go('/batch') },
-  { id: 'nav-projects', group: 'Đi tới', label: 'Dự án', hint: 'Ctrl 8', icon: FolderKanban, run: go('/projects') },
+  { id: 'nav-gates', group: 'Đi tới', label: 'Cần duyệt', hint: 'Ctrl 3', icon: Inbox, run: go('/gates') },
+  { id: 'nav-gallery', group: 'Đi tới', label: 'Thư viện', hint: 'Ctrl 4', icon: Images, run: go('/gallery') },
+  { id: 'nav-projects', group: 'Đi tới', label: 'Dự án', hint: 'Ctrl 5', icon: FolderKanban, run: go('/projects') },
+  { id: 'nav-runs', group: 'Đi tới', label: 'Lịch sử: Lượt chạy', hint: 'Ctrl 6', icon: ListChecks, run: go('/runs') },
+  { id: 'nav-batch', group: 'Đi tới', label: 'Lịch sử: Hàng loạt', icon: Layers, run: go('/batch') },
+  { id: 'nav-recipes', group: 'Đi tới', label: 'Công thức: Bước lẻ', hint: 'Ctrl 7', icon: Workflow, run: go('/recipes') },
+  { id: 'nav-flows', group: 'Đi tới', label: 'Công thức: Chuỗi tự động', icon: Workflow, run: go('/flows') },
+  { id: 'nav-audit', group: 'Đi tới', label: 'Kiểm tra lỗi', hint: 'Ctrl 8', icon: ScanSearch, run: go('/audit') },
   { id: 'nav-batch-new', group: 'Đi tới', label: 'Tạo lô nhiều prompt', icon: Layers, run: go('/new?mode=batch') },
   { id: 'nav-settings', group: 'Đi tới', label: 'Cài đặt', icon: Settings, run: go('/settings') },
   { id: 'nav-keys', group: 'Đi tới', label: 'Phím tắt', hint: '?', icon: Keyboard, run: () => openShortcuts() },

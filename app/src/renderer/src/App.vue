@@ -31,7 +31,7 @@ const offline = computed(
   () => !conn.core.mock && !conn.transport && ['error', 'restarting', 'stopped'].includes(conn.core.state) && route.name !== 'settings'
 )
 
-const NAV = ['/', '/new', '/runs', '/gates', '/gallery', '/recipes', '/batch', '/projects', '/audit']
+const NAV = ['/', '/new', '/gates', '/gallery', '/projects', '/runs', '/recipes', '/audit']
 onKeyStroke(
   (e) => (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey,
   (e) => {

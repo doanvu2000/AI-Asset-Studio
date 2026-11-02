@@ -2,6 +2,8 @@
 import { watch } from 'vue'
 import { ChevronRight, Layers, Plus } from '@lucide/vue'
 import PageHeader from '@/components/PageHeader.vue'
+import SectionTabs from '@/components/SectionTabs.vue'
+import { HISTORY_TABS } from '@/composables/navTabs'
 import EmptyState from '@/components/EmptyState.vue'
 import RecipeThumb from '@/components/RecipeThumb.vue'
 import RelTime from '@/components/RelTime.vue'
@@ -26,6 +28,7 @@ watch(
     <PageHeader title="Hàng loạt" subtitle="Một quy trình, nhiều prompt hoặc nhiều file">
       <RouterLink :to="{ path: '/new', query: { mode: 'batch' } }" class="btn btn-primary"><Plus /> Tạo lô mới</RouterLink>
     </PageHeader>
+    <SectionTabs :tabs="HISTORY_TABS" current="/batch" label="Lịch sử" />
     <div class="scroll">
       <div class="stack">
         <EmptyState

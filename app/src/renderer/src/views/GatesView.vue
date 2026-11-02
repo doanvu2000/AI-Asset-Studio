@@ -6,6 +6,8 @@ import { CloudOff, ExternalLink, LoaderCircle, Plus, RotateCw } from '@lucide/vu
 import PageHeader from '@/components/PageHeader.vue'
 import BlobThumb from '@/components/BlobThumb.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import ExportToEngine from '@/components/ExportToEngine.vue'
+import { useProjects } from '@/stores/projects'
 import GatePicker from '@/components/gate/GatePicker.vue'
 import GateApprove from '@/components/gate/GateApprove.vue'
 import GateOverview from '@/components/gate/GateOverview.vue'
@@ -26,7 +28,18 @@ const route = useRoute()
 const router = useRouter()
 const queueW = usePaneWidth('gates-queue', 280)
 const conn = useConnection()
+const projects = useProjects()
+const exportable = computed(() => {
+  const id = projects.activeId
+  return id && (projects.summaryOf(id)?.approved_versions ?? 0) > 0 ? id : null
+})
 const mode = useLocalStorage<'one' | 'all'>('gates-mode', 'one')
+
+watch(
+  () => conn.transport,
+  (t) => t && !projects.loaded && !projects.loading && void projects.load().catch(() => undefined),
+  { immediate: true }
+)
 
 function retryLoad(): void {
   void gates.load().catch(() => undefined)
@@ -101,6 +114,7 @@ function instruction(g: GateItem): string {
       <button v-if="conn.online" class="btn" @click="retryLoad"><RotateCw /> Thử lại</button>
     </EmptyState>
     <EmptyState v-else-if="!current" class="gates-empty" :art="ART.emptyGates" :art-size="176" title="Hộp duyệt trống" text="Khi một lượt chạy cần bạn chọn ảnh hoặc duyệt, nó sẽ xuất hiện ở đây.">
+      <ExportToEngine v-if="exportable" :project-id="exportable" primary />
       <RouterLink to="/runs" class="btn">Xem lượt chạy</RouterLink>
       <RouterLink to="/new" class="btn btn-primary"><Plus /> Tạo asset mới</RouterLink>
     </EmptyState>

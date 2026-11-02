@@ -6,10 +6,12 @@ import { ART } from '@/assets/art'
 import { api, useConnection } from '@/stores/connection'
 import { useRecipes } from '@/stores/recipes'
 import { useRuns } from '@/stores/runs'
+import { useProjects } from '@/stores/projects'
 
 const conn = useConnection()
 const recipes = useRecipes()
 const runs = useRuns()
+const projects = useProjects()
 
 const tools = ref<ToolPath[] | null>(null)
 const toolsError = ref(false)
@@ -22,6 +24,21 @@ watch(
       toolsError.value = false
     } catch {
       toolsError.value = true
+    }
+  },
+  { immediate: true }
+)
+
+const packCount = ref<number | null>(null)
+watch(
+  [() => conn.transport, () => projects.activeId],
+  async ([t, id]) => {
+    packCount.value = null
+    if (!t || !id) return
+    try {
+      packCount.value = (await api().projectPacks(id)).packs.length
+    } catch {
+      packCount.value = null
     }
   },
   { immediate: true }
@@ -40,6 +57,9 @@ const toolsOk = computed(() => !!tools.value?.length && tools.value.every((t) =>
 const toolsFound = computed(() => tools.value?.filter((t) => t.ok).length ?? 0)
 const recipeChosen = computed(() => !!lastRecipe && !!recipes.byId(lastRecipe))
 const firstAsset = computed(() => runs.runList.some((r) => r.status === 'succeeded'))
+const engineChosen = computed(() => !!projects.active && projects.active.engine_target !== 'none')
+const exported = computed(() => (packCount.value ?? 0) > 0)
+const projectLink = computed(() => (projects.active ? `/projects/${projects.active.id}` : '/projects'))
 const startRecipe = computed(() => (recipeChosen.value ? lastRecipe! : (recipes.byId('concept-2d')?.id ?? recipes.list[0]?.id)))
 
 const steps = computed(() => [
@@ -57,6 +77,17 @@ const steps = computed(() => [
         : 'Đang kiểm tra…',
     to: { path: '/settings', query: { pane: toolsOk.value ? 'tools' : 'setup' } },
     action: toolsOk.value ? 'Xem' : 'Cài tự động'
+  },
+  {
+    id: 'project',
+    title: 'Chọn engine đích',
+    done: engineChosen.value,
+    busy: false,
+    text: engineChosen.value
+      ? `Dự án “${projects.active?.name}” xuất ra ${projects.active?.engine_target === 'unity' ? 'Unity' : 'Godot'}.`
+      : 'Chọn Unity hoặc Godot cho dự án hiện tại để nút Xuất ra engine chọn sẵn giúp bạn.',
+    to: projectLink.value,
+    action: 'Chọn engine'
   },
   {
     id: 'recipe',
@@ -77,17 +108,28 @@ const steps = computed(() => [
     text: 'Nhập một câu mô tả, chọn ảnh ưng ý, rồi duyệt vào thư viện.',
     to: { path: '/new', query: startRecipe.value ? { recipe: startRecipe.value } : {} },
     action: 'Bắt đầu'
+  },
+  {
+    id: 'export',
+    title: 'Xuất ra engine',
+    done: exported.value,
+    busy: false,
+    text: exported.value ? 'Đã có gói asset trong dự án hiện tại.' : 'Đóng gói asset đã duyệt thành Unity package hoặc Godot addon.',
+    to: projectLink.value,
+    action: 'Xuất ra engine'
   }
 ])
+const ready = computed(() => projects.loaded && (!!tools.value || toolsError.value))
+const allDone = computed(() => steps.value.every((s) => s.done))
 const nextId = computed(() => steps.value.find((s) => !s.done)?.id)
 </script>
 
 <template>
-  <section class="gs card" aria-labelledby="gs-title">
+  <section v-if="ready && !allDone" class="gs card" aria-labelledby="gs-title">
     <img class="art" :src="ART.gettingStarted" alt="" width="148" height="148" draggable="false" />
     <div class="body">
       <h2 id="gs-title" class="large-title">Bắt đầu</h2>
-      <p class="secondary lead">Ba bước để có asset đầu tiên trong thư viện.</p>
+      <p class="secondary lead">Các bước để có asset đầu tiên và đưa vào engine.</p>
       <ol class="steps">
         <li v-for="(s, i) in steps" :key="s.id" class="step" :class="{ done: s.done, next: s.id === nextId }">
           <span class="mark" :aria-label="s.done ? 'Đã xong' : 'Chưa xong'">

@@ -6,6 +6,8 @@ import { Plus } from '@lucide/vue'
 import { ART } from '@/assets/art'
 import type { RunStatus } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
+import SectionTabs from '@/components/SectionTabs.vue'
+import { HISTORY_TABS } from '@/composables/navTabs'
 import RunRowItem from '@/components/RunRowItem.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
@@ -73,6 +75,7 @@ const total = computed(() => virtualizer.value.getTotalSize())
     <PageHeader title="Lượt chạy" :subtitle="`${runs.runList.length} lượt`">
       <RouterLink to="/new" class="btn btn-primary" aria-label="Tạo mới" title="Tạo mới"><Plus /> <span class="lbl">Tạo mới</span></RouterLink>
     </PageHeader>
+    <SectionTabs :tabs="HISTORY_TABS" current="/runs" label="Lịch sử" />
     <div class="bar">
       <div class="seg" role="tablist" aria-label="Lọc theo trạng thái">
         <button

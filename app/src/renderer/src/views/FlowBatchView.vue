@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight, CircleAlert, CircleStop, LoaderCircle, RotateC
 import type { FlowBatchDetail, FlowBatchRun, WorkflowStatus } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import EtaChip from '@/components/EtaChip.vue'
 import FlowStatusBadge from '@/components/FlowStatusBadge.vue'
 import RelTime from '@/components/RelTime.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
@@ -11,7 +12,9 @@ import { useFlows } from '@/stores/flows'
 import { api, useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 
+// Events refresh the batch; polling is only the fallback while the event socket is down.
 const POLL_MS = 2000
+const EVENT_DEBOUNCE_MS = 400
 
 const props = defineProps<{ id: string }>()
 const flows = useFlows()
@@ -42,8 +45,26 @@ async function load(): Promise<void> {
     if (!alive) return
     loadError.value = (e as Error).message
   }
-  if (alive && live.value) timer = setTimeout(() => void load(), POLL_MS)
+  if (alive && live.value && !conn.online) timer = setTimeout(() => void load(), POLL_MS)
 }
+
+const memberSig = computed(() =>
+  flows.runList
+    .filter((r) => r.batch_id === props.id)
+    .map((r) => `${r.id}:${r.updated_at}`)
+    .join()
+)
+watch(memberSig, () => {
+  if (!live.value && batch.value) return
+  clearTimeout(timer)
+  timer = setTimeout(() => void load(), EVENT_DEBOUNCE_MS)
+})
+watch(
+  () => conn.online,
+  (on) => {
+    if (batch.value || on) void load()
+  }
+)
 
 watch(
   () => [conn.transport, props.id] as const,
@@ -106,6 +127,7 @@ async function act(kind: 'cancel' | 'retry'): Promise<void> {
       <template v-if="batch" #subtitle>
         {{ flowTitle }} · <RelTime :ts="batch.created_at" /> · <span class="num">{{ total }}</span> lượt
       </template>
+      <EtaChip v-if="batch" :batch="batch" />
       <button v-if="failed" class="btn" :disabled="!!busy" aria-label="Chạy lại lỗi" title="Chạy lại các lượt lỗi" @click="act('retry')">
         <LoaderCircle v-if="busy === 'retry'" class="spin" />
         <RotateCw v-else />

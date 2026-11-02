@@ -10,7 +10,7 @@ import { api } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { useFocusTrap } from '@/composables/focusTrap'
 
-const props = defineProps<{ open: boolean; projectId: string }>()
+const props = defineProps<{ open: boolean; projectId: string; engine?: 'unity' | 'godot' }>()
 const emit = defineEmits<{ close: [] }>()
 
 const toasts = useToasts()
@@ -80,6 +80,7 @@ watch(
   (on) => {
     if (!on) return
     result.value = null
+    if (props.engine) engine.value = props.engine
     void load()
   },
   { immediate: true }

@@ -184,3 +184,14 @@ async def test_flow_batches_api(tmp_path: Path) -> None:
             assert (await wait("succeeded"))["counts"] == {"succeeded": 2}
             assert (await c.post(f"/api/flow-batches/{bid}/cancel")).json()["status"] == "succeeded"
             assert (await c.get("/api/flow-batches/nope")).status_code == 404
+
+
+async def test_batch_runs_carry_batch_id_and_lone_run_does_not(tmp_path: Path) -> None:
+    env = _benv(tmp_path, {"lin": LINEAR})
+    d = await env.engine.flows.batches.start(_body("lin", 2))
+    rows = [await env.engine.flows.get_run(r["id"]) for r in d["runs"]]
+    assert {r.batch_id for r in rows} == {d["id"]}
+    assert rows[0].model_dump(mode="json")["batch_id"] == d["id"]
+    lone = await env.engine.flows.start("lin", {"n": 1})
+    assert lone.batch_id is None
+    await env.engine.flows.wait_idle()

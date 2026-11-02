@@ -129,7 +129,25 @@ class SqliteRepo:
         if not run_ids:
             return {}
         out: dict[str, str] = {}
+        cached: dict[str, str | None] = {}
         # SQLite caps bound parameters per statement; 500 stays far below every build's limit.
+        for i in range(0, len(run_ids), 500):
+            chunk = run_ids[i:i + 500]
+            marks = ", ".join("?" for _ in chunk)
+            for r in await self.db.fetchall(f"SELECT id, preview_hash FROM runs WHERE id IN ({marks})", chunk):
+                cached[r["id"]] = r["preview_hash"]
+                if r["preview_hash"]:
+                    out[r["id"]] = r["preview_hash"]
+        stale = [rid for rid in dict.fromkeys(run_ids) if cached.get(rid) is None]
+        if stale:
+            computed = await self._compute_preview_hashes(stale)
+            out.update(computed)
+            await self.db.write_many("UPDATE runs SET preview_hash = ? WHERE id = ? AND preview_hash IS NULL",
+                                     [(computed.get(rid, ""), rid) for rid in stale])
+        return out
+
+    async def _compute_preview_hashes(self, run_ids: list[str]) -> dict[str, str]:
+        out: dict[str, str] = {}
         for i in range(0, len(run_ids), 500):
             chunk = run_ids[i:i + 500]
             marks = ", ".join("?" for _ in chunk)
@@ -154,6 +172,9 @@ class SqliteRepo:
 
     async def update_step(self, step_id: str, **fields: Any) -> None:
         await self._update(_STEPS, step_id, fields)
+        if "outputs" in fields:
+            await self.db.write("UPDATE runs SET preview_hash = NULL WHERE id = (SELECT run_id FROM steps WHERE id = ?)",
+                                (step_id,))
 
     async def get_step(self, step_id: str) -> StepRow | None:
         row = await self.db.fetchone("SELECT * FROM steps WHERE id = ?", (step_id,))
@@ -239,7 +260,7 @@ class SqliteRepo:
     async def versions_to_score(self, run_id: str | None = None, project_id: str | None = None,
                                 stale_than: int | None = None, limit: int = 500) -> list[VersionRow]:
         """Image versions, oldest first; with `stale_than`, only those unscored or scored by another QA version."""
-        where = ["json_extract(blob, '$.mime') LIKE 'image/%'"]
+        where = ["mime LIKE 'image/%'"]
         params: list[Any] = []
         if project_id is not None:
             where.append("project_id = ?")
@@ -382,7 +403,7 @@ class SqliteRepo:
             "SELECT status, COUNT(*) AS n FROM versions WHERE project_id = ? GROUP BY status", (project_id,))
         versions = {r["status"]: r["n"] for r in vrows}
         cover = await self.db.fetchone(
-            "SELECT blob FROM versions WHERE project_id = ? AND status != ? AND json_extract(blob, '$.mime') "
+            "SELECT blob FROM versions WHERE project_id = ? AND status != ? AND mime "
             "LIKE 'image/%' ORDER BY status = ? DESC, created_at DESC LIMIT 1",
             (project_id, VersionStatus.REJECTED.value, VersionStatus.APPROVED.value))
         cover_hash = orjson.loads(cover["blob"])["hash"] if cover else None

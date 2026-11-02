@@ -53,3 +53,15 @@ def test_level_pack_character_is_optional_and_reaches_scene(libs):
     assert d.inputs["character"].required is False
     scene = next(n for n in d.nodes if n.id == "scene")
     assert scene.map["character"] == "workflow.inputs.character"
+
+
+@pytest.mark.parametrize("fid", ["level-pack", "ui-pack"])
+def test_style_audit_node_is_optional_and_blocks_nothing(libs, fid):
+    _, flows = libs
+    d = flows.flows[fid]
+    style = next(n for n in d.nodes if n.recipe_id == "style-lock")
+    assert style.inputs == {"review": False}
+    deps = {parse_source(s)[0] for s in style.map.values()}
+    assert deps and deps <= {n.id for n in d.nodes if n.id != style.id}
+    for n in d.nodes:
+        assert style.id not in {parse_source(s)[0] for s in n.map.values()}

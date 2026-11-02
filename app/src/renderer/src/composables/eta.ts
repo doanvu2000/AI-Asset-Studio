@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import type { RunRow, StepRow } from '@/api/types'
+import type { RunRow, StepRow, WorkflowNodeStatus, WorkflowStatus } from '@/api/types'
 import { api, useConnection } from '@/stores/connection'
 
 // Fewer finished runs say little about how long a recipe takes.
@@ -64,4 +64,79 @@ export function etaLabel(eta: Eta): string {
   if (eta.kind === 'soon') return 'sắp xong'
   const min = Math.ceil(eta.seconds / 60)
   return min < 60 ? `còn ~${min} phút` : `còn ~${Math.floor(min / 60)} giờ ${min % 60 ? `${min % 60} phút` : ''}`.trim()
+}
+
+type NodeDef = { id: string; recipe_id: string; map?: Record<string, string> }
+const OPEN_NODE: ReadonlySet<WorkflowNodeStatus> = new Set(['pending', 'running'])
+
+function nodeDeps(n: NodeDef, ids: ReadonlySet<string>): string[] {
+  const out = new Set<string>()
+  for (const src of Object.values(n.map ?? {})) {
+    const ref = src.split('.')[0] ?? ''
+    if (ids.has(ref) && ref !== n.id) out.add(ref)
+  }
+  return [...out]
+}
+
+/**
+ * Seconds a workflow run still needs: the longest chain of unfinished nodes by recipe median, a running node
+ * counting only what its median leaves after `elapsed`. null when any unfinished node has no median.
+ */
+export function flowSecondsLeft(
+  nodes: readonly NodeDef[],
+  status: (nodeId: string) => WorkflowNodeStatus | undefined,
+  medians: ReadonlyMap<string, number>,
+  elapsed: (nodeId: string) => number
+): number | null {
+  const ids = new Set(nodes.map((n) => n.id))
+  const memo = new Map<string, number>()
+  let missing = false
+  const finish = (n: NodeDef, trail: ReadonlySet<string>): number => {
+    const known = memo.get(n.id)
+    if (known !== undefined) return known
+    if (trail.has(n.id)) return 0
+    const st = status(n.id)
+    let own = 0
+    if (st && OPEN_NODE.has(st)) {
+      const p50 = medians.get(n.recipe_id)
+      if (p50 === undefined) missing = true
+      else own = st === 'running' ? Math.max(0, p50 - elapsed(n.id)) : p50
+    }
+    const next = new Set(trail).add(n.id)
+    let before = 0
+    for (const d of nodeDeps(n, ids)) {
+      const dn = nodes.find((x) => x.id === d)
+      if (dn) before = Math.max(before, finish(dn, next))
+    }
+    memo.set(n.id, before + own)
+    return before + own
+  }
+  const total = nodes.reduce((m, n) => Math.max(m, finish(n, new Set())), 0)
+  return missing ? null : total
+}
+
+/** Batch estimate: runs queue on the same GPU lane, so the remaining node medians of every live run add up. */
+export function batchSecondsLeft(
+  nodes: readonly NodeDef[],
+  runs: readonly { status: WorkflowStatus; nodes: Record<string, WorkflowNodeStatus> }[],
+  medians: ReadonlyMap<string, number>
+): number | null {
+  let total = 0
+  let counted = 0
+  for (const r of runs) {
+    if (r.status !== 'queued' && r.status !== 'running') continue
+    for (const n of nodes) {
+      const st = r.nodes[n.id] ?? 'pending'
+      if (!OPEN_NODE.has(st)) continue
+      const p50 = medians.get(n.recipe_id)
+      if (p50 === undefined) return null
+      total += p50
+    }
+    counted += 1
+  }
+  return counted ? total : null
+}
+
+export function secondsEta(seconds: number | null): Eta | null {
+  return seconds === null ? null : seconds <= NEAR_DONE_S ? { kind: 'soon' } : { kind: 'left', seconds }
 }

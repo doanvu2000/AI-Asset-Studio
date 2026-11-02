@@ -258,7 +258,11 @@ def _replace_guid(root: Path, old: str, new: str) -> None:
 
 
 def _sha(p: Path) -> str:
-    return hashlib.sha256(p.read_bytes()).hexdigest()
+    h = hashlib.sha256()
+    with p.open("rb") as f:
+        while chunk := f.read(1 << 20):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def _rel(p: Path, root: Path) -> str:

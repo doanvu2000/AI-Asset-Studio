@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import { useDocumentVisibility } from '@vueuse/core'
 import { ArrowUpToLine, Gpu, Play } from '@lucide/vue'
 import type { GpuSlot, GpuState } from '@/api/types'
-import { api } from '@/stores/connection'
+import { api, useConnection } from '@/stores/connection'
 import { useGpu } from '@/stores/gpu'
 import { useRecipes } from '@/stores/recipes'
 import { useToasts } from '@/stores/toasts'
@@ -20,6 +20,7 @@ const toasts = useToasts()
 const visible = useDocumentVisibility()
 const now = useNow()
 const gpu = useGpu()
+const conn = useConnection()
 const { state } = storeToRefs(gpu)
 const busy = ref(false)
 const unwatch = gpu.watch()
@@ -28,7 +29,7 @@ let alive = true
 
 async function poll(): Promise<void> {
   try {
-    if (visible.value === 'visible') await gpu.load()
+    if (visible.value === 'visible' && (conn.socket !== 'open' || !state.value)) await gpu.load()
   } catch {
     /* keep the last reading; the core may be restarting */
   }

@@ -14,6 +14,7 @@ import BlobThumb from '@/components/BlobThumb.vue'
 import AssetViewer from '@/components/viewers/AssetViewer.vue'
 import AssetActions from '@/components/AssetActions.vue'
 import OpenInEngine from '@/components/OpenInEngine.vue'
+import ExportToEngine from '@/components/ExportToEngine.vue'
 import ViewsReport from '@/components/ViewsReport.vue'
 import MeshReport from '@/components/MeshReport.vue'
 import StyleLockReport from '@/components/StyleLockReport.vue'
@@ -448,6 +449,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
         <span class="pb-name lbl">{{ runProject.name }}</span>
         <span v-if="runProject.applied" class="pb-applied num lbl">· áp {{ runProject.applied.split(', ').length }}</span>
       </RouterLink>
+      <ExportToEngine v-if="runProject && run?.status === 'succeeded'" :project-id="runProject.id" />
       <RouterLink v-if="workflowId" :to="`/flows/runs/${workflowId}`" class="proj-badge" aria-label="Mở sơ đồ workflow" title="Mở sơ đồ workflow của lượt chạy này">
         <Waypoints :size="13" aria-hidden="true" />
         <span class="pb-name lbl">Thuộc workflow {{ flows.runs.get(workflowId)?.title ?? '' }}</span>

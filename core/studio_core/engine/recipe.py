@@ -116,6 +116,8 @@ class Recipe:
     rules: list[dict[str, Any]] = field(default_factory=list)
     # A blob hash, or the name of an image in the built-in recipes/previews folder.
     preview: str | None = None
+    # Default follow-up runs offered by the app; same entry shape as `$meta.then`, validated when a run starts them.
+    then: list[dict[str, Any]] = field(default_factory=list)
 
     def step(self, key: str) -> StepSpec:
         for s in self.steps:
@@ -153,7 +155,7 @@ class Recipe:
                           "map_param": s.map_param, **({"allow_fail": True} if s.allow_fail else {})})
         return RecipeInfo(id=self.id, name=self.name, description=self.description, inputs=self.inputs,
                           steps=steps, hash=self.hash, exports=recipe_exports(s.kind for s in self.steps),
-                          preview=self.preview, outputs=list(self.outputs))
+                          preview=self.preview, outputs=list(self.outputs), then=self.then)
 
 
 def coerce_value(name: str, spec: dict[str, Any], v: Any) -> Any:
@@ -443,8 +445,18 @@ def parse_recipe(raw_bytes: bytes, path: Path | None = None) -> Recipe:
     return Recipe(id=rid, name=str(doc.get("name") or rid), description=str(doc.get("description") or ""),
                   inputs=inputs, steps=_toposort(specs, where), outputs=outputs,
                   hash=blake3(raw_bytes).hexdigest(), path=path,
-                  rules=_parse_rules(where, doc.get("rules"), inputs), preview=_parse_preview(doc.get("preview")))
+                  rules=_parse_rules(where, doc.get("rules"), inputs), preview=_parse_preview(doc.get("preview")),
+                  then=_parse_then(where, doc.get("then")))
 
+
+
+def _parse_then(where: str, raw: Any) -> list[dict[str, Any]]:
+    if raw is None:
+        return []
+    ok = isinstance(raw, list) and all(isinstance(e, dict) and isinstance(e.get("recipe_id"), str) for e in raw)
+    if not ok:
+        raise RecipeError(f"{where}: then must be a list of {{recipe_id, map}} entries")
+    return [dict(e) for e in raw]
 
 
 @contextmanager

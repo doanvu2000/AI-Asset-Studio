@@ -424,7 +424,7 @@ class FlowEngine:
         return out
 
     async def start(self, fid: str, inputs: dict[str, Any] | None = None, project_id: str = DEFAULT_PROJECT,
-                    title: str = "") -> WorkflowRunRow:
+                    title: str = "", batch_id: str | None = None) -> WorkflowRunRow:
         if self._closed:
             raise FlowStateError("engine is shut down")
         d = self.get_def(fid)
@@ -436,7 +436,8 @@ class FlowEngine:
             raise FlowNotFound(f"unknown project: {project_id}")
         now = _now()
         wr = WorkflowRunRow(id=uuid.uuid4().hex, workflow_id=d.id, title=title or d.title, project_id=project_id,
-                            status=WS.QUEUED, def_snapshot=d.model_dump(mode="json", exclude={"source"}),
+                            status=WS.QUEUED, def_snapshot={**d.model_dump(mode="json", exclude={"source"}),
+                                          **({"$batch_id": batch_id} if batch_id else {})},
                             inputs=values, nodes={n.id: WorkflowNodeState() for n in d.nodes},
                             created_at=now, updated_at=now)
         await self.repo.create_workflow_run(wr)

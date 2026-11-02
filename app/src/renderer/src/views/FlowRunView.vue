@@ -7,6 +7,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import FlowStatusBadge from '@/components/FlowStatusBadge.vue'
 import ElapsedTimer from '@/components/ElapsedTimer.vue'
+import EtaChip from '@/components/EtaChip.vue'
 import StatusGlyph from '@/components/StatusGlyph.vue'
 import BlobImage from '@/components/BlobImage.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
@@ -191,6 +192,7 @@ async function cancel(): Promise<void> {
         <button type="button" role="radio" :aria-checked="viewMode === 'graph'" :class="{ on: viewMode === 'graph' }" title="Sơ đồ" aria-label="Sơ đồ" @click="setMode('graph')"><Workflow :size="14" /> <span class="lbl">Sơ đồ</span></button>
         <button type="button" role="radio" :aria-checked="viewMode === 'list'" :class="{ on: viewMode === 'list' }" title="Danh sách" aria-label="Danh sách" @click="setMode('list')"><List :size="14" /> <span class="lbl">Danh sách</span></button>
       </div>
+      <EtaChip v-if="detail" :flow="detail" />
       <FlowStatusBadge v-if="detail" :status="detail.status" />
       <template v-if="active">
         <button v-if="!confirmCancel" type="button" class="btn" aria-label="Huỷ workflow" title="Huỷ workflow" @click="confirmCancel = true"><CircleStop /> <span class="lbl">Huỷ workflow</span></button>
