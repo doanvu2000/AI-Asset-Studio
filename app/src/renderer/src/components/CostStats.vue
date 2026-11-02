@@ -362,6 +362,7 @@ const tipLeft = computed(() => {
 <style scoped>
 .sec {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 .sec-head {
@@ -454,6 +455,7 @@ const tipLeft = computed(() => {
 }
 .chart-card {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   padding: 12px 14px;
 }
@@ -464,6 +466,7 @@ const tipLeft = computed(() => {
 }
 .chart-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
 }
 .y-max {

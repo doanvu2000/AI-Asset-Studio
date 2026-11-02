@@ -276,12 +276,12 @@ function newAsset(): void {
         Cập nhật <RelTime :ts="project.updated_at" />
       </template>
       <template v-if="project">
-        <button type="button" class="btn btn-plain" :aria-pressed="isActive" :title="isActive ? 'Bỏ chọn: lượt chạy mới không thuộc dự án' : 'Lượt chạy mới mặc định thuộc dự án này'" @click="toggleActive">
+        <button type="button" class="btn btn-plain" :aria-pressed="isActive" :title="isActive ? 'Bỏ chọn: lượt chạy mới không thuộc dự án' : 'Lượt chạy mới mặc định thuộc dự án này'" :aria-label="isActive ? 'Đang chọn làm dự án hiện tại' : 'Chọn làm dự án hiện tại'" @click="toggleActive">
           <Check v-if="isActive" /> <FolderKanban v-else />
-          {{ isActive ? 'Đang chọn' : 'Chọn làm dự án hiện tại' }}
+          <span class="lbl">{{ isActive ? 'Đang chọn' : 'Chọn làm dự án hiện tại' }}</span>
         </button>
-        <button v-if="!project.archived" type="button" class="btn btn-plain" :disabled="archiving" @click="setArchived(true)"><Archive /> Lưu trữ</button>
-        <button v-else type="button" class="btn btn-plain" :disabled="archiving" @click="setArchived(false)"><ArchiveRestore /> Khôi phục</button>
+        <button v-if="!project.archived" type="button" class="btn btn-plain" :disabled="archiving" aria-label="Lưu trữ" title="Lưu trữ dự án" @click="setArchived(true)"><Archive /> <span class="lbl">Lưu trữ</span></button>
+        <button v-else type="button" class="btn btn-plain" :disabled="archiving" aria-label="Khôi phục" title="Khôi phục dự án" @click="setArchived(false)"><ArchiveRestore /> <span class="lbl">Khôi phục</span></button>
         <button type="button" class="btn" title="Đóng gói asset đã duyệt thành Unity package / Godot addon + zip trên máy" @click="packOpen = true"><Package /> Đóng gói</button>
         <button type="button" class="btn btn-primary" @click="newAsset"><Plus /> Tạo asset trong dự án</button>
       </template>
@@ -520,6 +520,11 @@ function newAsset(): void {
 </template>
 
 <style scoped>
+@media (max-width: 1360px) {
+  .lbl {
+    display: none;
+  }
+}
 .page {
   max-width: 880px;
   margin: 0 auto;

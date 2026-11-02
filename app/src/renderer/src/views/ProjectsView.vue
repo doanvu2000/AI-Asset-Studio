@@ -279,7 +279,9 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
   background: var(--accent);
 }
 .body {
-  display: grid;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   padding: 12px 14px 12px;
 }
@@ -319,7 +321,7 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin: 2px 0 0;
+  margin: auto 0 0;
   padding-top: 8px;
   border-top: 0.5px solid var(--separator);
 }

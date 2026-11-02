@@ -969,6 +969,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
 }
 .hero {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   max-width: 900px;
   margin-bottom: 24px;
@@ -1006,6 +1007,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
 
 .insp {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   max-width: 760px;
 }
@@ -1123,6 +1125,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
 
 .gate-inline {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
 }
 .gate-inline-head {

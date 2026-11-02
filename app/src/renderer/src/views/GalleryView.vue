@@ -231,7 +231,7 @@ const scroller = ref<HTMLElement | null>(null)
 const { width } = useElementSize(scroller)
 const GAP = 16
 const TILE_MIN = 176
-const CAPTION_H = 58
+const CAPTION_H = 74
 const inner = computed(() => Math.max(0, width.value))
 const cols = computed(() => Math.max(1, Math.floor((inner.value + GAP) / (TILE_MIN + GAP))))
 const tileW = computed(() => (inner.value - GAP * (cols.value - 1)) / cols.value)
@@ -543,9 +543,12 @@ function move(d: -1 | 1): void {
                   <span :key="g.status" class="pill">{{ STATUS_TEXT[g.status] }}</span>
                 </Transition>
               </div>
-              <p class="caption sub">
-                <template v-if="g.recipe">{{ g.recipe }} · </template>
+              <p class="caption sub" :title="g.recipe">
                 <RelTime :ts="g.created_at" />
+                <template v-if="g.recipe">
+                  <span>·</span>
+                  <span class="sub-recipe">{{ g.recipe }}</span>
+                </template>
               </p>
             </div>
           </article>
@@ -913,7 +916,7 @@ function move(d: -1 | 1): void {
   align-content: start;
   gap: 2px;
   padding: 9px 12px 0;
-  height: 58px;
+  height: 74px;
 }
 .m1 {
   display: flex;
@@ -925,12 +928,21 @@ function move(d: -1 | 1): void {
   flex: 1;
   min-width: 0;
   font-weight: 600;
-  white-space: nowrap;
+  line-height: 1.3;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .sub {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
   white-space: nowrap;
+}
+.sub-recipe {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
