@@ -1,0 +1,30 @@
+id: shadow-outline
+name: Bóng chân + viền đồng bộ cho bộ sprite
+description: >-
+  Thư mục / nhiều sprite PNG → thêm bóng chân (ellipse mờ dưới chân, theo bbox alpha, cùng cỡ cho cả bộ) và viền N px
+  (none / dark / #rrggbb; "dark" lấy màu tối nhất của ảnh palette, vd ảnh neo style bible) → canvas nới vừa đủ để
+  không cắt bóng / viền, mọi sprite cùng kích thước → JSON meta: pad mỗi cạnh, pivot mới, offset từng frame để engine
+  căn lại → duyệt. Chạy CPU.
+inputs:
+  image: {type: image, siblings: multi, label: Sprite (chọn nhiều)}
+  pivot: {type: file, ext: [json], required: false, label: "Pivot JSON {pivot:[x,y], width, height} (tuỳ chọn, mặc định = chân theo bbox)"}
+  palette_image: {type: image, required: false, label: "Ảnh lấy màu viền 'dark' (tuỳ chọn, vd ảnh neo style bible)"}
+  shadow: {type: enum, default: blob, options: [blob, drop, none], label: Bóng}
+  shadow_opacity: {type: float, default: 0.45, min: 0, max: 1, label: Độ đậm bóng}
+  outline: {type: text, default: dark, label: "Viền (none / dark / #rrggbb)"}
+  width: {type: int, default: 1, min: 1, max: 4, label: Độ dày viền (px)}
+  pixel: {type: bool, default: false, label: "Pixel art (cạnh cứng, không mờ)"}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: fx
+    kind: op.shadow_outline
+    in: {images: inputs.image, pivot: inputs.pivot, palette_image: inputs.palette_image}
+    params: {shadow: "${inputs.shadow}", shadow_opacity: "${inputs.shadow_opacity}", outline: "${inputs.outline}",
+             width: "${inputs.width}", pixel: "${inputs.pixel}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: fx.images, meta: fx.meta}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.preview
+  meta: approve.meta
