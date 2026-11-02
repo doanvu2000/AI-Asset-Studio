@@ -34,6 +34,8 @@ MIN_TILE_COVERAGE = 0.25
 UNKNOWN: tuple[()] = ()
 MERGE_RGB = 36.0
 RIM_BACKDROP = 0.55
+LONE_CELL_MAX = 4
+LONE_CELL_RGB = 48.0
 FLIP_MASK = 0x1FFFFFFF
 # Decoration layers carry no terrain: unmatched names would take a fallback colour and paint over the ground.
 NON_TERRAIN_LAYER_WORDS = ("shadow", "fog", "overlay", "decal")
@@ -87,6 +89,8 @@ class Loaded:
     scale: float = 1.0
     pois: list[Poi] = field(default_factory=list)
     kind: str = "image"
+    # (cols, rows) of the tile grid, so tile-level clean-up knows where the cells are.
+    grid: tuple[int, int] | None = None
 
 
 @dataclass
@@ -189,7 +193,7 @@ def _render_grid(w: int, h: int, tw: int, th: int, layers: list[tuple[str, list[
     s = min(1.0, MAX_RENDER / max(src))
     img = Image.fromarray(grid, "RGB").resize((max(1, round(src[0] * s)), max(1, round(src[1] * s))),
                                                Image.Resampling.NEAREST)
-    return Loaded(img.convert("RGBA"), src, s, kind="tilemap")
+    return Loaded(img.convert("RGBA"), src, s, kind="tilemap", grid=(w, h))
 
 
 def _poi_type(raw: str, name: str) -> str:
@@ -361,7 +365,9 @@ def _ldtk(doc: dict[str, Any], level: str, tiles: TileColors | None = None) -> L
                 cy = y + oy + eh * (0.5 - float(piv[1]))
                 name_e = _entity_name(e)
                 pois.append(Poi(name_e, _poi_type(str(e.get("__identifier") or ""), name_e), cx, cy))
-    return Loaded(canvas.convert("RGBA"), (pw, ph), s, pois, "ldtk")
+    gs = next((int(li.get("__gridSize") or 0) for li in pick["layerInstances"] if li.get("__type") != "Entities"), 0)
+    grid = (pw // gs, ph // gs) if gs and pw % gs == 0 and ph % gs == 0 else None
+    return Loaded(canvas.convert("RGBA"), (pw, ph), s, pois, "ldtk", grid)
 
 
 def load_source(data: bytes, name: str, level: str = "", tiles: TileColors | None = None,
@@ -457,7 +463,58 @@ def _merge_close(lab: np.ndarray, pal: np.ndarray) -> tuple[np.ndarray, np.ndarr
     return lut[lab], new_pal
 
 
-def clean_style(img: Image.Image, colors: int) -> Image.Image:
+def _absorb_lone_cells(lab: np.ndarray, rgb: np.ndarray, cols: int, rows: int,
+                       rect: tuple[int, int, int, int]) -> np.ndarray:
+    """A tiny tile cluster (<= LONE_CELL_MAX cells, e.g. a crossing tile) that quantised to a palette entry of its
+    own while >= 3/4 of the cells touching it share one label and its source colour is close to theirs takes that
+    label. A real small object differs strongly in source colour and stays."""
+    x0, y0, rw, rh = rect
+    cw, ch = rw / cols, rh / rows
+    if cw < 4 or ch < 4:
+        return lab
+    centre = np.zeros((rows, cols), np.int32)
+    mean = np.zeros((rows, cols, 3), np.float32)
+    for r in range(rows):
+        for c in range(cols):
+            cy, cx = int(y0 + (r + 0.5) * ch), int(x0 + (c + 0.5) * cw)
+            centre[r, c] = lab[min(lab.shape[0] - 1, cy), min(lab.shape[1] - 1, cx)]
+            mean[r, c] = rgb[max(0, cy - int(ch / 4)):cy + int(ch / 4) + 1,
+                             max(0, cx - int(cw / 4)):cx + int(cw / 4) + 1].reshape(-1, 3).mean(0)
+    out = lab.copy()
+    seen = np.zeros((rows, cols), bool)
+    for r0 in range(rows):
+        for c0 in range(cols):
+            if seen[r0, c0]:
+                continue
+            comp, stack = [], [(r0, c0)]
+            seen[r0, c0] = True
+            while stack and len(comp) <= LONE_CELL_MAX:
+                r, c = stack.pop()
+                comp.append((r, c))
+                for rr, cc in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)):
+                    if 0 <= rr < rows and 0 <= cc < cols and not seen[rr, cc] and centre[rr, cc] == centre[r0, c0]:
+                        seen[rr, cc] = True
+                        stack.append((rr, cc))
+            if stack or len(comp) > LONE_CELL_MAX:
+                for r, c in stack:
+                    seen[r, c] = False
+                continue
+            inside = set(comp)
+            around = {(rr, cc) for r, c in comp for rr, cc in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1))
+                      if 0 <= rr < rows and 0 <= cc < cols and (rr, cc) not in inside}
+            vals, n = np.unique([centre[rr, cc] for rr, cc in around], return_counts=True) if around else ([], [0])
+            if n.max() < 0.75 * len(around):
+                continue
+            near = [mean[rr, cc] for rr, cc in around if centre[rr, cc] == vals[n.argmax()]]
+            own = np.mean([mean[r, c] for r, c in comp], axis=0)
+            if np.linalg.norm(own - np.mean(near, axis=0)) < LONE_CELL_RGB:
+                for r, c in comp:
+                    out[int(y0 + r * ch):int(y0 + (r + 1) * ch), int(x0 + c * cw):int(x0 + (c + 1) * cw)] = vals[n.argmax()]
+    return out
+
+
+def clean_style(img: Image.Image, colors: int, cells: tuple[int, int, tuple[int, int, int, int]] | None = None
+                ) -> Image.Image:
     """Flat readable map: median-cut palette, mode filter to drop specks, then a dark line on region borders."""
     size = img.width
     # Screenshots carry noise / JPEG grain that would split one region into two palette colours.
@@ -469,6 +526,8 @@ def clean_style(img: Image.Image, colors: int) -> Image.Image:
     lab, pal = _merge_close(lab, pal)
     q = Image.fromarray(lab.astype(np.uint8), "L").filter(ImageFilter.ModeFilter(max(3, (size // 160) | 1)))
     lab = np.asarray(q, np.int32)
+    if cells:
+        lab = _absorb_lone_cells(lab, np.asarray(img.convert("RGB")), *cells)
     flat = pal[lab]
     edge = np.zeros(lab.shape, bool)
     edge[:, 1:] |= lab[:, 1:] != lab[:, :-1]
@@ -693,7 +752,8 @@ class MinimapBase(OpExecutor):
         canvas, rect = await asyncio.to_thread(fit_square, loaded.image, size, loaded.kind != "image")
         fit_scale = rect[2] / loaded.image.width
         placed = place_pois(pois, loaded.scale, rect, fit_scale)
-        base = await asyncio.to_thread(clean_style, canvas, colors) if style == "clean" else canvas
+        cells = (*loaded.grid, rect) if loaded.grid else None
+        base = await asyncio.to_thread(clean_style, canvas, colors, cells) if style == "clean" else canvas
         asset = _asset(params)
         base_ref = await _put_png(ctx, base, f"{asset}_base.png")
         restyle_in: list[BlobRef] = []

@@ -402,3 +402,24 @@ def test_rim_of_a_tile_map_stays_visible_against_the_backdrop():
     a = np.asarray(canvas)
     assert tuple(a[0, 0, :3]) != tuple(a[rect[1] + 2, rect[0] + 2, :3])
     assert a[0, 0, 1] < a[rect[1] + 2, rect[0] + 2, 1]
+
+
+
+def _crossing(cross_rgb: tuple[int, int, int]):
+    from studio_core.ops.minimap import _absorb_lone_cells
+
+    rgb = np.zeros((128, 128, 3), np.uint8)
+    rgb[:] = (111, 127, 75)
+    rgb[48:80, 48:80] = cross_rgb
+    lab = np.zeros((128, 128), np.int32)
+    lab[48:80, 48:80] = 1
+    return _absorb_lone_cells(lab, rgb, 8, 8, (0, 0, 128, 128))
+
+
+def test_lone_crossing_2x2_cluster_takes_the_road_label():
+    assert _crossing((85, 114, 51)).max() == 0
+
+
+def test_small_cluster_with_a_different_source_colour_is_kept():
+    out = _crossing((40, 90, 40))
+    assert (out[48:80, 48:80] == 1).all() and out.sum() == 32 * 32
