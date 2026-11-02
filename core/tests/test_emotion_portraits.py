@@ -145,3 +145,17 @@ def test_recipe_kinds_and_exports() -> None:
     kinds = [s.kind for s in recipe.steps]
     assert all(k in CATALOG for k in kinds if not k.startswith("comfy.")), kinds
     assert {"unity", "godot", "flutter", "android", "ios"} <= set(recipe_exports(kinds))
+
+
+def test_align_cutout_matches_scale_and_clamps():
+    from studio_core.ops.portrait import align_cutout, match_scale, rescale_about_center
+
+    base = cutout()
+    bigger = rescale_about_center(base, 1.06)
+    k = match_scale(base, bigger)
+    assert 0.93 < k < 0.97
+    img, _, used = align_cutout(base, bigger, 0.06)
+    assert abs(used - k) < 1e-3
+    bw = subject_box(base)[2] - subject_box(base)[0]
+    assert abs((subject_box(img)[2] - subject_box(img)[0]) - bw) <= 3
+    assert match_scale(base, rescale_about_center(base, 1.6)) == 0.8

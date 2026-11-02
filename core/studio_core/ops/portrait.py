@@ -81,15 +81,42 @@ class PortraitFrame(OpExecutor):
                           meta={"size": size, **info})
 
 
-def align_cutout(base: Image.Image, edit: Image.Image, max_shift: float) -> tuple[Image.Image, tuple[int, int]]:
+SCALE_RANGE = (0.8, 1.25)
+
+
+def match_scale(base: Image.Image, edit: Image.Image) -> float:
+    """Klein often returns the face a few % larger; the alpha box (shoulder width, head-to-shoulder height) gives the
+    factor that brings the edit back to the neutral's size."""
+    b, e = subject_box(base), subject_box(edit)
+    bw, bh, ew, eh = b[2] - b[0], b[3] - b[1], e[2] - e[0], e[3] - e[1]
+    if min(bw, bh, ew, eh) < 8:
+        return 1.0
+    return float(min(SCALE_RANGE[1], max(SCALE_RANGE[0], math.sqrt(bw / ew * bh / eh))))
+
+
+def rescale_about_center(img: Image.Image, k: float) -> Image.Image:
+    w, h = img.size
+    big = img.resize((max(1, round(w * k)), max(1, round(h * k))), Image.Resampling.LANCZOS)
+    out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    out.paste(big, (round((w - big.width) / 2), round((h - big.height) / 2)))
+    return out
+
+
+def align_cutout(base: Image.Image, edit: Image.Image, max_shift: float
+                 ) -> tuple[Image.Image, tuple[int, int], float]:
     edit = fit_to(edit.convert("RGBA"), base.size)
+    k = match_scale(base, edit)
+    if abs(k - 1) >= 0.01:
+        edit = rescale_about_center(edit, k)
+    else:
+        k = 1.0
     ref, mov = _gray(flat(base), ALIGN_SIDE), _gray(flat(edit), ALIGN_SIDE)
     dy, dx = phase_shift(ref, mov)
     scale = base.width / ref.shape[1]
     sx, sy = round(dx * scale), round(dy * scale)
     if abs(sx) > max_shift * base.width or abs(sy) > max_shift * base.height:
         sx = sy = 0
-    return shift_image(edit, sx, sy), (sx, sy)
+    return shift_image(edit, sx, sy), (sx, sy), k
 
 
 def atlas(images: list[Image.Image]) -> tuple[Image.Image, int, int]:
@@ -117,15 +144,17 @@ class PortraitSet(OpExecutor):
         max_shift = float(params.get("max_shift", 0.06))
         min_sim = float(params.get("min_similarity", 0.55))
         base = (await _load(ctx, base_ref)).convert("RGBA")
-        items: list[tuple[str, Image.Image, float | None, tuple[int, int]]] = [("neutral", base, None, (0, 0))]
+        items: list[tuple[str, Image.Image, float | None, tuple[int, int], float]] = [
+            ("neutral", base, None, (0, 0), 1.0)]
         for name, ref in zip(edit_names, edits):
-            img, shift = await asyncio.to_thread(align_cutout, base, await _load(ctx, ref), max_shift)
-            items.append((name, img, await asyncio.to_thread(similarity, flat(base), flat(img)), shift))
+            img, shift, k = await asyncio.to_thread(align_cutout, base, await _load(ctx, ref), max_shift)
+            items.append((name, img, await asyncio.to_thread(similarity, flat(base), flat(img)), shift, k))
         refs, rows = [], []
-        for name, img, sim, shift in items:
+        for name, img, sim, shift, k in items:
             ref = await _put_png(ctx, img, f"{asset}_{name}.png")
             refs.append(ref)
-            rows.append({"emotion": name, "file": ref.name, "hash": ref.hash, "similarity": sim, "shift": list(shift)})
+            rows.append({"emotion": name, "file": ref.name, "hash": ref.hash, "similarity": sim, "shift": list(shift),
+                         "scale": round(k, 4)})
         imgs = [it[1] for it in items]
         sheet, cols, nrows = await asyncio.to_thread(atlas, imgs)
         side = base.width
