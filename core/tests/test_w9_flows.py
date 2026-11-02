@@ -590,3 +590,27 @@ async def test_flows_api_end_to_end(tmp_path: Path) -> None:
             assert (await c.delete("/api/flows/builtin-one")).status_code == 400
             assert (await c.delete("/api/flows/flaky")).json() == {"ok": True, "restored_builtin": False}
             assert (await c.delete("/api/flows/flaky")).status_code == 404
+
+
+def _approving(env: Env) -> None:
+    repo = _repo(env)
+
+    async def list_versions(run_id=None, status=None, limit=200):
+        return [v for v in repo.versions.values()
+                if (run_id is None or v.run_id == run_id) and (status is None or v.status == status)]
+
+    async def set_status(version_id, status):
+        repo.versions[version_id] = repo.versions[version_id].model_copy(update={"status": status})
+        return repo.versions[version_id]
+
+    repo.list_versions, repo.set_version_status = list_versions, set_status  # type: ignore[method-assign]
+
+
+@pytest.mark.parametrize("auto, want", [(True, "approved"), (False, "draft")])
+async def test_auto_approve_input_approves_drafts_of_finished_nodes(tmp_path: Path, auto: bool, want: str) -> None:
+    env = _env(tmp_path, {"lin": {**LINEAR, "inputs": {**LINEAR["inputs"], "auto_approve": {"type": "bool", "default": False}}}})
+    _approving(env)
+    wr = await env.engine.flows.start("lin", {"n": 2, "auto_approve": auto})
+    await _settle(env, wr.id)
+    vs = list(_repo(env).versions.values())
+    assert vs and {v.status.value for v in vs} == {want}

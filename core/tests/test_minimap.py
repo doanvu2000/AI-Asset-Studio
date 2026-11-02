@@ -423,3 +423,9 @@ def test_lone_crossing_2x2_cluster_takes_the_road_label():
 def test_small_cluster_with_a_different_source_colour_is_kept():
     out = _crossing((40, 90, 40))
     assert (out[48:80, 48:80] == 1).all() and out.sum() == 32 * 32
+
+
+def test_technical_poi_names_are_not_labelled():
+    from studio_core.ops.minimap import is_meaningful_label
+    assert all(not is_meaningful_label(n) for n in ("SpriteSheet", "SamplePropCleanSwordTree", "poi_3", "tree_01.png", ""))
+    assert all(is_meaningful_label(n) for n in ("Town", "Boss", "Old mill"))

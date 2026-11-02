@@ -1,0 +1,15 @@
+id: ground-strip
+name: Bỏ cỏ / nền dưới chân nhân vật
+description: >-
+  Ảnh nhân vật đã tách nền → xoá mảng cỏ xanh dính dưới chân (thành phần xanh lá nằm trọn nửa dưới, nhỏ so với thân)
+  và các đốm rời nhỏ. Nhân vật vốn xanh lá (>20% pixel) được giữ nguyên. Chạy CPU, tất định.
+inputs:
+  image: {type: image, siblings: multi, label: Ảnh nhân vật (đã tách nền)}
+  margin: {type: int, default: 12, min: 0, max: 80, label: Ngưỡng xanh lá}
+steps:
+  - id: strip
+    kind: op.ground_strip
+    in: {images: inputs.image}
+    params: {margin: "${inputs.margin}"}
+outputs:
+  final: strip.images

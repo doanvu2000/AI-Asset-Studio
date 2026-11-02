@@ -165,9 +165,26 @@ def _tall() -> Image.Image:
 
 
 async def test_anim_scale_refuses_big_upscale(ctx):
-    big = Image.new("RGBA", (32, 48), (0, 0, 0, 0))
-    big.paste(Image.new("RGBA", (20, 44), (200, 0, 0, 255)), (6, 2))
+    big = Image.new("RGBA", (32, 96), (0, 0, 0, 0))
+    big.paste(Image.new("RGBA", (20, 88), (200, 0, 0, 255)), (6, 4))
     inputs = {"frames": [await put_img(ctx, big, f"b{i}.png") for i in range(8)]}
     inputs["sheet_idle"], inputs["meta_idle"] = await _half_anim(ctx, 2)
     res = await EnginePack().run(ctx, {"asset": "hero", "engines": "godot", "clips": "idle"}, inputs)
     assert res.meta["scaled"] == {} and res.meta["warnings"]
+
+
+async def test_stray_sized_direction_is_rescaled_on_its_feet(ctx):
+    small = Image.new("RGBA", (32, 48), (0, 0, 0, 0))
+    small.paste(Image.new("RGBA", (10, 18), (0, 200, 0, 255)), (11, 28))
+    frames = [await put_img(ctx, small if i == 0 else _tall(), f"s{i}.png") for i in range(8)]
+    res = await EnginePack().run(ctx, {"asset": "hero", "engines": "godot", "clips": "idle"}, {"frames": frames})
+    assert res.meta["scaled"] == {"dir_S": 2.0}
+
+
+async def test_median_direction_height_is_clip_reference(ctx):
+    small = Image.new("RGBA", (32, 48), (0, 0, 0, 0))
+    small.paste(Image.new("RGBA", (10, 18), (0, 200, 0, 255)), (11, 28))
+    inputs = {"frames": [await put_img(ctx, small if i == 0 else _tall(), f"m{i}.png") for i in range(8)]}
+    inputs["sheet_idle"], inputs["meta_idle"] = await _half_anim(ctx, 2)
+    res = await EnginePack().run(ctx, {"asset": "hero", "engines": "godot", "clips": "idle"}, inputs)
+    assert res.meta["scaled"]["idle"] == 2.0

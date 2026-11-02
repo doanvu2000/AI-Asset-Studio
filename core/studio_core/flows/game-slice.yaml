@@ -16,30 +16,35 @@ inputs:
   theme: {type: text, label: Chủ đề UI, default: "wooden frames with brass corners"}
   game_title: {type: text, label: Tên game}
   screen_brief: {type: text, label: Mô tả màn hình UI, default: ""}
+  auto_approve: {type: bool, label: Tự duyệt mọi kết quả khi node xong (để đóng gói ngay), default: true}
 nodes:
   - id: concept
     recipe_id: concept-2d
     title: Concept nhân vật
     map: {prompt: workflow.inputs.prompt}
+  - id: cutout
+    recipe_id: ground-strip
+    title: Bỏ cỏ / nền dưới chân concept
+    map: {image: "concept.outputs.final"}
   - id: sprite
     recipe_id: sprite-8dir-2d
     title: Sprite 8 hướng từ concept
-    map: {image: "concept.outputs.final[0]"}
+    map: {image: "cutout.outputs.final[0]"}
   - id: anim_idle
     recipe_id: sprite-anim-video
     title: Anim đứng thở
     inputs: {action: idle}
-    map: {image: "concept.outputs.final[0]"}
+    map: {image: "cutout.outputs.final[0]"}
   - id: anim_walk
     recipe_id: sprite-anim-video
     title: Anim đi bộ
     inputs: {action: walk}
-    map: {image: "concept.outputs.final[0]"}
+    map: {image: "cutout.outputs.final[0]"}
   - id: anim_attack
     recipe_id: sprite-anim-video
     title: Anim tấn công
     inputs: {action: slash}
-    map: {image: "concept.outputs.final[0]"}
+    map: {image: "cutout.outputs.final[0]"}
   - id: engine
     recipe_id: character-engine-pack
     title: Atlas + gói Unity / Godot

@@ -27,6 +27,7 @@ from ..contracts import (
     STEP_DONE_OK,
     RunRow,
     RunStatus,
+    VersionStatus,
     WorkflowDef,
     WorkflowNodeState,
     WorkflowNodeStatus as NS,
@@ -597,7 +598,10 @@ class FlowEngine:
                 wr.nodes[nid] = WorkflowNodeState(attempts=ns.attempts)
                 continue
             children[nid] = run
+            was = ns.status
             ns.status = _RUN_TO_NODE.get(run.status, NS.RUNNING)
+            if ns.status == NS.SUCCEEDED and was != NS.SUCCEEDED and wr.inputs.get("auto_approve") is True:
+                await self._approve_drafts(run.id)
             ns.error = (run.error or run.status.value) if ns.status in (NS.FAILED, NS.CANCELLED) else None
         deps = flow_deps(d)
         changed = True
@@ -620,6 +624,14 @@ class FlowEngine:
                     ns.status = want
                     changed = True
         self._roll_up(wr)
+
+    async def _approve_drafts(self, run_id: str) -> None:
+        """`auto_approve` flows are one-click: the packer only takes approved versions, so draft outputs of a node
+        that finished are approved here; rejected ones stay rejected."""
+        for v in await self.repo.list_versions(run_id=run_id, status=VersionStatus.DRAFT):
+            upd = await self.repo.set_version_status(v.id, VersionStatus.APPROVED)
+            if upd is not None:
+                self.engine.bus.publish("version.updated", upd.model_dump(mode="json"), run_id=run_id)
 
     def _can_start(self, wr: WorkflowRunRow) -> bool:
         return wr.status != WS.CANCELLED and not self._closed and not getattr(self.engine, "_closed", False)

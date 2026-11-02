@@ -21,7 +21,10 @@ DIRECTIONS = 8
 PIVOT_PAD = 0.06
 ALPHA_MIN = 8
 # Beyond this the anim was generated so small that upscaling it would only blur; keep it and warn.
-MAX_MATCH_SCALE = 2.0
+MAX_MATCH_SCALE = 4.0
+# A direction sprite this far off the median direction height is a stray-sized view (the front view is often the
+# unscaled concept) and is rescaled on its feet.
+DIR_OUTLIER = 0.15
 _ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
 
@@ -84,9 +87,22 @@ def _match_scale(frames: list[Image.Image], ref_h: int) -> float | None:
     return ref_h / heights[len(heights) // 2]
 
 
+def _rescale_on_feet(img: Image.Image, k: float, pixel: bool) -> Image.Image | None:
+    box = img.getchannel("A").point(lambda a: 255 if a >= ALPHA_MIN else 0).getbbox()
+    if not box:
+        return None
+    size = (max(1, round(img.width * k)), max(1, round(img.height * k)))
+    scaled = img.resize(size, Image.NEAREST if pixel else Image.LANCZOS)
+    dx = round((box[0] + box[2]) / 2 - (box[0] + box[2]) / 2 * k)
+    dy = round(box[3] - box[3] * k)
+    out = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    out.paste(scaled.convert("RGBA"), (dx, dy))
+    return out
+
+
 class EnginePack(OpExecutor):
     kind = "op.engine_pack"
-    version = "3"
+    version = "4"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         from ..export.atlas import AtlasError, AtlasOptions, Sprite, engine_files, pack
@@ -122,7 +138,18 @@ class EnginePack(OpExecutor):
             dir_sprites[compass(angle)] = (angle, s)
             sprites.append(s)
 
-        ref_h = _body_height(dir_sprites["S"][1].image) if "S" in dir_sprites else 0
+        dir_heights = sorted(h for h in (_body_height(s.image) for _, s in dir_sprites.values()) if h)
+        ref_h = dir_heights[len(dir_heights) // 2] if dir_heights else 0
+        if match_scale and ref_h:
+            for name, (_, s) in dir_sprites.items():
+                h = _body_height(s.image)
+                if h and abs(h / ref_h - 1) > DIR_OUTLIER and ref_h / h <= MAX_MATCH_SCALE:
+                    fixed = _rescale_on_feet(s.image, ref_h / h, pixel)
+                    if fixed is not None and _body_height(fixed) >= ref_h * 0.97:
+                        s.image = fixed
+                        scales[f"dir_{name}"] = round(ref_h / h, 3)
+                    else:
+                        warnings.append(f"direction {name} is {h}px tall vs {ref_h}px median, rescale would clip")
 
         for raw in str(params.get("clips") or DEFAULT_CLIPS).split(","):
             if not raw.strip():

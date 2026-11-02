@@ -674,11 +674,21 @@ def _font(px: int) -> ImageFont.ImageFont | ImageFont.FreeTypeFont:
     return ImageFont.load_default()
 
 
-def preview(img: Image.Image, pois: list[Poi], shape: str, icon: int) -> Image.Image:
+def is_meaningful_label(name: str) -> bool:
+    """Names generators leave behind ("SpriteSheet", "poi_3", "tree_01.png") are not labels a player should read."""
+    n = name.strip()
+    if not n or re.fullmatch(r"poi[_ ]?\d*", n, re.I) or len(n) > 24:
+        return False
+    return not (re.search(r"[a-z][A-Z]", n) or re.search(r"[_\d.]", n))
+
+
+def preview(img: Image.Image, pois: list[Poi], shape: str, icon: int, labels: str = "auto") -> Image.Image:
     out = framed(img, shape)
     d = ImageDraw.Draw(out)
     font = _font(max(11, img.width // 40))
     for p in pois:
+        if labels == "none" or (labels == "auto" and not is_meaningful_label(p.name)):
+            continue
         x, y = p.px[0] + icon // 2 + 3, p.px[1] - icon // 2
         d.text((x, y), p.name, font=font, fill=(255, 255, 255, 255), stroke_width=2, stroke_fill=(20, 18, 24, 255))
     return out
@@ -779,7 +789,7 @@ class MinimapBase(OpExecutor):
 
 class MinimapFinish(OpExecutor):
     kind = "op.minimap_finish"
-    version = "1"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         if not inputs.get("base") or not inputs.get("info"):
@@ -792,6 +802,7 @@ class MinimapFinish(OpExecutor):
         if edits:
             img = (await _load(ctx, edits[0])).convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
         icon = _int_param(params, "icon", max(13, size // 22) | 1, 7, 255) | 1
+        labels = _choice(params, "labels", ("auto", "all", "none"))
         icons: dict[str, Image.Image] = {}
         for r in inputs.get("icons") or []:
             icons[Path((r.name or "").lower()).stem.split("_")[0]] = await _load(ctx, r)
@@ -806,7 +817,7 @@ class MinimapFinish(OpExecutor):
         map_ref = await _put_png(ctx, out, f"{asset}_minimap.png")
         frame_ref = await _put_png(ctx, await asyncio.to_thread(framed, out, shape), f"{asset}_minimap_framed.png")
         mask_ref = await _put_png(ctx, mask_rgba, f"{asset}_minimap_mask.png")
-        prev_ref = await _put_png(ctx, await asyncio.to_thread(preview, out, pois, shape, icon),
+        prev_ref = await _put_png(ctx, await asyncio.to_thread(preview, out, pois, shape, icon, labels),
                                   f"{asset}_minimap_preview.png")
         outside = []
         r = size / 2
