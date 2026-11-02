@@ -350,3 +350,16 @@ async def test_recompute_reaches_old_unscored_and_keeps_scores(client) -> None:
     r = (await c.post("/api/qa/recompute", json={"missing_only": False}, headers=AUTH)).json()
     assert r["skipped"] == 1 and r["updated"] == 4
     assert (await repo.get_version("gone")).qa == {"version": 1, "score": 88}
+
+
+async def test_qa_reads_shadow_outline_step(tmp_path: Path) -> None:
+    from studio_core.engine.qa import build_context
+
+    blobs = FakeBlobs(tmp_path)
+    ref = BlobRef(hash="h", mime="image/png", size=1, name="sheet.png")
+    meta = await blobs.put_bytes(b'{"outline": "#112233"}', name="shadow_outline.json", mime="application/json")
+    steps = [StepRow(id="a", run_id="r", key="fx", kind="op.shadow_outline", lane=Lane.CPU,
+                     params={"shadow": "blob", "outline": "dark"}, outputs={"meta": [meta]}),
+             StepRow(id="c", run_id="r", key="sheet", kind="op.sheet", lane=Lane.CPU, deps=["fx"])]
+    ctx = await build_context(blobs, steps, steps[1], ref)
+    assert ctx.shadow and (0x11, 0x22, 0x33) in ctx.extra_colors

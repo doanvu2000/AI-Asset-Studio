@@ -338,9 +338,15 @@ async def build_context(blobs: BlobStore, steps: Iterable[StepRow], step: StepRo
     ctx.tile = not any(s.kind == "op.tile_wang" for s in chain) and any(
         s.kind in TILE_KINDS and any(b.hash == ref.hash for outs in s.outputs.values() for b in outs) for s in chain)
     for s in chain:
-        if s.kind == "op.sprite_fx":
+        if s.kind in ("op.sprite_fx", "op.shadow_outline"):
+            params = s.params
+            if s.kind == "op.shadow_outline":
+                # "dark" resolves against the palette image at run time; the saved meta holds the final colour.
+                metas = s.outputs.get("meta") or []
+                info = await _json_blob(blobs, metas[0]) if metas else None
+                params = {**params, "outline": (info or {}).get("outline") if isinstance(info, dict) else None}
             try:
-                fx = FxParams.from_params(s.params)
+                fx = FxParams.from_params(params)
             except (ValueError, TypeError):
                 continue
             if fx.shadow != "none" and not fx.normal:
