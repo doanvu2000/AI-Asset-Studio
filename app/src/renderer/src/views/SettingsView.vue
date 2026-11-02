@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
-import { ArrowDown, ArrowUp, Copy, Download, FolderCog, Lock, LoaderCircle, Plus, Save, ScrollText, Sparkles, SunMoon, Trash2 } from '@lucide/vue'
+import { ArrowDown, ArrowUp, Bell, Copy, Download, FolderCog, Lock, LoaderCircle, Plus, Save, ScrollText, Sparkles, SunMoon, Trash2 } from '@lucide/vue'
 import type { Compass, ExportPreset } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import DiagnosticsPanel from '@/components/DiagnosticsPanel.vue'
@@ -13,6 +13,7 @@ import { usePaneWidth } from '@/composables/paneSize'
 import { useUnsavedChanges } from '@/composables/unsaved'
 import { THEME_OPTIONS, useTheme } from '@/composables/theme'
 import { APP_VERSION, whatsNewOpen } from '@/composables/changelog'
+import { notifyEnabled } from '@/composables/notifyPrefs'
 import { usePresets } from '@/stores/catalog'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
@@ -41,13 +42,14 @@ const presetSummary = (p: ExportPreset): string =>
 
 const route = useRoute()
 const selectedId = ref<string>('studio')
-const pane = ref<'look' | 'setup' | 'tools' | 'diag' | null>(null)
+const pane = ref<'look' | 'notify' | 'setup' | 'tools' | 'diag' | null>(null)
 const theme = useTheme()
+const notifyAvailable = !!window.studio
 // Deep links such as the offline screen's "Mở Cài đặt → Đường dẫn" (/settings?pane=tools).
 watch(
   () => route.query.pane,
   (q) => {
-    if (q === 'look' || q === 'setup' || q === 'tools' || q === 'diag') pane.value = q
+    if (q === 'look' || q === 'notify' || q === 'setup' || q === 'tools' || q === 'diag') pane.value = q
   },
   { immediate: true }
 )
@@ -195,6 +197,11 @@ async function remove(): Promise<void> {
           <SunMoon :size="13" class="lock" aria-hidden="true" />
           <span class="i-sub caption">{{ THEME_OPTIONS.find((o) => o[0] === theme.mode.value)?.[1] }}</span>
         </button>
+        <button v-if="notifyAvailable" class="item" :class="{ on: pane === 'notify' }" @click="pane = 'notify'">
+          <span class="i-name">Thông báo</span>
+          <Bell :size="13" class="lock" aria-hidden="true" />
+          <span class="i-sub caption">{{ notifyEnabled ? 'Đang bật' : 'Đã tắt' }}</span>
+        </button>
         <button class="item" :class="{ on: pane === 'setup' }" @click="pane = 'setup'">
           <span class="i-name">Cài tự động</span>
           <Download :size="13" class="lock" aria-hidden="true" />
@@ -257,6 +264,23 @@ async function remove(): Promise<void> {
               </button>
             </div>
             <p class="caption help">Áp dụng ngay, nhớ cho lần mở sau. Cũng đổi nhanh được qua Ctrl K → “Giao diện”.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section v-else-if="pane === 'notify'" class="scroll pane">
+        <div class="form">
+          <header class="f-head">
+            <div>
+              <p class="section-label eyebrow">Hệ thống</p>
+              <h2 class="content-title">Thông báo</h2>
+            </div>
+          </header>
+          <div class="f">
+            <span class="lbl">Thông báo Windows</span>
+            <div>
+              <label class="check"><input v-model="notifyEnabled" type="checkbox" /> Báo khi lượt chạy hoặc workflow xong, lỗi hay cần duyệt</label>
+              <p class="caption help">Chỉ báo khi cửa sổ không được focus; từ 3 lượt cùng lúc thì gộp thành một thông báo. Bấm thông báo để mở lượt đó.</p>
             </div>
           </div>
         </div>
@@ -493,6 +517,12 @@ async function remove(): Promise<void> {
 }
 .help {
   margin-top: 5px;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
 }
 .inline {
   display: flex;

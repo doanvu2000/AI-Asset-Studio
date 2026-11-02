@@ -1,14 +1,26 @@
 import { computed, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import type { RunRow, RunStatus } from '@/api/types'
+import type { RunRow, RunStatus, WorkflowStatus } from '@/api/types'
 import { STEP_DONE_OK } from '@/api/types'
 import type { AppNotification, ProgressMode } from '../../../preload/types'
 import { useRuns } from '@/stores/runs'
 import { useRecipes } from '@/stores/recipes'
+import { useFlows } from '@/stores/flows'
+import { notifyEnabled } from './notifyPrefs'
 
-const NOTIFY_ON: ReadonlySet<RunStatus> = new Set(['awaiting_human', 'succeeded', 'failed'])
+const NOTIFY_ON: ReadonlySet<string> = new Set(['awaiting_human', 'succeeded', 'failed'])
 // A batch finishing fires many transitions at once; they are folded into one notification.
 const COALESCE_MS = 1500
+// Three or more finishing together read as noise, so they become one summary toast.
+const SUMMARY_MIN = 3
+
+interface Pending {
+  label: string
+  status: string
+  route: string
+  error: string | null
+  flow?: boolean
+}
 
 /** Taskbar progress + OS notifications driven by the runs store (read-only). */
 export function useShellIntegration(): void {
@@ -16,6 +28,7 @@ export function useShellIntegration(): void {
   if (!bridge) return
   const runs = useRuns()
   const recipes = useRecipes()
+  const flows = useFlows()
   const router = useRouter()
 
   const runFraction = (id: string): number | null => {
@@ -50,33 +63,43 @@ export function useShellIntegration(): void {
 
   const label = (r: RunRow): string => r.title || recipes.byId(r.recipe_id)?.name || 'Lượt chạy'
   const seen = new Map<string, RunStatus>()
+  const seenFlows = new Map<string, WorkflowStatus>()
   let primed = false
-  let primedAt = 0
-  let pending: Array<{ run: RunRow; status: RunStatus }> = []
+  let primedAt = Date.now() / 1000
+  let pending: Pending[] = []
   let timer = 0
+
+  function notifyOne(p: Pending): void {
+    const n: AppNotification =
+      p.status === 'awaiting_human'
+        ? { title: 'Cần bạn duyệt', body: `${p.label} đang chờ bạn chọn hoặc duyệt.`, route: p.flow ? p.route : '/gates' }
+        : p.status === 'succeeded'
+          ? { title: 'Đã xong', body: `${p.label} đã hoàn tất.`, route: p.route }
+          : { title: p.flow ? 'Workflow bị lỗi' : 'Lượt chạy bị lỗi', body: `${p.label}: ${p.error ?? 'mở để xem chi tiết.'}`, route: p.route }
+    bridge!.notify(n)
+  }
 
   function flush(): void {
     const batch = pending
     pending = []
-    if (!batch.length) return
-    if (batch.length === 1) {
-      const { run, status } = batch[0]!
-      const n: AppNotification =
-        status === 'awaiting_human'
-          ? { title: 'Cần bạn duyệt', body: `${label(run)} đang chờ bạn chọn hoặc duyệt.`, route: '/gates' }
-          : status === 'succeeded'
-            ? { title: 'Đã xong', body: `${label(run)} đã hoàn tất.`, route: `/runs/${run.id}` }
-            : { title: 'Lượt chạy bị lỗi', body: `${label(run)}: ${run.error ?? 'mở để xem chi tiết.'}`, route: `/runs/${run.id}` }
-      bridge!.notify(n)
+    if (!notifyEnabled.value || !batch.length) return
+    if (batch.length < SUMMARY_MIN) {
+      batch.forEach(notifyOne)
       return
     }
-    const count = (s: RunStatus): number => batch.filter((b) => b.status === s).length
+    const count = (s: string): number => batch.filter((b) => b.status === s).length
     const parts = [
       count('succeeded') && `${count('succeeded')} lượt đã xong`,
       count('awaiting_human') && `${count('awaiting_human')} cần duyệt`,
       count('failed') && `${count('failed')} bị lỗi`
     ].filter(Boolean)
     bridge!.notify({ title: 'AI Asset Studio', body: parts.join(' · '), route: count('awaiting_human') ? '/gates' : '/runs' })
+  }
+
+  function queue(p: Pending): void {
+    pending.push(p)
+    window.clearTimeout(timer)
+    timer = window.setTimeout(flush, COALESCE_MS)
   }
 
   watch(
@@ -90,16 +113,25 @@ export function useShellIntegration(): void {
         // A fully cached run can be created and finish within one event frame, so it is first seen already done.
         const bornDone = prev === undefined && r.created_at >= primedAt
         if (!primed || (prev === undefined && !bornDone) || prev === r.status || !NOTIFY_ON.has(r.status)) continue
-        pending.push({ run: r, status: r.status })
+        queue({ label: label(r), status: r.status, route: `/runs/${r.id}`, error: r.error })
       }
       if (!primed) primedAt = Date.now() / 1000
       primed = true
-      if (pending.length) {
-        window.clearTimeout(timer)
-        timer = window.setTimeout(flush, COALESCE_MS)
-      }
     },
     { immediate: true }
+  )
+
+  watch(
+    () => flows.runList,
+    (list) => {
+      for (const r of list) {
+        const prev = seenFlows.get(r.id)
+        seenFlows.set(r.id, r.status)
+        const fresh = prev === undefined && r.created_at >= primedAt
+        if ((prev === undefined && !fresh) || prev === r.status || !NOTIFY_ON.has(r.status)) continue
+        queue({ label: r.title || 'Workflow', status: r.status, route: `/flows/runs/${r.id}`, error: r.error, flow: true })
+      }
+    }
   )
 
   const off = bridge.onNavigate((route) => void router.push(route))

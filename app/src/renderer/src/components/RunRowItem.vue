@@ -10,6 +10,7 @@ import { useRecipes } from '@/stores/recipes'
 import { useRuns } from '@/stores/runs'
 import RunStatusBadge from './RunStatusBadge.vue'
 import ElapsedTimer from './ElapsedTimer.vue'
+import EtaChip from './EtaChip.vue'
 import RelTime from './RelTime.vue'
 import BlobImage from './BlobImage.vue'
 import ScoreBadge from './ScoreBadge.vue'
@@ -42,6 +43,7 @@ const review = computed(() => (props.steps ? latestReview(props.steps) : null))
       <div class="l1">
         <span class="title-text" :title="run.title || recipeName">{{ run.title || recipeName }}</span>
         <RunStatusBadge :status="run.status" />
+        <EtaChip v-if="run.status === 'running'" :run="run" :steps="steps" />
         <ScoreBadge v-if="review" :score="review.score" :history="review.history" />
       </div>
       <div class="l2 caption">
