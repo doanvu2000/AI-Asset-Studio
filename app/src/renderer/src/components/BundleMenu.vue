@@ -129,6 +129,14 @@ function shaderOpts(): Pick<EngineExportOptions, 'shaders' | 'shader_params'> {
 const MOBILE_KEY = 'export:mobile'
 const mobile = ref(readPref(MOBILE_KEY) === 'on')
 watch(mobile, (v) => writePref(MOBILE_KEY, v ? 'on' : 'off'))
+const PACKAGE_RE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/
+const WEBP_KEY = 'export:webp'
+const webp = ref(readPref(WEBP_KEY) === 'on')
+watch(webp, (v) => writePref(WEBP_KEY, v ? 'on' : 'off'))
+const androidPackage = ref('com.example.assets')
+const hasFlutter = computed(() => engines.value.includes('flutter'))
+const hasAndroid = computed(() => engines.value.includes('android'))
+const packageOk = computed(() => PACKAGE_RE.test(androidPackage.value.trim()))
 // The export-options endpoint has no mesh flag, so ask the step's own outputs; unloaded step falls back to its kind.
 const isMesh = computed(() => {
   const s = runs.steps.get(props.stepId)
@@ -172,7 +180,9 @@ function engineOpts(): EngineExportOptions {
     ...shaderOpts(),
     ...materialOpts(),
     ...(hits ? { hits } : {}),
-    ...(mobile.value ? { mobile: true } : {})
+    ...(mobile.value ? { mobile: true } : {}),
+    ...(hasFlutter.value && webp.value ? { webp: true } : {}),
+    ...(hasAndroid.value && packageOk.value ? { package: androidPackage.value.trim() } : {})
   }
   const normal = {
     ...(opts.value?.normal2d && normal2d.value ? { normal2d: true, normal2d_strength: strengthValid.value ? normalStrength.value : 1 } : {}),
@@ -521,6 +531,16 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
                 <span class="b-opt-label">Ngân sách mobile</span>
               </label>
             </div>
+            <div v-if="hasFlutter" class="b-opt">
+              <label class="b-check" title="Flutter: ảnh density lưu WebP không mất dữ liệu thay vì PNG">
+                <input v-model="webp" type="checkbox" />
+                <span class="b-opt-label">Flutter: ảnh WebP</span>
+              </label>
+            </div>
+            <label v-if="hasAndroid" class="b-opt">
+              <span class="b-opt-label" title="Package của AssetStudioAssets.kt, trùng namespace của app">Android package</span>
+              <input v-model="androidPackage" class="field num b-pkg" :class="{ bad: !packageOk }" spellcheck="false" placeholder="com.example.app" aria-label="Android package" :aria-invalid="!packageOk" />
+            </label>
             <p v-if="showSprite2d && !ppuValid" class="b-err caption">PPU từ 1 đến 10000 — đang dùng 100</p>
           </div>
         </div>
@@ -618,7 +638,12 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
   height: 26px;
   text-align: right;
 }
-.b-ppu.bad {
+.b-pkg {
+  width: 160px;
+  height: 26px;
+}
+.b-ppu.bad,
+.b-pkg.bad {
   box-shadow: 0 0 0 1.5px var(--danger);
 }
 .b-seg {

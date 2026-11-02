@@ -649,10 +649,13 @@ class StudioTools:
         raise ToolError(f"no finished step of run {run_id} exports to {engine}")
 
     async def export_to_engine(self, step_id: str | None, run_id: str | None, engine: str, dest_dir: str | None,
-                               name: str | None, ppu: float, pixel: bool | None) -> dict[str, Any]:
+                               name: str | None, ppu: float, pixel: bool | None, package: str | None = None,
+                               webp: bool = False) -> dict[str, Any]:
         if (step_id is None) == (run_id is None):
             raise ToolError("pass exactly one of step_id or run_id")
         dest: Path | None = None
+        if dest_dir and engine in ("flutter", "android", "ios"):
+            raise ToolError(f"dest_dir is only for unity/godot; {engine} exports are read from export_dir")
         if dest_dir:
             dest = Path(dest_dir)
             if not dest.is_absolute() or not await asyncio.to_thread(dest.is_dir):
@@ -670,6 +673,10 @@ class StudioTools:
             body["name"] = name
         if pixel is not None:
             body["pixel"] = pixel
+        if package:
+            body["package"] = package
+        if webp:
+            body["webp"] = True
         out = await self._call("POST", f"/api/steps/{sid}/export", json=body)
         res: dict[str, Any] = {"step_id": sid, "engine": engine, "export_dir": out["dir"], "name": out.get("name")}
         if dest is not None:
@@ -974,22 +981,28 @@ def build_server(link: CoreLink) -> MCPServer:
                                  json={"vision": vision}, timeout=300)
 
     @mcp.tool(annotations=acts)
-    async def build_asset_pack(project_id: str, engines: list[Literal["unity", "godot"]] | None = None,
+    async def build_asset_pack(project_id: str, engines: list[Literal["flutter", "android", "ios", "unity", "godot"]] | None = None,
                                license: Literal["cc0", "cc-by-4.0", "proprietary"] = "cc0",
                                version: str | None = None, include: list[str] | None = None,
                                out_dir: str | None = None, author: str = "", org: str = "assetstudio",
-                               description: str = "", atlas: bool = False, mobile: bool = False
-                               ) -> dict[str, Any]:
-        """Package a project's approved assets into a Unity UPM package and/or Godot addon folder + zip on local
-        disk (never pushed anywhere), with README, CHANGELOG (vs the previous pack), LICENSE and provenance.json
+                               description: str = "", atlas: bool = False, mobile: bool = False,
+                               package: str | None = None, webp: bool = False) -> dict[str, Any]:
+        """Package a project's approved assets into per-engine folders + zip on local disk (never pushed anywhere):
+        flutter (main target: assets/ + merged pubspec + Assets.dart), android (res/drawable-*dpi + Kotlin helper),
+        ios (xcassets + Swift helper), Unity UPM package and/or Godot addon, with README, CHANGELOG (vs the previous pack), LICENSE and provenance.json
         (recipe, models + licenses, prompts, seeds per asset; assets made with non-commercial/unverified models are
         flagged). version None = previous pack's patch + 1; include = approved version ids (None = all);
         out_dir = absolute folder (None = <data>/packs). atlas = also pack every 2D sprite into one trimmed atlas
         (2048 POT pages; Unity pre-sliced sprites, Godot AtlasTexture .tres; result.atlas has bytes before/after).
         mobile = Android/iOS texture budget (ASTC/ETC2, max size, mipmaps per asset type; result.mobile has the
-        estimated GPU memory table)."""
-        body: dict[str, Any] = {"engines": engines or ["unity"], "license": license, "author": author, "org": org,
+        estimated GPU memory table). package = Android package of the Kotlin helper (engine android); webp = Flutter
+        density images as lossless WebP. engines None = ["flutter"]."""
+        body: dict[str, Any] = {"engines": engines or ["flutter"], "license": license, "author": author, "org": org,
                                 "description": description, "atlas": atlas, "mobile": mobile}
+        if package:
+            body["package"] = package
+        if webp:
+            body["webp"] = True
         for k, v in (("version", version), ("include", include), ("out_dir", out_dir)):
             if v is not None:
                 body[k] = v
@@ -1131,13 +1144,18 @@ def build_server(link: CoreLink) -> MCPServer:
         return await tools.finish(started["run_id"], timeout_s, ctx, notify, include_images)
 
     @mcp.tool(annotations=acts)
-    async def export_to_engine(engine: Literal["unity", "godot"], step_id: str | None = None,
-                               run_id: str | None = None, dest_dir: str | None = None, name: str | None = None,
-                               ppu: float = 100.0, pixel: bool | None = None) -> dict[str, Any]:
-        """Export a finished step (or the last engine-ready step of run_id) as a Unity/Godot folder (sprites
-        pre-sliced, animations, prefab/scene builders) and, with dest_dir, copy it straight into a game project
-        (absolute folder; for Unity use a folder under <project>/Assets, for Godot under the project root)."""
-        return await tools.export_to_engine(step_id, run_id, engine, dest_dir, name, ppu, pixel)
+    async def export_to_engine(engine: Literal["flutter", "android", "ios", "unity", "godot"],
+                               step_id: str | None = None, run_id: str | None = None, dest_dir: str | None = None,
+                               name: str | None = None, ppu: float = 100.0, pixel: bool | None = None,
+                               package: str | None = None, webp: bool = False) -> dict[str, Any]:
+        """Export a finished step (or the last engine-ready step of run_id) for an engine. flutter is the main
+        target (assets/ + pubspec snippet + Assets.dart); android (res/drawable-*dpi + Kotlin helper, `package` sets
+        its namespace) and ios (xcassets + Swift helper) are mobile-native; unity/godot give a folder (sprites
+        pre-sliced, animations, prefab/scene builders). webp = Flutter density images as lossless WebP. With
+        dest_dir, unity/godot folders are copied straight into a game project (absolute folder; for Unity use a
+        folder under <project>/Assets, for Godot under the project root); mobile targets are not copied (read
+        export_dir)."""
+        return await tools.export_to_engine(step_id, run_id, engine, dest_dir, name, ppu, pixel, package, webp)
 
     @mcp.tool(annotations=read_only)
     async def restyle_scan(folder: str, include: str = "", exclude: str = "") -> dict[str, Any]:

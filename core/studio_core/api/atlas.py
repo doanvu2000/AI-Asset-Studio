@@ -31,7 +31,7 @@ class AtlasBody(BaseModel):
     steps: list[AtlasItem] = Field(min_length=1, max_length=500)
     name: str = Field("atlas", min_length=1, max_length=80)
     # None = engine-neutral PNG + JSON only (the one place rotation is allowed).
-    engine: Literal["unity", "godot"] | None = None
+    engine: Literal["flutter", "android", "ios", "unity", "godot"] | None = None
     ppu: float = Field(100.0, gt=0, le=10000)
     pixel: bool | None = None
     collider: bool | None = None
@@ -57,9 +57,11 @@ def _build(items: list[tuple[Any, list[Any], str, Any]], blobs: Any, body: Atlas
     opts = at.AtlasOptions(max_size=body.atlas_max_size, padding=body.atlas_padding, extrude=body.atlas_extrude,
                            pot=body.atlas_pot, trim=body.atlas_trim, rotate=body.atlas_rotate and not body.engine)
     atlas = at.pack(sprites, body.name, opts, sources)
-    files = at.engine_files(atlas, body.engine, body.ppu, f"atlas:{atlas.name}")
+    # Mobile targets read the plain PNG + JSON atlas; only unity/godot get engine-specific files.
+    native = body.engine if body.engine in ("unity", "godot") else None
+    files = at.engine_files(atlas, native, body.ppu, f"atlas:{atlas.name}")
     budget = None
-    if body.mobile and body.engine:
+    if body.mobile and native:
         from studio_core.export import mobile as mob
 
         files, budget = mob.apply(files, body.engine, atlas.pixel, f"atlas:{atlas.name}", atlas.name)

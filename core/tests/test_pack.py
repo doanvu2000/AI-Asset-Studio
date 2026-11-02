@@ -264,6 +264,29 @@ async def test_mcp_build_asset_pack() -> None:
         assert "include" not in kw["json"]
 
 
+async def test_mcp_mobile_targets_forward_package_and_webp() -> None:
+    from mcp import Client
+
+    from studio_core.mcp.server import build_server
+
+    class Link(_FakeLink):
+        async def request(self, method: str, path: str, **kw: Any) -> Any:
+            await super().request(method, path, **kw)
+            return {"dir": "D:/x", "name": "n"}
+
+    link = Link()
+    async with Client(build_server(link)) as c:  # type: ignore[arg-type]
+        await c.call_tool("build_asset_pack", {"project_id": "p1"})
+        assert link.calls[-1][2]["json"]["engines"] == ["flutter"] and "webp" not in link.calls[-1][2]["json"]
+        await c.call_tool("build_asset_pack", {"project_id": "p1", "engines": ["android", "ios"],
+                                               "package": "com.acme.app", "webp": True})
+        assert link.calls[-1][2]["json"]["package"] == "com.acme.app" and link.calls[-1][2]["json"]["webp"] is True
+        await c.call_tool("export_to_engine", {"engine": "android", "step_id": "s1", "package": "com.acme.app"})
+        assert link.calls[-1][1] == "/api/steps/s1/export" and link.calls[-1][2]["json"]["package"] == "com.acme.app"
+        bad = await c.call_tool("export_to_engine", {"engine": "flutter", "step_id": "s1", "dest_dir": "D:/x"})
+        assert bad.is_error
+
+
 def test_finalize_unity_scopes_namespace_and_detects_dependencies(tmp_path: Path) -> None:
     from studio_core.export import npc, unity
     from studio_core.export.autotile import RULE_TILE_GUID

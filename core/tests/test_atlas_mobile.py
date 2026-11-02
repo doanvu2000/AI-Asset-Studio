@@ -211,3 +211,17 @@ async def test_atlas_endpoint(app_ctx) -> None:  # noqa: F811
     assert (d / "level1.json").is_file() and len(list((d / "level1").glob("Knight_*.tres"))) == 8
     bad = await client.post("/api/atlas", headers=AUTH, json={"steps": [{"step_id": "nope"}]})
     assert bad.status_code == 404
+
+
+async def test_atlas_mobile_engine_writes_plain_json_atlas(app_ctx) -> None:  # noqa: F811
+    app, client, _ = app_ctx
+    await _project(app)
+    await _sprite_run(app, "r1", "Knight", (200, 0, 0))
+    r = await client.post("/api/atlas", headers=AUTH, json={
+        "steps": [{"step_id": "r1-sheet", "name": "Knight"}], "name": "ui", "engine": "flutter", "mobile": True,
+        "atlas_rotate": True})
+    assert r.status_code == 201, r.text
+    out = r.json()
+    d = Path(out["dir"])
+    assert d.name == "ui-flutter" and out["engine"] == "flutter" and out["mobile"] is None
+    assert (d / "ui.png").is_file() and (d / "ui.json").is_file() and not list(d.glob("*.meta"))

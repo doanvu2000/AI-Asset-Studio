@@ -66,3 +66,4 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [x] 12:23 Handoff mới: .planning/HANDOFF-2026-11-02-1223.md
 - [x] W2-app GoalCards + NextStepChips — typecheck sạch, 979ffee (pushed). Chưa xem bằng mắt.
 - [x] REG-1/APP-1 đích flutter/android/ios cho đóng gói + UI nhiều đích — 92 pytest pass (pack/export/projects), typecheck sạch. Còn: mcp/server.py + api/atlas.py vẫn unity/godot; BundleMenu chưa có ô webp/package.
+- [x] REG-2 MCP build_asset_pack/export_to_engine + api/atlas + BundleMenu nhận flutter/android/ios — 38 pass, typecheck sạch. MCP default engines = flutter.
