@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 
 from PIL import Image
@@ -50,6 +51,18 @@ NOTE_ICON = """- flutter_launcher_icons.yaml + assets/icon/: thêm flutter_launc
 NOTE_TILED = """- assets/tiles/: {maps} + ảnh tileset nằm cạnh nhau; loadTiledMap('{name}', Vector2.all(16)) (flame_tiled) trả
   TiledComponent, tham số 2 là kích thước ô khi vẽ."""
 NOTE_SVG = """- assets/svg/: ảnh vector, hiển thị bằng package flutter_svg: SvgPicture.asset(AssetStudioAssets.xxx)."""
+
+
+def _fx_kinds(src: Source) -> list[tuple[bool, Callable[[Source], tuple[Files, list[str]]]]]:
+    from studio_core.export import flutter_fx as fx
+
+    return [(bool(src.tile_anim and src.tile_anim_sheet), fx.tile_anim_files),
+            (bool(src.autotile and src.autotile_atlas), fx.autotile_files),
+            (bool(src.vfx and src.vfx_files), fx.vfx_files),
+            (bool(src.weather and src.weather_files), fx.weather_files),
+            (bool(src.ui_screen and src.ui), fx.screen_files),
+            (bool(src.minimap and src.minimap_files), fx.minimap_files),
+            (bool(src.cards and src.cards_files), fx.cards_files)]
 
 
 def _unique(names: list[str], fallback: str) -> list[str]:
@@ -164,9 +177,10 @@ def export(src: Source, webp: bool = False) -> Files:
         use_anim = True
 
     names = _unique([n for n, *_ in src.ui], "ui")
+    ui_items = [] if src.ui_screen else list(zip(names, src.ui))
     sliced: list[tuple[str, str, tuple[int, int, int, int], tuple[int, int]]] = []
     icons = svg = icon = False
-    for nm, (_, p, border, _state) in zip(names, src.ui):
+    for nm, (_, p, border, _state) in ui_items:
         if p.suffix.lower() == ".svg":
             files.append((f"assets/svg/{nm}.svg", p))
             svg = True
@@ -202,6 +216,17 @@ def export(src: Source, webp: bool = False) -> Files:
         notes.append(NOTE_TILED.format(maps=", ".join(f"{m}.tmx" for m in maps), name=maps[0]))
         packages.append("flame_tiled")
         use_tiled = True
+
+    for present, build in _fx_kinds(src):
+        if present:
+            fx_files, fx_notes = build(src)
+            have = {n for n, _ in files}
+            files += [(n, d) for n, d in fx_files if n not in have]
+            notes += fx_notes
+            if any(n.endswith(".tmx") for n, _ in fx_files):
+                use_tiled = True
+                if "flame_tiled" not in packages:
+                    packages.append("flame_tiled")
 
     if src.parallax:
         base = f"assets/images/parallax/{a}"

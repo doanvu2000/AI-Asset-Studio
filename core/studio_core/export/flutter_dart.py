@@ -151,7 +151,9 @@ class NineSliceImage extends StatelessWidget {
 }
 """
 
-FLAME_HEAD = GEN_HEAD + """import 'dart:convert';
+FLAME_HEAD = GEN_HEAD + """// ignore_for_file: unused_import
+
+import 'dart:convert';
 import 'dart:ui' as ui;
 
 import 'package:flame/cache.dart';

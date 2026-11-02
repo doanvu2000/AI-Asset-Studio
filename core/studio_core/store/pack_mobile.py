@@ -97,6 +97,7 @@ class FlutterPack:
         if nine.is_file():
             self.nine += [{**e, "name": prefix + e["name"]} for e in json.loads(nine.read_text(encoding="utf-8"))]
             self.flags["nine"] = True
+        self.flags["nine"] |= (d / "lib/gen/asset_studio_ui.dart").is_file()
         readme = d / "README_FLUTTER.md"
         if readme.is_file():
             text = readme.read_text(encoding="utf-8")
@@ -109,8 +110,9 @@ class FlutterPack:
         if not self.tree.rels:
             return []
         put = self.tree.put
-        if self.nine:
-            put("assets/ui/ui_9slice.json", json.dumps(self.nine, indent=1).encode())
+        if self.flags["nine"]:
+            if self.nine:
+                put("assets/ui/ui_9slice.json", json.dumps(self.nine, indent=1).encode())
             entries = [(e["name"], f"assets/ui/{e['name']}.png", (e["l"], e["t"], e["r"], e["b"]), (e["w"], e["h"]))
                        for e in self.nine]
             put("lib/gen/asset_studio_ui.dart", fd.nine_slices_dart(entries).encode())
