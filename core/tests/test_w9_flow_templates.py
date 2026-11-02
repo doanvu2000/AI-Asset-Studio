@@ -5,11 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from studio_core.engine.flows import FlowLibrary, parse_source, validate_def
+from studio_core.engine.flows import FlowLibrary, flow_deps, parse_source, validate_def
 from studio_core.engine.library import RecipeLibrary
 
 CORE = Path(__file__).resolve().parents[1] / "studio_core"
-NEW = ["character-pack", "level-pack", "ui-pack"]
+NEW = ["character-pack", "level-pack", "ui-pack", "game-slice"]
 
 
 @pytest.fixture(scope="module")
@@ -65,3 +65,28 @@ def test_style_audit_node_is_optional_and_blocks_nothing(libs, fid):
     assert deps and deps <= {n.id for n in d.nodes if n.id != style.id}
     for n in d.nodes:
         assert style.id not in {parse_source(s)[0] for s in n.map.values()}
+
+
+def test_game_slice_reuses_concept_and_sprite(libs):
+    _, flows = libs
+    d = flows.flows["game-slice"]
+    by_id = {n.id: n for n in d.nodes}
+    assert [n.recipe_id for n in d.nodes].count("concept-2d") == 1
+    assert [n.recipe_id for n in d.nodes].count("sprite-8dir-2d") == 1
+    assert by_id["scene"].map["character"] == "sprite.outputs.sheet[0]"
+    assert by_id["kit"].map["image"] == "concept.outputs.final[0]"
+    assert by_id["minimap"].map["source"] == "scene.outputs.tmx[0]"
+    style = by_id["style"]
+    assert style.inputs == {"review": False}
+    assert not any("style" in {parse_source(s)[0] for s in n.map.values()} for n in d.nodes)
+
+
+@pytest.mark.parametrize("fid", NEW)
+def test_every_node_gets_scheduled(libs, fid):
+    _, flows = libs
+    deps = flow_deps(flows.flows[fid])
+    done: set[str] = set()
+    while len(done) < len(deps):
+        ready = [n for n, d in deps.items() if n not in done and set(d) <= done]
+        assert ready, f"stuck: {set(deps) - done}"
+        done.update(ready)

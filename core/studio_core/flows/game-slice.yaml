@@ -1,0 +1,96 @@
+id: game-slice
+title: Lát cắt game 1 nút
+description: >-
+  Mô tả nhân vật + mô tả màn → concept → sprite 8 hướng + anim → gói Unity / Godot → màn chơi mẫu có chính nhân vật
+  đó đứng trong màn → minimap theo màn → UI kit, màn hình UI, bitmap font theo style của concept → kiểm style cả
+  lát cắt. Dùng chung concept và sprite cho mọi bước nên không vẽ lại. Có nhiều bước duyệt nên workflow sẽ dừng chờ
+  người.
+tags: [2d, game, character, level, ui, pack]
+inputs:
+  prompt: {type: text, label: Mô tả nhân vật}
+  tile_a: {type: image, label: Texture địa hình A (vd cỏ)}
+  ground_b: {type: text, label: Vật liệu nền B, default: "dry cracked dirt with small pebbles"}
+  prop_mesh: {type: mesh, label: Mesh prop}
+  scenery: {type: text, label: Mô tả phong cảnh nền parallax}
+  brief: {type: text, label: Gợi ý bố cục màn, default: ""}
+  theme: {type: text, label: Chủ đề UI, default: "wooden frames with brass corners"}
+  game_title: {type: text, label: Tên game}
+  screen_brief: {type: text, label: Mô tả màn hình UI, default: ""}
+nodes:
+  - id: concept
+    recipe_id: concept-2d
+    title: Concept nhân vật
+    map: {prompt: workflow.inputs.prompt}
+  - id: sprite
+    recipe_id: sprite-8dir-2d
+    title: Sprite 8 hướng từ concept
+    map: {image: "concept.outputs.final[0]"}
+  - id: anim_idle
+    recipe_id: sprite-anim-video
+    title: Anim đứng thở
+    inputs: {action: idle}
+    map: {image: "concept.outputs.final[0]"}
+  - id: anim_walk
+    recipe_id: sprite-anim-video
+    title: Anim đi bộ
+    inputs: {action: walk}
+    map: {image: "concept.outputs.final[0]"}
+  - id: anim_attack
+    recipe_id: sprite-anim-video
+    title: Anim tấn công
+    inputs: {action: slash}
+    map: {image: "concept.outputs.final[0]"}
+  - id: engine
+    recipe_id: character-engine-pack
+    title: Atlas + gói Unity / Godot
+    map:
+      frames: "sprite.outputs.final"
+      idle: "anim_idle.outputs.final[0]"
+      idle_meta: "anim_idle.outputs.meta[0]"
+      walk: "anim_walk.outputs.final[0]"
+      walk_meta: "anim_walk.outputs.meta[0]"
+      attack: "anim_attack.outputs.final[0]"
+      attack_meta: "anim_attack.outputs.meta[0]"
+  - id: terrain
+    recipe_id: autotile-terrain-prompt
+    title: Autotile địa hình
+    map: {tile_a: workflow.inputs.tile_a, prompt_b: workflow.inputs.ground_b}
+  - id: prop
+    recipe_id: iso-prop
+    title: Prop isometric
+    map: {mesh: workflow.inputs.prop_mesh}
+  - id: parallax
+    recipe_id: parallax-layers
+    title: Nền parallax
+    map: {prompt: workflow.inputs.scenery}
+  - id: scene
+    recipe_id: playable-scene
+    title: Màn chơi mẫu có nhân vật
+    map:
+      tiles: "terrain.outputs.final[0]"
+      autotile: "terrain.outputs.autotile[0]"
+      props: "prop.outputs.final[0]"
+      background: "parallax.outputs.final[0]"
+      brief: workflow.inputs.brief
+      character: "sprite.outputs.sheet[0]"
+  - id: minimap
+    recipe_id: minimap
+    title: Minimap theo màn
+    map: {source: "scene.outputs.tmx[0]", tiles: "scene.outputs.tiles[0]", reference: "scene.outputs.final[0]"}
+  - id: kit
+    recipe_id: ui-kit-style
+    title: UI kit theo style concept
+    map: {image: "concept.outputs.final[0]", prompt: workflow.inputs.theme}
+  - id: screen
+    recipe_id: ui-screen
+    title: Màn hình UI
+    map: {kit: "kit.outputs.slices[0]", title: workflow.inputs.game_title, brief: workflow.inputs.screen_brief}
+  - id: font
+    recipe_id: bitmap-font
+    title: Bitmap font
+    map: {name: workflow.inputs.game_title}
+  - id: style
+    recipe_id: style-lock
+    title: Kiểm style cả lát cắt
+    inputs: {review: false}
+    map: {anchor: "concept.outputs.final[0]", anchor_2: "scene.outputs.final[0]", anchor_3: "screen.outputs.final[0]"}
