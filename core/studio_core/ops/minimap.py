@@ -33,6 +33,7 @@ MAX_POIS = 200
 MIN_TILE_COVERAGE = 0.25
 UNKNOWN: tuple[()] = ()
 MERGE_RGB = 36.0
+RIM_BACKDROP = 0.55
 FLIP_MASK = 0x1FFFFFFF
 # Decoration layers carry no terrain: unmatched names would take a fallback colour and paint over the ground.
 NON_TERRAIN_LAYER_WORDS = ("shadow", "fog", "overlay", "decal")
@@ -320,6 +321,9 @@ def _ldtk(doc: dict[str, Any], level: str, tiles: TileColors | None = None) -> L
     canvas = Image.new("RGB", (max(1, round(pw * s)), max(1, round(ph * s))), bg)
     draw = ImageDraw.Draw(canvas)
     pois: list[Poi] = []
+    # An IntGrid collision layer is logic, not art: drawn last it would paint flat grey over the real tile colours.
+    has_art = bool(tiles) and any(Path(str(li.get("__tilesetRelPath") or "x").lower()).name in tiles.images
+                                  for li in pick["layerInstances"])
     for i, li in enumerate(reversed(pick["layerInstances"])):
         if li.get("visible") is False:
             continue
@@ -333,7 +337,7 @@ def _ldtk(doc: dict[str, Any], level: str, tiles: TileColors | None = None) -> L
                             round((y + oy + size) * s) - 1), fill=rgb)
 
         kind = li.get("__type")
-        if kind == "IntGrid":
+        if kind == "IntGrid" and not (has_art and not li.get("autoLayerTiles")):
             colors = {int(v.get("value")): _hex(v.get("color"), _color_for(str(v.get("identifier") or name), i))
                       for v in (defs.get(li.get("layerDefUid")) or {}).get("intGridValues") or []}
             for idx, v in enumerate(li.get("intGridCsv") or []):
@@ -413,7 +417,11 @@ def fit_square(img: Image.Image, size: int, nearest: bool) -> tuple[Image.Image,
     small = img.resize((nw, nh), Image.Resampling.NEAREST if nearest else Image.Resampling.LANCZOS)
     a = np.asarray(img.convert("RGB"))
     border = np.concatenate([a[0], a[-1], a[:, 0], a[:, -1]])
-    bg = tuple(int(c) for c in np.median(border.reshape(-1, 3), axis=0))
+    bg = np.median(border.reshape(-1, 3), axis=0)
+    if nearest:
+        # A wall / hedge rim has the border colour itself; a darker backdrop keeps that rim visible as an edge.
+        bg = bg * RIM_BACKDROP
+    bg = tuple(int(c) for c in bg)
     canvas = Image.new("RGBA", (size, size), (*bg, 255))
     x0, y0 = (size - nw) // 2, (size - nh) // 2
     canvas.alpha_composite(small.convert("RGBA"), (x0, y0))

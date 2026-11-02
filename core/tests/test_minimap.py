@@ -376,3 +376,29 @@ async def test_op_reads_tiles_input(tmp_path: Path):
     base = await MinimapBase().run(ctx, {"size": 96, "colors": 8}, {"source": [src], "tiles": [tiles]})
     a = np.asarray(load(ctx, base.outputs["base"][0]))
     assert len({tuple(p) for p in a[::8, ::8, :3].reshape(-1, 3)}) >= 3
+
+
+def test_ldtk_collision_intgrid_does_not_paint_over_tile_art():
+    doc = {"defs": {"layers": [{"uid": 5, "identifier": "Collision", "type": "IntGrid",
+                                "intGridValues": [{"value": 1, "identifier": "wall", "color": "#404040"}]}]},
+           "levels": [{"identifier": "L", "pxWid": 32, "pxHei": 16, "layerInstances": [
+               {"__identifier": "Collision", "__type": "IntGrid", "__gridSize": 16, "__cWid": 2, "__cHei": 1,
+                "layerDefUid": 5, "intGridCsv": [1, 1]},
+               {"__identifier": "Solid", "__type": "Tiles", "__gridSize": 16, "__cWid": 2, "__cHei": 1,
+                "__tilesetRelPath": "t.png", "gridTiles": [{"px": [0, 0], "src": [0, 0], "t": 0}]}]}]}
+    tiles = _tile_colors(_tileset_png([(30, 100, 40), (200, 170, 90)]))
+    a = np.asarray(load_source(json.dumps(doc).encode(), "w.ldtk", tiles=tiles).image)
+    assert tuple(a[8, 8, :3]) == (30, 100, 40)
+    plain = np.asarray(load_source(json.dumps(doc).encode(), "w.ldtk").image)
+    assert tuple(plain[8, 8, :3]) == (0x40, 0x40, 0x40)
+
+
+def test_rim_of_a_tile_map_stays_visible_against_the_backdrop():
+    from studio_core.ops.minimap import fit_square
+
+    img = Image.new("RGBA", (64, 32), (50, 110, 60, 255))
+    img.paste((200, 170, 90, 255), (8, 8, 56, 24))
+    canvas, rect = fit_square(img, 128, True)
+    a = np.asarray(canvas)
+    assert tuple(a[0, 0, :3]) != tuple(a[rect[1] + 2, rect[0] + 2, :3])
+    assert a[0, 0, 1] < a[rect[1] + 2, rect[0] + 2, 1]
