@@ -1,3 +1,4 @@
+import asyncio
 import io
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -256,3 +257,51 @@ async def test_stop_starting_resource_is_refused(app_ctx: tuple[FastAPI, httpx.A
     resp = await client.post("/api/resources/comfyui/stop", headers=AUTH)
     assert resp.status_code == 409 and resp.json()["error"]["code"] == "resource_busy" and r.stopped == 0
     assert resp.json()["error"]["detail"] == {"resource": "comfyui", "status": "starting"}
+
+
+def test_websocket_subscribe_runs_filters_step_log(tmp_path: Path) -> None:
+    app = build_app(_settings(tmp_path), TOKEN, engine=StubEngine(), load_plugins=False)
+
+    async def publish(bus: Any) -> None:
+        bus.publish("step.log", {"msg": "a"}, run_id="r1")
+        bus.publish("step.log", {"msg": "b"}, run_id="r2")
+        bus.publish("step.progress", {"value": 1}, run_id="r1")
+        bus.publish("run.updated", {"status": "running"}, run_id="r1")
+
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/ws?t={TOKEN}") as ws:
+            ws.receive_json()
+            ws.send_json({"op": "subscribe_runs", "run_ids": ["r2"]})
+            client.portal.call(_sleep)
+            client.portal.call(publish, app.state.bus)
+            got = [ws.receive_json() for _ in range(3)]
+            assert [(e["type"], e["run_id"]) for e in got] == [
+                ("step.log", "r2"), ("step.progress", "r1"), ("run.updated", "r1")]
+
+
+def test_websocket_without_subscribe_gets_all_logs(tmp_path: Path) -> None:
+    app = build_app(_settings(tmp_path), TOKEN, engine=StubEngine(), load_plugins=False)
+
+    async def publish(bus: Any) -> None:
+        bus.publish("step.log", {"msg": "a"}, run_id="r1")
+        bus.publish("step.log", {"msg": "b"}, run_id="r2")
+
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/ws?t={TOKEN}") as ws:
+            ws.receive_json()
+            client.portal.call(publish, app.state.bus)
+            assert [ws.receive_json()["run_id"] for _ in range(2)] == ["r1", "r2"]
+
+
+async def _sleep() -> None:
+    await asyncio.sleep(0.2)
+
+
+async def test_list_runs_before_pages(app_ctx: tuple[FastAPI, httpx.AsyncClient, StubEngine]) -> None:
+    app, client, _ = app_ctx
+    for i in range(5):
+        await app.state.repo.create_run(RunRow(id=f"p{i}", recipe_id="x", recipe_hash="h", created_at=float(i + 1)))
+    page1 = (await client.get("/api/runs", params={"limit": 2}, headers=AUTH)).json()
+    assert [r["id"] for r in page1] == ["p4", "p3"]
+    page2 = (await client.get("/api/runs", params={"limit": 2, "before": page1[-1]["created_at"]}, headers=AUTH)).json()
+    assert [r["id"] for r in page2] == ["p2", "p1"]

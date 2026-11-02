@@ -2,12 +2,13 @@ import { defineStore } from 'pinia'
 import { computed, ref, shallowRef, triggerRef, type Ref } from 'vue'
 import type { LogData, PreviewData, ProgressData, RunRow, RunUpdatedData, StepRow } from '@/api/types'
 import { RUN_ACTIVE, STEP_TERMINAL } from '@/api/types'
-import { api } from './connection'
+import { api, useConnection } from './connection'
 
 export interface LogLine extends LogData {
   ts: number
 }
 
+const PAGE_SIZE = 500
 const LOG_CAP = 200
 // Logs stay readable after a step ends, but only for the most recent steps so long sessions don't grow without bound.
 const LOG_STEPS_MAX = 150
@@ -37,6 +38,9 @@ export const useRuns = defineStore('runs', () => {
   const outputImages = shallowRef(new Map<string, { order: number; hash: string }>())
   const listLoaded = ref(false)
   const listError = ref<string | null>(null)
+  const listHasMore = ref(false)
+  const listMoreLoading = ref(false)
+  let listCursor = Infinity
 
   const runList = computed(() => [...runs.value.values()].sort((a, b) => b.created_at - a.created_at))
   const activeRuns = computed(() => runList.value.filter((r) => RUN_ACTIVE.has(r.status)))
@@ -159,16 +163,32 @@ export const useRuns = defineStore('runs', () => {
     try {
       // Batches are grouped from loaded runs, so batch runs older than the recent window are fetched separately.
       const [recent, batched] = await Promise.all([
-        api().listRuns({ limit: 500 }),
+        api().listRuns({ limit: PAGE_SIZE }),
         api().listRuns({ batched: true, limit: 2000 })
       ])
       for (const row of [...batched, ...recent]) runs.value.set(row.id, row)
       triggerRef(runs)
+      listHasMore.value = recent.length >= PAGE_SIZE
+      listCursor = recent.reduce((m, r) => Math.min(m, r.created_at), Infinity)
       listError.value = null
     } catch (e) {
       listError.value = (e as Error).message
     } finally {
       listLoaded.value = true
+    }
+  }
+
+  async function loadMore(): Promise<void> {
+    if (listMoreLoading.value || !listHasMore.value || listCursor === Infinity) return
+    listMoreLoading.value = true
+    try {
+      const rows = await api().listRuns({ limit: PAGE_SIZE, before: listCursor })
+      for (const row of rows) runs.value.set(row.id, row)
+      triggerRef(runs)
+      listHasMore.value = rows.length >= PAGE_SIZE
+      listCursor = rows.reduce((m, r) => Math.min(m, r.created_at), listCursor)
+    } finally {
+      listMoreLoading.value = false
     }
   }
 
@@ -200,10 +220,15 @@ export const useRuns = defineStore('runs', () => {
     bumpTouched()
   }
 
+  function syncSubscription(): void {
+    useConnection().transport?.stream.subscribeRuns?.([...openDetails.keys()])
+  }
+
   async function loadDetail(id: string, holder = 'detail'): Promise<void> {
     let holders = openDetails.get(id)
     if (!holders) openDetails.set(id, (holders = new Set()))
     holders.add(holder)
+    syncSubscription()
     await fetchDetail(id)
   }
 
@@ -215,7 +240,10 @@ export const useRuns = defineStore('runs', () => {
     const holders = openDetails.get(id)
     if (!holders) return
     holders.delete(holder)
-    if (!holders.size) openDetails.delete(id)
+    if (!holders.size) {
+      openDetails.delete(id)
+      syncSubscription()
+    }
   }
 
   async function cancel(id: string): Promise<void> {
@@ -240,9 +268,12 @@ export const useRuns = defineStore('runs', () => {
     livePreview,
     listLoaded,
     listError,
+    listHasMore,
+    listMoreLoading,
     stepsOf,
     begin,
     loadList,
+    loadMore,
     loadBatch,
     loadProject,
     loadDetail,

@@ -14,6 +14,8 @@ export interface EventStream {
   stop(): void
   /** Delivers queued events now instead of on the next frame. */
   flush(): void
+  /** Runs whose step.log lines the caller wants; others are filtered out server-side. */
+  subscribeRuns?(ids: string[]): void
 }
 
 // Collapses bursts of WS events into one store update per animation frame.
@@ -62,6 +64,7 @@ export class StudioSocket implements EventStream {
   private stopped = false
   private sink: EventSink | null = null
   private batcher: FrameBatcher | null = null
+  private subscribed: string[] = []
 
   constructor(
     private readonly baseUrl: string,
@@ -77,6 +80,15 @@ export class StudioSocket implements EventStream {
 
   flush(): void {
     this.batcher?.flushNow()
+  }
+
+  subscribeRuns(ids: string[]): void {
+    this.subscribed = ids
+    this.sendSubscription()
+  }
+
+  private sendSubscription(): void {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify({ op: 'subscribe_runs', run_ids: this.subscribed }))
   }
 
   private resync(): void {
@@ -191,6 +203,7 @@ export class StudioSocket implements EventStream {
 
   private onHello(ws: WebSocket, serverSeq: number): void {
     this.endResume()
+    this.sendSubscription()
     if (this.lastSeq === 0) {
       this.lastSeq = serverSeq
       this.resync()

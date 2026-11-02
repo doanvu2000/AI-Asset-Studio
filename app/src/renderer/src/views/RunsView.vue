@@ -68,6 +68,14 @@ const virtualizer = useVirtualizer(
 )
 const items = computed(() => virtualizer.value.getVirtualItems())
 const total = computed(() => virtualizer.value.getTotalSize())
+const NEAR_END = 12
+watch(
+  () => (items.value.length ? items.value[items.value.length - 1]!.index : -1) >= rows.value.length - NEAR_END,
+  (near) => near && void runs.loadMore().catch(() => undefined),
+  { flush: 'post' }
+)
+// A filter can leave the loaded window with few rows while older runs still exist.
+watch([filter, projectFilter], () => rows.value.length < NEAR_END && void runs.loadMore().catch(() => undefined))
 </script>
 
 <template>
@@ -122,6 +130,11 @@ const total = computed(() => virtualizer.value.getTotalSize())
           <RunRowItem :run="rows[it.index]!" />
         </div>
       </div>
+      <div v-if="runs.listHasMore && rows.length" class="more">
+        <button class="btn" :disabled="runs.listMoreLoading" @click="runs.loadMore().catch(() => undefined)">
+          {{ runs.listMoreLoading ? 'Đang tải…' : 'Tải thêm' }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -151,6 +164,11 @@ const total = computed(() => virtualizer.value.getTotalSize())
   position: relative;
   max-width: 1180px;
   margin: 0 auto;
+}
+.more {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
 }
 .vrow {
   position: absolute;

@@ -71,3 +71,6 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [x] N6 shadow-outline recipe — 84 pass, d9d87f4. Chưa: sheet+atlas input, qa.py chưa nhận op.shadow_outline.
 - [x] N4 khai báo AI (AI_CREDITS.md trong gói, provenance.ai_disclosure, GET /api/projects/{id}/ai-credits, AiCreditsDialog) — 21 pass, typecheck sạch.
 - [x] FL-2 flutter_launcher_icons.yaml + flame_tiled (.tmx từ playable/room_kit) + SVG — 50 pass, dart analyze 0 error. Chưa: SVG có tới exporter không (bundle lọc mime?), TMX chưa chạy thật.
+- [~] Giao 3 agent nền: U5 chế độ Đơn giản (app), P4+P5 RunsView phân trang + step.log theo run (core ws + app), N2 ổn định anim (ops/anim_stabilize).
+- [x] U5 chế độ Đơn giản/Nâng cao — typecheck sạch, d20c894 (main thêm: prompt/idea luôn hiện).
+- [x] P4+P5 RunsView tải thêm theo trang (500) + ws subscribe_runs lọc step.log — 26 pass, typecheck sạch.
