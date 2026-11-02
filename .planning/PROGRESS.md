@@ -95,3 +95,21 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [x] ANIM-3 anim cell scale theo thân (body_height opening + q30), ô nới tối đa 2x khi kiếm tràn, report cell/body_px, op.anim_loop v2 — attack thân 228 vs idle 229 (scratchpad/an3/). 100 pass export/pack. Rủi ro: ô attack 372 ≠ size; consumer phải đọc report cell/pivot.json.
 - [x] UI-2 viewer toolbar 1 hàng (container query), header icon + ellipsis, dashboard grid, region canvas fit, BundleMenu hint wrap, mock PAGE_SIZE override — typecheck sạch, ảnh scratchpad/qa/shots2/.
 - [x] Handoff mới: .planning/HANDOFF-2026-11-02-2158.md
+
+## Phiên 2026-11-03 (sau HANDOFF-2026-11-02-2158) — chủ nhân: "làm liên tục", tiếp lượt 11 (tự test + commit + push, không trailer)
+- [~] LIVE-3 (GPU, giữ .gpu-lock): game-slice lần 3 concept nhìn 3/4 + kiểm ô anim thay đổi trong gói flutter + live region-edit.
+- [~] GDD-LIVE (CPU): POST /api/gdd/plan với Claude thật + xem màn /gdd.
+- [~] APP-LIVE (CPU): mở Electron thật với core thật, chụp màn chính.
+- [~] CPU-REAL: anim-stabilize/shadow-outline/pixel-cleanup/ground-strip qua engine trên sheet thật a2/. 4 agent chạy nền.
+- [x] GDD-LIVE: 2 GDD thật (Opus) 14 mục mỗi plan ~34s ~$0.49, 0 recipe ảo/input sai; màn /gdd ổn (scratchpad/gdd/shots). Timeout core 300→240s — d823e9b. Nợ: Claude thêm filler (audio/weather/font).
+- [x] APP-LIVE: electron-vite dev + CDP 9333, mọi màn chính OK (scratchpad/app/shots). Sửa TDZ validateSeq /flows/new — 1a2b3a4. Nợ: gợi ý đè node canvas trống; PackDialog hiện ô Unity khi không chọn Unity.
+- [~] FIX-S: lọc audio + siết prompt GDD, gợi ý canvas, ô Unity PackDialog.
+- [x] FIX-S lọc audio GDD + gợi ý canvas + ô Unity — 8 pass gdd, typecheck sạch.
+- [x] CPU-REAL (scratchpad/cpu/): stabilize walk chân 6.1→1.9px; shadow-outline atlas đúng ô; pixel-cleanup 32 màu thô; ground-strip xoá oan giáp xanh → FEET_BAND 0.35, v2 — 81477ea. Nợ: ground-strip cỏ sát chân vẫn ăn 100–400px đế giày (đánh đổi, chưa sửa).
+- [~] STAB-2: stabilize chân theo thân (kiếm chĩa xuống làm lệch), bóng blob bám chân thật thay pivot atlas, pixel-cleanup 64 màu cho ô ≥128.
+- [x] STAB-2 stabilize chân theo thân (attack đáy 235..242→241), bóng blob bám chân thật, pixel-cleanup colors auto 16/64 — 78 pass; scratchpad/stab2/. Nợ: op.pixel_art (sprite-8dir-pixel) vẫn colors 16 tối đa 32.
+- [x] LIVE-3 (scratchpad/g3/): game-slice 16/16 ~24 phút, concept nghiêng; thân idle/walk/attack 228/233/231 (body_px ~228) → attack cùng cỡ; cell 256/272/384; walk chân xen kẽ rõ (main xem); visor kín. Consumer ô đổi cỡ: flutter dart analyze 0, android/ios/godot/unity đúng. region-edit live OK (g3/re/compare.png, parent_id đúng). Lỗi: attack frame cuối không về stance, frame 5/7–9 kiếm nhoè; unity/godot thừa thư mục anim version cũ.
+- [~] ANIM-3 anim_loop v3: clip không loop cắt về stance + chọn frame nét nhất lân cận. PACK-1 chỉ lấy version approved mới nhất mỗi clip + dọn thư mục gói.
+- [x] PACK-1 latest_per_asset (tên+recipe, bỏ khi include tường minh) + list_packs superseded — 212 pass, typecheck sạch.
+- [x] ANIM-3 anim_loop v3: attack end 49→21 (giống frame0 0.76→0.89), frame ít ghost (29–61→1–19 px); walk/idle giữ nguyên — 121 pass; main xem scratchpad/anim3/after_attack.png: giơ→chém→về stance.
+- [x] 01:12 Handoff mới: .planning/HANDOFF-2026-11-03-0112.md (full pytest 1565 pass)
