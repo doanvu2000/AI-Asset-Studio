@@ -20,8 +20,9 @@ from studio_core.engine.library import validate
 from studio_core.engine.recipe import load_recipe_file
 from studio_core.export.sheet import layout
 from studio_core.ops.anim_video import (ANIM_VIDEO_OPS, AnimLoop, action_span, anchor, anim_loop, crossfade_seam,
-                                        descriptors, find_cycle, mask_of, prep_canvas, resolve_loop, sample,
-                                        similarity_matrix, to_rgba, union_box)
+                                        descriptors, find_cycle, ghost_px, mask_of, pick_sharp, prep_canvas,
+                                        resolve_loop, return_frame, sample, similarity_matrix, to_rgba,
+                                        union_box)
 from test_engine_runner import Env, FakeExec
 from test_ops_executors import FakeCtx, put_img
 
@@ -124,6 +125,33 @@ def test_oneshot_span_and_crossfade() -> None:
     head, k0 = crossfade_seam(seq, 0, 12, 2)
     assert k0 == 2 and not np.array_equal(head[0], seq[0]) and np.array_equal(head[-1], seq[11])
     assert sample(12, 12, True) == list(range(12)) and sample(13, 5, False) == [0, 3, 6, 9, 12]
+
+
+def test_oneshot_ends_on_the_return_pose_not_a_raised_blade() -> None:
+    frames = [slasher(i) for i in range(30)] + [slasher(i - 18) for i in range(30, 42)]
+    sim = similarity_matrix(descriptors(frames, union_box(frames)))
+    back = return_frame(sim, 8, int(np.argmin(sim[0])))
+    assert back is not None and back[1] > 0.9 and back[0] >= 24 and sim[8, back[0]] >= sim[8, -1]
+    _, rep = anim_loop(frames, loop=False, n_out=8, lock="feet", crossfade=0, size=96)
+    assert rep["end"] <= back[0] + 1 and rep["end_similarity"] > 0.9 and "end_warning" not in rep
+    still = [slasher(0) for _ in range(6)] + [slasher(12) for _ in range(30)]
+    sim2 = similarity_matrix(descriptors(still, union_box(still)))
+    assert return_frame(sim2, 0, int(np.argmin(sim2[0]))) is None
+
+
+def test_pick_sharp_avoids_ghosted_blade_and_keeps_order() -> None:
+    def frame(blur: bool) -> np.ndarray:
+        im = Image.new("RGBA", (120, 120), (0, 0, 0, 0))
+        ImageDraw.Draw(im).rectangle((50, 40, 70, 110), fill=(*BODY, 255))
+        ImageDraw.Draw(im).line((70, 60, 115, 20), fill=(220, 220, 230, 90 if blur else 255), width=3)
+        return np.asarray(im)
+
+    frames = [frame(i in (3, 4)) for i in range(8)]
+    assert ghost_px(frames[3]) > ghost_px(frames[2]) + 20
+    picked, ghost = pick_sharp(frames, [0, 3, 6], 2, True)
+    assert picked[1] not in (3, 4)
+    assert picked[0] == 0 and picked[-1] == 6 and picked == sorted(set(picked)) and ghost[0] == ghost_px(frames[0])
+    assert pick_sharp(frames[:2], [0, 1], 3, False)[0] == [0, 1]
 
 
 def test_find_cycle_prefers_fundamental_and_short_clips() -> None:

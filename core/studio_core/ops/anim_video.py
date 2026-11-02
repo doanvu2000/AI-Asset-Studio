@@ -49,6 +49,10 @@ BACKDROPS = {"grey": (128, 128, 128), "green": (0, 177, 64)}
 ALPHA_ON = 32
 MAX_PICK_FRAMES = 49
 SIM_SIDE = 48
+RETURN_FLOOR = 0.75
+GHOST_ALPHA = 230
+GHOST_SHIFT_COST = 15
+SHARP_REACH = {True: 1, False: 2}
 
 
 def resolve_loop(action: str, loop: Any) -> bool:
@@ -298,6 +302,55 @@ def action_span(sim: np.ndarray, rest: float = 0.25) -> tuple[int, int, float]:
     return start, max(end, start + 2), round(peak, 4)
 
 
+def return_frame(sim: np.ndarray, start: int, peak_i: int, floor: float = RETURN_FLOOR) -> tuple[int, float] | None:
+    """Frame after the action's peak that looks most like the start pose (the first such local maximum, so a video that
+    repeats the swing is cut after the first one). None when nothing past the peak is close enough."""
+    n = len(sim)
+    row = sim[start]
+    hits = [i for i in range(max(peak_i + 1, start + 3), n)
+            if row[i] >= floor and row[i] >= row[i - 1] and (i + 1 >= n or row[i] >= row[i + 1])]
+    if not hits:
+        return None
+    best = max(float(row[i]) for i in hits)
+    i = next(i for i in hits if row[i] >= best - 0.03)
+    return i, round(float(row[i]), 4)
+
+
+def ghost_px(a: np.ndarray) -> int:
+    """Half-transparent pixels on the thin parts (blade): a motion-blurred or ghosted blade is mostly such pixels,
+    a crisp one is opaque. Whole-frame sharpness barely moves because the body is crisp in every frame."""
+    m = a[..., 3] > ALPHA_ON
+    if not m.any():
+        return 0
+    im = Image.fromarray(m.astype(np.uint8) * 255)
+    thick = np.asarray(im.filter(ImageFilter.MinFilter(9)).filter(ImageFilter.MaxFilter(13))) > 127
+    return int((m & ~thick & (a[..., 3] < GHOST_ALPHA)).sum())
+
+
+def pick_sharp(frames: list[np.ndarray], idx: list[int], k: int, keep_ends: bool) -> tuple[list[int], list[int]]:
+    """Per target index, the least ghosted frame within +-k, never moving backwards past the previous pick. The ends
+    stay put when asked: the first and last pose define the stance the clip starts from and returns to."""
+    cache: dict[int, int] = {}
+
+    def ghost(j: int) -> int:
+        if j not in cache:
+            cache[j] = ghost_px(frames[j])
+        return cache[j]
+
+    out: list[int] = []
+    for n, j in enumerate(idx):
+        lo = max(j - k, out[-1] + 1 if out else 0)
+        hi = min(j + k, len(frames) - 1)
+        if keep_ends and n in (0, len(idx) - 1):
+            out.append(j)
+            continue
+        if hi < lo:
+            out.append(out[-1])
+            continue
+        out.append(min(range(lo, hi + 1), key=lambda c: (ghost(c) + GHOST_SHIFT_COST * abs(c - j), abs(c - j))))
+    return out, [ghost(j) for j in out]
+
+
 def premul_blend(a: np.ndarray, b: np.ndarray, w: float) -> np.ndarray:
     fa, fb = a.astype(np.float32), b.astype(np.float32)
     pa, pb = fa[..., 3:] / 255, fb[..., 3:] / 255
@@ -455,20 +508,28 @@ def anim_loop(frames: list[np.ndarray], *, loop: bool, n_out: int, lock: str, cr
             span = period
         last = s + span - 1
         seg, blended = crossfade_seam(aligned, s, span, round(crossfade * span / max(n_out, 1)))
-        idx = sample(span, n_out, True)
+        idx, ghost = pick_sharp(seg, sample(span, n_out, True), SHARP_REACH[True], False)
         picked = [seg[i] for i in idx]
         report |= {"start": s, "end": s + span, "period": period, "span": span, "seam_similarity": seam,
-                   "step_similarity": round(step_sim, 4), "crossfade_frames": blended,
+                   "step_similarity": round(step_sim, 4), "crossfade_frames": blended, "ghost_px": ghost,
                    "wrap_similarity": round(float(sim[last, s]), 4), "indices": [s + i for i in idx]}
     else:
         s, e, peak = action_span(sim)
         if start >= 0:
             s = min(start, n - 2)
+        back = None
         if end > s + 1:
             e = min(end, n)
-        idx = sample(e - s, n_out, False)
+        else:
+            back = return_frame(sim, s, int(np.argmin(sim[0])))
+            if back:
+                e = min(e, back[0] + 1)
+        idx, ghost = pick_sharp(aligned[s:e], sample(e - s, n_out, False), SHARP_REACH[False], True)
         picked = [aligned[s + i] for i in idx]
-        report |= {"start": s, "end": e, "peak_change": peak, "indices": [s + i for i in idx]}
+        report |= {"start": s, "end": e, "peak_change": peak, "indices": [s + i for i in idx], "ghost_px": ghost,
+                   "end_similarity": round(float(sim[s, e - 1]), 4)}
+        if back is None and end <= s + 1:
+            report["end_warning"] = f"no frame after the peak matches the start pose (>= {RETURN_FLOOR}); span kept"
     pbox = mass_box(picked) or box
     # A free vertical axis (jump, fall) keeps the ground line where the feet rest, not mid-air.
     tx = float(np.median(target[:, 0]))
@@ -693,7 +754,7 @@ class AnimPick(OpExecutor):
 
 class AnimLoop(OpExecutor):
     kind = "op.anim_loop"
-    version = "2"
+    version = "3"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = _images_in(inputs)
@@ -728,6 +789,8 @@ class AnimLoop(OpExecutor):
         report |= {"action": action, "clip": clip, "fps": fps, "facing": facing, "angle": FACINGS[facing]["angle"]}
         if report["motion"] < 0.03:
             ctx.log("the picked clip barely moves; try a stronger motion prompt or another candidate", "warning")
+        if report.get("end_warning"):
+            ctx.log(report["end_warning"], "warning")
         if loop and report["seam_similarity"] < 0.6:
             ctx.log(f"no clean repeat found (best seam similarity {report['seam_similarity']}); set start/end by hand "
                     "or pick another candidate", "warning")
