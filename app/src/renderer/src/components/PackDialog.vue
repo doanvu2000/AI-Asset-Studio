@@ -44,6 +44,7 @@ const loading = ref(false)
 const loadError = ref<string | null>(null)
 const picks = ref<Set<PackEngine>>(new Set(['flutter']))
 const webp = ref(false)
+const flutterDemo = ref(false)
 const androidPackage = ref('com.example.assets')
 const license = ref<PackLicense>('cc0')
 const version = ref('')
@@ -148,6 +149,7 @@ async function build(): Promise<void> {
       mobile: hasGameEngine.value && mobile.value ? true : undefined,
       package: picks.value.has('android') ? androidPackage.value.trim() : undefined,
       webp: picks.value.has('flutter') && webp.value ? true : undefined,
+      flutter_demo: picks.value.has('flutter') && flutterDemo.value ? true : undefined,
       atlas: atlas.value || undefined,
       atlas_max_size: atlas.value ? atlasSize.value : undefined,
       material_style: hasGameEngine.value && toon.value ? 'toon' : undefined
@@ -209,6 +211,9 @@ useEventListener(
                 <div class="mob-opts">
                   <label v-if="picks.has('flutter')" class="chk" title="Ảnh 1x/2.0x/3.0x lưu WebP không mất dữ liệu thay vì PNG">
                     <input v-model="webp" type="checkbox" /> Flutter: ảnh WebP
+                  </label>
+                  <label v-if="picks.has('flutter')" class="chk" title="Ghi thêm flutter/demo/: project Flame chạy được bằng flutter run">
+                    <input v-model="flutterDemo" type="checkbox" /> Kèm demo Flame chạy được (flutter run)
                   </label>
                   <label v-if="picks.has('android')" class="chk" title="Package của AssetStudioAssets.kt, trùng namespace của app">
                     Android package

@@ -54,6 +54,7 @@ class PackBody(BaseModel):
     mobile: bool = False
     package: str = Field(pk.ANDROID_PACKAGE, max_length=120, pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
     webp: bool = False
+    flutter_demo: bool = False
     material_style: Literal["pbr", "toon"] = "pbr"
     toon: dict[str, float | int | str] | None = None
     atlas: bool = False
@@ -120,7 +121,8 @@ def _engine_options(body: PackBody) -> pk.EngineOptions:
     except ShaderError as e:
         raise ApiError(422, "invalid", str(e)) from e
     return pk.EngineOptions(ppu=body.ppu, pixel=body.pixel, collider=collider, shaders=shaders, normal2d=normal2d,
-                            mobile=body.mobile, toon=toon, package=body.package, webp=body.webp)
+                            mobile=body.mobile, toon=toon, package=body.package, webp=body.webp,
+                            demo=body.flutter_demo)
 
 
 @router.get("/packs")

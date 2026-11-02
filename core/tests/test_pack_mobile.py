@@ -172,3 +172,13 @@ def test_android_pack_resource_names_never_start_with_digit(tmp_path: Path) -> N
     assert names and all(re.fullmatch(r"[a-z][a-z0-9_]*", n) for n in names), names
     kt = (out / "kotlin/AssetStudioAssets.kt").read_text(encoding="utf-8")
     assert "R.drawable.asset_9_lives_coin" in kt
+
+
+async def test_pack_flutter_demo_flag_is_forwarded(app_ctx, tmp_path: Path) -> None:  # noqa: F811
+    app, client, _ = app_ctx
+    res, root = await _build(app, client, tmp_path / "plain", ["flutter"])
+    assert not (root / "flutter/demo").exists()
+    r = await client.post("/api/projects/p1/pack", headers=AUTH,
+                          json={"engines": ["flutter"], "out_dir": str(tmp_path / "demo"), "flutter_demo": True})
+    assert r.status_code == 201, r.text
+    assert "demo" in json.dumps(r.json())

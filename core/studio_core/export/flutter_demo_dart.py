@@ -246,7 +246,9 @@ class DemoGame extends FlameGame with KeyboardEvents {
       return;
     }
     final c = config;
-    camera.viewfinder.zoom = math.min(size.y / (c.viewRows * c.tile), size.x / (10 * c.tile));
+    // Whole-pixel tile size + pixel-snapped camera: a fractional tile edge samples the neighbouring atlas tile (seams).
+    final fit = math.min(size.y / (c.viewRows * c.tile), size.x / (10 * c.tile));
+    camera.viewfinder.zoom = fit >= 1 ? (fit * c.tile).floorToDouble() / c.tile : fit;
   }
 
   @override
@@ -268,7 +270,13 @@ class DemoGame extends FlameGame with KeyboardEvents {
       axis(player.position.y - config.charHeight * 0.4, half.y, config.mapHeight),
     );
     final pos = camera.viewfinder.position;
-    camera.viewfinder.position = pos + (target - pos) * math.min(1.0, dt * 10);
+    final next = pos + (target - pos) * math.min(1.0, dt * 10);
+    final z = camera.viewfinder.zoom;
+    final half2 = size / 2;
+    camera.viewfinder.position = Vector2(
+      ((next.x * z - half2.x).roundToDouble() + half2.x) / z,
+      ((next.y * z - half2.y).roundToDouble() + half2.y) / z,
+    );
   }
 
   /// Movement intent in [-1, 1]; the joystick wins when it is held.

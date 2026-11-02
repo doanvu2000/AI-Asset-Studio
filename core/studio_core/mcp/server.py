@@ -986,7 +986,8 @@ def build_server(link: CoreLink) -> MCPServer:
                                version: str | None = None, include: list[str] | None = None,
                                out_dir: str | None = None, author: str = "", org: str = "assetstudio",
                                description: str = "", atlas: bool = False, mobile: bool = False,
-                               package: str | None = None, webp: bool = False) -> dict[str, Any]:
+                               package: str | None = None, webp: bool = False,
+                               flutter_demo: bool = False) -> dict[str, Any]:
         """Package a project's approved assets into per-engine folders + zip on local disk (never pushed anywhere):
         flutter (main target: assets/ + merged pubspec + Assets.dart), android (res/drawable-*dpi + Kotlin helper),
         ios (xcassets + Swift helper), Unity UPM package and/or Godot addon, with README, CHANGELOG (vs the previous pack), LICENSE and provenance.json
@@ -996,13 +997,16 @@ def build_server(link: CoreLink) -> MCPServer:
         (2048 POT pages; Unity pre-sliced sprites, Godot AtlasTexture .tres; result.atlas has bytes before/after).
         mobile = Android/iOS texture budget (ASTC/ETC2, max size, mipmaps per asset type; result.mobile has the
         estimated GPU memory table). package = Android package of the Kotlin helper (engine android); webp = Flutter
-        density images as lossless WebP. engines None = ["flutter"]."""
+        density images as lossless WebP. flutter_demo = also write flutter/demo/, a runnable Flame project
+        (8-dir player, follow camera, tmx map, parallax; `flutter run` inside it). engines None = ["flutter"]."""
         body: dict[str, Any] = {"engines": engines or ["flutter"], "license": license, "author": author, "org": org,
                                 "description": description, "atlas": atlas, "mobile": mobile}
         if package:
             body["package"] = package
         if webp:
             body["webp"] = True
+        if flutter_demo:
+            body["flutter_demo"] = True
         for k, v in (("version", version), ("include", include), ("out_dir", out_dir)):
             if v is not None:
                 body[k] = v
