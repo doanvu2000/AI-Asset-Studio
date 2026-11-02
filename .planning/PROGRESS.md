@@ -1484,3 +1484,4 @@ Commit từng phần, không push. Plan: PLAN-2026-11-02-r10.md.
 - [~] N2b seed mock lô workflow/GPU/ETA giao sonnet (chỉ api/mock).
 - [x] N2b seed mock 2 lô workflow + hàng đợi GPU 1 giữ/2 chờ; typecheck sạch (agent) — 1d4d474
 - [x] WP-M minimap màu từ tileset (TMX/TMJ/LDtk) > ảnh reference > tên layer, op v2, level-pack map tiles+reference; ảnh compare scratchpad 0bc24b1f…/minimap/compare.png (main xem: nền be + đường xanh khớp màn); test 28 pass — aa1aebb. Nợ: tường/khối quantize gần đen, viền rào ngoài màn không lên minimap; mock app chưa map 2 input mới.
+- [x] Minimap vòng 2–3: bỏ IntGrid collision đè tile + nền letterbox tối (461a2b4); ngã tư gộp cụm nhỏ ≤4 ô theo lân cận (chủ nhân chọn giữ bản mượt) — 3c62079; test 32 pass; ảnh compare4.png
