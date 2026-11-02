@@ -16,6 +16,19 @@ export const whatsNewOpen = ref(false)
 // Summaries of `git log <prev tag>..<tag>` and the matching .planning plans; newest first.
 export const CHANGELOG: Release[] = [
   {
+    version: '1.4.0',
+    date: '2026-11-03',
+    items: [
+      'Đèn hợp máy đỏ / vàng / xanh khi chọn mục tiêu, quy trình, flow; app dò GPU, RAM, ổ đĩa và đề xuất model theo cấu hình máy',
+      'Xuất Flutter / Flame đầy đủ: tile động, autotile kèm bản đồ .tmx (flame_tiled), VFX hạt, thời tiết, màn UI, thẻ bài, minimap',
+      'Shader Pack Flutter 6 hiệu ứng và sprite ánh sáng theo normal map',
+      'Demo Flame chạy được bằng flutter run, kèm sẵn trong gói; có ô chọn demo ở hộp đóng gói',
+      'Giao diện thiết kế lại: font mới, sáng / tối, minh hoạ ở màn bắt đầu và màn trống, bố cục gọn hơn',
+      'Hoạt ảnh một lần quay về tư thế đứng; ổn định chân, bóng đổ đúng chân, pixel art tự chọn số màu, ground-strip giữ đế giày',
+      'Đóng gói chỉ lấy bản mới nhất của mỗi asset; GDD lưu lịch sử kế hoạch',
+    ]
+  },
+  {
     version: '1.3.0',
     date: '2026-11-01',
     items: [
