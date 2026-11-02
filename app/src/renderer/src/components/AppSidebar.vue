@@ -287,7 +287,8 @@ nav {
 }
 .mode {
   -webkit-app-region: no-drag;
-  display: inline-flex;
+  display: flex;
+  width: fit-content;
   align-items: center;
   gap: 6px;
   height: 22px;

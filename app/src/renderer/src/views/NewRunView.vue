@@ -803,7 +803,7 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
           <div v-if="!advanced && optionalCount" class="f">
             <span class="f-label" />
             <div class="f-control">
-              <button type="button" class="btn opt-toggle" :aria-expanded="showOptional" @click="showOptional = !showOptional">
+              <button type="button" class="btn opt-toggle" :aria-expanded="showOptional" @mousedown.prevent @click="showOptional = !showOptional">
                 <ChevronDown :size="14" :class="{ up: showOptional }" aria-hidden="true" />
                 Tuỳ chọn nâng cao ({{ optionalCount }})
               </button>

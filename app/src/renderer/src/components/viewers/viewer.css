@@ -61,6 +61,8 @@
   border-radius: 12px;
   transform: translateX(-50%);
   max-width: calc(100% - 24px);
+  flex-wrap: wrap;
+  justify-content: center;
 }
 .vw-bar .sep {
   width: 0.5px;

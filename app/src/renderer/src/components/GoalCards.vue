@@ -109,7 +109,7 @@ function open(c: Card): void {
 <style scoped>
 .g-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: var(--sp-3);
 }
 .g-card {

@@ -90,3 +90,4 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [~] 4 agent song song (chủ nhân cho tăng lên 4): ANIM-2 (GPU), KT-1 compile Kotlin, QA-UI mock + Playwright, FU-1 (portrait scale, qa shadow_outline, shadow-outline sheet+atlas).
 - [x] KT-1 Kotlin compile: AGP 8.13.2/Kotlin 2.4.21/BOM 2026.05.00 compileDebugKotlin + processDebugResources sạch (scratchpad/kt). Fix tiền tố số → asset_ trong AndroidPack.
 - [x] FU-1 portrait match_scale, qa nhận op.shadow_outline, shadow-outline nhận sheet+atlas — 52 pass.
+- [x] QA-UI mock+Playwright (scratchpad/qa/shots): sửa sidebar mode, GoalCards auto-fit, nút Tuỳ chọn nâng cao mousedown.prevent, viewer toolbar wrap.
