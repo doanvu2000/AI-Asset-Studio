@@ -21,6 +21,7 @@ import { useRuns } from '@/stores/runs'
 import { api, useConnection } from '@/stores/connection'
 import type { ApiError } from '@/api/client'
 import { useToasts } from '@/stores/toasts'
+import { useUiMode } from '@/composables/uiMode'
 import { LANE_LABEL, stepName } from '@/composables/format'
 import { RECIPE_GROUP_LABEL, RECOMMENDED_RECIPES, recipeGroup, recipePitch, type RecipeGroup } from '@/assets/art'
 import { QUICK_MATERIALS, quickStyleLabel } from '@/assets/quickPrompts'
@@ -308,6 +309,22 @@ function onFieldEdit(name: string, e: Event): void {
 }
 
 const fields = computed(() => Object.entries(selected.value?.inputs ?? {}).filter(([n]) => n !== varying.value))
+
+const { advanced } = useUiMode()
+const showOptional = ref(false)
+
+const PRIMARY_INPUTS = new Set(['prompt', 'idea'])
+
+function isRequired(spec: RecipeInputSpec, name = ''): boolean {
+  if (PRIMARY_INPUTS.has(name)) return true
+  if (isBlob(spec.type)) return spec.required !== false
+  if (spec.type === 'text') return spec.required !== false && spec.default === undefined
+  return spec.required === true
+}
+const optionalCount = computed(() => fields.value.filter(([n, s]) => !isRequired(s, n)).length)
+const shownFields = computed(() =>
+  advanced.value || showOptional.value ? fields.value : fields.value.filter(([n, s]) => isRequired(s, n))
+)
 
 const lines = computed(() => batchLines.value.split('\n').map((l) => l.trim()).filter(Boolean))
 const batchItems = computed(() => {
@@ -674,7 +691,7 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
             </div>
           </div>
 
-          <div v-for="[name, spec] in fields" :key="name" class="f">
+          <div v-for="[name, spec] in shownFields" :key="name" class="f">
             <label :for="`in-${name}`" class="f-label">
               {{ label(name, spec) }}
               <span v-if="spec.required && !fillByKey.has(name)" class="req" aria-hidden="true">*</span>
@@ -781,6 +798,15 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
               <p v-if="errors[name]" class="err" role="alert">{{ errors[name] }}</p>
               <p v-else-if="emptyFallsBack(name)" class="caption help">Để trống: dùng giá trị của dự án {{ project?.name }}</p>
               <p v-else-if="spec.help" class="caption help">{{ spec.help }}</p>
+            </div>
+          </div>
+          <div v-if="!advanced && optionalCount" class="f">
+            <span class="f-label" />
+            <div class="f-control">
+              <button type="button" class="btn opt-toggle" :aria-expanded="showOptional" @click="showOptional = !showOptional">
+                <ChevronDown :size="14" :class="{ up: showOptional }" aria-hidden="true" />
+                Tuỳ chọn nâng cao ({{ optionalCount }})
+              </button>
             </div>
           </div>
           <div class="f">
@@ -1234,5 +1260,11 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
   gap: 4px 8px;
   margin-top: 6px;
   color: var(--text-3);
+}
+.opt-toggle svg {
+  transition: transform var(--t-fast);
+}
+.opt-toggle svg.up {
+  transform: rotate(180deg);
 }
 </style>

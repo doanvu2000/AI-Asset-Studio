@@ -14,6 +14,7 @@ import { useUnsavedChanges } from '@/composables/unsaved'
 import { THEME_OPTIONS, useTheme } from '@/composables/theme'
 import { APP_VERSION, whatsNewOpen } from '@/composables/changelog'
 import { notifyEnabled } from '@/composables/notifyPrefs'
+import { useUiMode } from '@/composables/uiMode'
 import { usePresets } from '@/stores/catalog'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
@@ -44,6 +45,7 @@ const route = useRoute()
 const selectedId = ref<string>('studio')
 const pane = ref<'look' | 'notify' | 'setup' | 'tools' | 'diag' | null>(null)
 const theme = useTheme()
+const uiMode = useUiMode()
 const notifyAvailable = !!window.studio
 // Deep links such as the offline screen's "Mở Cài đặt → Đường dẫn" (/settings?pane=tools).
 watch(
@@ -264,6 +266,25 @@ async function remove(): Promise<void> {
               </button>
             </div>
             <p class="caption help">Áp dụng ngay, nhớ cho lần mở sau. Cũng đổi nhanh được qua Ctrl K → “Giao diện”.</p>
+            </div>
+          </div>
+          <div class="f">
+            <span class="lbl">Chế độ sử dụng</span>
+            <div>
+              <div class="seg" role="radiogroup" aria-label="Chế độ sử dụng">
+                <button
+                  v-for="o in ([['simple', 'Đơn giản'], ['advanced', 'Nâng cao']] as const)"
+                  :key="o[0]"
+                  type="button"
+                  role="radio"
+                  :aria-checked="uiMode.mode.value === o[0]"
+                  :class="{ on: uiMode.mode.value === o[0] }"
+                  @click="uiMode.mode.value = o[0]"
+                >
+                  {{ o[1] }}
+                </button>
+              </div>
+              <p class="caption help">Đơn giản: chỉ hiện thông tin cần thiết, tham số tuỳ chọn được gập lại. Nâng cao: hiện thêm làn xử lý, công thức, kiểm tra lỗi và mọi tham số.</p>
             </div>
           </div>
         </div>

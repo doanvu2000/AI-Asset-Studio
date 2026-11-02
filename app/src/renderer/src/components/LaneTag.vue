@@ -3,13 +3,15 @@ import { computed } from 'vue'
 import { Box, Cloud, Cpu, Hand, Zap } from '@lucide/vue'
 import type { Lane } from '@/api/types'
 import { LANE_LABEL } from '@/composables/format'
+import { useUiMode } from '@/composables/uiMode'
 
 const props = defineProps<{ lane: Lane }>()
+const { advanced } = useUiMode()
 const icon = computed(() => ({ gpu: Zap, blender: Box, cloud: Cloud, cpu: Cpu, none: Hand })[props.lane])
 </script>
 
 <template>
-  <span class="lane" :title="`Làn ${LANE_LABEL[lane]}`">
+  <span v-if="advanced" class="lane" :title="`Làn ${LANE_LABEL[lane]}`">
     <component :is="icon" :size="11" :stroke-width="2.2" />
     {{ LANE_LABEL[lane] }}
   </span>

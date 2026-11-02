@@ -3,12 +3,13 @@ import { ART } from '@/assets/art'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { motion } from 'motion-v'
-import { FolderKanban, Images, Inbox, LayoutDashboard, ListChecks, Plus, ScanSearch, Settings, Workflow } from '@lucide/vue'
+import { FolderKanban, Images, Inbox, LayoutDashboard, ListChecks, Plus, ScanSearch, Settings, SlidersHorizontal, Workflow } from '@lucide/vue'
 import { WORKFLOW_ACTIVE } from '@/api/types'
 import { useRuns } from '@/stores/runs'
 import { useFlows } from '@/stores/flows'
 import { useGates } from '@/stores/gates'
 import { useConnection } from '@/stores/connection'
+import { useUiMode } from '@/composables/uiMode'
 import TweenNumber from './TweenNumber.vue'
 import AgentActivity from './AgentActivity.vue'
 
@@ -19,10 +20,12 @@ const runs = useRuns()
 const flows = useFlows()
 const gates = useGates()
 const conn = useConnection()
+const { advanced, toggle: toggleMode } = useUiMode()
 
 // Only "Cần duyệt" carries a number: it is the one place that needs the user. Lượt chạy gets a quiet
 // activity dot while something is really executing (not parked at a gate).
-const groups = computed(() => [
+const groups = computed(() => allGroups.value.filter((g) => advanced.value || g.title !== 'Nâng cao'))
+const allGroups = computed(() => [
   {
     title: 'Làm việc',
     items: [
@@ -129,6 +132,16 @@ const status = computed(() => {
     </nav>
 
     <div class="foot">
+      <button
+        type="button"
+        class="mode"
+        :aria-pressed="advanced"
+        :title="advanced ? 'Đang ở chế độ Nâng cao, bấm để về Đơn giản' : 'Đang ở chế độ Đơn giản, bấm để hiện thêm công cụ'"
+        @click="toggleMode"
+      >
+        <SlidersHorizontal :size="12" :stroke-width="2" />
+        <span class="mode-text">{{ advanced ? 'Nâng cao' : 'Đơn giản' }}</span>
+      </button>
       <span class="conn" :class="status.tone" :title="compact ? status.text : undefined" role="status">
         <span class="dot" />
         <span class="conn-text" :title="status.text">{{ status.text }}</span>
@@ -271,6 +284,26 @@ nav {
 }
 .foot {
   padding: 0 6px;
+}
+.mode {
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  margin-bottom: 6px;
+  padding: 0 7px;
+  border-radius: 5px;
+  font-size: var(--fs-caption);
+  color: var(--text-2);
+  background: transparent;
+  box-shadow: var(--hairline);
+}
+.mode:hover {
+  background: var(--bg-hover);
+}
+.compact .mode-text {
+  display: none;
 }
 .conn {
   display: inline-flex;
