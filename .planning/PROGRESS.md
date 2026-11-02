@@ -113,3 +113,24 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [x] PACK-1 latest_per_asset (tên+recipe, bỏ khi include tường minh) + list_packs superseded — 212 pass, typecheck sạch.
 - [x] ANIM-3 anim_loop v3: attack end 49→21 (giống frame0 0.76→0.89), frame ít ghost (29–61→1–19 px); walk/idle giữ nguyên — 121 pass; main xem scratchpad/anim3/after_attack.png: giơ→chém→về stance.
 - [x] 01:12 Handoff mới: .planning/HANDOFF-2026-11-03-0112.md (full pytest 1565 pass)
+- [~] LIVE-4 chạy lại game-slice (cache GPU) xem attack v3 + gói sạch _2/_3; PIX-2 op.pixel_art colors auto 16/64.
+- [x] PIX-2 op.pixel_art colors auto v2 + 2 recipe pixel options tới 64 — 246 pass.
+- [~] Chủ nhân: đề xuất model + chức năng theo cấu hình máy, đèn đỏ/vàng/xanh khi chọn chức năng. Plan `.planning/PLAN-2026-11-03-hw-fit.md`. HW-1 core (/api/hardware, /api/fit, manifest hw) + HW-2 app (FitBadge, Settings "Phù hợp với máy") song song theo contract.
+- [~] Chủ nhân: thêm 3 tính năng mới hợp công cụ hiện có → agent RESEARCH đề xuất 6 ứng viên, main chọn 3.
+- [x] RESEARCH 6 ứng viên → chọn B exporter Flutter đủ bộ → A shader Flutter + đèn 2D → C demo Flame (tuần tự). Plan .planning/PLAN-2026-11-03-new3.md. [~] NF-B giao sonnet.
+- [x] HW-1 /api/hardware + /api/fit + manifest hw — máy này 92 xanh/4 vàng/0 đỏ, flow 4/1/0; giả lập không GPU 63 đỏ.
+- [x] HW-2 FitBadge/FitPanel/xác nhận đỏ — typecheck sạch; ảnh scratchpad/hw/shots (main xem settings_fit, newrun_red dark). Chủ nhân: commit từng phần + cho build để test.
+- [x] GDD-2 plan lưu SQLite gdd_plans + GET /api/gdd/plans + lọc flow audio — 17 pass.
+- [x] HW-3 Electron thật + core thật: số liệu khớp /api/hardware, 96/5/0 khớp /api/fit, fit 644ms cold, 0 console error (scratchpad/hw3/shots).
+- [x] GS-3 ground-strip v3: thân mất 141–233→17–99 px, cỏ thật sạch giữ giày (main xem gs3/after_real.png) — 18 pass.
+- [~] Chủ nhân: áp skill web-design + stageshow + rule CLAUDE.md để UI app đẹp, clean, dễ dùng hơn.
+- [x] LIVE-4 (scratchpad/g4/): 16/16 ~26 phút; attack về stance (IoU 0.89 frame0), thân attack = idle ~229; unity/godot hết _2/_3; dart analyze 0. Lỗi: cache GPU không hit khi chạy lại cùng input → [~] CACHE-1 điều tra. [~] UI-1 design system (opus).
+- [x] CACHE-1: không lỗi — concept-2d/sprite-anim-video không pin seed nên cố ý không cache (adapters/comfy/executor.py:109). Thêm test. Chờ chủ nhân: tuỳ chọn dùng lại seed khi chạy lại (mặc định giữ hành vi cũ).
+- [x] NF-B exporter Flutter: tile_anim, autotile+.tmx, vfx, weather, ui_screen, card_set, minimap (bỏ trim/decal) — 239 pass, dart analyze 0, flutter test 7/7 (scratchpad/flv/nfb). [~] NF-A shader Flutter + đèn 2D.
+- [x] NF-A shader Flutter 6 hiệu ứng + lit_sprite 4 đèn — 134 pass, dart analyze 0, flutter test 9/9 (golden khớp CPU <0.1), impellerc biên dịch 7 .frag (scratchpad/flv/nfa). Chưa thử thiết bị Impeller thật. [~] NF-C demo Flame.
+- [x] UI-1 design system (tokens light/dark, font local, 15px, pill/card/sidebar) — typecheck+build sạch, không cuộn ngang 6 màn (scratchpad/ui1/shots). [~] UI-2 A/B.
+- [x] UI-2A Dashboard/NewRun/RunDetail/Runs/Gates — typecheck+build sạch, không cuộn ngang (scratchpad/ui2a). Plan voice: .planning/PLAN-2026-11-03-voice.md (chủ nhân mở lại voice).
+- [x] UI-2B Projects/ProjectDetail/Gallery/Settings/FitPanel/Recipes/Flows — typecheck+build sạch (scratchpad/ui2b). [~] UI-3 stageshow minh hoạ + Electron QA cuối.
+- [x] NF-C demo Flame: pytest 325 pass, demo từ gói thật analyze 0 + flutter test pass + APK debug build OK (scratchpad/nfc/demo_app). Lỗi: vệt dọc mảnh giữa ô tile; chưa có option API/UI. [~] NF-C2.
+- [ ] Cuối đợt (chủ nhân): viết lại README ngắn dạng liệt kê + release note, bump 1.4.0 (changelog có 1.2/1.3 chưa tag; GitHub chỉ có v1.1.0), npm run dist, gh release v1.4.0 (Setup exe + Portable zip).
+- [x] 02:29 Handoff mới: .planning/HANDOFF-2026-11-03-0229.md (4 agent đang chạy: NF-C2, UI-3, VOICE-V0, DEMO-5)
