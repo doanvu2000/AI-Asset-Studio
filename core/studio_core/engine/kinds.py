@@ -109,7 +109,7 @@ CATALOG: dict[str, P] = {
                      "out": {"images": "image[]", "palette": "json", "swatch": "image"},
                      "params": {"size": _int(64, min=8, max=512, label="Cỡ khung (px, cạnh dài)"),
                                 "factor": _float(min=1, max=32, label="Hoặc chia nhỏ theo hệ số", advanced=True),
-                                "colors": _int(16, min=2, max=256, label="Số màu"),
+                                "colors": _int(0, min=0, max=256, label="Số màu (0 = tự chọn)"),
                                 "palette": _enum(PALETTE_CHOICES, "auto", label="Bảng màu"),
                                 "outline": _text("dark", label="Viền ngoài (none / dark / #rrggbb)"),
                                 "dither": _enum(["none", "bayer"], "none", label="Dither"),

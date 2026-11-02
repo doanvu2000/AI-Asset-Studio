@@ -1102,7 +1102,7 @@ Text → concept → chọn → TRELLIS mesh → Blender dọn mesh → render 8
   - `prompt` (text; required) — Prompt
   - `elevation` (int; default 30; one of 30, 45, 60, 90) — Góc nghiêng
   - `pixel` (int; default 64; one of 32, 48, 64, 96, 128) — Cỡ pixel art (px)
-  - `colors` (int; default 16; one of 8, 12, 16, 24, 32) — Số màu
+  - `colors` (int; default 0; one of 0, 8, 12, 16, 24, 32, 48, 64) — Số màu (0 = tự chọn: 16, khung ≥128px thì 64)
   - `palette` (enum; default 'auto'; one of auto, pico8, sweetie16, db16, db32, endesga32) — Bảng màu
   - `outline` (enum; default 'dark'; one of dark, none, #000000) — Viền ngoài
   - `dither` (enum; default 'none'; one of none, bayer) — Dither
@@ -1188,7 +1188,7 @@ Mesh GLB → dọn mesh → render 8 hướng ortho (Blender) → pixel art (m�
   - `mesh` (mesh; required) — Mesh GLB
   - `elevation` (float; default 30; 0..90) — Góc nghiêng
   - `pixel` (int; default 64; one of 32, 48, 64, 96, 128) — Cỡ pixel art (px)
-  - `colors` (int; default 16; one of 8, 12, 16, 24, 32) — Số màu
+  - `colors` (int; default 0; one of 0, 8, 12, 16, 24, 32, 48, 64) — Số màu (0 = tự chọn: 16, khung ≥128px thì 64)
   - `palette` (enum; default 'auto'; one of auto, pico8, sweetie16, db16, db32, endesga32) — Bảng màu
   - `palette_image` (image) — Ảnh lấy bảng màu (tuỳ chọn)
   - `outline` (enum; default 'dark'; one of dark, none, #000000) — Viền ngoài

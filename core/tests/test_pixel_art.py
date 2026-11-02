@@ -217,3 +217,12 @@ async def test_pixel_size_bounds_and_normal_downscale(tmp_path: Path):
     for rid in ("sprite-8dir-3d", "sprite-8dir-3d-mv", "sprite-8dir-3d-brief", "sprite-8dir-anim"):
         _, issues = validate((RECIPES / f"{rid}.yaml").read_text(encoding="utf-8"), None)
         assert not [i for i in issues if "normal" in str(i.get("message", ""))], (rid, issues)
+
+
+def test_auto_colors_scale_with_grid_size():
+    rng = np.random.default_rng(2)
+    noise = Image.fromarray(rng.integers(0, 256, (320, 320, 4), dtype=np.uint8) | np.array([0, 0, 0, 255], np.uint8), "RGBA")
+    big = pixel_art([noise], size=160, outline="none")
+    small = pixel_art([noise], size=48, outline="none")
+    assert len(big.palette) > 32 and len(small.palette) <= 16
+    assert len(pixel_art([noise], size=160, colors=8, outline="none").palette) <= 8

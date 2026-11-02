@@ -280,13 +280,25 @@ class PixelPlan:
     source: str
 
 
-def check_params(colors: int, palette: str, dither: str) -> None:
-    if not 2 <= int(colors) <= 256:
+def check_params(colors: int, palette: str, dither: str, auto: bool = False) -> None:
+    if not (auto and int(colors) == 0) and not 2 <= int(colors) <= 256:
         raise ValueError("colors must be within 2..256")
     if dither not in DITHERS:
         raise ValueError(f"dither must be one of {DITHERS}")
     if palette != "auto" and palette not in PALETTES:
         raise ValueError(f"unknown palette '{palette}'; use {PALETTE_CHOICES}")
+
+
+# Smooth-painted sprites of 128px+ turn to mush at 16 colours; true low-res pixel art keeps the small budget.
+DEFAULT_COLORS = 16
+BIG_CELL_COLORS = 64
+BIG_CELL = 128
+
+
+def auto_colors(colors: int, smalls: Sequence[tuple[np.ndarray, np.ndarray]]) -> int:
+    if colors:
+        return int(colors)
+    return BIG_CELL_COLORS if max(max(a.shape[:2]) for a, _ in smalls) >= BIG_CELL else DEFAULT_COLORS
 
 
 def pixel_scale(frames: Sequence[Image.Image], size: int | None, factor: float | None) -> float:
@@ -406,15 +418,15 @@ def finish(plan: PixelPlan, result: list[Image.Image]) -> PixelResult:
 
 
 def pixel_art(frames: Sequence[Image.Image], size: int | None = 64, factor: float | None = None,
-              colors: int = 16, palette: str = "auto", palette_image: Image.Image | None = None,
+              colors: int = 0, palette: str = "auto", palette_image: Image.Image | None = None,
               outline: str = "dark", alpha_threshold: int = 128, dither: str = "none",
               dither_strength: float = 0.6, cleanup: bool = True) -> PixelResult:
     if not frames:
         raise ValueError("no frames")
-    check_params(colors, palette, dither)
+    check_params(colors, palette, dither, auto=True)
     scale = pixel_scale(frames, size, factor)
     smalls = [shrink(f, scale, alpha_threshold, cleanup) for f in frames]
-    plan = plan_palette(smalls, scale, colors, palette, palette_image, outline, dither, dither_strength, cleanup)
+    plan = plan_palette(smalls, scale, auto_colors(colors, smalls), palette, palette_image, outline, dither, dither_strength, cleanup)
     return finish(plan, [quantize(plan, arr, solid) for arr, solid in smalls])
 
 
@@ -424,6 +436,7 @@ def _opt_int(v: Any) -> int | None:
 
 class PixelArt(OpExecutor):
     kind = "op.pixel_art"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = _images_in(inputs)
@@ -441,10 +454,10 @@ class PixelArt(OpExecutor):
         pal_refs = inputs.get("palette_image") or []
         pal_img = await _load(ctx, pal_refs[0]) if pal_refs else None
         factor = params.get("factor")
-        colors, palette = int(params.get("colors") or 16), str(params.get("palette") or "auto")
+        colors, palette = int(params.get("colors") or 0), str(params.get("palette") or "auto")
         dither, cleanup = str(params.get("dither") or "none"), bool(params.get("cleanup", True))
         try:
-            check_params(colors, palette, dither)
+            check_params(colors, palette, dither, auto=True)
             scale = pixel_scale(imgs, _opt_int(params.get("size", 64)), float(factor) if factor else None)
             smalls = []
             for i, img in enumerate(imgs):
@@ -453,7 +466,7 @@ class PixelArt(OpExecutor):
                                                       cleanup))
             tick(len(refs) * 2, "palette")
             plan = await asyncio.to_thread(
-                plan_palette, smalls, scale, colors, palette, pal_img, str(params.get("outline") or "none"), dither,
+                plan_palette, smalls, scale, auto_colors(colors, smalls), palette, pal_img, str(params.get("outline") or "none"), dither,
                 float(params.get("dither_strength", 0.6)), cleanup, ctx.cancelled.is_set)
         except ValueError as e:
             raise StepError("op_bad_params", str(e)) from e

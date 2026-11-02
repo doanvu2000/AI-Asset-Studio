@@ -6,7 +6,7 @@ inputs:
   mesh: {type: mesh, label: Mesh GLB}
   elevation: {type: float, default: 30, min: 0, max: 90, label: Góc nghiêng}
   pixel: {type: int, default: 64, options: [32, 48, 64, 96, 128], label: Cỡ pixel art (px)}
-  colors: {type: int, default: 16, options: [8, 12, 16, 24, 32], label: Số màu}
+  colors: {type: int, default: 0, options: [0, 8, 12, 16, 24, 32, 48, 64], label: "Số màu (0 = tự chọn: 16, khung ≥128px thì 64)"}
   palette: {type: enum, default: auto, options: [auto, pico8, sweetie16, db16, db32, endesga32], label: Bảng màu}
   palette_image: {type: image, required: false, label: Ảnh lấy bảng màu (tuỳ chọn)}
   outline: {type: enum, default: dark, options: [dark, none, "#000000"], label: Viền ngoài}

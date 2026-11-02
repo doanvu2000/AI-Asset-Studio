@@ -6,7 +6,7 @@ inputs:
   prompt: {type: text, label: Prompt}
   elevation: {type: int, default: 30, options: [30, 45, 60, 90], label: Góc nghiêng}
   pixel: {type: int, default: 64, options: [32, 48, 64, 96, 128], label: Cỡ pixel art (px)}
-  colors: {type: int, default: 16, options: [8, 12, 16, 24, 32], label: Số màu}
+  colors: {type: int, default: 0, options: [0, 8, 12, 16, 24, 32, 48, 64], label: "Số màu (0 = tự chọn: 16, khung ≥128px thì 64)"}
   palette: {type: enum, default: auto, options: [auto, pico8, sweetie16, db16, db32, endesga32], label: Bảng màu}
   outline: {type: enum, default: dark, options: [dark, none, "#000000"], label: Viền ngoài}
   dither: {type: enum, default: none, options: [none, bayer], label: Dither}
