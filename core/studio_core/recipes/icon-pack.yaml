@@ -1,5 +1,6 @@
 id: icon-pack
 name: Bộ icon cùng style (Z-Image + Flux.2 Klein)
+preview: previews/icon-pack.webp
 description: >-
   Mỗi dòng 1 icon + mô tả style (khung, viền, bóng) → Z-Image vẽ thử từng icon → chọn 1 icon làm mẫu style → Klein
   vẽ lại cả bộ theo đúng mẫu đó (cùng khung, nét viền, đổ bóng, bảng màu) → tách nền → căn cỡ → viền/bóng tuỳ chọn →

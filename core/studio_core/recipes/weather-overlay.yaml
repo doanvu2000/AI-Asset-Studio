@@ -1,5 +1,6 @@
 id: weather-overlay
 name: Lớp thời tiết & không khí (mưa, tuyết, sương, lá rơi, tro, đom đóm)
+preview: previews/weather-overlay.webp
 description: >-
   Chọn loại thời tiết (mưa nhẹ / nặng / xiên, tuyết, sương trôi, lá rơi, tro bụi, đom đóm) và góc nhìn
   (sideview / topdown) → vẽ bằng CPU, không cần GPU: sheet loop liền mạch cho từng lớp (hạt chạy trọn số ô mỗi vòng

@@ -1,5 +1,6 @@
 id: tileset-seamless
 name: Tileset biến thể liền mạch (Z-Image)
+preview: previews/tileset-seamless.webp
 description: Prompt vật liệu → N ảnh Z-Image → edge = ảnh đầu làm liền mạch, các ảnh sau mượn mép của nó (lát trộn lẫn được); wang = 2 vật liệu (dòng 1, dòng 2 — hoặc 2 biến thể của 1 vật liệu) thành bộ Wang góc 16 ô, xếp kiểu gì khớp nhãn góc cũng liền → chấm điểm + xem lát → normal map → duyệt
 inputs:
   prompt: {type: text, multiline: true, label: "Vật liệu (Wang: dòng 2 = vật liệu thứ hai)", placeholder: "lush green grass\ndry dirt path"}

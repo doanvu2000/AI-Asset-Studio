@@ -1,5 +1,6 @@
 id: pbr-material
 name: Vật liệu PBR từ texture
+preview: previews/pbr-material.webp
 description: >-
   Ảnh albedo (vd texture liền mạch, ô tileset) → height từ độ sáng (làm mịn, bỏ ánh sáng loang) → normal (Sobel
   trên height) → roughness (tối + nhiều chi tiết = nhám) → metallic (mặc định 0, tuỳ chọn đoán vùng kim loại) → AO từ

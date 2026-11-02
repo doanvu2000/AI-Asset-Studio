@@ -1,5 +1,6 @@
 id: ui-kit
 name: Bộ UI kit 9-slice (Z-Image)
+preview: previews/ui-kit.webp
 description: >-
   Chủ đề → Z-Image vẽ một sheet mockup UI (nút, khung, thanh, ô, tab; không chữ) → chọn → xoá nền, tách từng phần
   tử → tính viền 9-slice + trạng thái hover/pressed/disabled → bảng xem trước kéo giãn 3× → duyệt. Xuất Unity

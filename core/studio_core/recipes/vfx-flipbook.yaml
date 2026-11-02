@@ -1,5 +1,6 @@
 id: vfx-flipbook
 name: Hiệu ứng VFX flipbook (Wan Alpha)
+preview: previews/vfx-flipbook.webp
 description: >-
   Mô tả hiệu ứng → Wan 2.1 Alpha sinh video có kênh alpha → cắt đoạn (một lần: bỏ frame rỗng, mờ dần
   cuối; lặp: chọn đoạn nối liền nhất) → crop chung, ô vuông → sprite sheet → duyệt

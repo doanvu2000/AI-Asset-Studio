@@ -1,5 +1,6 @@
 id: parallax-layers
 name: Nền parallax 4–5 lớp (Z-Image)
+preview: previews/parallax-layers.webp
 description: >-
   Prompt cảnh (+ ảnh tham chiếu màu, tuỳ chọn) → Z-Image vẽ riêng bầu trời và từng lớp xa → gần trên nền trắng phẳng,
   cùng câu style → BiRefNet tách nền (hỏng thì tách theo màu nền) → lớp xa nhạt dần về màu trời → mỗi lớp liền mạch

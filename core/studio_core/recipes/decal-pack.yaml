@@ -1,5 +1,6 @@
 id: decal-pack
 name: Bộ decal (nứt, rêu, bẩn, cháy, graffiti)
+preview: previews/decal-pack.webp
 description: >-
   Mỗi dòng 1 decal (vết nứt, rêu, vết bẩn, vết cháy, graffiti / logo sơn) → Z-Image vẽ trên nền trắng phẳng → tách
   nền theo màu nền (vết nứt / vết xước: chỉ lấy nét tối, bỏ hạt lẻ, làm dày nét cho đọc được; bụi loang giữ nguyên) hoặc BiRefNet (logo, sticker khối đặc) → màu khử nền trắng,

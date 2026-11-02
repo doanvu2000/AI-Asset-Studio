@@ -1,5 +1,6 @@
 id: item-rarity
 name: Bậc độ hiếm vật phẩm (recolor + Flux.2 Klein)
+preview: previews/item-rarity.webp
 description: >-
   Ảnh vật phẩm (PNG nền trong) → common giữ nguyên, uncommon/rare đổi màu giữ độ sáng (CPU) → Klein nâng cấp rare
   thành epic (viền vàng) rồi legendary (đá quý phát sáng, chạm trổ) → tách nền, đặt lại đúng khung gốc → kiểm

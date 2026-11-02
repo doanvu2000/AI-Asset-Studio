@@ -1,5 +1,6 @@
 id: vfx-particles
 name: Bộ VFX hạt (particle) Unity / Godot
+preview: previews/vfx-particles.webp
 description: >-
   Chọn preset (nổ, hồi máu, nhặt đồ, vệt đạn, bụi bước chân, tia va chạm, hào quang phép) → vẽ texture hạt nền trong
   bằng CPU (chấm mềm, tia lửa, 4 làn khói, vòng, vệt chém, sao, ấn phép) → tuỳ chọn Z-Image vẽ texture có style
