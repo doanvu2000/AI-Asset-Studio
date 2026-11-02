@@ -129,6 +129,7 @@ async def list_packs(request: Request, project_id: str) -> Response:
     p = await _project(request, project_id)
     history = await asyncio.to_thread(pk.load_history, _data_dir(request), project_id)
     assets, skipped = await _assets(request, await _approved(request, project_id))
+    assets, superseded = pk.latest_per_asset(assets)
     blobs = request.app.state.blobs
     items = []
     for a in assets:
@@ -141,7 +142,8 @@ async def list_packs(request: Request, project_id: str) -> Response:
     return OrjsonResponse({"project_id": project_id, "slug": pk.slugify(name, project_id[:12] or "pack"),
                            "next_version": pk.next_version(history),
                            "default_dir": str(_data_dir(request) / "packs"),
-                           "packs": list(reversed(history)), "assets": items, "skipped": skipped})
+                           "packs": list(reversed(history)), "assets": items, "skipped": skipped,
+                           "superseded": superseded})
 
 
 @router.get("/ai-credits")
@@ -176,7 +178,8 @@ async def build_pack(request: Request, project_id: str, body: PackBody) -> Respo
     opts = pk.PackOptions(engines=list(dict.fromkeys(body.engines)), license=body.license, version=body.version,
                           org=body.org, author=body.author, description=body.description,
                           out_dir=Path(body.out_dir) if body.out_dir else None, zip=body.zip,
-                          export=_engine_options(body), atlas=atlas_options(body) if body.atlas else None)
+                          export=_engine_options(body), atlas=atlas_options(body) if body.atlas else None,
+                          latest_only=body.include is None)
     lock = _locks.setdefault(project_id, asyncio.Lock())
     if lock.locked():
         raise ApiError(409, "busy", "a pack for this project is already being built")

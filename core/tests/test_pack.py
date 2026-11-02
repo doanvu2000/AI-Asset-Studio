@@ -403,3 +403,26 @@ async def test_pack_toon_material_only_on_model_assets(app_ctx, tmp_path: Path) 
     addon = next((root / "godot" / "addons").iterdir())
     assert (addon / "Rock" / "Shaders" / "Rock_toon3d.tres").is_file()
     assert not list((addon / "Hiep_si").rglob("*toon3d*"))
+
+
+def test_latest_per_asset_keeps_newest_rerun_only():
+    from types import SimpleNamespace as NS
+
+    def asset(name, recipe, t):
+        return pk.PackAsset(name=name, step=None, siblings=[], run=NS(recipe_id=recipe),  # type: ignore[arg-type]
+                            versions=[NS(created_at=t)])  # type: ignore[list-item]
+
+    old, new, other, draft_other = asset("Anim_tan_cong", "r", 1), asset("anim_tan_cong", "r", 3), \
+        asset("Anim_di_bo", "r", 2), asset("Anim_tan_cong", "other", 1)
+    kept, dropped = pk.latest_per_asset([old, new, other, draft_other])
+    assert kept == [new, other, draft_other]
+    assert dropped == ["Anim_tan_cong"]
+
+
+async def test_listing_shows_only_newest_rerun(app_ctx) -> None:  # noqa: F811
+    app, client, _ = app_ctx
+    await _project(app)
+    await _sprite_run(app, "r1", "Hiệp sĩ", (200, 0, 0))
+    await _sprite_run(app, "r2", "Hiệp sĩ", (0, 200, 0))
+    listing = (await client.get("/api/projects/p1/packs", headers=AUTH)).json()
+    assert [a["run_id"] for a in listing["assets"]] == ["r2"] and listing["superseded"] == ["Hiệp sĩ"]

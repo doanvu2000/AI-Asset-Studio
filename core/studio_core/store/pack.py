@@ -80,6 +80,8 @@ class PackOptions:
     export: EngineOptions = field(default_factory=EngineOptions)
     # export/atlas.py AtlasOptions: one shared atlas of every 2D sprite in the pack, beside the per-asset exports.
     atlas: Any = None
+    # False when the user picked versions explicitly: then every picked asset is packed as is.
+    latest_only: bool = True
 
 
 def ascii_fold(text: str) -> str:
@@ -765,10 +767,26 @@ def _replace_dir(tmp: Path, dst: Path) -> None:
     os.replace(tmp, dst)
 
 
+def latest_per_asset(assets: list[PackAsset]) -> tuple[list[PackAsset], list[str]]:
+    """Re-running a recipe makes a new step with the same asset name; only the newest approved one ships."""
+    best: dict[tuple[str, str], PackAsset] = {}
+    for a in assets:
+        key = (a.name.casefold(), a.run.recipe_id if a.run else "")
+        cur = best.get(key)
+        if cur is None or max(v.created_at for v in a.versions) >= max(v.created_at for v in cur.versions):
+            best[key] = a
+    keep = {id(a) for a in best.values()}
+    return [a for a in assets if id(a) in keep], [a.name for a in assets if id(a) not in keep]
+
+
 def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, project_id: str, project_name: str,
                data_dir: Path) -> dict[str, Any]:
     if not assets:
         raise PackError("no approved assets to pack (approve versions first or check the include list)")
+    warnings: list[str] = []
+    if opts.latest_only:
+        assets, dropped = latest_per_asset(assets)
+        warnings += [f"{n}: older approved version left out, only the newest is packed" for n in dropped]
     engines = [e for e in PACK_ENGINES if e in opts.engines]
     if not engines:
         raise PackError(f"pick at least one engine ({', '.join(PACK_ENGINES)})")
@@ -789,7 +807,6 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
     # Engine exports nest deeply; a short system temp root keeps them under Windows' 260-char path limit.
     staging = Path(tempfile.mkdtemp(prefix="pack-"))
     now = time.time()
-    warnings: list[str] = []
     try:
         folders, used = [], set()
         for a in assets:

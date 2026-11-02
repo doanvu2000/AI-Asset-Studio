@@ -1002,6 +1002,8 @@ export interface PackListing {
   packs: PackRecord[]
   assets: PackCandidate[]
   skipped: { name: string; step_id: string; reason: string }[]
+  /** Asset names whose older approved re-runs are left out of the pack. */
+  superseded?: string[]
 }
 
 export interface PackBody {
