@@ -62,8 +62,8 @@ _FL_OWN = {"pubspec_assets.yaml", "lib/gen/asset_studio_assets.dart", "lib/gen/a
 
 
 class FlutterPack:
-    def __init__(self, root: Path, title: str, warnings: list[str]) -> None:
-        self.tree, self.title = _Tree(root, warnings), title
+    def __init__(self, root: Path, title: str, warnings: list[str], demo: bool = False) -> None:
+        self.tree, self.title, self.demo = _Tree(root, warnings), title, demo
         self.img: set[str] = set()
         self.ui: set[str] = set()
         self.svg: set[str] = set()
@@ -73,7 +73,7 @@ class FlutterPack:
         self.flags = {"anim": False, "nine": False, "parallax": False, "font": False, "tiled": False}
 
     def add(self, folder: str, d: Path) -> list[str]:
-        rels = _staged(d)
+        rels = [r for r in _staged(d) if not r.startswith("demo/")]
         imgs = {m[1] for r in rels if (m := _FL_IMG.match(r))}
         uis = {m[1] for r in rels if (m := _FL_UI.match(r)) and r not in _FL_OWN}
         svgs = {m[1] for r in rels if (m := _FL_SVG.match(r))}
@@ -101,7 +101,7 @@ class FlutterPack:
         readme = d / "README_FLUTTER.md"
         if readme.is_file():
             text = readme.read_text(encoding="utf-8")
-            self.notes[folder] = _notes(text)
+            self.notes[folder] = _notes(text).replace(fl.NOTE_DEMO, "").strip()
             if m := re.search(r"^2\. Package: (.+)\.$", text, re.M):
                 self.packages += [p for p in m[1].split(", ") if p not in self.packages]
         return got
@@ -125,6 +125,13 @@ class FlutterPack:
         if fd.asset_paths(paths):
             put("pubspec_assets.yaml", fd.pubspec_snippet(paths, self.packages).encode())
             put("lib/gen/asset_studio_assets.dart", fd.assets_dart(paths).encode())
+        if self.demo:
+            from studio_core.export.flutter_demo import write_demo
+
+            if write_demo(root, self.title):
+                self.notes["demo"] = fl.NOTE_DEMO
+            else:
+                self.tree.warnings.append("flutter demo: no character sprite sheet in the pack, demo/ not written")
         put("README_FLUTTER.md", fl.README.format(asset=self.title, packages=", ".join(self.packages),
                                                   notes=_sections(self.notes)).encode())
         return ["pubspec_assets.yaml", "lib/gen/asset_studio_assets.dart"] if fd.asset_paths(paths) else []

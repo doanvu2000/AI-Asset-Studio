@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from studio_core.contracts import BlobStore, StepRow
-from studio_core.export.sheet import Cell, Layout, cs_namespace, stable_hex
+from studio_core.export.sheet import Cell, Layout, cs_namespace, ident, stable_hex
 from studio_core.export.source import Files, Source
 
 GODOT_VIEW = (1280, 720)
@@ -867,6 +867,17 @@ def unity_files(src: Source) -> tuple[Files, list[str]]:
              f"- Scripts/: PlayerController, FollowCamera, ParallaxLayer (namespace {ns}, chạy cả Input Manager cũ "
              "lẫn Input System).", *depth_notes(doc), *walk_notes(doc)]
     return files, notes
+
+
+def flutter_player_files(src: Source) -> tuple[Files, str]:
+    """The scene's player sprite sheet as Flutter / Flame files (sprites/<name>.png + atlas + _anim.json) and its name."""
+    from studio_core.export.flutter import _sheet_files
+
+    if not (src.playable or {}).get("player") or "sheet" not in src.playable_files:
+        return [], ""
+    player = _player_source(src, 100.0)
+    name = ident(player.asset, "asset")
+    return _sheet_files(player, name), name
 
 
 def extra_files(src: Source) -> Files:

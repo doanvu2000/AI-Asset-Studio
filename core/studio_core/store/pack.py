@@ -65,6 +65,8 @@ class EngineOptions:
     toon: Any = None
     package: str = ANDROID_PACKAGE
     webp: bool = False
+    # Flutter pack only: also write flutter/demo/, a runnable Flame project built from the pack's assets.
+    demo: bool = False
 
 
 @dataclass
@@ -833,7 +835,7 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
             if e in engines:
                 roots[e] = work / e
         if "flutter" in roots:
-            merges["flutter"] = FlutterPack(roots["flutter"], title, warnings)
+            merges["flutter"] = FlutterPack(roots["flutter"], title, warnings, opts.export.demo)
         if "android" in roots:
             merges["android"] = AndroidPack(roots["android"], title, opts.export.package, warnings)
         if "ios" in roots:

@@ -50,6 +50,8 @@ NOTE_ICON = """- flutter_launcher_icons.yaml + assets/icon/: thêm flutter_launc
   `dart run flutter_launcher_icons` (Android adaptive + iOS bỏ kênh alpha). Mỗi project chỉ dùng được 1 icon."""
 NOTE_TILED = """- assets/tiles/: {maps} + ảnh tileset nằm cạnh nhau; loadTiledMap('{name}', Vector2.all(16)) (flame_tiled) trả
   TiledComponent, tham số 2 là kích thước ô khi vẽ."""
+NOTE_DEMO = """- demo/: project Flutter + Flame chạy được (`cd demo && flutter pub get && flutter run`): nhân vật 8 hướng (bàn phím /
+  joystick ảo), camera bám theo, map .tmx, parallax, prop có hitbox, đèn normal map nếu có; `flutter test` khởi game + golden."""
 NOTE_SVG = """- assets/svg/: ảnh vector, hiển thị bằng package flutter_svg: SvgPicture.asset(AssetStudioAssets.xxx)."""
 
 
@@ -163,9 +165,10 @@ def _font_doc(font: dict) -> dict:
             "kernings": [list(k) for k in font.get("kernings") or []]}
 
 
-def export(src: Source, webp: bool = False, shaders: bool | None = None) -> Files:
+def export(src: Source, webp: bool = False, shaders: bool | None = None, demo: bool | None = None) -> Files:
     """`shaders`: None = Shader Pack only when a normal map exists, True = always for a sprite sheet (a normal map is
-    generated from alpha when missing), False = never."""
+    generated from alpha when missing), False = never. `demo`: add a runnable Flame project under demo/ (None = for a
+    playable scene only)."""
     a = ident(src.asset, "asset")
     files: Files = []
     notes: list[str] = []
@@ -177,6 +180,14 @@ def export(src: Source, webp: bool = False, shaders: bool | None = None) -> File
         files += _sheet_files(src, a)
         notes.append(NOTE_ANIM.format(asset=a))
         use_anim = True
+    elif src.playable and src.playable_files:
+        from studio_core.export.playable_scene import flutter_player_files
+
+        player, name = flutter_player_files(src)
+        if player:
+            files += player
+            notes.append(NOTE_ANIM.format(asset=name))
+            use_anim = True
 
     if shaders is not False and src.sheet is not None and src.meta is not None and (shaders or src.normal is not None):
         normal = src.normal
@@ -272,6 +283,13 @@ def export(src: Source, webp: bool = False, shaders: bool | None = None) -> File
 
     if not files:
         return []
+    if demo or (demo is None and src.playable):
+        from studio_core.export.flutter_demo import DEMO_DIR, demo_project
+
+        project = demo_project(files, a)
+        if project:
+            files += [(f"{DEMO_DIR}/{n}", d) for n, d in project]
+            notes.append(NOTE_DEMO)
     if use_anim or use_nine or use_parallax or use_font or use_tiled:
         files.append(("lib/gen/asset_studio_flame.dart",
                       flame_dart(use_anim, use_nine, use_parallax, use_font, use_tiled).encode()))

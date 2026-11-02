@@ -714,9 +714,9 @@ Prompt cảnh (+ ảnh tham chiếu màu, tuỳ chọn) → Z-Image vẽ riêng 
   - `outline` (text; default 'none') — Viền 1px (none / dark / #rrggbb)
   - `review` (bool; default True) — Duyệt trước khi xong
 
-## `playable-scene` — Màn chơi thử (Godot / Unity / Tiled / LDtk)
+## `playable-scene` — Màn chơi thử (Godot / Unity / Flutter Flame / Tiled / LDtk)
 
-Gom asset của dự án (nhân vật 8 hướng, texture nền / đường / tường hoặc autotile blob-47, prop, lớp parallax) — hoặc file đưa vào — → Claude vẽ màn nhỏ ~32×20 ô (top-down hoặc side-view: tường, đường, prop, điểm xuất phát; procedural nếu không dùng Claude) → atlas ô liền mạch + mockup toàn màn + Tiled .tmx + LDtk .ldtk → mở trong Godot (và/hoặc Unity) chạy thử: nhân vật đi được, chụp ảnh màn và góc camera người chơi → duyệt. Xuất Godot (TileMapLayer + CharacterBody2D + Camera2D + Parallax2D) và Unity (Tilemap + Rigidbody2D + Animator + camera bám theo), nút "Mở trong Godot / Unity".
+Gom asset của dự án (nhân vật 8 hướng, texture nền / đường / tường hoặc autotile blob-47, prop, lớp parallax) — hoặc file đưa vào — → Claude vẽ màn nhỏ ~32×20 ô (top-down hoặc side-view: tường, đường, prop, điểm xuất phát; procedural nếu không dùng Claude) → atlas ô liền mạch + mockup toàn màn + Tiled .tmx + LDtk .ldtk → mở trong Godot (và/hoặc Unity) chạy thử: nhân vật đi được, chụp ảnh màn và góc camera người chơi → duyệt. Xuất Godot (TileMapLayer + CharacterBody2D + Camera2D + Parallax2D) và Unity (Tilemap + Rigidbody2D + Animator + camera bám theo), nút "Mở trong Godot / Unity". Xuất sang đích flutter ra thêm demo/: project Flutter + Flame chạy được (`flutter run`: nhân vật 8 hướng bàn phím / joystick, camera bám theo, map .tmx, prop có hitbox, HUD tên asset + FPS).
 
 - runs on: Claude; gates: approve
 - outputs: `final`, `preview`, `scene`, `tmx`, `ldtk`, `tiles`, `engine`
