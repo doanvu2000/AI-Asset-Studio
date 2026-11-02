@@ -14,7 +14,8 @@ from .executors import OpExecutor, _images_in, _load, _out_name, _put_png
 ALPHA_MIN = 128
 # A character that is itself mostly green (orc, slime) must keep its body.
 MAX_GREEN_SHARE = 0.2
-FEET_BAND = 0.5
+# Grass sits at the very feet; a wider band ate green-tinted chain mail around the belt.
+FEET_BAND = 0.35
 MAX_PATCH_SHARE = 0.12
 SPECK_SHARE = 0.01
 RIM_PX = 4
@@ -92,6 +93,7 @@ def strip_ground(img: Image.Image, margin: int = 12) -> tuple[Image.Image, dict[
 
 class GroundStrip(OpExecutor):
     kind = "op.ground_strip"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         margin = int(params.get("margin") or 12)

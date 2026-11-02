@@ -37,3 +37,10 @@ def test_loose_speck_is_dropped():
     im.putpixel((2, 2), (255, 0, 0, 255))
     out, st = strip_ground(im)
     assert out.getpixel((2, 2))[3] == 0 and st["specks_px"] == 1
+
+
+def test_green_patch_above_feet_band_is_kept():
+    im = _knight(False)
+    im.paste(Image.new("RGBA", (6, 6), (110, 190, 60, 255)), (28, 52))
+    out, st = strip_ground(im)
+    assert out.getpixel((30, 54))[3] == 255 and st["ground_px"] == 0
