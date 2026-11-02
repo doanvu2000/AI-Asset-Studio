@@ -14,7 +14,7 @@ from .claude import DEFAULT_MODEL, QueryFn, ask, sdk_query
 from .gdd import MAX_GDD_CHARS, STYLE_OWNED, _input_line, catalog
 
 MAX_ITEMS = 40
-TIMEOUT_S = 300
+TIMEOUT_S = 240
 
 SYSTEM = (
     "You are the art producer of a game studio. From a game design document you list the concrete assets the game "
