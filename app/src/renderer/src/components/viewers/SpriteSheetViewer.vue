@@ -512,15 +512,15 @@ watch(
           </label>
           <span class="sep" />
           <template v-if="!compact">
-            <button class="vw-btn" aria-label="Thu nhỏ" title="Thu nhỏ" :disabled="scale <= 1" @click="zoomBy(-1)"><ZoomOut /></button>
+            <button class="vw-btn zoom-btn" aria-label="Thu nhỏ" title="Thu nhỏ" :disabled="scale <= 1" @click="zoomBy(-1)"><ZoomOut /></button>
             <span class="zoom num">{{ zoomText }}</span>
-            <button class="vw-btn" aria-label="Phóng to" title="Phóng to" @click="zoomBy(1)"><ZoomIn /></button>
+            <button class="vw-btn zoom-btn" aria-label="Phóng to" title="Phóng to" @click="zoomBy(1)"><ZoomIn /></button>
           </template>
           <button class="vw-btn" :aria-pressed="zoom === 'fit'" title="Vừa khung" aria-label="Vừa khung" @click="zoom = 'fit'"><Scan /></button>
           <span class="sep" />
           <button class="vw-btn" :aria-pressed="pixel" title="Điểm ảnh sắc nét (nearest-neighbour)" @click="pixel = !pixel">
             <span class="px-ic" aria-hidden="true" />
-            <span v-if="!compact">Pixel</span>
+            <span v-if="!compact" class="lbl">Pixel</span>
           </button>
           <button
             v-if="normal"
@@ -533,11 +533,11 @@ watch(
           >
             <LoaderCircle v-if="normalState === 'loading'" class="spin" />
             <span v-else class="nm-ic" aria-hidden="true" />
-            <span v-if="!compact">Normal</span>
+            <span v-if="!compact" class="lbl">Normal</span>
           </button>
           <button v-else-if="meta.normal" class="vw-btn" aria-pressed="true" disabled title="Sheet này là normal map">
             <span class="nm-ic" aria-hidden="true" />
-            <span v-if="!compact">Normal</span>
+            <span v-if="!compact" class="lbl">Normal</span>
           </button>
           <button class="vw-btn" :aria-pressed="pivot" title="Hiện pivot" aria-label="Hiện pivot" :disabled="!meta.pivot" @click="pivot = !pivot"><Crosshair /></button>
           <button class="vw-btn" :aria-pressed="checker" title="Nền ô kẻ (trong suốt)" aria-label="Nền ô kẻ" @click="checker = !checker"><SquareDashed /></button>
@@ -608,6 +608,7 @@ watch(
   flex-direction: column;
 }
 .stage {
+  container-type: inline-size;
   position: relative;
   flex: 1;
   min-height: 0;
@@ -813,6 +814,24 @@ canvas.pixel,
 }
 .fr.on .fl {
   color: var(--accent);
+}
+.vw-bar {
+  flex-wrap: nowrap;
+}
+@container (max-width: 760px) {
+  .vw-bar .lbl,
+  .vw-bar .zoom,
+  .vw-bar .zoom-btn {
+    display: none;
+  }
+  .vw-bar .vw-range {
+    width: 64px;
+  }
+}
+@container (max-width: 460px) {
+  .vw-bar .vw-range {
+    display: none;
+  }
 }
 .compact .frame-wrap {
   margin-bottom: 36px;

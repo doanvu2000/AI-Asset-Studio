@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { useEventListener } from '@vueuse/core'
+import { useEventListener, useResizeObserver } from '@vueuse/core'
 import { Brush, Eraser, GitCompareArrows, LoaderCircle, Play, Redo2, Trash2, Undo2, WandSparkles, X } from '@lucide/vue'
 import type { VersionRow } from '@/api/types'
 import { api, blobUrl } from '@/stores/connection'
@@ -25,6 +25,8 @@ const trap = useFocusTrap(root, open)
 
 const img = ref<HTMLImageElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
+const stage = ref<HTMLElement | null>(null)
+const avail = ref({ w: 0, h: 0 })
 const natural = ref({ w: 0, h: 0 })
 const strokes = ref<Stroke[]>([])
 const redo = ref<Stroke[]>([])
@@ -38,6 +40,18 @@ const compareOpen = ref(false)
 let drawing: Stroke | null = null
 let poll = 0
 let before = new Set<string>()
+
+// Fit both axes and allow upscaling so wide, short sheets (512x64) fill the stage; the cap on height stops the stage growing with its content.
+const shown = computed(() => {
+  const { w, h } = natural.value
+  const maxH = Math.min(avail.value.h, window.innerHeight * 0.68)
+  if (!w || !h || avail.value.w <= 0 || maxH <= 0) return null
+  const k = Math.min(avail.value.w / w, maxH / h)
+  return { w: Math.max(1, Math.floor(w * k)), h: Math.max(1, Math.floor(h * k)), crisp: k > 1 }
+})
+useResizeObserver(stage, ([e]) => {
+  if (e) avail.value = { w: e.contentRect.width, h: e.contentRect.height }
+})
 
 const brushPx = computed(() => Math.max(2, Math.round((Math.max(natural.value.w, natural.value.h) * brush.value) / 100)))
 const hasMask = computed(() => strokes.value.some((s) => !s.erase))
@@ -255,9 +269,9 @@ onBeforeUnmount(stopPoll)
           </header>
 
           <div class="body">
-            <div class="stage checker">
-              <div class="frame">
-                <img ref="img" :src="blobUrl(version.blob.hash)" alt="Ảnh đang sửa" draggable="false" @load="onLoad" />
+            <div ref="stage" class="stage checker">
+              <div class="frame" :style="shown ? { width: `${shown.w}px`, height: `${shown.h}px` } : undefined">
+                <img ref="img" :class="{ crisp: shown?.crisp }" :src="blobUrl(version.blob.hash)" alt="Ảnh đang sửa" draggable="false" @load="onLoad" />
                 <canvas
                   ref="canvas"
                   class="mask"
@@ -383,10 +397,15 @@ onBeforeUnmount(stopPoll)
 }
 .frame img {
   display: block;
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 68vh;
   user-select: none;
   -webkit-user-drag: none;
+}
+.frame img.crisp {
+  image-rendering: pixelated;
 }
 .mask {
   position: absolute;

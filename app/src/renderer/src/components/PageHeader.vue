@@ -71,7 +71,9 @@ onBeforeUnmount(() => observer?.disconnect())
 .t h1 {
   font-size: 15px;
   letter-spacing: -0.012em;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .sub {
   margin-top: -1px;

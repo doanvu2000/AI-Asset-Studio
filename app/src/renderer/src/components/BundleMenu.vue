@@ -332,7 +332,7 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
               <FolderOpen v-if="it.reveal" :size="14" aria-hidden="true" />
               <Boxes v-else-if="it.engine" :size="14" aria-hidden="true" />
               <span class="b-label">{{ it.reveal ? it.label : `${it.label}…` }}</span>
-              <span v-if="it.hint" class="b-hint">{{ it.hint }}</span>
+              <span v-if="it.hint" class="b-hint" :class="{ long: it.hint.length > 14 }">{{ it.hint }}</span>
             </div>
           </template>
           <div v-if="engines.length" class="b-opts" @click.stop>
@@ -596,6 +596,9 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
   background: var(--accent);
   color: var(--text-on-accent);
 }
+.b-item {
+  flex-wrap: wrap;
+}
 .b-label {
   flex: 1;
   min-width: 0;
@@ -606,6 +609,11 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
 .b-hint {
   font-size: var(--fs-caption);
   color: var(--text-3);
+}
+.b-hint.long {
+  flex-basis: 100%;
+  padding-left: 24px;
+  margin-top: -2px;
 }
 .b-item.active .b-hint {
   color: inherit;

@@ -141,8 +141,7 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
       <div class="stack dash">
         <section class="strip card" aria-label="Tài nguyên">
           <template v-if="resources.list.length">
-            <template v-for="(r, i) in resources.list" :key="r.name">
-              <span v-if="i" class="sep" aria-hidden="true" />
+            <template v-for="r in resources.list" :key="r.name">
               <ResourceCard :resource="r" :pending="resources.pending.has(r.name)" @toggle="toggle(r.name, $event)" />
             </template>
           </template>
@@ -238,20 +237,15 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
   margin-left: 4px;
 }
 .strip {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
-  gap: 6px 16px;
+  gap: 8px 24px;
   min-height: 48px;
   padding: 8px 16px;
 }
-.sep {
-  width: 0.5px;
-  height: 18px;
-  background: var(--separator-strong);
-}
 .skeleton {
-  flex: 1;
+  grid-column: 1 / -1;
   height: 20px;
   border-radius: 6px;
   position: relative;

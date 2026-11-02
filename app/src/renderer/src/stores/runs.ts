@@ -2,13 +2,23 @@ import { defineStore } from 'pinia'
 import { computed, ref, shallowRef, triggerRef, type Ref } from 'vue'
 import type { LogData, PreviewData, ProgressData, RunRow, RunUpdatedData, StepRow } from '@/api/types'
 import { RUN_ACTIVE, STEP_TERMINAL } from '@/api/types'
+import { MOCK } from '@/api/transport'
 import { api, useConnection } from './connection'
 
 export interface LogLine extends LogData {
   ts: number
 }
 
-const PAGE_SIZE = 500
+// Mock only: lets the demo data (a few dozen runs) exercise "Tải thêm" without seeding 500+.
+function pageSize(): number {
+  if (!MOCK) return 500
+  try {
+    return Number(localStorage.getItem('studio.mock.runsPage')) || 500
+  } catch {
+    return 500
+  }
+}
+const PAGE_SIZE = pageSize()
 const LOG_CAP = 200
 // Logs stay readable after a step ends, but only for the most recent steps so long sessions don't grow without bound.
 const LOG_STEPS_MAX = 150

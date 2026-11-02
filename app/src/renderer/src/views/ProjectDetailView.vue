@@ -301,9 +301,9 @@ function newAsset(): void {
         </button>
         <button v-if="!project.archived" type="button" class="btn btn-plain" :disabled="archiving" aria-label="Lưu trữ" title="Lưu trữ dự án" @click="setArchived(true)"><Archive /> <span class="lbl">Lưu trữ</span></button>
         <button v-else type="button" class="btn btn-plain" :disabled="archiving" aria-label="Khôi phục" title="Khôi phục dự án" @click="setArchived(false)"><ArchiveRestore /> <span class="lbl">Khôi phục</span></button>
-        <button type="button" class="btn" title="Xem bản khai báo dùng AI (Steam, Itch, Google Play, App Store) của asset đã duyệt" @click="aiOpen = true"><ShieldCheck /> Khai báo AI</button>
-        <button type="button" class="btn" title="Đóng gói asset đã duyệt thành Unity package / Godot addon + zip trên máy" @click="packOpen = true"><Package /> Đóng gói</button>
-        <button type="button" class="btn btn-primary" @click="newAsset"><Plus /> Tạo asset trong dự án</button>
+        <button type="button" class="btn" aria-label="Khai báo AI" title="Xem bản khai báo dùng AI (Steam, Itch, Google Play, App Store) của asset đã duyệt" @click="aiOpen = true"><ShieldCheck /> <span class="lbl">Khai báo AI</span></button>
+        <button type="button" class="btn" aria-label="Đóng gói" title="Đóng gói asset đã duyệt thành Unity package / Godot addon + zip trên máy" @click="packOpen = true"><Package /> <span class="lbl">Đóng gói</span></button>
+        <button type="button" class="btn btn-primary" aria-label="Tạo asset trong dự án" title="Tạo asset trong dự án" @click="newAsset"><Plus /> <span class="lbl">Tạo asset trong dự án</span></button>
       </template>
     </PageHeader>
 
