@@ -18,10 +18,12 @@ from .keyart import FPS, frame_count, grid_size
 from .rig import _put_json
 
 ACTIONS: dict[str, dict[str, Any]] = {
-    "idle": {"motion": "breathes slowly in place, chest rising and falling, a slight sway, the weapon held still",
+    "idle": {"motion": "breathes continuously in place, chest and shoulders rising and falling, shifting its weight gently "
+                       "from foot to foot with a small body bob, the weapon held in hand",
              "loop": True, "lock": "feet", "fps": 8},
-    "walk": {"motion": "walks in place with a steady stepping cycle, legs alternating and arms swinging, the body does "
-                       "not travel across the frame", "loop": True, "lock": "feet", "fps": 10},
+    "walk": {"motion": "walks in place like on a treadmill with a clear stepping cycle, knees lifting and feet alternating "
+                       "left and right, arms swinging opposite to the legs, at least three steps, the body does not "
+                       "travel across the frame", "loop": True, "lock": "feet", "fps": 10},
     "run": {"motion": "runs in place with a fast running cycle, knees high and arms pumping, the body does not travel "
                       "across the frame", "loop": True, "lock": "feet", "fps": 12},
     "slash": {"motion": "winds up and swings the weapon in one fast slash forward, follows through, then returns to "
@@ -407,17 +409,22 @@ def anim_loop(frames: list[np.ndarray], *, loop: bool, n_out: int, lock: str, cr
     steps = [float(sim[i, i + 1]) for i in range(n - 1)]
     step_sim = float(np.median(steps)) if steps else 1.0
     if loop:
-        s, period, seam = find_cycle(sim)
+        s, period, seam = find_cycle(sim, min_period=max(n // 6, 3))
         if start >= 0:
             s = min(start, n - 4)
             period = (min(end, n) - s) if end > s + 3 else period
             period = min(period, n - s)
             seam = round(float(sim[s, s + period]) if s + period < n else float(sim[s, s + period - 1]), 4)
-        last = s + period - 1
-        seg, blended = crossfade_seam(aligned, s, period, round(crossfade * period / max(n_out, 1)))
-        idx = sample(period, n_out, True)
+        # Whole repeats of the cycle until there are n_out distinct source frames, instead of holding the same few
+        # poses (a 4-frame idle cycle sampled to 12 cells was 4 poses x3).
+        span = period * math.ceil(n_out / period) if period < n_out and start < 0 else period
+        if s + span > n:
+            span = period
+        last = s + span - 1
+        seg, blended = crossfade_seam(aligned, s, span, round(crossfade * span / max(n_out, 1)))
+        idx = sample(span, n_out, True)
         picked = [seg[i] for i in idx]
-        report |= {"start": s, "end": s + period, "period": period, "seam_similarity": seam,
+        report |= {"start": s, "end": s + span, "period": period, "span": span, "seam_similarity": seam,
                    "step_similarity": round(step_sim, 4), "crossfade_frames": blended,
                    "wrap_similarity": round(float(sim[last, s]), 4), "indices": [s + i for i in idx]}
     else:

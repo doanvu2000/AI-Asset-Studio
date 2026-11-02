@@ -286,3 +286,15 @@ async def test_recipe_runs_with_fakes_and_exports(tmp_path: Path, monkeypatch: p
     a, _ = aseprite.export_files(src)
     doc = json.loads(dict(a)["aseprite/Hero.json"])
     assert [t["name"] for t in doc["meta"]["frameTags"]] == ["run_E"] and len(doc["frames"]) == 8
+
+
+def test_short_cycle_is_not_held_to_fill_the_output() -> None:
+    frames = [runner(i, 4) for i in range(49)]
+    _, rep = anim_loop(frames, loop=True, n_out=12, lock="feet", crossfade=0, size=96)
+    assert len(set(rep["indices"])) == 12 and rep["span"] >= 12
+
+
+def test_walk_prompt_names_the_step_phases() -> None:
+    p = build_prompt("walk", "", True, "side", "right")
+    assert "passing pose" in p and "contact" in p
+    assert "no angle change" in SUFFIX
