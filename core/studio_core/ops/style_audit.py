@@ -207,7 +207,8 @@ class StyleAudit(OpExecutor):
         if project and not proj["id"]:
             raise StepError("op_bad_params", f"unknown project '{project}'")
         if not versions:
-            raise StepError("op_no_input", "project has no approved image versions to audit")
+            # Inside a fresh workflow (character-pack) nothing is approved yet: an empty report, not a failed run.
+            warnings.append("project has no approved image versions yet: audit skipped, nothing to compare to the anchors")
 
         items: list[dict[str, Any]] = []
         for i, v in enumerate(versions):
@@ -239,10 +240,12 @@ class StyleAudit(OpExecutor):
                 metrics_used.append("clip")
             except Exception as e:  # onnx/model failures must not lose the CPU metrics
                 warnings.append(f"CLIP skipped: {e}")
-        elif use_clip:
+        elif use_clip and items:
             warnings.append("CLIP model unavailable: style distance metric skipped")
 
-        if len(items) < sm.MIN_PEERS:
+        if not items:
+            ranked, limits = [], {}
+        elif len(items) < sm.MIN_PEERS:
             warnings.append(f"only {len(items)} measurable asset(s): need {sm.MIN_PEERS} for a threshold, none flagged")
             ranked, limits = [{"z": {}, "flags": [], "score": 0.0} for _ in items], {}
         else:
@@ -313,7 +316,8 @@ class StyleAudit(OpExecutor):
             "assets": assets, "skipped": skipped,
             "summary": {"total": len(assets), "flagged": sum(a["flagged"] for a in assets), "skipped": len(skipped),
                         "non_image": non_image, "recolored": sum(a["fix"]["recolored"] for a in assets),
-                        "restyle_queued": len(restyle_in), "median_palette_de": round(float(np.median(de)), 3),
+                        "restyle_queued": len(restyle_in),
+                        "median_palette_de": round(float(np.median(de)), 3) if de else None,
                         "median_palette_de_after": round(float(np.median(after)), 3) if after else None},
             "warnings": warnings}
         for w in warnings:

@@ -182,9 +182,15 @@ async def test_finish_makes_new_images_and_keeps_alpha(tmp_path):
 async def test_empty_unknown_and_single_asset_projects(tmp_path):
     p = Project(tmp_path)
     anchor = warm_asset(1)
-    with pytest.raises(StepError) as e:
-        await p.audit(anchor)
-    assert e.value.code == "op_no_input"
+    res, doc = await p.audit(anchor)
+    assert doc["assets"] == [] and doc["summary"]["total"] == 0 and doc["summary"]["median_palette_de"] is None
+    assert any("no approved image versions" in w for w in doc["warnings"])
+    assert res.outputs["recolored"] == res.outputs["restyle_in"] == [] and res.outputs["preview"]
+    await p.add(cool_asset(2), "draft.png", status="draft")
+    _, doc = await p.audit(anchor)
+    assert doc["assets"] == [] and any("no approved image versions" in w for w in doc["warnings"])
+    fin = await sa.StyleLockFinish().run(p.ctx, {}, {"report": res.outputs["report"], "layout": res.outputs["layout"]})
+    assert fin.outputs["images"] == []
     with pytest.raises(StepError) as e:
         await p.audit(anchor, project="nope")
     assert e.value.code == "op_bad_params"
