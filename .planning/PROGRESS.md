@@ -91,3 +91,4 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [x] KT-1 Kotlin compile: AGP 8.13.2/Kotlin 2.4.21/BOM 2026.05.00 compileDebugKotlin + processDebugResources sạch (scratchpad/kt). Fix tiền tố số → asset_ trong AndroidPack.
 - [x] FU-1 portrait match_scale, qa nhận op.shadow_outline, shadow-outline nhận sheet+atlas — 52 pass.
 - [x] QA-UI mock+Playwright (scratchpad/qa/shots): sửa sidebar mode, GoalCards auto-fit, nút Tuỳ chọn nâng cao mousedown.prevent, viewer toolbar wrap.
+- [x] ANIM-2 slash/cast GUIDES (kiếm cứng, không trail), executor v3. Live game-slice lần 2 (scratchpad/a2/): cỏ hết, gói engine attack cùng cỡ (447/444/434), minimap sạch, auto_approve 114/114, flutter dart analyze 0 issue. Main xem a2/cs_full.png: idle ổn; walk nhìn trực diện chân rất ít; attack kiếm thẳng nhưng dài, nhân vật nhỏ trong cell; sheet flutter attack nhỏ ~27% (mass_box tính cả kiếm, ops/anim_video.py).

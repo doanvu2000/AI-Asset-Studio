@@ -298,3 +298,14 @@ def test_walk_prompt_names_the_step_phases() -> None:
     p = build_prompt("walk", "", True, "side", "right")
     assert "passing pose" in p and "contact" in p
     assert "no angle change" in SUFFIX
+
+
+def test_slash_prompt_keeps_the_blade_rigid_and_swings_once() -> None:
+    p = build_prompt("slash", "", False, "side", "right")
+    assert "rigid" in p and "never bending" in p and "No motion trails" in p and "Only one swing" in p
+
+
+def test_one_shot_slash_does_not_use_cycle_sampling() -> None:
+    frames = [runner(i, period=40) for i in range(49)]
+    _, rep = anim_loop(frames, loop=False, n_out=12, lock="feet", crossfade=0, size=64)
+    assert "period" not in rep and rep["end"] <= 49 and rep["indices"] == sorted(rep["indices"])

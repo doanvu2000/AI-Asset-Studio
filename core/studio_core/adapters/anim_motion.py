@@ -44,6 +44,15 @@ GUIDES = {
     "idle": "Idle to describe: a continuous breathing loop that never freezes, chest and shoulders rising and falling, "
             "a gentle weight shift from one foot to the other, a small head and body bob, loose straps and cloth "
             "swaying; the feet stay planted and the weapon stays held.\n",
+    "slash": "Attack to describe, as three poses: anticipation with the sword raised back over the shoulder, one fast "
+             "strike swinging the sword down and forward in a single arc, then recovery lowering it back to the starting "
+             "stance. The sword is a rigid object: the same straight blade, the same length and the same width in every "
+             "pose, never bending, curving, stretching or doubling. No motion trails, no smear, no glow, no slash "
+             "effect and no coloured streaks around the blade. Only one swing, the feet stay planted, the torso turns "
+             "a little, and the clip ends in the starting stance.\n",
+    "cast": "Cast to describe: one hand raises, a short small glow gathers at the palm, then the hand lowers back to "
+            "the starting stance; the body, the weapon and the clothing keep their shape, one cast only, the feet "
+            "stay planted.\n",
 }
 
 LOOP_NOTE = {
@@ -100,7 +109,7 @@ def _flag(v: Any, default: bool) -> bool:
 class ClaudeAnimMotionExecutor:
     kind = "claude.anim_motion"
     lane = Lane.CLOUD
-    version = "2"
+    version = "3"
 
     def __init__(self, settings: Settings | None = None, query: QueryFn = sdk_query):
         self.settings = settings
