@@ -5,6 +5,7 @@ import { ArchiveRestore, FolderKanban, FolderPlus, LoaderCircle, Palette, Rotate
 import type { ProjectRow } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import EmptyState from '@/components/EmptyState.vue'
+import { ILLUS } from '@/assets/illustrations'
 import BlobImage from '@/components/BlobImage.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import RelTime from '@/components/RelTime.vue'
@@ -137,7 +138,7 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
       </EmptyState>
       <EmptyState
         v-else-if="ready && !rows.length && !creating"
-        :icon="FolderKanban"
+        :illustration="ILLUS.emptyProjects"
         title="Chưa có dự án nào"
         text="Một dự án gom asset của cùng một game và khoá phong cách: hậu tố prompt, preset, pixel art, bảng màu, ảnh tham chiếu."
       >

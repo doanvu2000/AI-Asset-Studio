@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { Check, ChevronRight, LoaderCircle } from '@lucide/vue'
 import type { ToolPath } from '@/api/types'
-import { ART } from '@/assets/art'
+import { ILLUS } from '@/assets/illustrations'
 import { api, useConnection } from '@/stores/connection'
 import { useRecipes } from '@/stores/recipes'
 import { useRuns } from '@/stores/runs'
@@ -129,12 +129,15 @@ const nextId = computed(() => steps.value.find((s) => !s.done)?.id)
 <template>
   <section v-if="ready && !allDone" class="gs card" aria-labelledby="gs-title">
     <header class="head">
-      <img class="art" :src="ART.gettingStarted" alt="" width="72" height="72" draggable="false" />
       <div class="titles">
         <h2 id="gs-title" class="title">Bắt đầu</h2>
         <p class="secondary">Các bước để có asset đầu tiên và đưa vào engine.</p>
+        <span class="ui-pill t-run num count">{{ doneCount }}/{{ steps.length }} xong</span>
       </div>
-      <span class="ui-pill t-run num">{{ doneCount }}/{{ steps.length }} xong</span>
+      <picture class="art">
+        <source media="(prefers-color-scheme: dark)" :srcset="ILLUS.gettingStarted.dark" />
+        <img :src="ILLUS.gettingStarted.light" alt="" :width="ILLUS.gettingStarted.width" :height="ILLUS.gettingStarted.height" decoding="async" draggable="false" />
+      </picture>
     </header>
     <ol class="steps hair-list">
       <li v-for="(s, i) in steps" :key="s.id" class="step" :class="{ done: s.done, next: s.id === nextId }">
@@ -172,6 +175,11 @@ const nextId = computed(() => steps.value.find((s) => !s.done)?.id)
   min-width: 0;
   display: grid;
   gap: var(--sp-1);
+  justify-items: start;
+  align-content: center;
+}
+.count {
+  margin-top: var(--sp-3);
 }
 .title {
   font-size: var(--fs-title1);
@@ -180,9 +188,15 @@ const nextId = computed(() => steps.value.find((s) => !s.done)?.id)
 }
 .art {
   flex: none;
-  width: 72px;
-  height: 72px;
-  object-fit: contain;
+  display: block;
+  width: 480px;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.art img {
+  display: block;
+  width: 100%;
+  height: auto;
   user-select: none;
 }
 .steps {

@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
+import type { Illustration } from '@/assets/illustrations'
 
 // Every empty state should offer one way forward: pass actionLabel + actionTo, or a slot for custom buttons.
 withDefaults(
   defineProps<{
     icon?: Component
     art?: string
+    illustration?: Illustration
     artSize?: number
     title: string
     text?: string
@@ -20,7 +22,11 @@ withDefaults(
 
 <template>
   <div class="empty">
-    <img v-if="art" class="art" :src="art" alt="" :width="artSize" :height="artSize" decoding="async" draggable="false" />
+    <picture v-if="illustration" class="illus" :style="{ width: `${illustration.width}px`, aspectRatio: `${illustration.width} / ${illustration.height}` }">
+      <source media="(prefers-color-scheme: dark)" :srcset="illustration.dark" />
+      <img :src="illustration.light" alt="" :width="illustration.width" :height="illustration.height" decoding="async" draggable="false" />
+    </picture>
+    <img v-else-if="art" class="art" :src="art" alt="" :width="artSize" :height="artSize" decoding="async" draggable="false" />
     <span v-else-if="icon" class="ic"><component :is="icon" :size="26" :stroke-width="1.6" /></span>
     <p class="headline">{{ title }}</p>
     <p v-if="text" class="secondary txt">{{ text }}</p>
@@ -48,6 +54,20 @@ withDefaults(
   object-fit: contain;
   user-select: none;
   animation: art-in 520ms var(--ease-spring) both;
+}
+.illus {
+  display: block;
+  max-width: 100%;
+  margin-bottom: 8px;
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  animation: art-in 520ms var(--ease-spring) both;
+}
+.illus img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
 }
 .ic {
   display: grid;
@@ -77,7 +97,8 @@ withDefaults(
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .art {
+  .art,
+  .illus {
     animation: none;
   }
 }

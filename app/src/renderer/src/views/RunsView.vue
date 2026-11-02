@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { Plus } from '@lucide/vue'
 import { ART } from '@/assets/art'
+import { ILLUS } from '@/assets/illustrations'
 import type { RunStatus } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import SectionTabs from '@/components/SectionTabs.vue'
@@ -112,8 +113,7 @@ watch([filter, projectFilter], () => rows.value.length < NEAR_END && void runs.l
       </EmptyState>
       <EmptyState
         v-else-if="runs.listLoaded && !rows.length"
-        :art="ART.emptyRuns"
-        :art-size="128"
+        :illustration="ILLUS.emptyHistory"
         title="Chưa có lượt chạy nào"
         text="Chọn một quy trình, nhập mô tả và bấm chạy. Lượt chạy sẽ hiện ở đây."
         action-label="Tạo asset mới"

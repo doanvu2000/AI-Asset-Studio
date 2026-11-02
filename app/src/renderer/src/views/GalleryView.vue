@@ -5,6 +5,7 @@ import { useElementSize, useEventListener, useIntervalFn } from '@vueuse/core'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { Check, Columns2, FileInput, Gauge, LayoutGrid, LoaderCircle, Search, X } from '@lucide/vue'
 import { ART } from '@/assets/art'
+import { ILLUS } from '@/assets/illustrations'
 import type { BlobRef, QaResult, VersionRow, VersionStatus } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import BlobThumb from '@/components/BlobThumb.vue'
@@ -486,7 +487,7 @@ function move(d: -1 | 1): void {
     <div ref="scroller" class="grid-scroll">
       <EmptyState
         v-if="versions.loaded && !versions.list.length"
-        :art="ART.emptyGallery"
+        :illustration="ILLUS.emptyLibrary"
         title="Chưa có asset nào"
         text="Lượt chạy hoàn tất sẽ thêm bản nháp vào đây để bạn duyệt."
       >
