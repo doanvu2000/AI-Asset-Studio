@@ -1,0 +1,184 @@
+"""Flutter + Flame exporter: paste the output into a project (assets/, lib/gen/, pubspec snippet)."""
+from __future__ import annotations
+
+import io
+import json
+from pathlib import Path
+
+from PIL import Image
+
+from studio_core.export.flutter_dart import assets_dart, flame_dart, nine_slices_dart, pubspec_snippet
+from studio_core.export.sheet import ident, layout
+from studio_core.export.source import Files, Source
+
+DENSITIES = ((1, ""), (2, "2.0x/"), (3, "3.0x/"))
+
+README = """{asset} — xuất từ AI Asset Studio cho Flutter / Flame. Chép các thư mục assets/ và lib/gen/ vào project.
+
+1. Dán nội dung pubspec_assets.yaml vào pubspec.yaml (gộp vào khối flutter: có sẵn). Flutter không đệ quy thư mục
+   nên mỗi thư mục được liệt kê riêng; thư mục 2.0x/ 3.0x/ tự được nhận qua thư mục cha.
+2. Package: {packages}.
+3. lib/gen/asset_studio_assets.dart: hằng đường dẫn (AssetStudioAssets.xxx) dùng với Image.asset / rootBundle.
+{notes}"""
+NOTE_IMAGES = """- assets/images/<tên>.png: ảnh 1x, kèm 2.0x/ và 3.0x/. {scale}"""
+NOTE_SCALE = ("Ảnh gốc coi là 3x, thu nhỏ bằng LANCZOS.", "Pixel art: ảnh gốc coi là 1x, 2x/3x phóng nguyên bội bằng NEAREST "
+              "(dùng FilterQuality.none).")
+NOTE_NINE = """- assets/ui/ + ui_9slice.json + lib/gen/asset_studio_ui.dart: NineSliceImage(spec: AssetStudioNineSlices.xxx,
+  width:, height:) kéo giãn giữ góc (Image.asset centerSlice). Flame: NineSliceComponent.load(spec)."""
+NOTE_ANIM = """- assets/images/sprites/{asset}.png + .json (TexturePacker hash) + _anim.json: loadAsAnimations(game.images, '{asset}')
+  trả Map<String, SpriteAnimation> tên clip (có hậu tố hướng S, SW, W, NW, N, NE, E, SE nếu sheet nhiều hướng);
+  loadAnimationAnchor('{asset}') cho Anchor theo chân nhân vật."""
+NOTE_PARALLAX = """- assets/images/parallax/{asset}/: loadParallax(game.images, '{asset}', baseVelocity: Vector2(20, 0)) trả
+  ParallaxComponent; velocityMultiplier = hệ số cuộn (0 cố định theo camera, 1 theo thế giới)."""
+NOTE_FONT = """- assets/fonts/{asset}.fnt + _font.json, assets/images/fonts/{asset}.png: BitmapFont.load(game.images, '{asset}')
+  rồi BitmapTextComponent(font, 'text'). Flame không có đọc BMFont sẵn nên helper tự vẽ glyph (có kerning)."""
+NOTE_SPINE = """- assets/spine/{asset}/: json + atlas + ảnh trang cho spine_flutter (package spine_flutter của Esoteric): nạp
+  bằng SkeletonDrawable / loadSkeleton từ các đường dẫn này; giữ nguyên tên file vì atlas tham chiếu ảnh theo tên."""
+
+
+def _unique(names: list[str], fallback: str) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for raw in names:
+        base, n = ident(raw, fallback), 2
+        name = base
+        while name.lower() in seen:
+            name, n = f"{base}_{n}", n + 1
+        seen.add(name.lower())
+        out.append(name)
+    return out
+
+
+def _encode(img: Image.Image, webp: bool) -> bytes:
+    buf = io.BytesIO()
+    if webp:
+        img.save(buf, "WEBP", lossless=True)
+    else:
+        img.save(buf, "PNG", optimize=True)
+    return buf.getvalue()
+
+
+def density_images(path: Path, stem: str, folder: str, pixel: bool, webp: bool) -> Files:
+    """1x / 2.0x / 3.0x copies; images under 3 px or pixel art are 1x masters scaled up with NEAREST."""
+    img = Image.open(path)
+    img = img.convert("RGBA") if img.mode not in ("RGBA", "RGB", "LA", "L") else img
+    w, h = img.size
+    ext = "webp" if webp else "png"
+    up = pixel or min(w, h) < 3
+    out: Files = []
+    for scale, sub in DENSITIES:
+        if up:
+            size, flt = (w * scale, h * scale), Image.NEAREST
+        else:
+            size, flt = (max(1, round(w * scale / 3)), max(1, round(h * scale / 3))), Image.LANCZOS
+        pic = img if size == (w, h) else img.resize(size, flt)
+        out.append((f"{folder}{sub}{stem}.{ext}", _encode(pic, webp)))
+    return out
+
+
+def _json(doc: object) -> bytes:
+    return json.dumps(doc, indent=1).encode()
+
+
+def _sheet_files(src: Source, name: str) -> Files:
+    lay = layout(src.meta or {}, src.clip_hint, directional_rows=src.directional_rows)
+    stem = f"assets/images/sprites/{name}"
+    frames: dict[str, dict] = {}
+    for c in lay.cells:
+        frames.setdefault(c.name, {
+            "frame": {"x": c.x, "y": c.y, "w": c.w, "h": c.h}, "rotated": False, "trimmed": False,
+            "spriteSourceSize": {"x": 0, "y": 0, "w": c.w, "h": c.h}, "sourceSize": {"w": c.w, "h": c.h},
+            "pivot": {"x": round(lay.pivot[0] / lay.frame_w, 5), "y": round(lay.pivot[1] / lay.frame_h, 5)}})
+    atlas = {"frames": frames, "meta": {"app": "AI Asset Studio", "image": f"{name}.png", "format": "RGBA8888",
+                                        "size": {"w": lay.width, "h": lay.height}, "scale": "1"}}
+    tracks = lay.tracks or []
+    clips = [{"name": t.name, "frames": [{"name": c.name, "x": c.x, "y": c.y, "w": c.w, "h": c.h} for c in t.cells],
+              "stepTime": round(1 / t.fps, 5) if t.fps > 0 else 0.1, "loop": t.loop} for t in tracks]
+    if not clips and lay.cells:
+        clips = [{"name": ident(src.clip_hint, "anim"),
+                  "frames": [{"name": c.name, "x": c.x, "y": c.y, "w": c.w, "h": c.h} for c in lay.cells],
+                  "stepTime": 0.125, "loop": True}]
+    px, py = lay.pivot
+    anim = {"clips": clips, "frameSize": [lay.frame_w, lay.frame_h],
+            "pivot": {"x": px, "y": py, "anchorX": round(px / lay.frame_w, 5), "anchorY": round(py / lay.frame_h, 5)}}
+    assert src.sheet is not None
+    return [(f"{stem}.png", src.sheet), (f"{stem}.json", _json(atlas)), (f"{stem}_anim.json", _json(anim))]
+
+
+def _font_doc(font: dict) -> dict:
+    return {"face": font.get("face", ""), "size": font.get("size"), "lineHeight": font["line_height"],
+            "base": font["base"], "chars": [{k: c[k] for k in ("id", "x", "y", "width", "height", "xoffset", "yoffset",
+                                                               "xadvance")} for c in font["chars"]],
+            "kernings": [list(k) for k in font.get("kernings") or []]}
+
+
+def export(src: Source, webp: bool = False) -> Files:
+    a = ident(src.asset, "asset")
+    files: Files = []
+    notes: list[str] = []
+    packages = ["flame"]
+    use_anim = use_nine = use_parallax = use_font = False
+    pixel = src.is_pixel()
+
+    if src.sheet is not None and src.meta is not None:
+        files += _sheet_files(src, a)
+        notes.append(NOTE_ANIM.format(asset=a))
+        use_anim = True
+
+    names = _unique([n for n, *_ in src.ui], "ui")
+    sliced: list[tuple[str, str, tuple[int, int, int, int], tuple[int, int]]] = []
+    icons = False
+    for nm, (_, p, border, _state) in zip(names, src.ui):
+        if any(border):
+            with Image.open(p) as im:
+                size = im.size
+            path = f"assets/ui/{nm}.png"
+            files.append((path, p))
+            sliced.append((nm, path, border, size))
+        else:
+            files += density_images(p, nm, "assets/images/", pixel, webp)
+            icons = True
+    if icons:
+        notes.append(NOTE_IMAGES.format(scale=NOTE_SCALE[1] if pixel else NOTE_SCALE[0]))
+    if sliced:
+        doc = [{"name": n, "l": b[0], "t": b[1], "r": b[2], "b": b[3], "w": s[0], "h": s[1]} for n, _, b, s in sliced]
+        files += [("assets/ui/ui_9slice.json", _json(doc)), ("lib/gen/asset_studio_ui.dart", nine_slices_dart(sliced).encode())]
+        notes.append(NOTE_NINE)
+        use_nine = True
+
+    if src.parallax:
+        base = f"assets/images/parallax/{a}"
+        layers = []
+        for (n, p, scroll), nm in zip(src.parallax, _unique([n for n, *_ in src.parallax], "layer")):
+            file = f"{len(layers)}_{nm}.png"
+            files.append((f"{base}/{file}", p))
+            layers.append({"image": f"parallax/{a}/{file}", "velocityMultiplier": scroll})
+        files.append((f"{base}/parallax.json", _json({"size": list(src.parallax_size), "layers": layers})))
+        notes.append(NOTE_PARALLAX.format(asset=a))
+        use_parallax = True
+
+    if src.font and src.font_atlas:
+        from studio_core.ops.bitmap_font import fnt_text
+
+        files += [(f"assets/images/fonts/{a}.png", src.font_atlas),
+                  (f"assets/fonts/{a}.fnt", fnt_text(src.font, f"{a}.png").encode()),
+                  (f"assets/fonts/{a}_font.json", _json(_font_doc(src.font)))]
+        notes.append(NOTE_FONT.format(asset=a))
+        use_font = True
+
+    if src.spine_json is not None and src.spine_atlas is not None:
+        base = f"assets/spine/{a}"
+        files += [(f"{base}/{src.spine_json[0]}", src.spine_json[1]), (f"{base}/{src.spine_atlas[0]}", src.spine_atlas[1])]
+        files += [(f"{base}/{n}", p) for n, p in src.spine_pages]
+        notes.append(NOTE_SPINE.format(asset=a))
+        packages.append("spine_flutter")
+
+    if not files:
+        return []
+    if use_anim or use_nine or use_parallax or use_font:
+        files.append(("lib/gen/asset_studio_flame.dart", flame_dart(use_anim, use_nine, use_parallax, use_font).encode()))
+    paths = [n for n, _ in files if n.startswith("assets/")]
+    files += [("pubspec_assets.yaml", pubspec_snippet(paths).encode()),
+              ("lib/gen/asset_studio_assets.dart", assets_dart(paths).encode()),
+              ("README_FLUTTER.md", README.format(asset=a, packages=", ".join(packages), notes="\n".join(notes)).encode())]
+    return files
