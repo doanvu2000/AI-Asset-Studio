@@ -10,7 +10,7 @@ import math
 from typing import Any
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 from ..contracts import BlobRef, Outputs, StepContext, StepError, StepResult
 from .executors import OpExecutor, _images_in, _load, _put_png, _read_json
@@ -363,18 +363,51 @@ def mass_box(frames: list[np.ndarray], keep: float = 0.999) -> tuple[int, int, i
     return x0, y0, x1, y1
 
 
-def cell_crop(box: tuple[int, int, int, int], pivot: tuple[float, float], pad: float = 0.06
-              ) -> tuple[int, int, int, int]:
-    """Square crop holding every frame, the pivot on the vertical centre line and just above the bottom edge."""
+def body_height(frames: list[np.ndarray], frac: float = 0.3, thin: float = 0.015) -> float:
+    """Height of the thick body, ignoring thin parts (blades, staffs, trails): each frame's alpha is opened with a
+    kernel `thin` of the figure's height, and the `frac` quantile over frames skips poses that stretch the body
+    (raised blade attached to it) while still being a standing height."""
+    hs = []
+    for a in frames:
+        m = mask_of(a)
+        ys = np.nonzero(m.any(1))[0]
+        if len(ys):
+            hs.append((int(ys[0]), int(ys[-1]) + 1))
+    if not hs:
+        return 0.0
+    ref = float(np.median([b - t for t, b in hs]))
+    f = max(1.0, ref / 200)
+    r = max(1, int(thin * ref / f))
+    out = []
+    for a, (t, b) in zip(frames, hs):
+        im = Image.fromarray(mask_of(a).astype(np.uint8) * 255)
+        im = im.resize((max(1, round(im.width / f)), max(1, round(im.height / f))), Image.Resampling.BOX)
+        im = im.point(lambda v: 255 if v > 127 else 0)
+        k = 2 * r + 1
+        thick = np.asarray(im.filter(ImageFilter.MinFilter(k)).filter(ImageFilter.MaxFilter(k))) > 127
+        ys = np.nonzero(thick.any(1))[0]
+        out.append((ys[-1] + 1 - ys[0]) * f if len(ys) else float(b - t))
+    return float(np.quantile(out, frac))
+
+
+def cell_crop(box: tuple[int, int, int, int], pivot: tuple[float, float], body: float, pad: float = 0.06,
+              max_grow: float = 2.0) -> tuple[tuple[int, int, int, int], float]:
+    """Square crop at a scale set by the body height alone (so every clip of a character gets the same body size);
+    a weapon sticking out of that square grows the crop, up to `max_grow` times, instead of shrinking the body.
+    Returns the crop and its size relative to the body-fit square. The pivot stays on the vertical centre line and
+    a fixed margin above the bottom edge."""
     x0, y0, x1, y1 = box
     px, py = pivot
-    half = max(px - x0, x1 - px, 1.0)
-    bottom = max(float(y1), py)
-    side = max(2 * half, bottom - y0) * (1 + 2 * pad)
-    side = int(math.ceil(side))
+    base = max(body, 1.0) * (1 + 2 * pad)
+    m = pad * base
+    half = max(px - x0, x1 - px, 1.0) + m
+    bottom = max(py + m, y1 + m / 2)
+    side = max(base, 2 * half, bottom - (y0 - m))
+    snap = side < base * 1.04
+    side = int(math.ceil(base if snap else min(side, base * max_grow)))
     left = int(round(px - side / 2))
-    b = int(math.ceil(bottom + pad * side))
-    return left, b - side, left + side, b
+    b = int(math.ceil(bottom))
+    return (left, b - side, left + side, b), 1.0 if snap else side / base
 
 
 def cut_cells(frames: list[np.ndarray], crop: tuple[int, int, int, int], size: int) -> list[Image.Image]:
@@ -440,12 +473,14 @@ def anim_loop(frames: list[np.ndarray], *, loop: bool, n_out: int, lock: str, cr
     # A free vertical axis (jump, fall) keeps the ground line where the feet rest, not mid-air.
     tx = float(np.median(target[:, 0]))
     ty = float(np.median(target[:, 1])) if lock in ("feet", "ground") else float(np.max(target[:, 1]))
-    crop = cell_crop(pbox, (tx, ty))
-    k = size / (crop[2] - crop[0])
+    body = body_height(picked)
+    crop, grow = cell_crop(pbox, (tx, ty), body)
+    cell = int(round(size * grow))
+    k = cell / (crop[2] - crop[0])
     pivot = [round((tx - crop[0]) * k), round((ty - crop[1]) * k)]
-    cells = refine(cut_cells(picked, crop, size), pivot, lock)
-    report |= {"frames": len(cells), "size": size, "crop": list(crop), "pivot": pivot,
-               "pivot_error_px": float(pivot_error(cells, pivot, lock))}
+    cells = refine(cut_cells(picked, crop, cell), pivot, lock)
+    report |= {"frames": len(cells), "size": size, "cell": cell, "body_px": round(body * k, 1), "crop": list(crop),
+               "pivot": pivot, "pivot_error_px": float(pivot_error(cells, pivot, lock))}
     return cells, report
 
 
@@ -539,7 +574,7 @@ def qa_sheet(source: list[np.ndarray], cells: list[Image.Image], report: dict[st
             d.rectangle((x - 2, y - 2, x + thumb + 1, y + thumb + 1), outline=ACCENT, width=2)
     y0 = 8 + rows * (thumb + 4)
     px, py = report["pivot"]
-    k = cell / report["size"]
+    k = cell / report["cell"]
     for i, c in enumerate(cells):
         x = 4 + i * (cell + 4)
         tile = checker((cell, cell))
@@ -559,7 +594,7 @@ def qa_sheet(source: list[np.ndarray], cells: list[Image.Image], report: dict[st
     onion.alpha_composite(layer)
     ox, oy = 4, y0 + cell + 8
     out.alpha_composite(onion, (ox, oy))
-    cx, cy = ox + px * side / report["size"], oy + py * side / report["size"]
+    cx, cy = ox + px * side / report["cell"], oy + py * side / report["cell"]
     d.line((cx - 10, cy, cx + 10, cy), fill=PIVOT, width=2)
     d.line((cx, cy - 10, cx, cy + 10), fill=PIVOT, width=2)
     return out
@@ -658,7 +693,7 @@ class AnimPick(OpExecutor):
 
 class AnimLoop(OpExecutor):
     kind = "op.anim_loop"
-    version = "1"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = _images_in(inputs)
@@ -696,7 +731,7 @@ class AnimLoop(OpExecutor):
         if loop and report["seam_similarity"] < 0.6:
             ctx.log(f"no clean repeat found (best seam similarity {report['seam_similarity']}); set start/end by hand "
                     "or pick another candidate", "warning")
-        pivot_doc = {"pivot": report["pivot"], "width": size, "height": size, "angles": [report["angle"]],
+        pivot_doc = {"pivot": report["pivot"], "width": report["cell"], "height": report["cell"], "angles": [report["angle"]],
                      "clips": [{"name": clip, "frames": len(cells), "fps": fps, "loop": loop}]}
         ctx.progress(0.8, 1.0, "save")
         out_cells = [await _put_png(ctx, c, f"{clip}_{i:02d}.png") for i, c in enumerate(cells)]
