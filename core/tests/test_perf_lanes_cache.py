@@ -140,6 +140,16 @@ async def test_executor_version_bump_misses(tmp_path: Path) -> None:
     assert env.steps(r)["gen"].status == StepStatus.SUCCEEDED and len(gen.calls) == 2
 
 
+async def test_downstream_op_version_bump_keeps_upstream_hit(tmp_path: Path) -> None:
+    env, gen, op = _cache_env(tmp_path)
+    await env.run("lin")
+    op.version = "2"
+    r = await env.run("lin")
+    s = env.steps(r)
+    assert s["gen"].status == StepStatus.CACHED and len(gen.calls) == 1
+    assert s["fit"].status == StepStatus.SUCCEEDED and len(op.calls) == 2
+
+
 async def test_no_cache_run_reexecutes_and_refreshes(tmp_path: Path) -> None:
     env, gen, op = _cache_env(tmp_path)
     r1 = await env.run("lin")
