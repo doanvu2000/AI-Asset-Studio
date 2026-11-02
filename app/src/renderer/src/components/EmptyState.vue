@@ -38,8 +38,8 @@ withDefaults(
 .empty {
   display: grid;
   justify-items: center;
-  gap: 6px;
-  padding: 48px 24px;
+  gap: 8px;
+  padding: 56px 24px;
   text-align: center;
   animation: fade-up var(--t-slow) var(--ease-out);
 }
@@ -61,6 +61,7 @@ withDefaults(
 }
 .txt {
   max-width: 44ch;
+  font-size: var(--fs-callout);
 }
 .act {
   display: flex;

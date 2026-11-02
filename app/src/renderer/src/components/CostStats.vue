@@ -555,6 +555,7 @@ const tipLeft = computed(() => {
 .tbl th {
   text-align: left;
   padding: 0 8px;
+  white-space: normal;
   box-shadow: inset 0 -0.5px 0 var(--separator);
 }
 .tbl th:first-child,
@@ -580,6 +581,7 @@ const tipLeft = computed(() => {
   color: var(--text-2);
   font: inherit;
   font-weight: 600;
+  text-align: inherit;
   cursor: pointer;
 }
 .th-btn.on {
@@ -591,8 +593,11 @@ const tipLeft = computed(() => {
   border-radius: 4px;
 }
 .tbl td {
-  padding: 7px 8px;
+  padding: 8px;
   white-space: nowrap;
+}
+.tbl td:first-child {
+  white-space: normal;
 }
 .tbl tr + tr td {
   box-shadow: inset 0 0.5px 0 var(--separator);

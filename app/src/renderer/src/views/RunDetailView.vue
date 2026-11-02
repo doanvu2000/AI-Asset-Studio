@@ -1190,7 +1190,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
   padding: 10px;
   border-radius: var(--r-sm);
   background: var(--bg-sunken);
-  font-size: 11.5px;
+  font-size: 12px;
   white-space: pre-wrap;
   word-break: break-word;
   max-height: 260px;
@@ -1233,7 +1233,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
   padding: 10px 12px;
   border-radius: var(--r-md);
   background: var(--bg-sunken);
-  font-size: 11.5px;
+  font-size: 12px;
   max-height: 220px;
   overflow: auto;
   display: grid;

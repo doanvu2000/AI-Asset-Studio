@@ -89,7 +89,7 @@ const TYPE_LABEL: Record<string, string> = {
 }
 .pname {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text);
 }
 .ptype {

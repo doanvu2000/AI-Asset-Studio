@@ -602,7 +602,7 @@ function newAsset(): void {
   flex-wrap: wrap;
 }
 .c {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-3);
 }
 .dirty-dot {

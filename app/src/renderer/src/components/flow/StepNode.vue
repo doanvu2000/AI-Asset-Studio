@@ -151,7 +151,7 @@ const detail = computed(() => {
   display: inline-grid;
   place-items: center;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-2);
   background: var(--bg-sunken);
@@ -308,7 +308,7 @@ const detail = computed(() => {
   height: 22px;
   padding: 0 14px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-2);
 }
 .port.out {
@@ -324,7 +324,7 @@ const detail = computed(() => {
   gap: 10px;
   padding: 6px 14px 8px;
   border-top: 0.5px solid var(--separator);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 .issues span {

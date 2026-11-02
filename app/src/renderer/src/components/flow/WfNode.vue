@@ -381,7 +381,7 @@ const tooltip = computed(() => `${props.data.title}\n${props.data.recipe}\nMã n
   white-space: nowrap;
 }
 .ptype {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-3);
 }
 .issues {
@@ -389,7 +389,7 @@ const tooltip = computed(() => `${props.data.title}\n${props.data.recipe}\nMã n
   gap: 10px;
   padding: 6px 14px 8px;
   border-top: 0.5px solid var(--separator);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 .issues span {

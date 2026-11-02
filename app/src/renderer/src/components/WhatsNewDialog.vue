@@ -222,7 +222,7 @@ onBeforeUnmount(() => window.clearTimeout(timer))
   border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 .date {

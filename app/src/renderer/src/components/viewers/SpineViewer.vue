@@ -210,7 +210,7 @@ watch(playing, (p) => (p ? player?.play() : player?.pause()))
   left: 12px;
   right: 12px;
   bottom: 6px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-3);
   text-align: center;
   white-space: nowrap;

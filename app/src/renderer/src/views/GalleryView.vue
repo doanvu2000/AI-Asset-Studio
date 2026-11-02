@@ -709,7 +709,7 @@ function move(d: -1 | 1): void {
   clip: rect(0 0 0 0);
 }
 .c {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-3);
 }
 .toggle {

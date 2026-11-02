@@ -331,7 +331,7 @@ onBeforeUnmount(stopPolling)
   overflow: auto;
   border-radius: var(--r-sm);
   background: var(--bg-sunken);
-  font-size: 11px;
+  font-size: 12px;
   white-space: pre-wrap;
 }
 .spin {

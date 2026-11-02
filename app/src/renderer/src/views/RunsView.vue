@@ -150,7 +150,7 @@ watch([filter, projectFilter], () => rows.value.length < NEAR_END && void runs.l
   border-bottom: 0.5px solid var(--separator);
 }
 .c {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-3);
 }
 .list-scroll {

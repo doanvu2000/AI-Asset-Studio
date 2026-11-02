@@ -198,7 +198,7 @@ function bindTo(input: string): void {
   padding: 5px 8px;
   border-radius: 5px;
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: 12px;
   cursor: pointer;
 }
 .menu button:hover {
@@ -214,7 +214,7 @@ select.field {
 }
 .mono {
   font-family: var(--mono);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 .sw {
   display: inline-flex;

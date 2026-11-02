@@ -11,26 +11,32 @@ const icon = computed(() => ({ gpu: Zap, blender: Box, cloud: Cloud, cpu: Cpu, n
 </script>
 
 <template>
-  <span v-if="advanced" class="lane" :title="`Làn ${LANE_LABEL[lane]}`">
-    <component :is="icon" :size="11" :stroke-width="2.2" />
+  <span v-if="advanced" class="ui-pill lane" :class="`l-${lane}`" :title="`Làn ${LANE_LABEL[lane]}`">
+    <component :is="icon" :size="12" :stroke-width="2.2" />
     {{ LANE_LABEL[lane] }}
   </span>
 </template>
 
 <style scoped>
 .lane {
-  display: inline-flex;
-  align-items: center;
   gap: 4px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: 5px;
-  font-size: var(--fs-caption);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--text-3);
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
-  white-space: nowrap;
+  height: 20px;
+  padding: 0 8px;
+}
+.l-gpu {
+  color: var(--c4);
+  background: var(--c4-bg);
+}
+.l-blender {
+  color: var(--c1);
+  background: var(--c1-bg);
+}
+.l-cloud {
+  color: var(--c6);
+  background: var(--c6-bg);
+}
+.l-cpu {
+  color: var(--c2);
+  background: var(--c2-bg);
 }
 </style>

@@ -31,9 +31,9 @@ const icons = { info: Info, success: CircleCheck, error: CircleAlert }
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  padding: 10px 14px;
-  border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  padding: 12px 16px;
+  border-radius: var(--r-lg);
+  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
   backdrop-filter: blur(24px) saturate(1.6);
   box-shadow: var(--shadow-3), var(--hairline);
   font-size: var(--fs-callout);

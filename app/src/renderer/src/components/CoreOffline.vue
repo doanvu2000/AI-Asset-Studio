@@ -96,7 +96,7 @@ const info = computed(() => {
   padding: 10px 12px;
   border-radius: var(--r-md);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   text-align: left;
   white-space: pre-wrap;
   color: var(--text-2);

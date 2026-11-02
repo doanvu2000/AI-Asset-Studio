@@ -299,7 +299,7 @@ useEventListener(document, 'keydown', (e: KeyboardEvent) => {
   display: inline-grid;
   place-items: center;
   border-radius: 11px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-2);
   background: var(--bg-sunken);

@@ -160,7 +160,7 @@ const status = computed(() => {
   overflow: hidden;
   padding: 0 10px 12px;
   background: var(--bg-sidebar);
-  border-right: 0.5px solid var(--separator);
+  border-right: 1px solid var(--hair-soft);
 }
 .brand {
   display: flex;
@@ -176,21 +176,24 @@ const status = computed(() => {
   user-select: none;
 }
 .brand-name {
-  font-weight: 650;
+  font-size: var(--fs-body);
+  font-weight: 700;
   letter-spacing: -0.01em;
   white-space: nowrap;
 }
 nav {
   -webkit-app-region: no-drag;
   display: grid;
-  gap: 1px;
+  gap: 2px;
 }
 .group {
-  margin: 14px 0 3px;
+  margin: 18px 0 4px;
   padding: 0 10px;
   font-size: var(--fs-caption);
   font-weight: 600;
-  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
   white-space: nowrap;
 }
 .group:first-child {
@@ -200,14 +203,20 @@ nav {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 28px;
+  gap: 10px;
+  height: 34px;
   padding: 0 10px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   color: var(--text);
   text-decoration: none;
-  font-weight: 400;
-  transition: background-color var(--t-fast);
+  font-size: 14px;
+  font-weight: 500;
+  transition:
+    background-color var(--t-fast) var(--ease-out),
+    color var(--t-fast) var(--ease-out);
+}
+.item.active {
+  font-weight: 600;
 }
 .item:hover:not(.active) {
   background: var(--bg-hover);
@@ -215,8 +224,9 @@ nav {
 .pill {
   position: absolute;
   inset: 0;
-  border-radius: 6px;
-  background: var(--bg-active);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   z-index: 0;
 }
 .ic,
@@ -226,8 +236,12 @@ nav {
   z-index: 1;
 }
 .ic {
-  color: var(--accent);
+  color: var(--ink-2);
   flex: none;
+  transition: color var(--t-fast) var(--ease-out);
+}
+.active .ic {
+  color: var(--accent);
 }
 .label {
   flex: 1;
@@ -237,13 +251,14 @@ nav {
   text-overflow: ellipsis;
 }
 .count {
-  min-width: 18px;
-  height: 16px;
-  padding: 0 5px;
-  border-radius: 8px;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: var(--fs-caption);
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
   color: var(--text-2);
   background: var(--bg-active);
@@ -291,17 +306,20 @@ nav {
   width: fit-content;
   align-items: center;
   gap: 6px;
-  height: 22px;
-  margin-bottom: 6px;
-  padding: 0 7px;
-  border-radius: 5px;
+  height: 26px;
+  margin-bottom: 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
   font-size: var(--fs-caption);
+  font-weight: 500;
   color: var(--text-2);
-  background: transparent;
-  box-shadow: var(--hairline);
+  background: var(--fill);
+  cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease-out);
 }
 .mode:hover {
-  background: var(--bg-hover);
+  background: var(--fill-2);
 }
 .compact .mode-text {
   display: none;

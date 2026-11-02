@@ -158,7 +158,7 @@ function goCurrent(): void {
   font-weight: 600;
 }
 .s {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-2);
 }
 .chev {
@@ -246,7 +246,7 @@ function goCurrent(): void {
 }
 .args {
   grid-column: 2 / 4;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-3);
   white-space: nowrap;
   overflow: hidden;

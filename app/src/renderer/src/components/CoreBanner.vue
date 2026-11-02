@@ -97,7 +97,7 @@ const visible = computed(() => (banner.value && banner.value.key !== dismissed.v
   overflow: auto;
   margin: 6px 0 0;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   white-space: pre-wrap;
   color: var(--text-2);
 }

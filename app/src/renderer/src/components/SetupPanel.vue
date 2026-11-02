@@ -588,7 +588,7 @@ const claudeReady = computed(() => !!plan.value?.components.claude.installed)
 }
 .detail {
   color: var(--text-2);
-  font-size: 11.5px;
+  font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

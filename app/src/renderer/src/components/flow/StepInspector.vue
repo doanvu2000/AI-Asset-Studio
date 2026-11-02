@@ -296,7 +296,7 @@ function remove(): void {
   height: 22px;
   padding: 0 4px 0 8px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
   background: var(--accent-soft);
   color: var(--text);
 }

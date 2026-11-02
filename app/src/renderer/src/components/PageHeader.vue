@@ -53,8 +53,8 @@ onBeforeUnmount(() => observer?.disconnect())
   gap: var(--sp-4);
   min-height: var(--toolbar-h);
   padding: 6px calc(var(--caption-w) + var(--sp-2)) 6px var(--sp-6);
-  border-bottom: 0.5px solid var(--separator);
-  background: color-mix(in srgb, var(--bg-content) 82%, transparent);
+  border-bottom: 1px solid var(--hair-soft);
+  background: color-mix(in srgb, var(--bg-content) 85%, transparent);
   backdrop-filter: saturate(1.6) blur(20px);
   position: relative;
   z-index: 5;
@@ -69,14 +69,16 @@ onBeforeUnmount(() => observer?.disconnect())
   min-width: 0;
 }
 .t h1 {
-  font-size: 15px;
-  letter-spacing: -0.012em;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 .sub {
-  margin-top: -1px;
+  margin-top: 1px;
   overflow-wrap: anywhere;
 }
 .actions,
