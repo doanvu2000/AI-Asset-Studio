@@ -391,7 +391,7 @@ CATALOG: dict[str, P] = {
                         "params": {"asset": _text("sky", label="Tên asset"),
                                    "face_size": _int(0, min=0, max=4096, label="Cỡ mỗi mặt (px, 0 = rộng/4)")}},
     "op.minimap_base": {"label": "Minimap: đọc ảnh màn / Tiled / LDtk + POI, vừa khung vuông, style clean (CPU)",
-                        "in": {"source": "file[]"},
+                        "in": {"source": "file[]", "tiles": "image[]", "reference": "image[]"},
                         "out": {"base": "image", "restyle_in": "image[]", "layout": "json", "info": "json"},
                         "params": {"pois": _text("", multiline=True, label="POI: tên, x, y, loại (mỗi dòng một điểm)"),
                                    "size": _int(512, min=64, max=2048, label="Cỡ minimap (px)"),

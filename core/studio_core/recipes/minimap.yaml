@@ -10,6 +10,8 @@ description: >-
 inputs:
   source: {type: file, ext: [png, jpg, jpeg, webp, tmx, tmj, ldtk],
            label: "Ảnh màn, hoặc bản đồ Tiled .tmx / .tmj, LDtk .ldtk"}
+  tiles: {type: image, required: false, label: "Ảnh tileset của bản đồ Tiled / LDtk (tên file khớp; để lấy màu ô thật)"}
+  reference: {type: image, required: false, label: "Ảnh render của màn (lấy màu theo ô khi không có tileset)"}
   pois: {type: text, required: false, default: "", multiline: true,
          label: "POI thêm (mỗi dòng: tên, x, y, loại — pixel của ảnh / bản đồ, hoặc 0–1)",
          placeholder: "Làng, 120, 340, town\nCửa hàng, 410, 220, shop\nBoss, 0.82, 0.15, boss"}
@@ -26,7 +28,7 @@ inputs:
 steps:
   - id: base
     kind: op.minimap_base
-    in: {source: inputs.source}
+    in: {source: inputs.source, tiles: inputs.tiles, reference: inputs.reference}
     params: {pois: "${inputs.pois}", style: "${inputs.style}", shape: "${inputs.shape}", size: "${inputs.size}",
              colors: "${inputs.colors}", level: "${inputs.level}", prompt: "${inputs.prompt}",
              asset: "${inputs.asset}"}

@@ -304,3 +304,75 @@ def test_tile_layers_without_terrain_meaning_are_not_painted():
     img = np.asarray(load_source(json.dumps(tmj).encode(), "m.tmj").image)
     grass = np.asarray((124, 172, 92), np.float32)
     assert np.abs(img[4, 12, :3].astype(np.float32) - grass).max() < 20
+
+
+def _tileset_png(colors: list[tuple[int, int, int]], alpha: int = 255) -> bytes:
+    img = Image.new("RGBA", (16 * len(colors), 16))
+    for i, c in enumerate(colors):
+        img.paste((*c, alpha), (i * 16, 0, i * 16 + 16, 16))
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+TILED_IMG = """<map orientation="orthogonal" width="3" height="1" tilewidth="16" tileheight="16" infinite="0">
+ <tileset firstgid="1" name="t" tilewidth="16" tileheight="16" tilecount="3" columns="3">
+  <image source="sub/t.png" width="48" height="16"/></tileset>
+ <layer id="1" name="Layer A" width="3" height="1"><data encoding="csv">1,1,1</data></layer>
+ <layer id="2" name="Layer B" width="3" height="1"><data encoding="csv">0,{road},3</data></layer>
+</map>"""
+
+
+def _tile_colors(png: bytes):
+    from studio_core.ops.minimap import TileColors
+
+    return TileColors({"t.png": np.asarray(Image.open(io.BytesIO(png)).convert("RGBA"))})
+
+
+def test_tileset_colors_follow_tile_images():
+    png = _tileset_png([(30, 160, 40), (200, 170, 90), (60, 60, 200)])
+    out = load_source(TILED_IMG.format(road=2).encode(), "m.tmx", tiles=_tile_colors(png))
+    a = np.asarray(out.image)
+    assert [tuple(a[8, x * 16 + 8, :3]) for x in range(3)] == [(30, 160, 40), (200, 170, 90), (60, 60, 200)]
+    flipped = TILED_IMG.format(road=2 | 0x80000000).encode()
+    assert tuple(np.asarray(load_source(flipped, "m.tmx", tiles=_tile_colors(png)).image)[8, 24, :3]) == (200, 170, 90)
+
+
+def test_transparent_tile_shows_layer_below_and_missing_image_falls_back():
+    png = _tileset_png([(30, 160, 40), (200, 170, 90), (60, 60, 200)])
+    clear = _tile_colors(_tileset_png([(30, 160, 40), (200, 170, 90), (60, 60, 200)], alpha=0))
+    a = np.asarray(load_source(TILED_IMG.format(road=2).encode(), "m.tmx", tiles=clear).image)
+    assert tuple(a[8, 24, :3]) == (36, 40, 44)
+    from studio_core.ops.minimap import TileColors
+
+    named = np.asarray(load_source(TILED_IMG.format(road=2).encode(), "m.tmx", tiles=TileColors({"x.png": np.zeros((16, 48, 4), np.uint8)})).image)
+    assert tuple(named[8, 8, :3]) != (30, 160, 40) and tuple(named[8, 8, :3]) != (36, 40, 44)
+    assert png
+
+
+def test_reference_image_samples_cells_without_tileset():
+    ref = Image.new("RGB", (48, 16))
+    for i, c in enumerate([(10, 200, 10), (220, 40, 40), (40, 40, 220)]):
+        ref.paste(c, (i * 16, 0, i * 16 + 16, 16))
+    a = np.asarray(load_source(TILED_IMG.format(road=2).encode(), "m.tmx", reference=ref).image)
+    assert [tuple(a[8, x * 16 + 8, :3]) for x in range(3)] == [(10, 200, 10), (220, 40, 40), (40, 40, 220)]
+
+
+def test_ldtk_tiles_use_tileset_pixels():
+    doc = {"defs": {"layers": []}, "levels": [{"identifier": "L", "pxWid": 32, "pxHei": 16, "layerInstances": [
+        {"__identifier": "Ground", "__type": "Tiles", "__gridSize": 16, "__cWid": 2, "__cHei": 1,
+         "__tilesetRelPath": "t.png", "gridTiles": [{"px": [0, 0], "src": [0, 0], "t": 0},
+                                                      {"px": [16, 0], "src": [16, 0], "t": 1}]}]}]}
+    png = _tileset_png([(30, 160, 40), (200, 170, 90)])
+    a = np.asarray(load_source(json.dumps(doc).encode(), "w.ldtk", tiles=_tile_colors(png)).image)
+    assert tuple(a[8, 8, :3]) == (30, 160, 40) and tuple(a[8, 24, :3]) == (200, 170, 90)
+
+
+async def test_op_reads_tiles_input(tmp_path: Path):
+    ctx = FakeCtx(tmp_path)
+    tiles = await ctx.blobs.put_bytes(_tileset_png([(30, 160, 40), (200, 170, 90), (60, 60, 200)]), name="t.png",
+                                      mime="image/png")
+    src = await ctx.blobs.put_bytes(TILED_IMG.format(road=2).encode(), name="m.tmx", mime="application/xml")
+    base = await MinimapBase().run(ctx, {"size": 96, "colors": 8}, {"source": [src], "tiles": [tiles]})
+    a = np.asarray(load(ctx, base.outputs["base"][0]))
+    assert len({tuple(p) for p in a[::8, ::8, :3].reshape(-1, 3)}) >= 3

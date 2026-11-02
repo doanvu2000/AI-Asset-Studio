@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -30,6 +30,8 @@ MAP_EXTS = (".tmx", ".tmj", ".ldtk")
 MAX_RENDER = 2048
 KLEIN_SIDE = 1024
 MAX_POIS = 200
+MIN_TILE_COVERAGE = 0.25
+UNKNOWN: tuple[()] = ()
 MERGE_RGB = 36.0
 FLIP_MASK = 0x1FFFFFFF
 # Decoration layers carry no terrain: unmatched names would take a fallback colour and paint over the ground.
@@ -86,6 +88,53 @@ class Loaded:
     kind: str = "image"
 
 
+@dataclass
+class TileSet:
+    first: int
+    tw: int
+    th: int
+    margin: int
+    spacing: int
+    columns: int
+    image: str
+
+
+class TileColors:
+    """Mean opaque colour of tileset cells; a (nearly) transparent cell gives None, an image we do not have gives
+    UNKNOWN so the caller falls back to the layer-name colour."""
+
+    def __init__(self, images: dict[str, np.ndarray]):
+        self.images = images
+        self.cache: dict[tuple[str, int, int, int, int], tuple[int, int, int] | None] = {}
+
+    def region(self, name: str, x: int, y: int, w: int, h: int) -> tuple[int, int, int] | None | tuple[()]:
+        key = (Path(name.lower()).name, x, y, w, h)
+        if key[0] not in self.images:
+            return UNKNOWN
+        if key not in self.cache:
+            a = self.images[key[0]][max(0, y):y + h, max(0, x):x + w]
+            opaque = a[..., 3] >= 128 if a.size else np.zeros((0, 0), bool)
+            if not opaque.any() or opaque.mean() < MIN_TILE_COVERAGE:
+                self.cache[key] = None
+            else:
+                m = a[opaque][:, :3].mean(0)
+                self.cache[key] = (int(m[0]), int(m[1]), int(m[2]))
+        return self.cache[key]
+
+    def gid_lookup(self, sets: list[TileSet]) -> Callable[[int], tuple[int, int, int] | None | tuple[()]]:
+        ordered = sorted(sets, key=lambda t: t.first)
+
+        def lookup(gid: int) -> tuple[int, int, int] | None | tuple[()]:
+            ts = next((t for t in reversed(ordered) if t.first <= gid), None)
+            if ts is None or ts.columns <= 0:
+                return UNKNOWN
+            local = gid - ts.first
+            return self.region(ts.image, ts.margin + local % ts.columns * (ts.tw + ts.spacing),
+                               ts.margin + local // ts.columns * (ts.th + ts.spacing), ts.tw, ts.th)
+
+        return lookup
+
+
 def _color_for(name: str, index: int) -> tuple[int, int, int]:
     low = name.lower()
     for words, rgb in KEYWORD_COLORS:
@@ -114,17 +163,27 @@ def _decode_tiles(data: str | list[int], encoding: str | None, compression: str 
     return list(np.frombuffer(raw, "<u4").astype(np.int64))
 
 
-def _render_grid(w: int, h: int, tw: int, th: int, layers: list[tuple[str, list[int]]]) -> Loaded:
+def _render_grid(w: int, h: int, tw: int, th: int, layers: list[tuple[str, list[int]]],
+                 tile_color: Callable[[int], tuple[int, int, int] | None | tuple[()]] | None = None,
+                 reference: Image.Image | None = None) -> Loaded:
     grid = np.zeros((h, w, 3), np.uint8)
     grid[:] = (36, 40, 44)
+    resolved = False
     for i, (name, gids) in enumerate(layers):
         if len(gids) < w * h or any(wd in name.lower() for wd in NON_TERRAIN_LAYER_WORDS):
             continue
         base = _color_for(name, i)
         arr = np.asarray(gids[:w * h], np.int64).reshape(h, w) & FLIP_MASK
         for gid in np.unique(arr):
-            if gid:
-                grid[arr == gid] = _shade(base, int(gid))
+            if not gid:
+                continue
+            c = tile_color(int(gid)) if tile_color else UNKNOWN
+            resolved = resolved or bool(c)
+            if c is not None:
+                grid[arr == gid] = c or _shade(base, int(gid))
+    if reference is not None and not resolved:
+        # Cell-wise mean of the render beats guessing colours from layer names.
+        grid = np.asarray(reference.convert("RGB").resize((w, h), Image.Resampling.BOX), np.uint8)
     src = (w * tw, h * th)
     s = min(1.0, MAX_RENDER / max(src))
     img = Image.fromarray(grid, "RGB").resize((max(1, round(src[0] * s)), max(1, round(src[1] * s))),
@@ -140,7 +199,7 @@ def _poi_type(raw: str, name: str) -> str:
     return re.sub(r"[^\w-]", "", t)[:24] or "poi"
 
 
-def _tmx(data: bytes) -> Loaded:
+def _tmx(data: bytes, tiles: TileColors | None = None, reference: Image.Image | None = None) -> Loaded:
     try:
         root = ET.fromstring(data)
     except ET.ParseError as e:
@@ -152,8 +211,13 @@ def _tmx(data: bytes) -> Loaded:
     w, h, tw, th = (int(root.get(k, "0")) for k in ("width", "height", "tilewidth", "tileheight"))
     layers = []
     pois: list[Poi] = []
+    sets: list[TileSet] = []
     for el in root.iter():
-        if el.tag == "layer" and el.get("visible", "1") != "0":
+        if el.tag == "tileset":
+            img = el.find("image")
+            if img is not None and img.get("source"):
+                sets.append(_tmx_tileset(el, img, tw, th))
+        elif el.tag == "layer" and el.get("visible", "1") != "0":
             d = el.find("data")
             if d is None:
                 continue
@@ -173,12 +237,21 @@ def _tmx(data: bytes) -> Loaded:
                                 _poi_type(o.get("type") or o.get("class") or "", name), ox + ow / 2, oy + oh / 2))
     if not (w and h and tw and th):
         raise StepError("op_bad_input", ".tmx has no size")
-    out = _render_grid(w, h, tw, th, layers)
+    out = _render_grid(w, h, tw, th, layers, tiles.gid_lookup(sets) if tiles and sets else None, reference)
     out.pois = pois
     return out
 
 
-def _tmj(doc: dict[str, Any]) -> Loaded:
+def _tmx_tileset(el: ET.Element, img: ET.Element, tw: int, th: int) -> TileSet:
+    ttw, tth = int(el.get("tilewidth") or tw), int(el.get("tileheight") or th)
+    margin, spacing = int(el.get("margin") or 0), int(el.get("spacing") or 0)
+    columns = int(el.get("columns") or 0)
+    if not columns and img.get("width"):
+        columns = max(1, (int(img.get("width", "0")) - 2 * margin + spacing) // (ttw + spacing))
+    return TileSet(int(el.get("firstgid") or 1), ttw, tth, margin, spacing, columns, img.get("source", ""))
+
+
+def _tmj(doc: dict[str, Any], tiles: TileColors | None = None, reference: Image.Image | None = None) -> Loaded:
     if doc.get("infinite"):
         raise StepError("op_bad_input", "infinite Tiled maps are not supported; resize the map to a fixed size")
     w, h, tw, th = (int(doc.get(k) or 0) for k in ("width", "height", "tilewidth", "tileheight"))
@@ -204,7 +277,10 @@ def _tmj(doc: dict[str, Any]) -> Loaded:
     walk(doc.get("layers") or [])
     if not (w and h and tw and th):
         raise StepError("op_bad_input", ".tmj has no size")
-    out = _render_grid(w, h, tw, th, layers)
+    sets = [TileSet(int(t.get("firstgid") or 1), int(t.get("tilewidth") or tw), int(t.get("tileheight") or th),
+                    int(t.get("margin") or 0), int(t.get("spacing") or 0), int(t.get("columns") or 0), str(t["image"]))
+            for t in doc.get("tilesets") or [] if t.get("image")]
+    out = _render_grid(w, h, tw, th, layers, tiles.gid_lookup(sets) if tiles and sets else None, reference)
     out.pois = pois
     return out
 
@@ -224,7 +300,7 @@ def _entity_name(e: dict[str, Any]) -> str:
     return str(e.get("__identifier") or "poi")
 
 
-def _ldtk(doc: dict[str, Any], level: str) -> Loaded:
+def _ldtk(doc: dict[str, Any], level: str, tiles: TileColors | None = None) -> Loaded:
     levels = doc.get("levels") or []
     if not levels:
         raise StepError("op_bad_input", ".ldtk has no levels")
@@ -265,9 +341,13 @@ def _ldtk(doc: dict[str, Any], level: str) -> Loaded:
                     cell((idx % cw) * g, (idx // cw) * g, colors.get(int(v), _color_for(name, int(v))))
         if kind in ("Tiles", "AutoLayer") or (kind == "IntGrid" and not li.get("intGridCsv")):
             base = _color_for(name, i)
+            rel = str(li.get("__tilesetRelPath") or "")
             for t in (li.get("gridTiles") or []) + (li.get("autoLayerTiles") or []):
                 x, y = t.get("px") or (0, 0)
-                cell(x, y, _shade(base, int(t.get("t") or 0)))
+                sx, sy = t.get("src") or (0, 0)
+                c = tiles.region(rel, sx, sy, g, g) if tiles and rel else UNKNOWN
+                if c is not None:
+                    cell(x, y, c or _shade(base, int(t.get("t") or 0)))
         if kind == "Entities":
             for e in li.get("entityInstances") or []:
                 x, y = e.get("px") or (0, 0)
@@ -280,19 +360,20 @@ def _ldtk(doc: dict[str, Any], level: str) -> Loaded:
     return Loaded(canvas.convert("RGBA"), (pw, ph), s, pois, "ldtk")
 
 
-def load_source(data: bytes, name: str, level: str = "") -> Loaded:
+def load_source(data: bytes, name: str, level: str = "", tiles: TileColors | None = None,
+                reference: Image.Image | None = None) -> Loaded:
     ext = Path(name.lower()).suffix
     if ext == ".tmx":
-        return _tmx(data)
+        return _tmx(data, tiles, reference)
     if ext in (".tmj", ".ldtk", ".json"):
         try:
             doc = json.loads(data)
         except ValueError as e:
             raise StepError("op_bad_input", f"bad map JSON: {e}") from e
         if isinstance(doc, dict) and ("levels" in doc and "defs" in doc):
-            return _ldtk(doc, level)
+            return _ldtk(doc, level, tiles)
         if isinstance(doc, dict) and doc.get("type") == "map":
-            return _tmj(doc)
+            return _tmj(doc, tiles, reference)
         raise StepError("op_bad_input", "JSON is neither a Tiled map (.tmj) nor an LDtk project (.ldtk)")
     try:
         with Image.open(io.BytesIO(data)) as im:
@@ -564,9 +645,25 @@ async def _put_json(ctx: StepContext, doc: Any, name: str) -> BlobRef:
                                      mime="application/json")
 
 
+async def _tile_inputs(ctx: StepContext, inputs: Outputs) -> tuple[TileColors | None, Image.Image | None]:
+    images: dict[str, np.ndarray] = {}
+    for r in inputs.get("tiles") or []:
+        try:
+            images[Path((r.name or "").lower()).name] = np.asarray((await _load(ctx, r)).convert("RGBA"))
+        except StepError:
+            continue
+    reference = None
+    if inputs.get("reference"):
+        try:
+            reference = await _load(ctx, inputs["reference"][0])
+        except StepError:
+            reference = None
+    return (TileColors(images) if images else None), reference
+
+
 class MinimapBase(OpExecutor):
     kind = "op.minimap_base"
-    version = "1"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = inputs.get("source") or inputs.get("images") or []
@@ -578,7 +675,9 @@ class MinimapBase(OpExecutor):
         _choice(params, "shape", SHAPES)
         ref = refs[0]
         data = await asyncio.to_thread(ctx.blobs.path(ref.hash).read_bytes)
-        loaded = await asyncio.to_thread(load_source, data, ref.name or "map.png", str(params.get("level") or ""))
+        tiles, reference = await _tile_inputs(ctx, inputs)
+        loaded = await asyncio.to_thread(load_source, data, ref.name or "map.png", str(params.get("level") or ""),
+                                         tiles, reference)
         pois = loaded.pois + parse_pois(str(params.get("pois") or ""), loaded.source_size)
         if len(pois) > MAX_POIS:
             raise StepError("op_bad_params", f"at most {MAX_POIS} POIs")

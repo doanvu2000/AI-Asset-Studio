@@ -58,4 +58,5 @@ outputs:
   scene: approve.scene
   tmx: approve.tmx
   ldtk: approve.ldtk
+  tiles: approve.tiles
   engine: approve.engine

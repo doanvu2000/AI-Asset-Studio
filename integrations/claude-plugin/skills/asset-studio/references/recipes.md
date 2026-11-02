@@ -541,6 +541,8 @@ Mesh có sẵn (.glb / .fbx / .obj: greybox, asset store, TRELLIS) + mô tả + 
 - outputs: `final`, `preview`, `framed`, `minimap`
 - inputs:
   - `source` (file; .png/.jpg/.jpeg/.webp/.tmx/.tmj/.ldtk; required) — Ảnh màn, hoặc bản đồ Tiled .tmx / .tmj, LDtk .ldtk
+  - `tiles` (image) — Ảnh tileset của bản đồ Tiled / LDtk (tên file khớp; để lấy màu ô thật)
+  - `reference` (image) — Ảnh render của màn (lấy màu theo ô khi không có tileset)
   - `pois` (text) — POI thêm (mỗi dòng: tên, x, y, loại — pixel của ảnh / bản đồ, hoặc 0–1)
   - `style` (enum; default 'clean'; one of clean, parchment, stylized) — Kiểu (clean = CPU; parchment / stylized = Klein)
   - `shape` (enum; default 'circle'; one of circle, square) — Khung
@@ -661,7 +663,7 @@ Prompt cảnh (+ ảnh tham chiếu màu, tuỳ chọn) → Z-Image vẽ riêng 
 Gom asset của dự án (nhân vật 8 hướng, texture nền / đường / tường hoặc autotile blob-47, prop, lớp parallax) — hoặc file đưa vào — → Claude vẽ màn nhỏ ~32×20 ô (top-down hoặc side-view: tường, đường, prop, điểm xuất phát; procedural nếu không dùng Claude) → atlas ô liền mạch + mockup toàn màn + Tiled .tmx + LDtk .ldtk → mở trong Godot (và/hoặc Unity) chạy thử: nhân vật đi được, chụp ảnh màn và góc camera người chơi → duyệt. Xuất Godot (TileMapLayer + CharacterBody2D + Camera2D + Parallax2D) và Unity (Tilemap + Rigidbody2D + Animator + camera bám theo), nút "Mở trong Godot / Unity".
 
 - runs on: Claude; gates: approve
-- outputs: `final`, `preview`, `scene`, `tmx`, `ldtk`, `engine`
+- outputs: `final`, `preview`, `scene`, `tmx`, `ldtk`, `tiles`, `engine`
 - inputs:
   - `character` (file; .png/.json) — Nhân vật 8 hướng: sheet PNG + sheet .json (trống = lấy từ dự án)
   - `tiles` (image) — Texture ô liền mạch: nền, đường, tường (tên file có wall/path… để gán vai; trống = lấy từ dự án)

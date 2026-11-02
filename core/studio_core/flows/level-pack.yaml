@@ -37,4 +37,4 @@ nodes:
   - id: minimap
     recipe_id: minimap
     title: Minimap
-    map: {source: "scene.outputs.tmx[0]"}
+    map: {source: "scene.outputs.tmx[0]", tiles: "scene.outputs.tiles[0]", reference: "scene.outputs.final[0]"}
