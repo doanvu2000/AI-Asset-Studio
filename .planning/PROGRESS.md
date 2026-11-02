@@ -1476,3 +1476,4 @@ Commit từng phần, không push. Plan: PLAN-2026-11-02-r10.md.
 - [x] E1 live: ui-pack OK 223–253s; level-pack fail `gather: no 8-direction character` → thêm input character optional map vào scene, chạy lại OK 236–249s; test 22 pass — 358f55b. Nợ: màu minimap lệch màn mẫu (nền xanh/đường nâu ngược); chưa thử truyền character tường minh.
 - [~] E2 character-pack live GPU (atlas + xuất engine mới) giao sonnet.
 - [x] E2 character-pack live 11/12 node (~23 phút), node style fail do chưa có version duyệt (chờ quyết định); engine pack 56 sprite, Godot import OK; fix README + minimap shadow layer; test 22 pass — 178df24. Kết đợt: HANDOFF-2026-11-02-r10.md
+- [x] WP-S style audit bỏ qua + warning khi chưa có version duyệt (chủ nhân chọn); test 25 pass — 684a948
