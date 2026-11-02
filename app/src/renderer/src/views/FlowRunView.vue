@@ -185,15 +185,15 @@ async function cancel(): Promise<void> {
       </template>
       <RouterLink v-if="project" :to="`/projects/${project.id}`" class="proj-badge" :title="`Dự án ${project.name}`">
         <FolderKanban :size="13" aria-hidden="true" />
-        <span class="pb-name">{{ project.name }}</span>
+        <span class="pb-name lbl">{{ project.name }}</span>
       </RouterLink>
       <div class="seg" role="radiogroup" aria-label="Kiểu xem">
-        <button type="button" role="radio" :aria-checked="viewMode === 'graph'" :class="{ on: viewMode === 'graph' }" title="Sơ đồ" @click="setMode('graph')"><Workflow :size="14" /> Sơ đồ</button>
-        <button type="button" role="radio" :aria-checked="viewMode === 'list'" :class="{ on: viewMode === 'list' }" title="Danh sách" @click="setMode('list')"><List :size="14" /> Danh sách</button>
+        <button type="button" role="radio" :aria-checked="viewMode === 'graph'" :class="{ on: viewMode === 'graph' }" title="Sơ đồ" aria-label="Sơ đồ" @click="setMode('graph')"><Workflow :size="14" /> <span class="lbl">Sơ đồ</span></button>
+        <button type="button" role="radio" :aria-checked="viewMode === 'list'" :class="{ on: viewMode === 'list' }" title="Danh sách" aria-label="Danh sách" @click="setMode('list')"><List :size="14" /> <span class="lbl">Danh sách</span></button>
       </div>
       <FlowStatusBadge v-if="detail" :status="detail.status" />
       <template v-if="active">
-        <button v-if="!confirmCancel" type="button" class="btn" @click="confirmCancel = true"><CircleStop /> Huỷ workflow</button>
+        <button v-if="!confirmCancel" type="button" class="btn" aria-label="Huỷ workflow" title="Huỷ workflow" @click="confirmCancel = true"><CircleStop /> <span class="lbl">Huỷ workflow</span></button>
         <template v-else>
           <button type="button" class="btn" @click="confirmCancel = false">Không</button>
           <button type="button" class="btn btn-danger" :disabled="cancelling" @click="cancel">

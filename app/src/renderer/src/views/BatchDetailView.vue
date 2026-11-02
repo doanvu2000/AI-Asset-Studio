@@ -141,8 +141,8 @@ async function cancelAll(): Promise<void> {
       <template v-if="batch" #subtitle>
         {{ recipes.byId(batch.recipeId)?.name ?? 'Quy trình đã xoá' }} · <RelTime :ts="batch.createdAt" /> · <span class="num">{{ total }}</span> lượt
       </template>
-      <button v-if="batch?.active" class="btn btn-danger" @click="cancelAll"><CircleStop /> Huỷ các lượt đang chạy</button>
-      <button v-if="batch?.awaiting" class="btn btn-primary" @click="reviewBatch"><Inbox /> Duyệt cả lô</button>
+      <button v-if="batch?.active" class="btn btn-danger" aria-label="Huỷ các lượt đang chạy" title="Huỷ các lượt đang chạy" @click="cancelAll"><CircleStop /> <span class="lbl">Huỷ các lượt đang chạy</span></button>
+      <button v-if="batch?.awaiting" class="btn btn-primary" aria-label="Duyệt cả lô" title="Duyệt cả lô" @click="reviewBatch"><Inbox /> <span class="lbl">Duyệt cả lô</span></button>
     </PageHeader>
 
     <EmptyState
@@ -311,9 +311,7 @@ async function cancelAll(): Promise<void> {
   flex: 1;
   min-width: 0;
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .st-bar {
   position: relative;

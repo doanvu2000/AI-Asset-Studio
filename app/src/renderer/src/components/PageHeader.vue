@@ -1,9 +1,37 @@
 <script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref } from 'vue'
+
 defineProps<{ title: string; subtitle?: string }>()
+
+const root = ref<HTMLElement>()
+const actions = ref<HTMLElement>()
+let observer: ResizeObserver | null = null
+
+// Buttons wrap their label in `.lbl` (plus aria-label + title); when the actions
+// plus a readable title no longer fit, the labels drop and only icons remain.
+const TITLE_MIN = 200
+
+function fit(): void {
+  const h = root.value
+  const a = actions.value
+  if (!h || !a) return
+  h.classList.remove('compact')
+  const cs = getComputedStyle(h)
+  const room = h.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - parseFloat(cs.columnGap)
+  if (a.offsetWidth + TITLE_MIN > room) h.classList.add('compact')
+}
+
+onMounted(() => {
+  observer = new ResizeObserver(fit)
+  if (root.value) observer.observe(root.value)
+  if (actions.value) observer.observe(actions.value)
+  fit()
+})
+onBeforeUnmount(() => observer?.disconnect())
 </script>
 
 <template>
-  <header class="page-header">
+  <header ref="root" class="page-header">
     <div class="titles">
       <slot name="leading" />
       <div class="t">
@@ -11,7 +39,7 @@ defineProps<{ title: string; subtitle?: string }>()
         <p v-if="subtitle || $slots.subtitle" class="caption sub" :title="subtitle"><slot name="subtitle">{{ subtitle }}</slot></p>
       </div>
     </div>
-    <div class="actions"><slot /></div>
+    <div ref="actions" class="actions"><slot /></div>
   </header>
 </template>
 
@@ -23,8 +51,8 @@ defineProps<{ title: string; subtitle?: string }>()
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-4);
-  height: var(--toolbar-h);
-  padding: 0 calc(var(--caption-w) + var(--sp-2)) 0 var(--sp-6);
+  min-height: var(--toolbar-h);
+  padding: 6px calc(var(--caption-w) + var(--sp-2)) 6px var(--sp-6);
   border-bottom: 0.5px solid var(--separator);
   background: color-mix(in srgb, var(--bg-content) 82%, transparent);
   backdrop-filter: saturate(1.6) blur(20px);
@@ -43,15 +71,11 @@ defineProps<{ title: string; subtitle?: string }>()
 .t h1 {
   font-size: 15px;
   letter-spacing: -0.012em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .sub {
   margin-top: -1px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .actions,
 .titles :deep(button),
@@ -59,8 +83,12 @@ defineProps<{ title: string; subtitle?: string }>()
   -webkit-app-region: no-drag;
 }
 .actions {
+  flex: none;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+}
+.compact .actions :deep(.lbl) {
+  display: none;
 }
 </style>

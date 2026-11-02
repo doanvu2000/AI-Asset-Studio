@@ -228,9 +228,7 @@ function instruction(g: GateItem): string {
   gap: 2px;
 }
 .q-meta {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .q-title {
   font-weight: 600;

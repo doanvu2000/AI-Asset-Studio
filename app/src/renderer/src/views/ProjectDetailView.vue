@@ -520,15 +520,11 @@ function newAsset(): void {
 </template>
 
 <style scoped>
-@media (max-width: 1360px) {
-  .lbl {
-    display: none;
-  }
-}
 .page {
   max-width: 880px;
   margin: 0 auto;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   animation: fade-up var(--t-slow) var(--ease-out);
 }
@@ -567,6 +563,8 @@ function newAsset(): void {
 }
 .tabs {
   justify-self: start;
+  max-width: 100%;
+  flex-wrap: wrap;
 }
 .c {
   font-size: 11px;
@@ -591,12 +589,13 @@ function newAsset(): void {
 }
 .fields {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   padding: 4px 18px;
   container-type: inline-size;
 }
 .f {
   display: grid;
-  grid-template-columns: 160px 1fr;
+  grid-template-columns: 160px minmax(0, 1fr);
   gap: 16px;
   padding: 14px 0;
   align-items: start;

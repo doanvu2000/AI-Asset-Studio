@@ -413,7 +413,7 @@ async function remove(): Promise<void> {
 }
 .item {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 1px 6px;
   text-align: left;
   padding: 8px 12px;
@@ -438,9 +438,6 @@ async function remove(): Promise<void> {
 }
 .i-sub {
   grid-column: 1 / -1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .group-head {
   display: grid;
@@ -464,13 +461,18 @@ async function remove(): Promise<void> {
 }
 .pane {
   flex: 1;
+  min-width: 0;
 }
 .form {
   max-width: 860px;
   margin: 0 auto;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   animation: fade-up var(--t-slow) var(--ease-out);
+}
+.f-head > :first-child {
+  min-width: 0;
 }
 .f-head {
   display: flex;
@@ -480,6 +482,8 @@ async function remove(): Promise<void> {
 }
 .actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
 }
 .err {
@@ -491,13 +495,15 @@ async function remove(): Promise<void> {
   margin: 0;
   padding: 4px 18px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
 }
 .fields:disabled {
   opacity: 0.85;
 }
 .f {
   display: grid;
-  grid-template-columns: 140px 1fr;
+  grid-template-columns: 140px minmax(0, 1fr);
   gap: 16px;
   padding: 11px 0;
   align-items: center;
@@ -544,6 +550,8 @@ async function remove(): Promise<void> {
 }
 .seg {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   padding: 2px;
   border-radius: 8px;
   background: var(--bg-sunken);
@@ -585,7 +593,7 @@ async function remove(): Promise<void> {
 }
 .dir {
   display: grid;
-  grid-template-columns: 20px 20px 1fr 110px auto;
+  grid-template-columns: 20px 20px minmax(0, 1fr) 110px auto;
   align-items: center;
   gap: 8px;
   min-height: 40px;

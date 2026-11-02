@@ -405,12 +405,12 @@ const subtitle = computed(() => (doc.value ? `${doc.value.id} · ${sourceLabel[s
       <AddStepMenu v-if="doc" :kinds="kinds.list" @pick="addStep" />
       <button v-if="source === 'override' || source === 'user'" class="btn" :class="{ 'btn-danger': confirmRevert }" @click="revert">
         <component :is="source === 'override' ? RotateCcw : Trash2" />
-        {{ confirmRevert ? 'Bấm lần nữa' : source === 'override' ? 'Khôi phục gốc' : 'Xoá' }}
+        <span :class="{ lbl: !confirmRevert }">{{ confirmRevert ? 'Bấm lần nữa' : source === 'override' ? 'Khôi phục gốc' : 'Xoá' }}</span>
       </button>
-      <button class="btn btn-primary" :disabled="!doc || saving || (!dirty && source !== 'new') || errors.length > 0" :title="errors.length ? 'Sửa lỗi trước khi lưu' : 'Ctrl + S'" @click="save()">
+      <button class="btn btn-primary" :disabled="!doc || saving || (!dirty && source !== 'new') || errors.length > 0" :title="errors.length ? 'Sửa lỗi trước khi lưu' : 'Ctrl + S'" aria-label="Lưu" @click="save()">
         <LoaderCircle v-if="saving" class="spin" />
         <Save v-else />
-        Lưu
+        <span class="lbl">Lưu</span>
       </button>
     </PageHeader>
 

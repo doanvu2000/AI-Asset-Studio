@@ -543,7 +543,7 @@ function openRun(): void {
 .grid2,
 .style-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--sp-3);
 }
 .lbl {
@@ -741,7 +741,7 @@ function openRun(): void {
 }
 .tr {
   display: grid;
-  grid-template-columns: 96px 96px 1fr 48px;
+  grid-template-columns: 96px 96px minmax(0, 1fr) 48px;
   align-items: center;
   gap: var(--sp-3);
   padding: 6px 10px;
@@ -775,9 +775,7 @@ function openRun(): void {
   min-width: 0;
 }
 .rel {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .qa {
   justify-self: end;

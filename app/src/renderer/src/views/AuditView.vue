@@ -212,7 +212,8 @@ function reveal(p: string): void {
               v-model="folder"
               class="field mono"
               spellcheck="false"
-              placeholder="L:\Game (thư mục có Assets + ProjectSettings, hoặc có project.godot)"
+              placeholder="L:\Game\MyProject  (Unity hoặc Godot)"
+              title="Thư mục gốc project: có Assets + ProjectSettings (Unity) hoặc project.godot (Godot)"
               aria-label="Đường dẫn project"
               @keydown.enter="doScan"
             />
@@ -506,9 +507,7 @@ function reveal(p: string): void {
   min-width: 0;
 }
 .rel {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-size: var(--fs-callout);
 }
 .warn {
@@ -567,7 +566,7 @@ function reveal(p: string): void {
   box-shadow: var(--hairline);
 }
 .row-i {
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
 }
 .item.over .caption {

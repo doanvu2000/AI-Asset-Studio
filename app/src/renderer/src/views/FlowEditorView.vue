@@ -422,7 +422,7 @@ const showWorkflowPanel = computed(() => !node.value)
         {{ errorCount ? `${errorCount} lỗi` : `${warnCount} cảnh báo` }}
       </span>
       <div ref="pickerRoot" class="add">
-        <button type="button" class="btn" aria-haspopup="listbox" :aria-expanded="picker" @click="openPicker"><Plus /> Thêm node</button>
+        <button type="button" class="btn" aria-haspopup="listbox" :aria-expanded="picker" aria-label="Thêm node" title="Thêm node" @click="openPicker"><Plus /> <span class="lbl">Thêm node</span></button>
         <div v-if="picker" class="picker card" role="listbox" aria-label="Chọn quy trình">
           <label class="search"><Search :size="14" /><input ref="pickerInput" v-model="query" type="search" placeholder="Tìm quy trình" aria-label="Tìm quy trình" /></label>
           <ul>
@@ -436,15 +436,15 @@ const showWorkflowPanel = computed(() => !node.value)
           </ul>
         </div>
       </div>
-      <button type="button" class="btn" :disabled="checking || !loaded" @click="validate(true)">
+      <button type="button" class="btn" :disabled="checking || !loaded" aria-label="Kiểm tra" title="Kiểm tra workflow" @click="validate(true)">
         <LoaderCircle v-if="checking" class="spin" />
         <ShieldCheck v-else />
-        Kiểm tra
+        <span class="lbl">Kiểm tra</span>
       </button>
-      <button type="button" class="btn btn-primary" :disabled="saving || !loaded" @click="save">
+      <button type="button" class="btn btn-primary" :disabled="saving || !loaded" aria-label="Lưu" title="Lưu" @click="save">
         <LoaderCircle v-if="saving" class="spin" />
         <Save v-else />
-        Lưu
+        <span class="lbl">Lưu</span>
       </button>
     </PageHeader>
 
@@ -626,11 +626,13 @@ const showWorkflowPanel = computed(() => !node.value)
 .hint {
   position: absolute;
   left: 16px;
+  right: 88px;
   bottom: 12px;
   margin: 0;
   pointer-events: none;
 }
 .hint-empty {
+  right: auto;
   left: 50%;
   top: 50%;
   bottom: auto;

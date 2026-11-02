@@ -106,15 +106,15 @@ async function act(kind: 'cancel' | 'retry'): Promise<void> {
       <template v-if="batch" #subtitle>
         {{ flowTitle }} · <RelTime :ts="batch.created_at" /> · <span class="num">{{ total }}</span> lượt
       </template>
-      <button v-if="failed" class="btn" :disabled="!!busy" @click="act('retry')">
+      <button v-if="failed" class="btn" :disabled="!!busy" aria-label="Chạy lại lỗi" title="Chạy lại các lượt lỗi" @click="act('retry')">
         <LoaderCircle v-if="busy === 'retry'" class="spin" />
         <RotateCw v-else />
-        Chạy lại lỗi
+        <span class="lbl">Chạy lại lỗi</span>
       </button>
-      <button v-if="active" class="btn btn-danger" :disabled="!!busy" @click="act('cancel')">
+      <button v-if="active" class="btn btn-danger" :disabled="!!busy" aria-label="Huỷ lô" title="Huỷ lô" @click="act('cancel')">
         <LoaderCircle v-if="busy === 'cancel'" class="spin" />
         <CircleStop v-else />
-        Huỷ lô
+        <span class="lbl">Huỷ lô</span>
       </button>
     </PageHeader>
 
@@ -265,9 +265,7 @@ async function act(kind: 'cancel' | 'retry'): Promise<void> {
 }
 .err {
   color: var(--st-fail);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .chev {
   color: var(--text-3);

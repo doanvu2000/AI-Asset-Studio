@@ -95,9 +95,7 @@ watch(
 }
 .b-title {
   font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 .bar {
   position: relative;

@@ -424,57 +424,64 @@ function move(d: -1 | 1): void {
   <div class="view">
     <PageHeader title="Thư viện">
       <template #subtitle><TweenNumber :value="base.length" /> asset</template>
+      <button v-if="unscored" type="button" class="btn btn-plain" :disabled="scoring" :aria-label="`Chấm điểm ${unscored} ảnh cũ`" :title="`Chấm điểm chất lượng cho ${unscored} ảnh tạo trước khi có tính năng này`" @click="scoreOld">
+        <LoaderCircle v-if="scoring" class="spin" />
+        <Gauge v-else />
+        <span class="lbl">Chấm điểm {{ unscored }} ảnh cũ</span>
+      </button>
       <RouterLink
         :to="{ path: '/new', query: { recipe: 'aseprite-import' } }"
         class="btn btn-plain"
+        aria-label="Nhập Aseprite"
         title="Đưa sprite làm trong Aseprite (.aseprite, hoặc JSON + PNG sheet) vào thư viện: clip lấy từ tag, xuất tiếp cho Unity / Godot"
       >
-        <FileInput /> Nhập Aseprite
+        <FileInput /> <span class="lbl">Nhập Aseprite</span>
       </RouterLink>
     </PageHeader>
     <div class="bar">
-      <label class="search">
-        <Search :size="14" aria-hidden="true" />
-        <input v-model="query" type="search" placeholder="Tìm theo tên, quy trình…" aria-label="Tìm asset" spellcheck="false" />
-      </label>
-      <div class="seg" role="radiogroup" aria-label="Loại asset">
-        <button v-for="f in TYPE_FILTERS" :key="f.id" type="button" role="radio" :aria-checked="typeFilter === f.id" :class="{ on: typeFilter === f.id }" @click="typeFilter = f.id">
-          {{ f.label }}
-        </button>
+      <div class="bar-row">
+        <label class="search">
+          <Search :size="14" aria-hidden="true" />
+          <input v-model="query" type="search" placeholder="Tìm theo tên, quy trình…" aria-label="Tìm asset" spellcheck="false" />
+        </label>
+        <div class="seg" role="radiogroup" aria-label="Loại asset">
+          <button v-for="f in TYPE_FILTERS" :key="f.id" type="button" role="radio" :aria-checked="typeFilter === f.id" :class="{ on: typeFilter === f.id }" @click="typeFilter = f.id">
+            {{ f.label }}
+          </button>
+        </div>
+        <label v-if="technicalCount" class="toggle caption" title="Bản chỉ gồm JSON / Atlas (dữ liệu phụ của sprite, Spine)">
+          <input v-model="showTechnical" type="checkbox" />
+          Hiện tệp dữ liệu ({{ technicalCount }})
+        </label>
       </div>
-      <div class="seg" role="radiogroup" aria-label="Trạng thái duyệt">
-        <button v-for="f in STATUS_FILTERS" :key="f.id" type="button" role="radio" :aria-checked="statusFilter === f.id" :class="{ on: statusFilter === f.id }" @click="statusFilter = f.id">
-          {{ f.label }}
-          <span class="num c">{{ counts[f.id] }}</span>
+      <div class="bar-row">
+        <div class="seg" role="radiogroup" aria-label="Trạng thái duyệt">
+          <button v-for="f in STATUS_FILTERS" :key="f.id" type="button" role="radio" :aria-checked="statusFilter === f.id" :class="{ on: statusFilter === f.id }" @click="statusFilter = f.id">
+            {{ f.label }}
+            <span class="num c">{{ counts[f.id] }}</span>
+          </button>
+        </div>
+        <button
+          type="button"
+          class="chip-toggle"
+          :class="{ on: lowOnly }"
+          :aria-pressed="lowOnly"
+          :title="`Chỉ hiện asset có điểm chất lượng dưới ${QA_LOW}`"
+          @click="lowOnly = !lowOnly"
+        >
+          Điểm thấp
+          <span class="num c">{{ lowCount }}</span>
         </button>
+        <div class="bar-end">
+          <ProjectSelect v-model="projectFilter" all-label="Mọi dự án" label="Lọc theo dự án" />
+          <label class="sort caption">
+            <span class="sr-only">Sắp xếp</span>
+            <select v-model="sortOrder" aria-label="Sắp xếp asset">
+              <option v-for="o in SORTS" :key="o.id" :value="o.id">{{ o.label }}</option>
+            </select>
+          </label>
+        </div>
       </div>
-      <ProjectSelect v-model="projectFilter" all-label="Mọi dự án" label="Lọc theo dự án" />
-      <label class="sort caption">
-        <span class="sr-only">Sắp xếp</span>
-        <select v-model="sortOrder" aria-label="Sắp xếp asset">
-          <option v-for="o in SORTS" :key="o.id" :value="o.id">{{ o.label }}</option>
-        </select>
-      </label>
-      <button
-        type="button"
-        class="chip-toggle"
-        :class="{ on: lowOnly }"
-        :aria-pressed="lowOnly"
-        :title="`Chỉ hiện asset có điểm chất lượng dưới ${QA_LOW}`"
-        @click="lowOnly = !lowOnly"
-      >
-        Điểm thấp
-        <span class="num c">{{ lowCount }}</span>
-      </button>
-      <button v-if="unscored" type="button" class="btn btn-plain score-old" :disabled="scoring" title="Chấm điểm chất lượng cho các ảnh tạo trước khi có tính năng này" @click="scoreOld">
-        <LoaderCircle v-if="scoring" class="spin" :size="14" />
-        <Gauge v-else :size="14" />
-        Chấm điểm {{ unscored }} ảnh cũ
-      </button>
-      <label v-if="technicalCount" class="toggle caption" title="Bản chỉ gồm JSON / Atlas (dữ liệu phụ của sprite, Spine)">
-        <input v-model="showTechnical" type="checkbox" />
-        Hiện tệp dữ liệu ({{ technicalCount }})
-      </label>
     </div>
     <div ref="scroller" class="grid-scroll">
       <EmptyState
@@ -618,12 +625,22 @@ function move(d: -1 | 1): void {
 <style scoped>
 .bar {
   flex: none;
+  display: grid;
+  gap: 10px;
+  padding: 12px 24px;
+  border-bottom: 0.5px solid var(--separator);
+}
+.bar-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px 12px;
-  padding: 12px 24px;
-  border-bottom: 0.5px solid var(--separator);
+}
+.bar-end {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
 }
 .search {
   display: flex;
@@ -683,10 +700,6 @@ function move(d: -1 | 1): void {
 .chip-toggle.on {
   color: var(--st-fail);
   background: var(--st-fail-soft);
-}
-.score-old {
-  height: 26px;
-  gap: 6px;
 }
 .sr-only {
   position: absolute;

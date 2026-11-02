@@ -218,17 +218,17 @@ async function submit(): Promise<void> {
           </p>
         </header>
 
-        <div v-if="canBatch" class="mode" role="tablist" aria-label="Chế độ chạy">
-          <button type="button" role="tab" class="btn" :class="batchMode ? 'btn-plain' : 'btn-primary'" :aria-selected="!batchMode" @click="batchMode = false"><Play /> Một lượt</button>
-          <button type="button" role="tab" class="btn" :class="batchMode ? 'btn-primary' : 'btn-plain'" :aria-selected="batchMode" @click="batchMode = true"><Layers /> Hàng loạt</button>
+        <div v-if="canBatch" class="seg pill-tabs" role="tablist" aria-label="Chế độ chạy">
+          <button type="button" role="tab" :aria-selected="!batchMode" @click="batchMode = false"><Play /> Một lượt</button>
+          <button type="button" role="tab" :aria-selected="batchMode" @click="batchMode = true"><Layers /> Hàng loạt</button>
         </div>
 
         <div v-if="batchMode && canBatch" class="fields card">
           <div v-if="imageInput && promptInput" class="f">
             <span class="f-label">Mỗi lượt lấy từ</span>
-            <div class="mode">
-              <button type="button" class="btn" :class="source === 'images' ? 'btn-primary' : 'btn-plain'" @click="source = 'images'">Thư mục ảnh</button>
-              <button type="button" class="btn" :class="source === 'prompts' ? 'btn-primary' : 'btn-plain'" @click="source = 'prompts'">Danh sách prompt</button>
+            <div class="seg pill-tabs" role="radiogroup" aria-label="Nguồn các lượt">
+              <button type="button" role="radio" :aria-checked="source === 'images'" @click="source = 'images'">Thư mục ảnh</button>
+              <button type="button" role="radio" :aria-checked="source === 'prompts'" @click="source = 'prompts'">Danh sách prompt</button>
             </div>
           </div>
           <div v-if="source === 'images'" class="f">
@@ -316,7 +316,9 @@ async function submit(): Promise<void> {
 </template>
 
 <style scoped>
-.mode,
+.pill-tabs {
+  justify-self: start;
+}
 .pick {
   display: flex;
   flex-wrap: wrap;
