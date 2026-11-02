@@ -8,15 +8,19 @@ import SectionTabs from '@/components/SectionTabs.vue'
 import { RECIPE_TABS } from '@/composables/navTabs'
 import EmptyState from '@/components/EmptyState.vue'
 import FlowStatusBadge from '@/components/FlowStatusBadge.vue'
+import FitBadge from '@/components/FitBadge.vue'
 import RelTime from '@/components/RelTime.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import { chainNames } from '@/composables/flows'
 import { useFlows } from '@/stores/flows'
+import { useFit } from '@/stores/fit'
 import { useRecipes } from '@/stores/recipes'
 import { useConnection, api } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 
 const flows = useFlows()
+const fit = useFit()
+void fit.load()
 const recipes = useRecipes()
 const conn = useConnection()
 const toasts = useToasts()
@@ -132,6 +136,7 @@ async function remove(d: WorkflowDef): Promise<void> {
             <div class="wc-main">
               <div class="wc-top">
                 <h2 class="headline name" :title="d.title">{{ d.title }}</h2>
+                <FitBadge :entry="fit.flow(d.id)" />
                 <span v-if="SOURCE[d.source ?? 'builtin']" class="src-badge" :class="SOURCE[d.source ?? 'builtin']!.tone">{{ SOURCE[d.source ?? 'builtin']!.label }}</span>
               </div>
               <p v-if="d.description" class="callout desc">{{ d.description }}</p>

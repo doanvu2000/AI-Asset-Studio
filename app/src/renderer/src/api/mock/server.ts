@@ -1,7 +1,7 @@
 import { ApiError, type ListRunsQuery, type RecipeBody, type StudioApi, type VersionsQuery } from '../client'
 import { FrameBatcher, type EventSink, type EventStream } from '../ws'
 import type { CoreDiagnostics } from '../../../../preload/types'
-import type { AgentActivitySnapshot, FlowValidateResult, GameEngine, GpuSlot, GpuState, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from '../types'
+import type { AgentActivitySnapshot, FlowValidateResult, FitEntry, FitReport, GameEngine, GpuSlot, HardwareInfo, GpuState, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from '../types'
 import type { EnginePreviewJob, OpenInEngineResult, PreviewEngines } from '../enginePreview'
 import type { HitVfx, StepHits } from '../hitFx'
 import {
@@ -2234,6 +2234,57 @@ export class MockCore implements StudioApi, EventStream {
     this.gpuYield = null
     this.emitGpu()
     for (const l of YIELD_LANES) this.dispatch(l)
+  }
+
+  private mockHardware(): HardwareInfo {
+    return {
+      gpu: { name: 'NVIDIA GeForce RTX 3060', vram_total_mb: 12288, vram_free_mb: 10400, driver: '576.02', ok: true },
+      ram_total_mb: 16384,
+      ram_free_mb: 7800,
+      cpu_threads: 12,
+      disk_free_mb: 412_000,
+      tier: 'mid'
+    }
+  }
+
+  async hardware(): Promise<HardwareInfo> {
+    await sleep(60)
+    return this.mockHardware()
+  }
+
+  async fit(): Promise<FitReport> {
+    await sleep(120)
+    const e = (level: FitEntry['level'], reasons: string[], needs: FitEntry['needs'], missing: string[] = []): FitEntry => ({ level, reasons, needs, missing_packs: missing })
+    const ok = (packs: string[]): FitEntry => e('green', ['Máy đủ cấu hình, chạy ở tốc độ tốt.'], { vram_gb: 8, ram_gb: 16, lanes: ['gpu'], packs })
+    return {
+      hardware: this.mockHardware(),
+      recipes: {
+        'concept-2d': ok(['base']),
+        'concept-2d-codex': e('green', ['Chạy qua Codex trên đám mây, không cần GPU mạnh.'], { lanes: ['cloud'], packs: [] }),
+        'sprite-8dir': ok(['base']),
+        'texture-seamless': ok(['base']),
+        'tileset-seamless': ok(['base']),
+        'spine-character': e('yellow', ['Chưa cài gói “Biến thể + Spine” (6,1 GB). Cài trong Cài đặt, mục Cài tự động.'], { vram_gb: 12, ram_gb: 16, lanes: ['gpu'], packs: ['base', 'edit'] }, ['edit']),
+        'sprite-8dir-anim': e('yellow', ['VRAM 12 GB thấp hơn mức khuyến nghị 16 GB: model chạy chế độ offload, chậm hơn khoảng 2 lần.'], { vram_gb: 16, ram_gb: 16, lanes: ['gpu'], packs: ['base', 'angles'] }),
+        'prop-3d': e('red', ['Tạo 3D cần tối thiểu 16 GB RAM trống để offload, máy còn khoảng 7,6 GB.', 'Ổ đĩa đủ chỗ cho gói 3D nhưng RAM không đủ.'], { vram_gb: 16, ram_gb: 24, lanes: ['gpu'], packs: ['mesh'] }),
+        'sprite-8dir-3d': e('red', ['Cần GPU 16 GB VRAM hoặc 24 GB RAM, máy chỉ có 12 GB VRAM và 16 GB RAM.'], { vram_gb: 16, ram_gb: 24, lanes: ['gpu'], packs: ['mesh'] }),
+        'sprite-8dir-3d-pixel': e('red', ['Cần GPU 16 GB VRAM hoặc 24 GB RAM, máy chỉ có 12 GB VRAM và 16 GB RAM.'], { vram_gb: 16, ram_gb: 24, lanes: ['gpu'], packs: ['mesh'] })
+      },
+      flows: {
+        'concept-to-sprite': ok(['base']),
+        'character-pack': e('yellow', ['Thiếu gói “Biến thể + Spine” cho bước tạo Spine.'], { vram_gb: 12, ram_gb: 16, lanes: ['gpu'], packs: ['base', 'edit'] }, ['edit'])
+      },
+      recommend: {
+        packs: [
+          { id: 'base', label: 'Cơ bản 2D', level: 'green', reason: 'Máy chạy tốt, nên cài đầu tiên.', installed: true, size_mb: 24_800 },
+          { id: 'edit', label: 'Biến thể + Spine', level: 'green', reason: 'Máy đủ cấu hình cho gói này.', installed: false, size_mb: 6_250 },
+          { id: 'angles', label: 'Nhiều góc nhìn', level: 'yellow', reason: 'VRAM thấp hơn khuyến nghị, chạy chậm hơn.', installed: false, size_mb: 32_000 },
+          { id: 'mesh', label: '3D', level: 'red', reason: 'RAM không đủ để offload model 3D.', installed: false, size_mb: 20_800 }
+        ],
+        lane_limits: { gpu: 1, cpu: 4 },
+        notes: ['Máy tầm trung: ưu tiên quy trình 2D, các quy trình 3D nặng cần thêm RAM.']
+      }
+    }
   }
 
   async gpu(): Promise<GpuState> {

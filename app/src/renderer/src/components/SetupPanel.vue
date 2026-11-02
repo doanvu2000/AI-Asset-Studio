@@ -5,10 +5,12 @@ import { Ban, CircleAlert, CircleCheck, CircleX, Download, FolderOpen, LoaderCir
 import type { SetupItem, SetupJob, SetupPlan } from '@/api/types'
 import { api, useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
+import { useFit } from '@/stores/fit'
 import { bytes } from '@/composables/format'
 
 const conn = useConnection()
 const toasts = useToasts()
+const fit = useFit()
 const router = useRouter()
 const canPick = !!window.studio
 
@@ -68,6 +70,7 @@ function poll(): void {
         if (j?.state === 'done') toasts.push('Cài đặt xong', 'success', 3000)
         else if (j?.state === 'error') toasts.push(j.error ?? 'Cài đặt lỗi', 'error', 5000)
         await load({ tools_dir: toolsDir.value, models_dir: modelsDir.value })
+        void fit.load(true)
       }
     } catch {
       /* core restarting: keep polling */

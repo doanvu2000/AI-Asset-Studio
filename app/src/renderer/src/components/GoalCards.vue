@@ -4,6 +4,9 @@ import { Boxes, FileText } from '@lucide/vue'
 import type { RecipeInfo, WorkflowDef } from '@/api/types'
 import { useRecipes } from '@/stores/recipes'
 import { useFlows } from '@/stores/flows'
+import { useFit } from '@/stores/fit'
+import { useUiMode } from '@/composables/uiMode'
+import FitBadge from './FitBadge.vue'
 import { recipeDemo, type RecipeDemo } from '@/composables/recipePeek'
 import RecipeDemoImage from './RecipeDemoImage.vue'
 
@@ -24,11 +27,14 @@ const emit = defineEmits<{ recipe: [id: string]; flow: [id: string]; gdd: []; co
 
 const recipes = useRecipes()
 const flows = useFlows()
+const fit = useFit()
+const { advanced } = useUiMode()
 const demos = ref<Record<string, RecipeDemo | null>>({})
 
 onMounted(() => {
   void recipes.load()
   if (!flows.defsLoaded) void flows.loadDefs()
+  void fit.load()
 })
 
 interface Card {
@@ -51,6 +57,15 @@ const cards = computed<Card[]>(() =>
     return options.length ? [{ goal, options, previewFrom: options }] : []
   })
 )
+
+const fitOf = (c: Card) => (c.flowDef ? fit.flow(c.flowDef.id) : c.options[0] ? fit.recipe(c.options[0].id) : null)
+
+// Simple mode moves unfit goals to the end (dimmed, still clickable) so the first row is what the machine can do.
+const shown = computed(() => {
+  if (advanced.value) return cards.value
+  const red = (c: Card): number => (fitOf(c)?.level === 'red' ? 1 : 0)
+  return [...cards.value].sort((a, b) => red(a) - red(b))
+})
 
 watch(
   cards,
@@ -85,13 +100,14 @@ function open(c: Card): void {
   <section v-if="cards.length" class="goals" aria-labelledby="goals-h">
     <h2 id="goals-h" class="section-label">Tôi cần…</h2>
     <div class="g-grid">
-      <div v-for="c in cards" :key="c.goal.id" class="g-card card">
+      <div v-for="c in shown" :key="c.goal.id" class="g-card card" :class="{ unfit: !advanced && fitOf(c)?.level === 'red' }">
         <button type="button" class="g-main" @click="open(c)">
           <span class="g-art checker">
             <RecipeDemoImage v-if="demos[c.goal.id]" :demo="demos[c.goal.id]!" :alt="`Ảnh mẫu: ${c.goal.title}`" @failed="demos[c.goal.id] = null" />
             <FileText v-else-if="c.goal.gdd" :size="28" :stroke-width="1.5" aria-hidden="true" />
             <Boxes v-else :size="28" :stroke-width="1.5" aria-hidden="true" />
           </span>
+          <FitBadge :entry="fitOf(c)" class="g-fit" />
           <span class="headline">{{ c.goal.title }}</span>
           <span class="callout g-text">{{ c.goal.text }}</span>
         </button>
@@ -120,6 +136,18 @@ function open(c: Card): void {
   transition:
     box-shadow var(--t-fast) var(--ease-out),
     translate var(--t-fast) var(--ease-out);
+}
+.g-card {
+  position: relative;
+}
+.g-card.unfit .g-main {
+  opacity: 0.55;
+}
+.g-fit {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  box-shadow: 0 0 0 1px var(--bg-content);
 }
 .g-card:hover {
   translate: 0 -1px;

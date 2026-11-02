@@ -9,10 +9,12 @@ import { RECIPE_TABS } from '@/composables/navTabs'
 import EmptyState from '@/components/EmptyState.vue'
 import RecipeThumb from '@/components/RecipeThumb.vue'
 import LaneTag from '@/components/LaneTag.vue'
+import FitBadge from '@/components/FitBadge.vue'
 import RecipePeek from '@/components/RecipePeek.vue'
 import RecipeQuickView from '@/components/RecipeQuickView.vue'
 import { stepName } from '@/composables/format'
 import { useRecipes } from '@/stores/recipes'
+import { useFit } from '@/stores/fit'
 import { useConnection } from '@/stores/connection'
 
 const recipes = useRecipes()
@@ -59,6 +61,8 @@ function openQuick(r: RecipeInfo): void {
   quick.value = r
 }
 onBeforeUnmount(() => window.clearTimeout(peekTimer))
+const fit = useFit()
+void fit.load()
 const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((l) => l && l !== 'none'))]
 </script>
 
@@ -94,6 +98,7 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
                 <div class="meta">
                   <span class="caption num">{{ r.steps.length }} bước</span>
                   <LaneTag v-for="l in lanes(r)" :key="l" :lane="l" />
+                  <FitBadge :entry="fit.recipe(r.id)" />
                 </div>
               </div>
             </RouterLink>

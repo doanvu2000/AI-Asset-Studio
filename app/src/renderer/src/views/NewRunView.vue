@@ -6,6 +6,7 @@ import type { BlobRef, RecipeInfo, RecipeInputSpec, StyleBible } from '@/api/typ
 import { NO_PROJECT } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import GoalCards from '@/components/GoalCards.vue'
+import FitBadge from '@/components/FitBadge.vue'
 import QuickPrompts from '@/components/QuickPrompts.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RecipeThumb from '@/components/RecipeThumb.vue'
@@ -14,6 +15,7 @@ import PresetSelect from '@/components/PresetSelect.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
 import { useRecipes } from '@/stores/recipes'
+import { useFit } from '@/stores/fit'
 import { useProjects } from '@/stores/projects'
 import { usePresets } from '@/stores/catalog'
 import { fillSummary, normalizeStyle, styleFills, type StyleFill } from '@/composables/projectStyle'
@@ -55,6 +57,12 @@ watch(
 // Recipe and mode live in the URL so the palette, dashboard and /batch redirect can deep-link here.
 const selectedId = computed(() => (typeof route.query.recipe === 'string' ? route.query.recipe : null))
 const selected = computed<RecipeInfo | undefined>(() => (selectedId.value ? recipes.byId(selectedId.value) : undefined))
+const fit = useFit()
+void fit.load()
+const selectedFit = computed(() => (selectedId.value ? fit.recipe(selectedId.value) : null))
+// A red verdict asks once ("vẫn chạy?") instead of blocking: the estimate can be wrong for the user's setup.
+const riskAck = ref(false)
+watch([selectedId, () => selectedFit.value?.level], () => (riskAck.value = false))
 type Mode = 'single' | 'batch'
 const mode = computed<Mode>(() => (route.query.mode === 'batch' ? 'batch' : 'single'))
 
@@ -417,6 +425,10 @@ async function submit(): Promise<void> {
     return
   }
   if (blockReason.value) return
+  if (selectedFit.value?.level === 'red' && !riskAck.value) {
+    riskAck.value = true
+    return
+  }
   const inputs = collectInputs()
   submitting.value = true
   try {
@@ -579,7 +591,7 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
                 <span class="rcard-text">
                   <span class="headline rcard-name">{{ r.name }}</span>
                   <span class="callout rcard-flow">{{ recipePitch(r.id) ?? flow(r) }}</span>
-                  <span v-if="asksPick(r) || RECOMMENDED_RECIPES.has(r.id) || etaLabel(r.id)" class="caption rcard-note">
+                  <span v-if="asksPick(r) || RECOMMENDED_RECIPES.has(r.id) || etaLabel(r.id) || fit.recipe(r.id)" class="caption rcard-note">
                     <span v-if="RECOMMENDED_RECIPES.has(r.id)" class="rec">Khuyên dùng</span>
                     <span
                       v-if="etaLabel(r.id)"
@@ -588,6 +600,7 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
                     >
                       <Timer :size="12" aria-hidden="true" />{{ etaLabel(r.id) }}
                     </span>
+                    <FitBadge :entry="fit.recipe(r.id)" />
                     <template v-if="asksPick(r)">Có bước bạn chọn ảnh</template>
                   </span>
                 </span>
@@ -612,6 +625,8 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
             </ol>
           </div>
         </header>
+
+        <FitBadge :entry="selectedFit" block class="f-fit" />
 
         <div class="modebar">
           <div class="seg" role="radiogroup" aria-label="Số lượt chạy">
@@ -825,6 +840,7 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
 
         <div class="submit-row">
           <span v-if="blockReason" id="run-block" class="caption reason" role="status">{{ blockReason }}</span>
+          <span v-else-if="riskAck" class="caption risk" role="alert">Máy không đủ cấu hình cho quy trình này, có thể rất chậm hoặc lỗi. Vẫn chạy?</span>
           <span v-else class="caption"><span class="kbd">Ctrl</span> + <span class="kbd">Enter</span> để chạy</span>
           <label class="no-cache caption" title="Chạy lại mọi bước thay vì dùng lại kết quả của bước giống hệt lần trước">
             <input v-model="noCache" type="checkbox" /> Bỏ qua kết quả cũ
@@ -838,6 +854,7 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
             <LoaderCircle v-if="submitting" class="spin" />
             <Play v-else />
             <template v-if="submitting">Đang gửi…</template>
+            <template v-else-if="riskAck">Vẫn chạy</template>
             <template v-else-if="mode === 'batch' && batchItems.length">Tạo <span class="num">{{ batchItems.length }}</span> lượt chạy</template>
             <template v-else-if="mode === 'batch'">Tạo lượt chạy</template>
             <template v-else>Bắt đầu chạy</template>
@@ -1163,6 +1180,10 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
 }
 .reason {
   color: var(--text-2);
+}
+.risk {
+  color: var(--st-fail);
+  font-weight: 600;
 }
 .spin {
   animation: spin 1s linear infinite;

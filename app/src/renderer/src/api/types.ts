@@ -692,6 +692,40 @@ export interface SetupPack {
   installed: boolean
 }
 
+export type FitLevel = 'green' | 'yellow' | 'red'
+
+export interface HardwareInfo {
+  gpu: { name: string; vram_total_mb: number; vram_free_mb: number | null; driver: string | null; ok: boolean } | null
+  ram_total_mb: number
+  ram_free_mb: number | null
+  cpu_threads: number
+  disk_free_mb: number | null
+  tier: 'low' | 'mid' | 'high'
+}
+
+export interface FitEntry {
+  level: FitLevel
+  reasons: string[]
+  needs?: { vram_gb?: number; ram_gb?: number; lanes?: Lane[]; packs?: string[] }
+  missing_packs?: string[]
+}
+
+export interface FitPackAdvice {
+  id: string
+  label: string
+  level: FitLevel
+  reason: string
+  installed: boolean
+  size_mb: number
+}
+
+export interface FitReport {
+  hardware: HardwareInfo
+  recipes: Record<string, FitEntry>
+  flows: Record<string, FitEntry>
+  recommend: { packs: FitPackAdvice[]; lane_limits?: Partial<Record<Lane, number>>; notes?: string[] }
+}
+
 export interface SetupComponent {
   installed: boolean
   path: string

@@ -5,6 +5,8 @@ import type {
   BatchCreateBody,
   BlobRef,
   ExportPreset,
+  FitReport,
+  HardwareInfo,
   GddProposal,
   ManifestFormat,
   ManifestRow,
@@ -235,6 +237,9 @@ export interface StudioApi {
   gddPlan(body: GddPlanBody): Promise<GddPlan>
   gddStart(planId: string, body: GddStartBody): Promise<GddStartResult>
   gpu(): Promise<GpuState>
+  hardware(): Promise<HardwareInfo>
+  /** Per recipe/workflow verdict (green/yellow/red) for this machine, plus packs worth installing. */
+  fit(): Promise<FitReport>
   /** New GPU steps wait, running ones finish, then ComfyUI unloads its models; ends on its own after `minutes`. */
   yieldGpu(minutes: number): Promise<GpuState>
   resumeGpu(): Promise<GpuState>
@@ -443,6 +448,8 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     gddPlan: (body) => call('POST', '/api/gdd/plan', body, GDD_TIMEOUT_MS),
     gddStart: (planId, body) => call('POST', `/api/gdd/plan/${enc(planId)}/start`, body, SLOW_TIMEOUT_MS),
     gpu: () => call('GET', '/api/gpu'),
+    hardware: () => call('GET', '/api/hardware'),
+    fit: () => call('GET', '/api/fit', undefined, SLOW_TIMEOUT_MS),
     yieldGpu: (minutes) => call('POST', '/api/gpu/yield', { minutes }),
     resumeGpu: () => call('POST', '/api/gpu/resume'),
     prioritizeGpu: (runId, body) => call('POST', `/api/gpu/queue/${enc(runId)}/priority`, body)

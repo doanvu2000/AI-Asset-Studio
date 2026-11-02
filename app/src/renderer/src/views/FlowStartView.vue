@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, FolderOpen, ImagePlus, Layers, LoaderCircle, Pla
 import type { BlobRef, WorkflowDef, WorkflowInputSpec } from '@/api/types'
 import { NO_PROJECT } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
+import FitBadge from '@/components/FitBadge.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import BlobDropZone from '@/components/BlobDropZone.vue'
 import PresetSelect from '@/components/PresetSelect.vue'
@@ -12,6 +13,7 @@ import ProjectSelect from '@/components/ProjectSelect.vue'
 import { chainNames, isBlobType } from '@/composables/flows'
 import { settlePool } from '@/composables/pool'
 import { useFlows } from '@/stores/flows'
+import { useFit } from '@/stores/fit'
 import { useRecipes } from '@/stores/recipes'
 import { useProjects } from '@/stores/projects'
 import { api, useConnection } from '@/stores/connection'
@@ -19,6 +21,8 @@ import { useToasts } from '@/stores/toasts'
 
 const props = defineProps<{ id: string }>()
 const flows = useFlows()
+const fit = useFit()
+void fit.load()
 const recipes = useRecipes()
 const projects = useProjects()
 const conn = useConnection()
@@ -53,6 +57,10 @@ const errors = reactive<Record<string, string | null>>({})
 const title = ref('')
 const projectId = ref<string>(projects.activeId ?? NO_PROJECT)
 const submitting = ref(false)
+const defFit = computed(() => (def.value ? fit.flow(def.value.id) : null))
+// Red asks once instead of blocking: the estimate can be wrong for the user's setup.
+const riskAck = ref(false)
+watch([() => def.value?.id, () => defFit.value?.level], () => (riskAck.value = false))
 
 const MAX_BATCH = 200
 const UPLOAD_CONCURRENCY = 4
@@ -181,6 +189,10 @@ async function submitBatch(): Promise<void> {
 
 async function submit(): Promise<void> {
   if (!def.value || submitting.value) return
+  if (defFit.value?.level === 'red' && !riskAck.value) {
+    riskAck.value = true
+    return
+  }
   if (batchMode.value) return submitBatch()
   const ok = entries.value.map(([n, s]) => check(n, s)).every(Boolean)
   if (!ok) return
@@ -217,6 +229,8 @@ async function submit(): Promise<void> {
             </span>
           </p>
         </header>
+
+        <FitBadge :entry="defFit" block />
 
         <div v-if="canBatch" class="seg pill-tabs" role="tablist" aria-label="Chế độ chạy">
           <button type="button" role="tab" :aria-selected="!batchMode" @click="batchMode = false"><Play /> Một lượt</button>
@@ -302,10 +316,11 @@ async function submit(): Promise<void> {
         </div>
 
         <div class="actions">
+          <span v-if="riskAck" class="caption risk" role="alert">Máy không đủ cấu hình cho workflow này, có thể rất chậm hoặc lỗi. Vẫn chạy?</span>
           <button type="submit" class="btn btn-primary btn-lg" :disabled="submitting">
             <LoaderCircle v-if="submitting" class="spin" />
             <Play v-else />
-            {{ batchMode ? `Chạy ${itemCount} lượt` : 'Chạy workflow' }}
+            {{ riskAck ? 'Vẫn chạy' : batchMode ? `Chạy ${itemCount} lượt` : 'Chạy workflow' }}
             <span v-if="submitting && batchMode && source === 'images'" class="caption num">({{ uploaded }}/{{ files.length }} ảnh)</span>
           </button>
         </div>
@@ -385,6 +400,13 @@ async function submit(): Promise<void> {
 }
 .actions {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.risk {
+  color: var(--st-fail);
+  font-weight: 600;
 }
 .chk {
   width: 18px;

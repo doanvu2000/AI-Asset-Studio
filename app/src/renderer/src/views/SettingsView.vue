@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute } from 'vue-router'
-import { ArrowDown, ArrowUp, Bell, Copy, Download, FolderCog, Lock, LoaderCircle, Plus, Save, ScrollText, Sparkles, SunMoon, Trash2 } from '@lucide/vue'
+import { ArrowDown, ArrowUp, Bell, Copy, Download, FolderCog, Gauge, Lock, LoaderCircle, Plus, Save, ScrollText, Sparkles, SunMoon, Trash2 } from '@lucide/vue'
 import type { Compass, ExportPreset } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import DiagnosticsPanel from '@/components/DiagnosticsPanel.vue'
 import ToolPathsPanel from '@/components/ToolPathsPanel.vue'
 import EnginePluginCard from '@/components/EnginePluginCard.vue'
 import SetupPanel from '@/components/SetupPanel.vue'
+import FitPanel from '@/components/FitPanel.vue'
 import ResizeHandle from '@/components/ResizeHandle.vue'
 import { usePaneWidth } from '@/composables/paneSize'
 import { useUnsavedChanges } from '@/composables/unsaved'
@@ -43,7 +44,7 @@ const presetSummary = (p: ExportPreset): string =>
 
 const route = useRoute()
 const selectedId = ref<string>('studio')
-const pane = ref<'look' | 'notify' | 'setup' | 'tools' | 'diag' | null>(null)
+const pane = ref<'look' | 'notify' | 'setup' | 'fit' | 'tools' | 'diag' | null>(null)
 const theme = useTheme()
 const uiMode = useUiMode()
 const notifyAvailable = !!window.studio
@@ -51,7 +52,7 @@ const notifyAvailable = !!window.studio
 watch(
   () => route.query.pane,
   (q) => {
-    if (q === 'look' || q === 'notify' || q === 'setup' || q === 'tools' || q === 'diag') pane.value = q
+    if (q === 'look' || q === 'notify' || q === 'setup' || q === 'fit' || q === 'tools' || q === 'diag') pane.value = q
   },
   { immediate: true }
 )
@@ -209,6 +210,11 @@ async function remove(): Promise<void> {
           <Download :size="13" class="lock" aria-hidden="true" />
           <span class="i-sub caption">ComfyUI · model · Blender · Claude</span>
         </button>
+        <button class="item" :class="{ on: pane === 'fit' }" @click="pane = 'fit'">
+          <span class="i-name">Phù hợp với máy</span>
+          <Gauge :size="13" class="lock" aria-hidden="true" />
+          <span class="i-sub caption">Cấu hình · gói đề xuất · chức năng</span>
+        </button>
         <button class="item" :class="{ on: pane === 'tools' }" @click="pane = 'tools'">
           <span class="i-name">Đường dẫn công cụ</span>
           <FolderCog :size="13" class="lock" aria-hidden="true" />
@@ -308,6 +314,9 @@ async function remove(): Promise<void> {
       </section>
       <section v-else-if="pane === 'setup'" class="scroll pane">
         <SetupPanel />
+      </section>
+      <section v-else-if="pane === 'fit'" class="scroll pane">
+        <FitPanel />
       </section>
       <section v-else-if="pane === 'tools'" class="scroll pane">
         <ToolPathsPanel />
