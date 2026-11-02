@@ -74,3 +74,4 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [~] Giao 3 agent nền: U5 chế độ Đơn giản (app), P4+P5 RunsView phân trang + step.log theo run (core ws + app), N2 ổn định anim (ops/anim_stabilize).
 - [x] U5 chế độ Đơn giản/Nâng cao — typecheck sạch, d20c894 (main thêm: prompt/idea luôn hiện).
 - [x] P4+P5 RunsView tải thêm theo trang (500) + ws subscribe_runs lọc step.log — 26 pass, typecheck sạch.
+- [x] N2 anim-stabilize recipe — 64 pass.

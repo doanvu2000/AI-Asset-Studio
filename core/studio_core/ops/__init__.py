@@ -23,6 +23,7 @@ from .retexture import RETEX_OPS
 from .pixel import PIXEL_OPS
 from .pixel_cleanup import PIXEL_CLEANUP_OPS
 from .shadow_outline import SHADOW_OUTLINE_OPS
+from .anim_stabilize import ANIM_STABILIZE_OPS
 from .presets import PresetStore
 from .localize import LOCALIZE_OPS
 from .lut import LUT_OPS
@@ -84,7 +85,7 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(sc_cls())
     for loc_cls in LOCALIZE_OPS:
         registry.register(loc_cls())
-    for tile_cls in (*TILE_OPS, *PIXEL_CLEANUP_OPS, *SHADOW_OUTLINE_OPS,*UI_OPS, *PBR_OPS, *RARITY_OPS, *LUT_OPS, *PARALLAX_OPS):
+    for tile_cls in (*TILE_OPS, *PIXEL_CLEANUP_OPS, *SHADOW_OUTLINE_OPS, *ANIM_STABILIZE_OPS, *UI_OPS, *PBR_OPS, *RARITY_OPS, *LUT_OPS, *PARALLAX_OPS):
         registry.register(tile_cls())
     registry.register(UpscalePrep())
     registry.register(UpscalePost(settings))

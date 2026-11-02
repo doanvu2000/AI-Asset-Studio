@@ -1,0 +1,29 @@
+id: anim-stabilize
+name: Ổn định animation (chân, cỡ, jitter)
+description: >-
+  Các frame PNG của 1 clip (hoặc nhiều clip, nhóm theo tiền tố tên file: walk_00, walk_01, idle_00…) + sprite tham chiếu
+  (tuỳ chọn) → ghim chân (đáy bbox alpha) về cùng pivot, chỉnh cỡ cả clip khớp chiều cao sprite tham chiếu, làm mượt
+  rung ngang giữa các frame (median / EMA), đánh dấu frame lệch (diện tích / bề ngang / chiều cao khác trung vị quá
+  ngưỡng) và tuỳ chọn loại bỏ → canvas chung + JSON report (dịch chuyển từng frame, frame bị loại) → duyệt. Chạy CPU.
+inputs:
+  image: {type: image, siblings: multi, label: Frame (chọn nhiều)}
+  reference: {type: image, required: false, label: "Sprite tham chiếu cỡ (tuỳ chọn, bỏ trống = giữ cỡ gốc)"}
+  smooth: {type: int, default: 5, min: 0, max: 31, label: "Cửa sổ làm mượt ngang (frame, 0 = ghim cứng chân)"}
+  method: {type: enum, default: median, options: [median, ema], label: Kiểu làm mượt}
+  outlier: {type: float, default: 0.35, min: 0.05, max: 2, label: "Ngưỡng frame lệch (tỉ lệ so với trung vị)"}
+  drop_outliers: {type: bool, default: false, label: Loại frame lệch khỏi kết quả}
+  pixel: {type: bool, default: false, label: "Pixel art (scale nearest)"}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: stab
+    kind: op.anim_stabilize
+    in: {images: inputs.image, reference: inputs.reference}
+    params: {smooth: "${inputs.smooth}", method: "${inputs.method}", outlier: "${inputs.outlier}",
+             drop_outliers: "${inputs.drop_outliers}", pixel: "${inputs.pixel}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: stab.images, meta: stab.meta}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.preview
+  meta: approve.meta
