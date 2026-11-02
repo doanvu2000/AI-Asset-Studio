@@ -56,3 +56,11 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [~] W1-B xong (style node level/ui-pack, batch_id + 1 thông báo/lô, ETA flow/lô, FlowBatchView event thay poll, RecipeInfo.then; test 77 pass + 258 -k; typecheck sạch) — chờ commit cùng A khi W1-C xong (chung contracts/types/db).
 - Flutter/Android: plan PLAN-2026-11-02-r11-flutter.md; [~] FL-1 export/flutter.py + flutter_dart.py, [~] AN-1 export/android.py (file mới) giao sonnet. REG-1 + APP-1 sau.
 - Chủ nhân: thêm iOS SwiftUI; Android = Jetpack Compose → nhắn AN-1 thêm Kotlin Compose helpers; IOS-1 giao khi có slot.
+- [x] FL-1 export/flutter.py + flutter_dart.py (1x/2.0x/3.0x, ui_9slice.json + NineSliceImage/NineSliceComponent, sprite atlas+anim JSON + Flame helper, parallax, BitmapFont, spine, pubspec snippet, Assets.dart); test 9 pass; dart format OK, dart analyze chưa (cần project có flame) — 1b3a56c. Nợ: ui_9slice.json trùng khi gom nhiều asset (REG-1 xử lý); chưa tile_anim/autotile/vfx/cards.
+- [x] Đợt 1 lượt 11 (W1-A sidebar/dự án/xuất engine, W1-B style lô/thông báo/ETA/then, W1-C mime/preview_hash/poll) — test 98 pass, typecheck sạch — 1dff58e (gộp 1 commit vì chung contracts/types/db). Còn: lọc step.log theo run (P5 events).
+- [x] AN-1 export/android.py (drawable WebP mật độ, .9.png, mipmap adaptive, AssetStudioAssets.kt Compose: AssetStudioAnimation, ninePatchBackground); test 11 pass; Kotlin chưa compile — 66a2d3d
+- Chủ nhân: iOS/Xcode tự test sau trên máy Mac → IOS-1 nghiệm thu bằng pytest + đọc cú pháp, ghi 'chưa compile Swift' vào handoff (việc chủ nhân).
+- [x] IOS-1 export/ios.py + ios_swift.py (xcassets @1x-3x, resizing cap-insets, spriteatlas + AssetStudioAnimation TimelineView/SKTextureAtlas, parallax, AppIcon 1024); test 11 pass; Swift chưa compile (chủ nhân test Mac) — d424e58
+- [x] G1 flows/game-slice.yaml (15 node, concept/sprite dùng chung) + N1 pixel-cleanup (dò pixel size, khoá palette, gỡ pixel lẻ); test 48 pass; palette từ style bible chưa (dùng palette_image/file)
+- [x] FL-V Flame 1.38.2: dart analyze 1 error → 0 issue, flutter test 3/3 (NineSliceImage, loadAsAnimations, BitmapFont, NineSliceComponent, loadParallax); project tạm scratchpad 0bc24b1f…/flv/flv_app — 0f4b140
+- [x] 12:23 Handoff mới: .planning/HANDOFF-2026-11-02-1223.md
