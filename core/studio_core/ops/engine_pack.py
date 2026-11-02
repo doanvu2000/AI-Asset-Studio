@@ -90,12 +90,14 @@ class EnginePack(OpExecutor):
         sprites: list[Sprite] = []
         dir_sprites: dict[str, tuple[int, Sprite]] = {}
         clips: dict[str, list[Sprite]] = {}
+        sources: dict[str, tuple[int, int, int]] = {}
 
         dirs = inputs.get("frames") or []
         if dirs and len(dirs) != DIRECTIONS:
             raise StepError("op_bad_input", f"expected {DIRECTIONS} direction frames, got {len(dirs)}")
         for i, ref in enumerate(dirs):
             img = await _load(ctx, ref)
+            sources[f"dir{i}"] = (ref.size or 0, img.width, img.height)
             angle = i * 360 // DIRECTIONS
             s = Sprite(f"{asset}_dir_{compass(angle)}", img, _bottom_pivot(img.size), pixel=pixel)
             dir_sprites[compass(angle)] = (angle, s)
@@ -115,7 +117,9 @@ class EnginePack(OpExecutor):
             meta = await _read_json(ctx, metas[0])
             if not isinstance(meta, dict):
                 raise StepError("op_bad_input", f"meta of clip '{key}' is not an object")
-            frames = _clip_frames((await _load(ctx, sheets[0])).convert("RGBA"), meta, key)
+            sheet = (await _load(ctx, sheets[0])).convert("RGBA")
+            sources[f"sheet_{key}"] = (sheets[0].size or 0, sheet.width, sheet.height)
+            frames = _clip_frames(sheet, meta, key)
             clips[key] = [Sprite(f"{asset}_{key}_{f:02d}", img, _pivot(meta, img.size), pixel=pixel)
                           for f, img in enumerate(frames)]
             sprites += clips[key]
@@ -123,7 +127,7 @@ class EnginePack(OpExecutor):
             raise StepError("op_no_input", "no direction frames and no animation sheet to pack")
 
         try:
-            atlas = await asyncio.to_thread(pack, sprites, asset, opts)
+            atlas = await asyncio.to_thread(pack, sprites, asset, opts, sources)
         except AtlasError as e:
             raise StepError("op_bad_params", str(e)) from e
         # pack() renames clashing sprites in place, so the manifest reads the names after packing.

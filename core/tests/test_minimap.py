@@ -295,3 +295,12 @@ def test_recipe_loads_and_lints():
     assert issues == []
     for kind in ("op.minimap_base", "op.minimap_finish"):
         assert CATALOG[kind]["label"]
+
+
+def test_tile_layers_without_terrain_meaning_are_not_painted():
+    tmj = {"type": "map", "width": 2, "height": 1, "tilewidth": 8, "tileheight": 8,
+           "layers": [{"type": "tilelayer", "name": "Ground", "data": [1, 1]},
+                      {"type": "tilelayer", "name": "Shadow", "data": [0, 2]}]}
+    img = np.asarray(load_source(json.dumps(tmj).encode(), "m.tmj").image)
+    grass = np.asarray((124, 172, 92), np.float32)
+    assert np.abs(img[4, 12, :3].astype(np.float32) - grass).max() < 20

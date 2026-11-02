@@ -32,6 +32,8 @@ KLEIN_SIDE = 1024
 MAX_POIS = 200
 MERGE_RGB = 36.0
 FLIP_MASK = 0x1FFFFFFF
+# Decoration layers carry no terrain: unmatched names would take a fallback colour and paint over the ground.
+NON_TERRAIN_LAYER_WORDS = ("shadow", "fog", "overlay", "decal")
 PROMPTS = {
     "parchment": ("Redraw this top-down game minimap as an aged parchment fantasy map: sepia ink linework, muted "
                   "watercolor tints, hand-drawn hatching for forests and mountains, soft paper texture. Keep exactly "
@@ -116,7 +118,7 @@ def _render_grid(w: int, h: int, tw: int, th: int, layers: list[tuple[str, list[
     grid = np.zeros((h, w, 3), np.uint8)
     grid[:] = (36, 40, 44)
     for i, (name, gids) in enumerate(layers):
-        if len(gids) < w * h:
+        if len(gids) < w * h or any(wd in name.lower() for wd in NON_TERRAIN_LAYER_WORDS):
             continue
         base = _color_for(name, i)
         arr = np.asarray(gids[:w * h], np.int64).reshape(h, w) & FLIP_MASK

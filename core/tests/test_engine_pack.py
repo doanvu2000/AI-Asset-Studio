@@ -61,6 +61,9 @@ async def test_packs_directions_and_clips(ctx):
     assert "hero/hero.png" in unity and "hero/hero.png.meta" in unity and "hero/clips.json" in unity
     assert any(n.endswith("hero_idle_00.tres") for n in godot) and any(n.endswith("hero_dir_E.tres") for n in godot)
     assert res.meta["sprites"] <= 8 + 8 and res.meta["clips"] == ["idle", "attack"]
+    readme = zipfile.ZipFile(io.BytesIO(ctx.blobs.path(res.outputs["unity"][0].hash).read_bytes())).read(
+        "hero/README.txt").decode()
+    assert "từ 10 texture" in readme
 
 
 async def test_single_engine_and_frames_only(ctx):
