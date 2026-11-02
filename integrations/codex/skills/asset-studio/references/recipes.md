@@ -388,7 +388,7 @@ Mỗi dòng 1 icon + mô tả style (khung, viền, bóng) → Z-Image vẽ th�
 - outputs: `final`, `sheet`, `slices`
 - inputs:
   - `prompt` (text; required) — Icon (mỗi dòng 1 icon)
-  - `style` (text; default 'fantasy RPG inventory icon, rounded square bronze frame, thick dark outline, soft painted shading') — Style chung
+  - `style` (text; default 'fantasy RPG inventory icon, a single thin rounded square bronze frame border, thick dark outline, soft painted shading') — Style chung
   - `size` (int; default 128; one of 64, 128, 256, 512)
   - `outline` (text; default 'none') — Viền ngoài thêm (none / #rrggbb)
 
@@ -1409,7 +1409,7 @@ Prompt vật liệu → N ảnh Z-Image → edge = ảnh đầu làm liền mạ
 - outputs: `final`, `preview`, `lut`
 - inputs:
   - `image` (image; required) — Ảnh gốc (tileset, background, prop)
-  - `variants` (text; default 'dusk, warm orange sunset light, long soft shadows\nnight, dark blue moonlight, deep shadows\nwinter, cold pale light, light snow on top surfaces\nautumn, orange and red foliage, warm low sun') — Biến thể (mỗi dòng 1; chữ trước dấu phẩy = tên file)
+  - `variants` (text; default 'dusk, soft warm golden evening light\nnight, dim cool blue moonlight\nwinter, a thin layer of warm white snow dusting the top surfaces, original colours still visible, snow not ice\nautumn, a gentle shift to warm orange and brown leaf tones') — Biến thể (mỗi dòng 1; chữ trước dấu phẩy = tên file)
   - `seamless` (enum; default 'auto'; one of auto, on, off) — Liền mạch (auto = đo mép ảnh gốc)
   - `final` (enum; default 'edit'; one of edit, lut) — Ảnh xuất (edit = ảnh Klein, lut = ảnh gốc áp LUT, giữ nguyên nét/pixel)
   - `review` (bool; default True) — Duyệt trước khi xong

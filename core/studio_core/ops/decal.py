@@ -103,6 +103,8 @@ LINEAR = ("crack", "fissure", "fracture", "scratch", "shatter", "split", "claw",
 # Stroke width (output px) a linear mark is grown to, as a fraction of the decal size: 1/96 is ~5 px at 512, enough
 # for a hairline crack to survive mip-mapping on a 1-2 m projector.
 MIN_STROKE = 1 / 96
+# Cracks read as dark fissures, not roots: the key-light halo around a thin mark un-premultiplies to orange/brown.
+INK_COLOR = np.array([0.13, 0.12, 0.11], np.float32)
 
 
 def is_linear(name: str) -> bool:
@@ -166,11 +168,11 @@ def _noise_field(shape: tuple[int, int], rng: np.random.Generator) -> np.ndarray
 
 def vary_width(color: np.ndarray, alpha: np.ndarray, radius: int, rng: np.random.Generator
                ) -> tuple[np.ndarray, np.ndarray]:
-    """thicken() with a radius that swells and pinches along the mark (0.5x..2.9x `radius`), as a real fracture does;
+    """thicken() with a radius that swells and pinches along the mark (0.65x..1.8x `radius`), as a real fracture does;
     a uniform grow made every crack the same ribbon."""
     if radius <= 0:
         return color, alpha
-    field = np.clip(0.5 + 2.4 * _noise_field(alpha.shape, rng) ** 1.5, 0, None) * radius
+    field = np.clip(0.65 + 1.15 * _noise_field(alpha.shape, rng) ** 1.5, 0, None) * radius
     top = int(np.ceil(field.max()))
     out, layer = alpha.copy(), alpha
     for k in range(1, top + 1):
@@ -201,20 +203,20 @@ def add_branches(color: np.ndarray, alpha: np.ndarray, width: float, rng: np.ran
     gy, gx = np.gradient(soft_blur(alpha, max(2, round(min(h, w) * 0.03)), wrap=False))
     layer = Image.new("L", (w, h), 0)
     draw = ImageDraw.Draw(layer)
-    reach = min(h, w) * 0.09
+    reach = min(h, w) * 0.14
     made = 0
     for i in picks:
         y, x = float(ys[i]), float(xs[i])
         mag = float(np.hypot(gx[int(y), int(x)], gy[int(y), int(x)]))
         along = np.arctan2(gx[int(y), int(x)], -gy[int(y), int(x)]) if mag > 1e-4 else rng.uniform(0, 2 * np.pi)
         ang = along + rng.choice((-1, 1)) * rng.uniform(0.5, 0.9)
-        steps = int(rng.integers(6, 10))
-        bend = rng.uniform(-0.18, 0.18)
+        steps = int(rng.integers(10, 16))
+        bend = rng.uniform(-0.1, 0.1)
         seg = reach * rng.uniform(0.5, 1.0) / steps
         for s in range(steps):
-            ang += bend + rng.uniform(-0.2, 0.2)
+            ang += bend + rng.uniform(-0.3, 0.3)
             ny, nx = y + seg * np.sin(ang), x + seg * np.cos(ang)
-            tw = max(1, round(width * 0.4 * (1 - s / steps)))
+            tw = max(1, round(min(width, 3.0) * 0.5 * (1 - s / steps)))
             draw.line([(x, y), (nx, ny)], fill=255, width=tw)
             y, x = ny, nx
         made += 1
@@ -322,7 +324,9 @@ def make_decal(src: Image.Image, cut: Image.Image | None, mode: str, size: int, 
                ) -> tuple[Image.Image, Image.Image, dict[str, Any]]:
     rgb = np.asarray(src.convert("RGB"), np.float32) / 255
     branches = 0
-    alpha, bg = key_alpha(rgb)
+    # A pale stain never reaches the default ramp's top, so it keyed out nearly transparent.
+    hi = min(0.22, max(0.07, float(np.percentile(np.abs(rgb - _ring_bg(rgb)).max(-1), 99)) * 0.45))
+    alpha, bg = key_alpha(rgb, lo=min(0.04, hi * 0.35), hi=hi)
     inked = ink_key(rgb) if mode != "birefnet" and is_linear(name) else None
     if mode == "birefnet" and cut is not None:
         c = cut.convert("RGBA")
@@ -334,6 +338,7 @@ def make_decal(src: Image.Image, cut: Image.Image | None, mode: str, size: int, 
     else:
         if inked is not None:
             alpha, color, bg = inked
+            color = np.broadcast_to(INK_COLOR, color.shape).copy()
         else:
             color = unpremultiply(rgb, alpha, bg)
         out_w, grow = stroke_radius(alpha, name, size)
@@ -375,7 +380,7 @@ def sheet(decals: list[tuple[str, Image.Image]], cell: int = 256) -> Image.Image
 
 class DecalPack(OpExecutor):
     kind = "op.decal_pack"
-    version = "2"
+    version = "3"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = _images_in(inputs)

@@ -79,7 +79,7 @@ def test_crack_variation_leaves_organic_and_tiny_inputs_alone() -> None:
 
 
 def test_decal_op_version_bumped() -> None:
-    assert DecalPack.version == "2"
+    assert DecalPack.version == "3"
 
 
 def test_crack_twigs_are_ink_coloured() -> None:

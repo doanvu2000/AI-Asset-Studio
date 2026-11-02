@@ -74,7 +74,7 @@ KIND_CFG: dict[str, dict[str, Any]] = {
                   "life": 7.0, "spread": 180, "turb": 2.0, "sway": (16, 16), "pulse": 0.75, "spin": (0, 0),
                   "blend": "add", "quad": 5.0, "drift": (6, 18)},
 }
-MIST_CFG: dict[str, Any] = {"loop": 16.0, "scroll": (1, 0), "density": 0.55, "color": "#dfe8f2"}
+MIST_CFG: dict[str, Any] = {"loop": 16.0, "scroll": (1, 0), "density": 0.3, "color": "#dfe8f2"}
 KINDS = (*KIND_CFG, "mist")
 DEFAULT_KINDS = KINDS
 
@@ -232,7 +232,7 @@ def loop_qa(frames: list[np.ndarray], wrap: np.ndarray) -> dict[str, Any]:
 
 
 def mist_terms(seed: int) -> tuple[np.ndarray, np.ndarray]:
-    return _terms(seed, 10, 3, 1), _terms(seed + 1, 8, 6, 2)
+    return _terms(seed, 12, 4, 1), _terms(seed + 1, 10, 8, 2)
 
 
 def _mist_raw(terms: tuple[np.ndarray, np.ndarray], size: int, t: float, scroll: tuple[int, int]) -> np.ndarray:
@@ -245,7 +245,7 @@ def _mist_raw(terms: tuple[np.ndarray, np.ndarray], size: int, t: float, scroll:
 def mist_levels(terms: tuple[np.ndarray, np.ndarray], scroll: tuple[int, int]) -> tuple[float, float]:
     """Density thresholds from a coarse grid so every size and frame shares one mapping."""
     f = _mist_raw(terms, 64, 0.0, scroll)
-    return float(np.percentile(f, 25)), float(np.percentile(f, 80))
+    return float(np.percentile(f, 10)), float(np.percentile(f, 99))
 
 
 def mist_frame(terms: tuple[np.ndarray, np.ndarray], size: int, t: float, levels: tuple[float, float],
@@ -440,7 +440,7 @@ def preview(results: dict[str, dict[str, Any]], thumb: int = 160) -> Image.Image
 
 class WeatherOverlay(OpExecutor):
     kind = "op.weather_overlay"
-    version = "1"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         p = parse_params(params)

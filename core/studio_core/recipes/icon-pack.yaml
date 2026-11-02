@@ -8,7 +8,7 @@ description: >-
 inputs:
   prompt: {type: text, multiline: true, label: Icon (mỗi dòng 1 icon),
            placeholder: "a health potion\na steel sword\na gold coin"}
-  style: {type: text, label: Style chung, default: "fantasy RPG inventory icon, rounded square bronze frame, thick dark outline, soft painted shading"}
+  style: {type: text, label: Style chung, default: "fantasy RPG inventory icon, a single thin rounded square bronze frame border, thick dark outline, soft painted shading"}
   size: {type: int, default: 128, options: [64, 128, 256, 512]}
   outline: {type: text, default: none, label: "Viền ngoài thêm (none / #rrggbb)"}
 rules:
@@ -17,7 +17,7 @@ steps:
   - id: draft
     kind: comfy.t2i_zimage_turbo
     params:
-      "57:27.text": "A single game icon of ${inputs.prompt | lines}. ${inputs.style}. One icon centered, filling most of the image, on a plain pure white background, no text, no letters."
+      "57:27.text": "A single game icon of ${inputs.prompt | lines}. ${inputs.style}. One single frame only, not nested. The object inside is large and bold, filling about 70% of the frame interior, painted in the natural vivid colours its description implies; only the frame is bronze. Plain pure white background, no text, no letters."
     map_param: "57:27.text"
   - id: pick
     kind: gate.pick
@@ -31,7 +31,7 @@ steps:
     kind: comfy.edit_flux2_klein4b
     in: {image: ref.images}
     params:
-      "75:74.text": "Replace only the object inside the icon with ${inputs.prompt | lines}. Keep the icon frame of the reference image exactly as it is: the same frame shape, border, colour, size and position, and the same background inside the frame. Draw the new object in exactly the same style as the old one: the same outline thickness, shading, lighting and colour palette, the same size inside the frame. One single icon, centered, on a plain pure white background, no text."
+      "75:74.text": "Replace only the object inside the icon with ${inputs.prompt | lines}. Keep the icon frame of the reference image exactly as it is: the same frame shape, border, colour, size and position, and the same background inside the frame. Draw the new object in the same style as the old one: the same outline thickness, shading and lighting, but make it larger, filling about 70% of the frame interior, and paint it in its own natural vivid colours as the description implies (never the brown of the old object); keep only the frame bronze. One single icon, centered, on a plain pure white background, no text."
     map_param: "75:74.text"
   - id: rmbg
     kind: comfy.remove_bg_birefnet

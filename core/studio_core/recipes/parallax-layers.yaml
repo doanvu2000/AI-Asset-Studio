@@ -37,7 +37,7 @@ steps:
   - id: gen
     kind: comfy.t2i_zimage_turbo
     params:
-      "57:27.text": "One single isolated layer of a side-scrolling 2D game parallax background for ${inputs.prompt}. The layer shows: ${inputs.layers | lines}. ${inputs.style}. Flat side view. The scenery rises from the bottom edge of the image and continues past the left, right and bottom edges of the frame. Above it the image is plain solid pure white, a flat empty white backdrop."
+      "57:27.text": "One single isolated layer of a side-scrolling 2D game parallax background for ${inputs.prompt}. The layer shows: ${inputs.layers | lines}. ${inputs.style}. Flat side view. Every tree, hill and bush is a sharp, solid, fully opaque shape in clear air, crisp edges, flat saturated colour, no fog, no mist, no haze, no translucent or washed-out shapes. The scenery rises from the bottom edge of the image and continues past the left, right and bottom edges of the frame. Above it the image is plain solid pure white, a flat empty white backdrop."
       "57:13.width": 1536
       "57:13.height": 640
       "57:13.batch_size": 1
