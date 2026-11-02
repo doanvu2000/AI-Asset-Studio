@@ -138,3 +138,11 @@ def test_dart_syntax_when_available(tmp_path: Path) -> None:
     r = subprocess.run([dart, "format", "--output=none", "--set-exit-if-changed=false", str(out)],
                        capture_output=True, text=True, timeout=120)
     assert "Could not format" not in r.stderr + r.stdout, r.stdout + r.stderr
+
+
+def test_bitmap_text_does_not_shadow_component_scale(tmp_path: Path) -> None:
+    font = {"face": "F", "size": 16, "line_height": 18, "base": 14, "scale_w": 32, "scale_h": 32, "chars": [], "kernings": []}
+    files = dict(flutter.export(Source(asset="Scene", font=font, font_atlas=_png(tmp_path, "f.png"))))
+    flame = files["lib/gen/asset_studio_flame.dart"].decode()
+    assert "this.textScale = 1" in flame and "final double scale;" not in flame
+    assert "flame/extensions.dart" not in flame

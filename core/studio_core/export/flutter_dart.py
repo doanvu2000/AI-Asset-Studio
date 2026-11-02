@@ -149,7 +149,6 @@ import 'dart:ui' as ui;
 
 import 'package:flame/cache.dart';
 import 'package:flame/components.dart';
-import 'package:flame/extensions.dart';
 import 'package:flame/parallax.dart';
 import 'package:flutter/services.dart' show rootBundle;
 """
@@ -378,16 +377,16 @@ class BitmapFont {
 }
 
 class BitmapTextComponent extends PositionComponent {
-  BitmapTextComponent(this.font, this.text, {this.scale = 1, super.position, super.anchor}) {
-    size = Vector2(font.measure(text, scale: scale), font.lineHeight * scale);
+  BitmapTextComponent(this.font, this.text, {this.textScale = 1, super.position, super.anchor}) {
+    size = Vector2(font.measure(text, scale: textScale), font.lineHeight * textScale);
   }
 
   final BitmapFont font;
   final String text;
-  final double scale;
+  final double textScale;
 
   @override
-  void render(ui.Canvas canvas) => font.draw(canvas, text, ui.Offset.zero, scale: scale);
+  void render(ui.Canvas canvas) => font.draw(canvas, text, ui.Offset.zero, scale: textScale);
 }
 """
 
