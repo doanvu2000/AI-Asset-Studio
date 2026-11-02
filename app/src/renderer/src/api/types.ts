@@ -94,6 +94,15 @@ export interface VersionRow {
   created_at: number
   /** Heuristic quality score computed by core when the version is recorded; null for non-images / not scored. */
   qa?: QaResult | null
+  /** Version this one was edited from (region edit); absent on versions made straight from a recipe. */
+  parent_id?: string | null
+}
+
+export interface RegionEditBody {
+  /** base64 PNG, white = area to edit */
+  mask: string
+  prompt: string
+  feather?: number
 }
 
 export type QaPartKey = 'alpha' | 'framing' | 'empty' | 'consistency' | 'palette'

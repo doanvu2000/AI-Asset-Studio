@@ -84,3 +84,6 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [x] ANIM-1 prompt walk/idle theo pha bước (adapters/anim_motion.py GUIDES, executor v2 → mất cache) + anim_loop lấy nhiều chu kỳ nguyên. Walk diff TB 1742→9874 (main xem scratchpad/an/cs_new_walk.png: chân xen kẽ rõ). Idle 4→8 tư thế, vẫn nhẹ. Slash: frame 9–12 kiếm cong/dài + nhiễu màu (main xem cs_new_slash.png) — cần xem tiếp.
 - [~] ANIM-2 (attack prompt + live slash + rerun full game-slice kiểm cutout/scale/minimap/auto_approve, giữ .gpu-lock); N5 GDD→batch (api/gdd.py, app dialog); full pytest nền → scratchpad/full_pytest.log.
 - [x] N5 GDD→plan (Opus JSON schema)→GddPlanView xác nhận→flow-batch + recipe-batch trong dự án — 14 pass, typecheck sạch; plan lưu RAM.
+- [x] Full pytest (trừ test_anim_video đang sửa): 1515 pass, 5 skip, 356s.
+- [~] N3 emotion-portraits (live nếu không có .gpu-lock) + N7 region-edit (core + RegionEditDialog, không live) giao agent.
+- [x] N3 emotion-portraits (live OK, main xem sheet: 7 biểu cảm rõ, cùng người; neutral hơi nhỏ) + N7 region-edit (versions.parent_id, RegionEditDialog; chưa live) — 92 pass, typecheck sạch.

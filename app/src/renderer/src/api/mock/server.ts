@@ -34,6 +34,7 @@ import {
   type RunRow,
   type StartRunBody,
   type StepRow,
+  type RegionEditBody,
   type VersionRow
 } from '../types'
 import { MockFlowBatches, MockFlows } from './flows'
@@ -1477,6 +1478,18 @@ export class MockCore implements StudioApi, EventStream {
     v.status = action === 'approve' ? 'approved' : 'rejected'
     this.emit('version.updated', v, v.run_id)
     return clone(v)
+  }
+
+  async regionEdit(id: string, body: RegionEditBody): Promise<{ run_id: string; parent_version: string }> {
+    const parent = this.versionMap.get(id)
+    if (!parent) throw new ApiError('not_found', 'Không tìm thấy phiên bản', 404)
+    if (!body.prompt.trim()) throw new ApiError('invalid', 'Thiếu lệnh sửa', 422)
+    window.setTimeout(() => {
+      const v: VersionRow = { ...clone(parent), id: uid('ver'), status: 'draft', created_at: now(), parent_id: parent.id }
+      this.versionMap.set(v.id, v)
+      this.emit('version.updated', v, v.run_id)
+    }, 900)
+    return { run_id: parent.run_id, parent_version: parent.id }
   }
 
   // ---- projects ----

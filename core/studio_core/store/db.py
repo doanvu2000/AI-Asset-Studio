@@ -167,6 +167,9 @@ class Database:
         async with self.conn.execute("PRAGMA table_info(versions)") as cur:
             if "qa" not in {r["name"] for r in await cur.fetchall()}:
                 await self.conn.execute("ALTER TABLE versions ADD COLUMN qa TEXT")
+        async with self.conn.execute("PRAGMA table_info(versions)") as cur:
+            if "parent_id" not in {r["name"] for r in await cur.fetchall()}:
+                await self.conn.execute("ALTER TABLE versions ADD COLUMN parent_id TEXT")
         async with self.conn.execute("PRAGMA table_info(projects)") as cur:
             if "engine_target" not in {r["name"] for r in await cur.fetchall()}:
                 await self.conn.execute("ALTER TABLE projects ADD COLUMN engine_target TEXT NOT NULL DEFAULT 'none'")

@@ -1,0 +1,41 @@
+id: emotion-portraits
+name: Bộ chân dung cảm xúc (dialog / visual novel)
+description: >-
+  1 ảnh nhân vật (cả người hoặc chân dung) → cắt khung đầu / nửa người vuông theo bbox → Klein sửa từng cảm xúc (giữ
+  nguyên mặt, tóc, đồ, khung; chỉ đổi biểu cảm) → tách nền → căn về đúng khung gốc + điểm độ giống → N chân dung cùng
+  cỡ, nền trong suốt + sheet + emotion_portraits.json (cảm xúc → file / ô) → duyệt. Xuất Unity / Godot / Flutter / Android như sheet.
+inputs:
+  image: {type: image, label: Ảnh nhân vật (nền trong suốt càng tốt)}
+  frame: {type: text, default: bust, options: [bust, head], label: Khung (bust = nửa người, head = đầu)}
+  emotions: {type: text, multiline: true, label: "Cảm xúc (mỗi dòng 1; chữ trước dấu phẩy = tên; neutral luôn có sẵn)",
+             default: "happy, a warm genuine smile, eyes slightly squinted\nsad, downturned mouth, sorrowful eyes, brows raised in the middle\nangry, furrowed brows, glaring eyes, clenched jaw\nsurprised, wide open eyes, raised eyebrows, mouth open in an O\nscared, wide fearful eyes, brows pulled up, mouth slightly open, tense\nthinking, eyes looking up to the side, slight frown, pursed lips"}
+  asset: {type: text, default: portrait, label: Tên asset (tên file)}
+  size: {type: int, default: 512, options: [256, 512, 1024]}
+  review: {type: bool, default: true, label: Duyệt trước khi xong}
+steps:
+  - id: frame
+    kind: op.portrait_frame
+    in: {images: inputs.image}
+    params: {frame: "${inputs.frame}", size: "${inputs.size}"}
+  - id: edit
+    kind: comfy.edit_flux2_klein4b
+    in: {image: frame.images}
+    params:
+      "75:74.text": "Change only the facial expression of this exact character to: ${inputs.emotions | lines}. Keep the same person, identity, face shape, hairstyle, clothing, colours, art style, head position and size, crop and framing; do not move, zoom or redraw anything else. Plain flat grey background."
+    map_param: "75:74.text"
+  - id: rmbg
+    kind: comfy.remove_bg_birefnet
+    in: {image: edit.images}
+    map: image
+  - id: set
+    kind: op.portrait_set
+    in: {base: frame.base, edits: rmbg.images}
+    params: {emotions: "${inputs.emotions}", asset: "${inputs.asset}"}
+  - id: approve
+    kind: gate.approve
+    in: {images: set.images, sheet: set.sheet, preview: set.preview, map: set.map}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.images
+  sheet: approve.sheet
+  map: approve.map

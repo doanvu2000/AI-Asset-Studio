@@ -465,7 +465,8 @@ class StudioEngine:
                 for b in s.outputs.get(out_name, []):
                     v = VersionRow(id=_new_id(), project_id=st.run.project_id,
                                    asset_name=spec.get("asset_name") or st.run.title or st.run.recipe_id,
-                                   run_id=st.run.id, step_id=s.id, blob=b, created_at=_now())
+                                   run_id=st.run.id, step_id=s.id, blob=b, created_at=_now(),
+                                   parent_id=(st.run.params.get(META_KEY) or {}).get("parent_version"))
                     await self.repo.add_version(v)
                     self.bus.publish("version.updated", v.model_dump(mode="json"), run_id=st.run.id, step_id=s.id)
                     made.append((v, s))

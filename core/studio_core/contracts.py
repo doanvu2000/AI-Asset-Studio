@@ -119,6 +119,7 @@ class VersionRow(BaseModel):
     status: VersionStatus = VersionStatus.DRAFT
     created_at: float
     qa: dict[str, Any] | None = None  # engine.qa.score_image result
+    parent_id: str | None = None  # version this one was edited from (region-edit)
 
 
 class BlobRow(BlobRef):

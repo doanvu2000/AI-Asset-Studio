@@ -11,7 +11,7 @@ _SHEET = {"op.sheet", "op.engine_pack", "op.sprite_fx", "op.shadow_outline", "op
 _TEXTURE = {"op.seamless", "op.pbr", "op.tile_normal", "op.tile_wang", "op.autotile", "op.terrain_pack",
             "op.decal_pack", "op.trim_sheet", "op.fit_lut", "op.lut_prep", "op.pano_cubemap", "op.parallax_layers",
             "op.image_layers", "op.layers_export", "op.minimap_finish", "op.iso_tiles", "op.iso_prop"}
-_UI = {"op.nine_slice", "op.ui_screen", "op.card_set", "op.bitmap_font", "op.npc_pack", "op.store_kit",
+_UI = {"op.nine_slice", "op.ui_screen", "op.card_set", "op.bitmap_font", "op.npc_pack", "op.portrait_set", "op.store_kit",
        "op.localize_render", "op.playable_scene", "op.ui_split"}
 _GLB = {"op.glb_validate", "blender.game_ready", "blender.lod", "blender.rig_export", "blender.modular_kit",
         "blender.retex_apply", "blender.fracture", "blender.icon_render", "comfy.img2mesh_trellis2_textured"}

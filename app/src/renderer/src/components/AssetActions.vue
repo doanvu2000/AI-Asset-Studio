@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowUpRight, Check, Download, FolderOpen, GripVertical, Link2, LoaderCircle } from '@lucide/vue'
+import { ArrowUpRight, Check, Download, FolderOpen, GripVertical, Link2, LoaderCircle, WandSparkles } from '@lucide/vue'
 import { useAssetFile } from '@/composables/assetFile'
 import BundleMenu from './BundleMenu.vue'
 import EnginePreview from './EnginePreview.vue'
 import FollowUpMenu from './FollowUpMenu.vue'
+import RegionEditDialog from './RegionEditDialog.vue'
 import SimilarButton from './SimilarButton.vue'
 import type { BlobRef } from '@/api/types'
 import { exportName, useVersions } from '@/stores/versions'
@@ -35,6 +36,8 @@ const runLink = computed(() => {
 })
 const bundleStep = computed(() => props.stepId ?? version.value?.step_id)
 const sourceRun = computed(() => props.runId ?? version.value?.run_id)
+const editOpen = ref(false)
+const editable = computed(() => !!version.value && (version.value.blob.mime ?? '').startsWith('image/'))
 const offTitle = 'Chỉ dùng được trong app desktop'
 </script>
 
@@ -57,6 +60,11 @@ const offTitle = 'Chỉ dùng được trong app desktop'
     <EnginePreview v-if="bundleStep && file.available" :step-id="bundleStep" :name="version?.asset_name.trim() || undefined" :compact="compact" />
     <FollowUpMenu :hash="hash" :blob="blob ?? version?.blob" :run-id="sourceRun" :step-id="bundleStep" :compact="compact" />
     <SimilarButton :hash="hash" :blob="blob ?? version?.blob" :version-id="versionId ?? version?.id" :compact="compact" />
+    <button v-if="editable" type="button" class="btn btn-plain" :class="{ 'btn-icon': compact }" :aria-label="compact ? 'Sửa cục bộ' : undefined" title="Tô vùng cần sửa rồi nhập lệnh — phần còn lại giữ nguyên" @click="editOpen = true">
+      <WandSparkles />
+      <span v-if="!compact">Sửa cục bộ</span>
+    </button>
+    <RegionEditDialog v-if="editable && version" v-model:open="editOpen" :version="version" />
     <button
       type="button"
       class="btn btn-plain"

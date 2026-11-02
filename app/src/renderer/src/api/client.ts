@@ -49,6 +49,7 @@ import type {
   StatsOverview,
   StatsQuery,
   StepRow,
+  RegionEditBody,
   VersionRow,
   VersionStatus,
   QaRecomputeResult,
@@ -111,6 +112,8 @@ export interface StudioApi {
   blobInfo(hash: string): Promise<BlobRef>
   versions(q?: VersionsQuery): Promise<VersionRow[]>
   setVersionStatus(id: string, action: 'approve' | 'reject'): Promise<VersionRow>
+  /** Starts the region-edit run on one image version; the finished draft version has `parent_id` = `id`. */
+  regionEdit(id: string, body: RegionEditBody): Promise<{ run_id: string; parent_version: string }>
   blobUrl(hash: string): string
   thumbUrl(hash: string, size?: number): string
   recipePreviewUrl(id: string): string
@@ -327,6 +330,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     blobInfo: (hash) => call('GET', `/api/blobs/${enc(hash)}/info`),
     versions: (q = {}) => call('GET', `/api/versions${query({ run_id: q.run_id, status: q.status, project_id: q.project_id })}`),
     setVersionStatus: (id, action) => call('POST', `/api/versions/${enc(id)}/${action}`),
+    regionEdit: (id, body) => call('POST', `/api/versions/${enc(id)}/region-edit`, body),
     blobUrl: (hash) => `${baseUrl}/api/blobs/${enc(hash)}?t=${enc(token)}`,
     recipePreviewUrl: (id) => `${baseUrl}/api/recipes/${enc(id)}/preview?t=${enc(token)}`,
     thumbUrl: (hash, size = 256) => `${baseUrl}/api/blobs/${enc(hash)}/thumb?size=${size}&t=${enc(token)}`,

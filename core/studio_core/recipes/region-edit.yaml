@@ -1,0 +1,28 @@
+id: region-edit
+name: Sửa cục bộ asset (vùng mask + lệnh)
+description: >-
+  Ảnh asset + mask vùng cần sửa (trắng = sửa) + lệnh ("đổi màu khiên sang đỏ") → Klein sửa ảnh theo lệnh → chỉ giữ phần
+  sửa bên trong mask (mép làm mềm vài px), ngoài mask giữ nguyên pixel gốc → ảnh mới để so sánh / duyệt. Chạy từ nút
+  "Sửa cục bộ" ở version đã có; version mới ghi parent = version cũ.
+inputs:
+  image: {type: image, label: Ảnh gốc}
+  mask: {type: image, label: "Mask vùng sửa (trắng = sửa, đen = giữ)"}
+  prompt: {type: text, multiline: true, label: Lệnh sửa}
+  feather: {type: int, default: 3, min: 0, max: 32, label: Làm mềm mép mask (px)}
+  review: {type: bool, default: false, label: Duyệt trước khi xong}
+steps:
+  - id: edit
+    kind: comfy.edit_flux2_klein4b
+    in: {image: inputs.image}
+    params:
+      "75:74.text": "Edit this image: ${inputs.prompt}. Change only what the instruction names; keep everything else exactly the same: same object, outline style, size, position, camera angle, framing, colours and art style. Keep the same background."
+  - id: composite
+    kind: op.region_composite
+    in: {image: inputs.image, edit: edit.images, mask: inputs.mask}
+    params: {feather: "${inputs.feather}"}
+  - id: approve
+    kind: gate.approve
+    in: {preview: composite.images}
+    params: {enabled: "${inputs.review}"}
+outputs:
+  final: approve.preview

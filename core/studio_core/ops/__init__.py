@@ -23,6 +23,7 @@ from .retexture import RETEX_OPS
 from .pixel import PIXEL_OPS
 from .pixel_cleanup import PIXEL_CLEANUP_OPS
 from .shadow_outline import SHADOW_OUTLINE_OPS
+from .region_composite import REGION_COMPOSITE_OPS
 from .ground_strip import GROUND_STRIP_OPS
 from .anim_stabilize import ANIM_STABILIZE_OPS
 from .presets import PresetStore
@@ -31,6 +32,7 @@ from .lut import LUT_OPS
 from .minimap import MINIMAP_OPS
 from .normal2d import NORMAL2D_OPS
 from .npc import NPC_OPS
+from .portrait import PORTRAIT_OPS
 from .pano import PANO_OPS
 from .paperdoll import PAPERDOLL_OPS
 from .parallax import PARALLAX_OPS
@@ -78,6 +80,8 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(sc_cls())
     for npc_cls in NPC_OPS:
         registry.register(npc_cls())
+    for pt_cls in PORTRAIT_OPS:
+        registry.register(pt_cls())
     for fd_cls in FRAME_DATA_OPS:
         registry.register(fd_cls())
     for rk_cls in ROOM_KIT_OPS:
@@ -108,6 +112,8 @@ def register(registry: ExecutorRegistry, settings: Any = None, bus: Any = None, 
         registry.register(ev_cls())
     for ep_cls in ENGINE_PACK_OPS:
         registry.register(ep_cls())
+    for rc_cls in REGION_COMPOSITE_OPS:
+        registry.register(rc_cls())
     for pano_cls in PANO_OPS:
         registry.register(pano_cls())
     register_restyle(registry, settings)
