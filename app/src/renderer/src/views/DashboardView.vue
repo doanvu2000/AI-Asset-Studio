@@ -120,10 +120,10 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
 <template>
   <div class="view">
     <PageHeader title="Tổng quan">
-      <button class="btn search-btn" title="Tìm nhanh (Ctrl+K)" @click="openPalette">
-        <Search /> Tìm… <span class="kbd">Ctrl K</span>
+      <button class="btn search-btn" aria-label="Tìm nhanh" title="Tìm nhanh (Ctrl+K)" @click="openPalette">
+        <Search /> <span class="lbl">Tìm…</span> <span class="kbd lbl">Ctrl K</span>
       </button>
-      <RouterLink to="/new" class="btn btn-primary" title="Tạo mới (Ctrl+N)"><Plus /> Tạo mới</RouterLink>
+      <RouterLink to="/new" class="btn btn-primary" aria-label="Tạo mới" title="Tạo mới (Ctrl+N)"><Plus /> <span class="lbl">Tạo mới</span></RouterLink>
     </PageHeader>
     <div class="scroll">
       <div class="stack dash">

@@ -441,20 +441,20 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
       <RouterLink
         v-if="runProject"
         :to="`/projects/${runProject.id}`"
-        class="proj-badge"
+        class="proj-badge" :aria-label="`Dự án ${runProject.name}`"
         :title="runProject.applied ? `Dự án ${runProject.name} · đã áp: ${runProject.applied}` : `Dự án ${runProject.name}`"
       >
         <FolderKanban :size="13" aria-hidden="true" />
-        <span class="pb-name">{{ runProject.name }}</span>
-        <span v-if="runProject.applied" class="pb-applied num">· áp {{ runProject.applied.split(', ').length }}</span>
+        <span class="pb-name lbl">{{ runProject.name }}</span>
+        <span v-if="runProject.applied" class="pb-applied num lbl">· áp {{ runProject.applied.split(', ').length }}</span>
       </RouterLink>
-      <RouterLink v-if="workflowId" :to="`/flows/runs/${workflowId}`" class="proj-badge" title="Mở sơ đồ workflow của lượt chạy này">
+      <RouterLink v-if="workflowId" :to="`/flows/runs/${workflowId}`" class="proj-badge" aria-label="Mở sơ đồ workflow" title="Mở sơ đồ workflow của lượt chạy này">
         <Waypoints :size="13" aria-hidden="true" />
-        <span class="pb-name">Thuộc workflow {{ flows.runs.get(workflowId)?.title ?? '' }}</span>
+        <span class="pb-name lbl">Thuộc workflow {{ flows.runs.get(workflowId)?.title ?? '' }}</span>
       </RouterLink>
       <div class="seg" role="radiogroup" aria-label="Kiểu xem">
-        <button type="button" role="radio" :aria-checked="viewMode === 'list'" :class="{ on: viewMode === 'list' }" title="Danh sách bước" @click="setMode('list')"><List :size="14" /> Danh sách</button>
-        <button type="button" role="radio" :aria-checked="viewMode === 'graph'" :class="{ on: viewMode === 'graph' }" title="Sơ đồ bước" @click="setMode('graph')"><Workflow :size="14" /> Sơ đồ</button>
+        <button type="button" role="radio" :aria-checked="viewMode === 'list'" :class="{ on: viewMode === 'list' }" title="Danh sách bước" aria-label="Danh sách" @click="setMode('list')"><List :size="14" /> <span class="lbl">Danh sách</span></button>
+        <button type="button" role="radio" :aria-checked="viewMode === 'graph'" :class="{ on: viewMode === 'graph' }" title="Sơ đồ bước" aria-label="Sơ đồ" @click="setMode('graph')"><Workflow :size="14" /> <span class="lbl">Sơ đồ</span></button>
       </div>
       <RunStatusBadge v-if="run" :status="run.status" />
       <div ref="menuRoot" class="more">

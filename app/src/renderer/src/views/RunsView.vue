@@ -71,7 +71,7 @@ const total = computed(() => virtualizer.value.getTotalSize())
 <template>
   <div class="view">
     <PageHeader title="Lượt chạy" :subtitle="`${runs.runList.length} lượt`">
-      <RouterLink to="/new" class="btn btn-primary"><Plus /> Tạo mới</RouterLink>
+      <RouterLink to="/new" class="btn btn-primary" aria-label="Tạo mới" title="Tạo mới"><Plus /> <span class="lbl">Tạo mới</span></RouterLink>
     </PageHeader>
     <div class="bar">
       <div class="seg" role="tablist" aria-label="Lọc theo trạng thái">

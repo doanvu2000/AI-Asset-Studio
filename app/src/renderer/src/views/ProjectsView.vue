@@ -102,7 +102,7 @@ const active = (p: ProjectRow): number => (sum(p)?.runs.running ?? 0) + (sum(p)?
         <button type="button" role="radio" :aria-checked="tab === 'active'" :class="{ on: tab === 'active' }" @click="tab = 'active'">Đang dùng</button>
         <button type="button" role="radio" :aria-checked="tab === 'archived'" :class="{ on: tab === 'archived' }" @click="tab = 'archived'">Lưu trữ</button>
       </div>
-      <button type="button" class="btn btn-primary" @click="openCreate"><FolderPlus /> Dự án mới</button>
+      <button type="button" class="btn btn-primary" aria-label="Dự án mới" title="Dự án mới" @click="openCreate"><FolderPlus /> <span class="lbl">Dự án mới</span></button>
     </PageHeader>
 
     <div class="scroll">

@@ -63,7 +63,7 @@ const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((
 <template>
   <div class="view">
     <PageHeader title="Quy trình" subtitle="Các bước để tạo ra từng loại asset">
-      <button class="btn btn-primary" @click="router.push('/recipes/new')"><Plus /> Quy trình mới</button>
+      <button class="btn btn-primary" aria-label="Quy trình mới" title="Quy trình mới" @click="router.push('/recipes/new')"><Plus /> <span class="lbl">Quy trình mới</span></button>
     </PageHeader>
     <div class="scroll">
       <div class="stack stack-wide">
