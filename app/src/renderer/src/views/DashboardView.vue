@@ -138,25 +138,28 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
       <RouterLink to="/new" class="btn btn-primary" aria-label="Tạo mới" title="Tạo mới (Ctrl+N)"><Plus /> <span class="lbl">Tạo mới</span></RouterLink>
     </PageHeader>
     <div class="scroll">
-      <div class="stack dash">
-        <section class="strip card" aria-label="Tài nguyên">
-          <template v-if="resources.list.length">
-            <template v-for="r in resources.list" :key="r.name">
-              <ResourceCard :resource="r" :pending="resources.pending.has(r.name)" @toggle="toggle(r.name, $event)" />
-            </template>
-          </template>
-          <span v-else class="skeleton" />
+      <div class="stack dash" :class="{ 'first-run': firstTime }">
+        <section class="sec o-sys" aria-labelledby="sec-sys">
+          <h2 id="sec-sys" class="section-label">Hệ thống</h2>
+          <div class="sys">
+            <div class="strip card" aria-label="Tài nguyên">
+              <template v-if="resources.list.length">
+                <template v-for="r in resources.list" :key="r.name">
+                  <ResourceCard :resource="r" :pending="resources.pending.has(r.name)" @toggle="toggle(r.name, $event)" />
+                </template>
+              </template>
+              <span v-else class="skeleton" />
+            </div>
+            <DeviceCard />
+            <GpuPanel />
+          </div>
         </section>
 
-        <DeviceCard />
-
-        <GpuPanel />
-
-        <GettingStarted />
+        <GettingStarted class="o-gs" />
 
         <template v-if="!firstTime">
           <Transition name="section">
-            <section v-if="gates.count" class="sec" aria-labelledby="sec-you">
+            <section v-if="gates.count" class="sec o-needs" aria-labelledby="sec-you">
               <div class="sec-head">
                 <h2 id="sec-you" class="section-label">
                   Cần bạn <span class="num count human">{{ gates.count }}</span>
@@ -183,7 +186,7 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
             </section>
           </Transition>
 
-          <section class="sec" aria-labelledby="sec-run">
+          <section class="sec o-run" aria-labelledby="sec-run">
             <div class="sec-head">
               <h2 id="sec-run" class="section-label">
                 Đang chạy <span v-if="runs.runningRuns.length" class="num count">{{ runs.runningRuns.length }}</span>
@@ -197,7 +200,7 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
             <p v-else class="idle callout">Không có lượt nào đang chạy.</p>
           </section>
 
-          <section class="sec" aria-labelledby="sec-recent">
+          <section class="sec o-recent" aria-labelledby="sec-recent">
             <div class="sec-head">
               <h2 id="sec-recent" class="section-label">Gần đây</h2>
               <RouterLink to="/runs" class="link">Xem tất cả <ChevronRight :size="14" /></RouterLink>
@@ -216,10 +219,10 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
             </p>
           </section>
 
-          <CostStats />
+          <CostStats class="o-cost" />
         </template>
 
-        <AgentConnectCard />
+        <AgentConnectCard class="o-agent" />
       </div>
     </div>
   </div>
@@ -228,6 +231,18 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
 <style scoped>
 .dash {
   gap: var(--sp-8);
+}
+.o-needs { order: 1; }
+.o-run { order: 2; }
+.o-recent { order: 3; }
+.o-gs { order: 4; }
+.o-sys { order: 5; }
+.o-cost { order: 6; }
+.o-agent { order: 7; }
+.first-run .o-gs { order: 0; }
+.sys {
+  display: grid;
+  gap: var(--sp-2);
 }
 .search-btn {
   color: var(--text-2);
@@ -238,11 +253,11 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
 }
 .strip {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
   align-items: center;
-  gap: 8px 24px;
+  gap: var(--sp-1) var(--sp-6);
   min-height: 48px;
-  padding: 8px 16px;
+  padding: var(--sp-2) var(--sp-4);
 }
 .skeleton {
   grid-column: 1 / -1;
@@ -262,7 +277,7 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
 .sec {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  gap: var(--sp-3);
 }
 .sec-head {
   display: flex;
@@ -303,26 +318,29 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
   margin-left: 6px;
 }
 .list {
-  padding: 4px;
   display: grid;
+  overflow: hidden;
 }
 .list-row {
   height: 58px;
 }
 .list-row + .list-row,
 .gate-row + .gate-row {
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .gate-row {
   display: flex;
   align-items: center;
   gap: 12px;
   height: 58px;
-  padding: 0 14px 0 8px;
+  padding: 0 var(--sp-4) 0 var(--sp-2);
   color: inherit;
   text-decoration: none;
-  border-radius: var(--r-md);
   transition: background-color var(--t-fast);
+}
+.list :deep(.row) {
+  border-radius: 0;
+  padding: 0 var(--sp-4) 0 var(--sp-2);
 }
 .gate-row:hover {
   background: var(--bg-hover);
@@ -361,17 +379,17 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
   color: var(--text-3);
 }
 .more {
-  padding: 8px 14px;
+  padding: var(--sp-2) var(--sp-4);
   text-decoration: none;
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
 }
 .idle {
   padding: 2px 2px 0;
 }
 .tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: var(--sp-4);
 }
 .tile {
   display: grid;
@@ -386,13 +404,8 @@ Bước đang chạy sẽ bị ngắt và phải chạy lại.`
   display: block;
   border-radius: var(--r-md);
   overflow: hidden;
-  box-shadow: var(--shadow-1), var(--hairline);
-  transition:
-    transform var(--t-fast) var(--ease-spring),
-    box-shadow var(--t-base) var(--ease-out);
-}
-.tile:hover .t-img {
-  box-shadow: var(--shadow-2), var(--hairline);
+  background: var(--surface);
+  transition: transform var(--t-fast) var(--ease-spring);
 }
 .tile:active .t-img {
   transform: scale(0.97);

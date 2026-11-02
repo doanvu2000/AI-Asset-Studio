@@ -125,6 +125,7 @@ watch([filter, projectFilter], () => rows.value.length < NEAR_END && void runs.l
           v-for="it in items"
           :key="String(it.key)"
           class="vrow"
+          :class="{ first: it.index === 0 }"
           :style="{ transform: `translateY(${it.start}px)`, height: `${ROW_H}px` }"
         >
           <RunRowItem :run="rows[it.index]!" />
@@ -145,36 +146,45 @@ watch([filter, projectFilter], () => rows.value.length < NEAR_END && void runs.l
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 12px;
-  padding: 12px 24px;
-  border-bottom: 0.5px solid var(--separator);
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-6) 0;
 }
 .c {
-  font-size: 12px;
+  font-size: var(--fs-caption);
   color: var(--text-3);
 }
 .list-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 8px 16px;
+  padding: var(--sp-3) var(--sp-6) var(--sp-6);
   contain: strict;
 }
 .inner {
   position: relative;
   max-width: 1180px;
   margin: 0 auto;
+  overflow: hidden;
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.inner :deep(.row) {
+  border-radius: 0;
+  padding: 0 var(--sp-4);
 }
 .more {
   display: flex;
   justify-content: center;
-  padding: 12px 0;
+  padding: var(--sp-4) 0 0;
 }
 .vrow {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  border-bottom: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
+}
+.vrow.first {
+  border-top: 0;
 }
 </style>

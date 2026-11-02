@@ -113,8 +113,9 @@ const laneText = (r: RecipeInfo): string => {
 }
 // With no goal card available (older core, no flows) the full list is the only way in, so it stays open.
 const goalCount = ref(0)
-const showAll = ref(false)
-const listOpen = computed(() => showAll.value || goalCount.value === 0)
+// Few goal cards leave the page empty, so the full list opens by default until the user decides.
+const showAll = ref<boolean | null>(null)
+const listOpen = computed(() => showAll.value ?? goalCount.value <= 4)
 function openFlow(id: string): void {
   void router.push({ path: `/flows/${id}/run`, query: { project: route.query.project } })
 }
@@ -577,7 +578,7 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
           </button>
           <p v-if="selectedId && recipes.loaded" class="caption warn">Không tìm thấy quy trình này. Chọn một quy trình khác.</p>
           <GoalCards @recipe="pick" @flow="openFlow" @gdd="router.push('/gdd')" @count="goalCount = $event" />
-          <button v-if="goalCount" type="button" class="all-toggle" :aria-expanded="listOpen" aria-controls="all-recipes" @click="showAll = !showAll">
+          <button v-if="goalCount" type="button" class="all-toggle" :aria-expanded="listOpen" aria-controls="all-recipes" @click="showAll = !listOpen">
             <ChevronDown :size="15" class="all-chev" :class="{ up: listOpen }" aria-hidden="true" />
             Xem tất cả công thức
             <span class="caption num">{{ recipes.list.length }}</span>
@@ -890,10 +891,10 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
   cursor: pointer;
   transition:
     transform var(--t-fast) var(--ease-spring),
-    box-shadow var(--t-base) var(--ease-out);
+    background-color var(--t-fast) var(--ease-out);
 }
 .rcard:hover {
-  box-shadow: var(--shadow-2), var(--hairline);
+  background: var(--surface-2);
 }
 .rcard:active {
   transform: scale(0.985);
@@ -905,7 +906,7 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
   width: 84px;
   height: 84px;
   border-radius: var(--r-md);
-  background: radial-gradient(circle at 50% 45%, var(--accent-soft), transparent 72%), var(--bg-sunken);
+  background: var(--surface-2);
 }
 .rcard-text {
   display: grid;
@@ -952,20 +953,23 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
   gap: var(--sp-8);
 }
 .all-toggle {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  align-self: flex-start;
-  padding: 4px 8px 4px 4px;
+  gap: var(--sp-2);
+  width: 100%;
+  height: var(--ctl-h-lg);
+  padding: 0 var(--sp-3);
   border: 0;
-  border-radius: var(--r-sm);
-  background: none;
+  border-radius: var(--r-md);
+  background: var(--fill);
   color: var(--text-2);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
+  transition: background-color var(--t-fast) var(--ease-out);
 }
 .all-toggle:hover {
+  background: var(--fill-2);
   color: var(--text);
 }
 .all-chev {
@@ -990,10 +994,10 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
   color: inherit;
   text-align: left;
   cursor: pointer;
-  transition: box-shadow var(--t-base) var(--ease-out);
+  transition: background-color var(--t-fast) var(--ease-out);
 }
 .resume:hover {
-  box-shadow: var(--shadow-2), var(--hairline);
+  background: var(--surface-2);
 }
 .resume-text {
   flex: 1;

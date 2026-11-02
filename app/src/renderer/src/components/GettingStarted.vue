@@ -74,7 +74,7 @@ const steps = computed(() => [
       : tools.value
         ? toolsOk.value
           ? 'ComfyUI, Blender và Codex đều đã tìm thấy.'
-          : `Đã tìm thấy ${toolsFound.value}/${tools.value.length} công cụ. Bấm Cài tự động để tải phần còn thiếu, hoặc tự đặt đường dẫn trong Cài đặt.`
+          : `Đã tìm thấy ${toolsFound.value}/${tools.value.length} công cụ. Cài tự động phần còn thiếu hoặc đặt đường dẫn trong Cài đặt.`
         : 'Đang kiểm tra…',
     to: { path: '/settings', query: { pane: toolsOk.value ? 'tools' : 'setup' } },
     action: toolsOk.value ? 'Xem' : 'Cài tự động'
@@ -86,7 +86,7 @@ const steps = computed(() => [
     busy: false,
     text: engineChosen.value
       ? `Dự án “${projects.active?.name}” xuất ra ${ENGINE_NAMES[projects.active?.engine_target ?? ''] ?? 'engine đã chọn'}.`
-      : 'Chọn Flutter, Android, iOS, Unity hoặc Godot cho dự án hiện tại để nút Xuất ra chọn sẵn giúp bạn.',
+      : 'Chọn Flutter, Android, iOS, Unity hoặc Godot để nút Xuất ra chọn sẵn đích cho bạn.',
     to: projectLink.value,
     action: 'Chọn engine'
   },
@@ -106,7 +106,7 @@ const steps = computed(() => [
     title: 'Tạo asset đầu tiên',
     done: firstAsset.value,
     busy: false,
-    text: 'Nhập một câu mô tả, chọn ảnh ưng ý, rồi duyệt vào thư viện.',
+    text: 'Nhập một câu mô tả, chọn ảnh ưng ý rồi đưa vào thư viện.',
     to: { path: '/new', query: startRecipe.value ? { recipe: startRecipe.value } : {} },
     action: 'Bắt đầu'
   },
@@ -115,68 +115,75 @@ const steps = computed(() => [
     title: 'Xuất ra engine',
     done: exported.value,
     busy: false,
-    text: exported.value ? 'Đã có gói asset trong dự án hiện tại.' : 'Đóng gói asset đã duyệt thành Unity package hoặc Godot addon.',
+    text: exported.value ? 'Đã có gói asset trong dự án hiện tại.' : 'Đóng gói asset đã duyệt cho Flutter, Android, iOS, Unity hoặc Godot.',
     to: projectLink.value,
     action: 'Xuất ra engine'
   }
 ])
 const ready = computed(() => projects.loaded && (!!tools.value || toolsError.value))
 const allDone = computed(() => steps.value.every((s) => s.done))
+const doneCount = computed(() => steps.value.filter((s) => s.done).length)
 const nextId = computed(() => steps.value.find((s) => !s.done)?.id)
 </script>
 
 <template>
   <section v-if="ready && !allDone" class="gs card" aria-labelledby="gs-title">
-    <img class="art" :src="ART.gettingStarted" alt="" width="148" height="148" draggable="false" />
-    <div class="body">
-      <h2 id="gs-title" class="large-title">Bắt đầu</h2>
-      <p class="secondary lead">Các bước để có asset đầu tiên và đưa vào engine.</p>
-      <ol class="steps">
-        <li v-for="(s, i) in steps" :key="s.id" class="step" :class="{ done: s.done, next: s.id === nextId }">
-          <span class="mark" :aria-label="s.done ? 'Đã xong' : 'Chưa xong'">
-            <LoaderCircle v-if="s.busy" :size="14" class="spin" />
-            <Check v-else-if="s.done" :size="14" :stroke-width="3" />
-            <span v-else class="num">{{ i + 1 }}</span>
-          </span>
-          <span class="s-text">
-            <span class="headline">{{ s.title }}</span>
-            <span class="callout">{{ s.text }}</span>
-          </span>
-          <RouterLink :to="s.to" class="btn" :class="{ 'btn-primary': s.id === nextId }">
-            {{ s.action }}
-            <ChevronRight v-if="s.id === nextId" />
-          </RouterLink>
-        </li>
-      </ol>
-    </div>
+    <header class="head">
+      <img class="art" :src="ART.gettingStarted" alt="" width="72" height="72" draggable="false" />
+      <div class="titles">
+        <h2 id="gs-title" class="title">Bắt đầu</h2>
+        <p class="secondary">Các bước để có asset đầu tiên và đưa vào engine.</p>
+      </div>
+      <span class="ui-pill t-run num">{{ doneCount }}/{{ steps.length }} xong</span>
+    </header>
+    <ol class="steps hair-list">
+      <li v-for="(s, i) in steps" :key="s.id" class="step" :class="{ done: s.done, next: s.id === nextId }">
+        <span class="mark" :aria-label="s.done ? 'Đã xong' : 'Chưa xong'">
+          <LoaderCircle v-if="s.busy" :size="14" class="spin" />
+          <Check v-else-if="s.done" :size="14" :stroke-width="3" />
+          <span v-else class="num">{{ i + 1 }}</span>
+        </span>
+        <span class="s-text">
+          <span class="headline">{{ s.title }}</span>
+          <span class="callout">{{ s.text }}</span>
+        </span>
+        <RouterLink :to="s.to" class="btn" :class="s.id === nextId ? 'btn-primary' : 'btn-ghost'">
+          {{ s.action }}
+          <ChevronRight v-if="s.id === nextId" />
+        </RouterLink>
+      </li>
+    </ol>
   </section>
 </template>
 
 <style scoped>
 .gs {
+  display: grid;
+  gap: var(--sp-4);
+  padding: var(--sp-5) var(--sp-6) var(--sp-3);
+}
+.head {
   display: flex;
   align-items: center;
-  gap: var(--sp-6);
-  padding: var(--sp-6) var(--sp-8) var(--sp-6) var(--sp-6);
-  background:
-    radial-gradient(120% 140% at 0% 0%, var(--accent-soft), transparent 55%),
-    var(--bg-elevated);
+  gap: var(--sp-4);
 }
-.art {
-  flex: none;
-  width: 148px;
-  height: 148px;
-  object-fit: contain;
-  user-select: none;
-}
-.body {
+.titles {
   flex: 1;
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: var(--sp-1);
 }
-.lead {
-  margin-bottom: var(--sp-3);
+.title {
+  font-size: var(--fs-title1);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.art {
+  flex: none;
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  user-select: none;
 }
 .steps {
   list-style: none;
@@ -187,11 +194,8 @@ const nextId = computed(() => steps.value.find((s) => !s.done)?.id)
 .step {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-}
-.step + .step {
-  border-top: 0.5px solid var(--separator);
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
 }
 .mark {
   flex: none;
@@ -203,7 +207,7 @@ const nextId = computed(() => steps.value.find((s) => !s.done)?.id)
   font-size: var(--fs-caption);
   font-weight: 700;
   color: var(--text-2);
-  box-shadow: inset 0 0 0 1.5px var(--separator-strong);
+  box-shadow: inset 0 0 0 1.5px var(--hair);
   transition:
     background-color var(--t-base),
     color var(--t-base);
@@ -213,8 +217,8 @@ const nextId = computed(() => steps.value.find((s) => !s.done)?.id)
   box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 .done .mark {
-  color: var(--bg-content);
-  background: var(--st-ok);
+  color: var(--text-on-accent);
+  background: var(--ok);
   box-shadow: none;
 }
 .s-text {

@@ -72,10 +72,12 @@ const gb = (mb: number): string => (mb / 1024).toFixed(1).replace('.', ',')
 
 <style scoped>
 .res {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
-  min-height: 32px;
+  gap: 2px 8px;
+  min-width: 0;
+  min-height: 36px;
   white-space: nowrap;
 }
 .ic {
@@ -147,6 +149,7 @@ const gb = (mb: number): string => (mb / 1024).toFixed(1).replace('.', ',')
   transition: transform 600ms var(--ease-out);
 }
 .toggle {
+  margin-left: auto;
   height: 24px;
   padding: 0 8px;
   font-size: var(--fs-callout);

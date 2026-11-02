@@ -113,36 +113,48 @@ ${skipWarning}` : ''}`"
 .chip {
   position: relative;
   display: flex;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: var(--r-md);
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-1), var(--hairline);
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--surface);
   cursor: pointer;
   overflow: hidden;
   transition:
     transform var(--t-fast) var(--ease-spring),
-    opacity var(--t-base) var(--ease-out),
+    background-color var(--t-base) var(--ease-out),
     box-shadow var(--t-base) var(--ease-out);
 }
 .chip:hover {
-  box-shadow: var(--shadow-2), var(--hairline);
+  background: var(--surface-2);
 }
 .chip:active {
   transform: scale(0.99);
 }
 .chip.selected {
-  box-shadow: 0 0 0 2px var(--accent), var(--shadow-2);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 .st-pending,
 .st-skipped {
-  opacity: 0.55;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--hair);
+}
+.st-pending:hover,
+.st-skipped:hover {
+  background: var(--fill);
+}
+.st-pending.selected,
+.st-skipped.selected {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.st-pending .name,
+.st-skipped .name {
+  color: var(--text-2);
 }
 .st-failed {
-  background: color-mix(in srgb, var(--bg-elevated) 93%, var(--st-fail));
+  background: color-mix(in srgb, var(--surface) 90%, var(--fail));
 }
 .st-awaiting_human {
-  background: color-mix(in srgb, var(--bg-elevated) 93%, var(--st-human));
+  background: color-mix(in srgb, var(--surface) 90%, var(--human));
 }
 .shake {
   animation: gentle-shake 420ms var(--ease-out);
@@ -178,14 +190,14 @@ ${skipWarning}` : ''}`"
   overflow-wrap: anywhere;
 }
 .attempt {
-  font-size: 12px;
+  font-size: var(--fs-caption);
   font-weight: 600;
   color: var(--st-waiting);
 }
 .reuse {
   font-size: var(--fs-caption);
-  font-weight: 700;
-  padding: 1px 7px;
+  font-weight: 600;
+  padding: 1px 8px;
   border-radius: 999px;
   color: var(--st-cached);
   background: var(--st-cached-soft);

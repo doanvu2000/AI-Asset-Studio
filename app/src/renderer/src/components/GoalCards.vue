@@ -102,7 +102,7 @@ function open(c: Card): void {
     <div class="g-grid">
       <div v-for="c in shown" :key="c.goal.id" class="g-card card" :class="{ unfit: !advanced && fitOf(c)?.level === 'red' }">
         <button type="button" class="g-main" @click="open(c)">
-          <span class="g-art checker">
+          <span class="g-art">
             <RecipeDemoImage v-if="demos[c.goal.id]" :demo="demos[c.goal.id]!" :alt="`Ảnh mẫu: ${c.goal.title}`" @failed="demos[c.goal.id] = null" />
             <FileText v-else-if="c.goal.gdd" :size="28" :stroke-width="1.5" aria-hidden="true" />
             <Boxes v-else :size="28" :stroke-width="1.5" aria-hidden="true" />
@@ -123,22 +123,22 @@ function open(c: Card): void {
 </template>
 
 <style scoped>
+.goals {
+  display: grid;
+  gap: var(--sp-3);
+}
 .g-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: var(--sp-3);
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: var(--sp-4);
 }
 .g-card {
   display: flex;
   flex-direction: column;
   padding: 0;
-  overflow: hidden;
-  transition:
-    box-shadow var(--t-fast) var(--ease-out),
-    translate var(--t-fast) var(--ease-out);
-}
-.g-card {
   position: relative;
+  overflow: hidden;
+  transition: background-color var(--t-fast) var(--ease-out);
 }
 .g-card.unfit .g-main {
   opacity: 0.55;
@@ -147,10 +147,10 @@ function open(c: Card): void {
   position: absolute;
   top: 8px;
   right: 8px;
-  box-shadow: 0 0 0 1px var(--bg-content);
+  
 }
 .g-card:hover {
-  translate: 0 -1px;
+  background: var(--surface-2);
 }
 .g-main {
   flex: 1;
@@ -158,7 +158,7 @@ function open(c: Card): void {
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  padding: 0 0 var(--sp-3);
+  padding: 0 0 var(--sp-4);
   border: 0;
   background: none;
   color: inherit;
@@ -168,17 +168,17 @@ function open(c: Card): void {
 }
 .g-main > .headline,
 .g-main > .g-text {
-  padding: 0 var(--sp-3);
+  padding: 0 var(--sp-4);
 }
 .g-art {
   display: grid;
   place-items: center;
   width: 100%;
-  aspect-ratio: 16 / 9;
-  margin-bottom: 6px;
+  aspect-ratio: 2 / 1;
+  margin-bottom: var(--sp-2);
   overflow: hidden;
   color: var(--accent);
-  background: var(--accent-soft);
+  background: var(--surface-2);
 }
 .g-text {
   color: var(--text-2);
@@ -188,7 +188,7 @@ function open(c: Card): void {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  padding: 0 var(--sp-3) var(--sp-3);
+  padding: 0 var(--sp-4) var(--sp-4);
   color: var(--text-3);
 }
 .g-alt {
@@ -203,10 +203,5 @@ function open(c: Card): void {
 }
 .g-alt:hover {
   color: var(--text);
-}
-@media (prefers-reduced-motion: reduce) {
-  .g-card {
-    transition: none;
-  }
 }
 </style>

@@ -762,6 +762,19 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
 </template>
 
 <style scoped>
+.view :deep(.page-header .t h1) {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  font-size: 20px;
+  line-height: 1.25;
+}
+.view :deep(.page-header .sub) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .detail {
   flex: 1;
   min-height: 0;
@@ -771,45 +784,12 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
   width: var(--pane-w, 420px);
   max-width: 60%;
   flex: none;
-  border-right: 0.5px solid var(--separator);
+  border-right: 1px solid var(--hair-soft);
 }
 .rail.graph {
   max-width: calc(100% - 320px);
   position: relative;
 }
-.seg {
-  display: inline-flex;
-  flex: none;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--bg-sunken);
-  box-shadow: var(--hairline);
-}
-.seg button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 10px;
-  white-space: nowrap;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  font-size: var(--fs-callout);
-  font-weight: 500;
-  color: var(--text-2);
-  cursor: pointer;
-  transition:
-    background-color var(--t-fast),
-    box-shadow var(--t-fast);
-}
-.seg button.on {
-  background: var(--bg-elevated);
-  box-shadow: var(--shadow-1), var(--hairline);
-  color: var(--text);
-  font-weight: 600;
-}
-
 .more {
   position: relative;
   margin-left: var(--sp-2);
@@ -876,8 +856,8 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 6px var(--sp-6) 6px;
-  border-bottom: 0.5px solid var(--separator);
+  padding: var(--sp-2) var(--sp-6);
+  border-bottom: 1px solid var(--hair-soft);
 }
 .segs {
   flex: 1;
@@ -889,7 +869,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
   flex: 1;
   height: 4px;
   border-radius: 2px;
-  background: var(--separator-strong);
+  background: var(--hair);
   transition: background-color var(--t-base) var(--ease-out);
 }
 .sg-succeeded,
@@ -925,7 +905,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 14px;
+  gap: var(--sp-3);
 }
 .rail-item {
   position: relative;
@@ -933,11 +913,11 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
 .rail-item + .rail-item::before {
   content: '';
   position: absolute;
-  left: 26px;
-  top: -14px;
+  left: 28px;
+  top: calc(-1 * var(--sp-3));
   width: 2px;
-  height: 14px;
-  background: var(--separator-strong);
+  height: var(--sp-3);
+  background: var(--hair);
   border-radius: 1px;
   transition: background-color var(--t-base) var(--ease-out);
 }
@@ -971,6 +951,15 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
 .inspector {
   flex: 1;
   min-width: 0;
+  container-type: inline-size;
+}
+@container (max-width: 560px) {
+  .insp .live {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .insp .preview {
+    max-width: 240px;
+  }
 }
 .hero {
   display: grid;
@@ -1017,8 +1006,8 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
   max-width: 760px;
 }
 .insp.after-hero {
-  padding-top: 20px;
-  border-top: 0.5px solid var(--separator);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--hair-soft);
 }
 .insp-head {
   display: grid;
@@ -1032,7 +1021,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
 }
 .live {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: minmax(120px, 240px) minmax(0, 1fr);
   gap: 16px;
   padding: 12px;
   align-items: center;
@@ -1145,7 +1134,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
   height: 24px;
   padding: 0 10px;
   border-radius: 999px;
-  font-size: var(--fs-callout);
+  font-size: var(--fs-caption);
   font-weight: 600;
   color: var(--st-human);
   background: var(--st-human-soft);
@@ -1305,7 +1294,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
   height: 24px;
   padding: 0 9px;
   border-radius: 999px;
-  font-size: var(--fs-callout);
+  font-size: var(--fs-caption);
   font-weight: 600;
   color: var(--accent);
   background: var(--accent-soft);

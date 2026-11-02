@@ -246,26 +246,26 @@ const tipLeft = computed(() => {
         Không cập nhật được ({{ error }}), đang hiện số liệu cũ.
         <button type="button" class="btn btn-plain mini" @click="load"><RotateCw :size="12" /> Thử lại</button>
       </p>
-      <div class="kpis" :class="{ dim: loading }">
-        <div class="card kpi">
+      <div class="kpis card" :class="{ dim: loading }">
+        <div class="kpi">
           <span class="caption">Tổng chi phí</span>
           <TweenNumber class="kpi-v" :value="totals.cost_usd" :format="usd" />
           <span class="caption">TB {{ usd(totals.avg_cost_usd) }} / lượt</span>
         </div>
-        <div class="card kpi">
+        <div class="kpi">
           <span class="caption">Số lượt</span>
           <TweenNumber class="kpi-v" :value="totals.runs" />
           <span class="caption">
             <TweenNumber :value="totals.succeeded" /> hoàn tất<template v-if="totals.active"> · <TweenNumber :value="totals.active" /> đang chạy</template>
           </span>
         </div>
-        <div class="card kpi">
+        <div class="kpi">
           <span class="caption">Thời gian TB</span>
           <TweenNumber v-if="totals.duration_s.avg != null" class="kpi-v" :value="totals.duration_s.avg" :format="humanDuration" />
           <span v-else class="kpi-v num">—</span>
           <span class="caption" title="Lượt hoàn tất, không tính lúc chờ bạn duyệt">p90 {{ dur(totals.duration_s.p90) }}</span>
         </div>
-        <div class="card kpi">
+        <div class="kpi">
           <span class="caption">Tỉ lệ lỗi</span>
           <TweenNumber v-if="totals.failure_rate != null" class="kpi-v" :class="{ bad: totals.failure_rate > 0.2 }" :value="totals.failure_rate * 100" :format="(n) => `${Math.round(n)}%`" />
           <span v-else class="kpi-v num">—</span>
@@ -363,7 +363,8 @@ const tipLeft = computed(() => {
 .sec {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 10px;
+  gap: var(--sp-3);
+  container-type: inline-size;
 }
 .sec-head {
   display: flex;
@@ -433,13 +434,17 @@ const tipLeft = computed(() => {
 }
 .kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  background: var(--hair-soft);
 }
 .kpi {
   display: grid;
   gap: 2px;
-  padding: 12px 14px;
+  align-content: start;
+  padding: var(--sp-4);
+  background: var(--surface);
 }
 .kpi-v {
   font-size: var(--fs-title1);
@@ -456,8 +461,8 @@ const tipLeft = computed(() => {
 .chart-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-  padding: 12px 14px;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
 }
 .chart-head {
   display: flex;
@@ -533,17 +538,17 @@ const tipLeft = computed(() => {
 }
 .grid2 {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  gap: var(--sp-3);
   align-items: start;
 }
-@media (max-width: 900px) {
+@container (max-width: 960px) {
   .grid2 {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 .table-card {
-  padding: 4px 0;
+  padding: var(--sp-1) 0;
   overflow-x: auto;
 }
 .tbl {
@@ -554,17 +559,17 @@ const tipLeft = computed(() => {
 }
 .tbl th {
   text-align: left;
-  padding: 0 8px;
-  white-space: normal;
-  box-shadow: inset 0 -0.5px 0 var(--separator);
+  padding: 0 var(--sp-2);
+  white-space: nowrap;
+  box-shadow: inset 0 -1px 0 var(--hair-soft);
 }
 .tbl th:first-child,
 .tbl td:first-child {
-  padding-left: 14px;
+  padding-left: var(--sp-4);
 }
 .tbl th:last-child,
 .tbl td:last-child {
-  padding-right: 14px;
+  padding-right: var(--sp-4);
 }
 .tbl th.n,
 .tbl td.n {
@@ -600,22 +605,24 @@ const tipLeft = computed(() => {
   white-space: normal;
 }
 .tbl tr + tr td {
-  box-shadow: inset 0 0.5px 0 var(--separator);
+  box-shadow: inset 0 1px 0 var(--hair-soft);
 }
 .name {
   display: grid;
   gap: 1px;
-  max-width: 260px;
+  min-width: 140px;
+  max-width: 280px;
 }
 .r-name {
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .steps-card {
   display: grid;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
 }
 .steps {
   display: grid;

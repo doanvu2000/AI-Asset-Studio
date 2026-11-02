@@ -39,7 +39,7 @@ function go(i: number): void {
 
 <template>
   <nav v-if="chips.length" class="next" aria-label="Làm tiếp">
-    <span class="caption next-label">Làm tiếp</span>
+    <span class="section-label next-label">Làm tiếp</span>
     <button v-for="(f, i) in chips" :key="f.recipe.id" type="button" class="next-chip" :title="f.recipe.description" @click="go(i)">
       <RecipeThumb :id="f.recipe.id" :size="22" />
       {{ f.recipe.name }}
@@ -55,16 +55,16 @@ function go(i: number): void {
   align-items: center;
   gap: 8px;
   flex: none;
-  padding: 8px var(--sp-6) 0;
+  padding: var(--sp-3) var(--sp-6) 0;
 }
 .next-label {
-  color: var(--text-3);
+  margin-right: var(--sp-1);
 }
 .next-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px 3px 4px;
+  padding: 3px 12px 3px 4px;
   border: 0;
   border-radius: 999px;
   background: var(--accent-soft);

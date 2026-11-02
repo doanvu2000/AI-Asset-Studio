@@ -205,10 +205,11 @@ onKeyStroke(true, (e) => {
 .actions {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   padding: 12px 24px;
-  border-top: 0.5px solid var(--separator);
+  border-top: 1px solid var(--hair-soft);
   background: color-mix(in srgb, var(--bg-content) 85%, transparent);
   backdrop-filter: blur(16px);
 }
@@ -219,7 +220,7 @@ onKeyStroke(true, (e) => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  flex-wrap: wrap;
+  white-space: nowrap;
 }
 .spacer {
   flex: 1;

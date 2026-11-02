@@ -1,13 +1,23 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { RunStatus } from '@/api/types'
 import { RUN_LABEL } from '@/composables/format'
 
-defineProps<{ status: RunStatus }>()
+const props = defineProps<{ status: RunStatus }>()
+
+const TONE: Partial<Record<RunStatus, string>> = {
+  running: 't-run',
+  awaiting_human: 't-human',
+  succeeded: 't-ok',
+  failed: 't-fail',
+  interrupted: 't-fail'
+}
+const tone = computed(() => TONE[props.status] ?? '')
 </script>
 
 <template>
   <Transition name="badge" mode="out-in">
-    <span :key="status" class="badge" :class="`s-${status}`">
+    <span :key="status" class="ui-pill" :class="[tone, { pulse: status === 'running' }]">
       <span class="dot" />
       {{ RUN_LABEL[status] }}
     </span>
@@ -15,44 +25,8 @@ defineProps<{ status: RunStatus }>()
 </template>
 
 <style scoped>
-.badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 22px;
-  padding: 0 9px 0 8px;
-  border-radius: 999px;
-  font-size: var(--fs-callout);
-  font-weight: 600;
-  white-space: nowrap;
-  color: var(--text-2);
-  background: var(--bg-active);
-}
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.s-running {
-  color: var(--st-running);
-  background: var(--st-running-soft);
-}
-.s-running .dot {
+.pulse > .dot {
   animation: soft-pulse 1.6s ease-in-out infinite;
-}
-.s-awaiting_human {
-  color: var(--st-human);
-  background: var(--st-human-soft);
-}
-.s-succeeded {
-  color: var(--st-ok);
-  background: var(--st-ok-soft);
-}
-.s-failed,
-.s-interrupted {
-  color: var(--st-fail);
-  background: var(--st-fail-soft);
 }
 .badge-enter-active {
   transition:
