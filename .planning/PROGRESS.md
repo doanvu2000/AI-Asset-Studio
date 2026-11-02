@@ -1477,3 +1477,10 @@ Commit từng phần, không push. Plan: PLAN-2026-11-02-r10.md.
 - [~] E2 character-pack live GPU (atlas + xuất engine mới) giao sonnet.
 - [x] E2 character-pack live 11/12 node (~23 phút), node style fail do chưa có version duyệt (chờ quyết định); engine pack 56 sprite, Godot import OK; fix README + minimap shadow layer; test 22 pass — 178df24. Kết đợt: HANDOFF-2026-11-02-r10.md
 - [x] WP-S style audit bỏ qua + warning khi chưa có version duyệt (chủ nhân chọn); test 25 pass — 684a948
+- Chủ nhân duyệt thứ tự tiếp: (1) anim scale + visor + style review:false, (2) kiểm app thật + mock lô, (3) Unity import engine pack, (4) .lbl 5 màn, (5) demo thêm.
+- [~] WP-M minimap màu từ tileset/ảnh màn; WP-N1 (1); WP-N4 (4) giao sonnet. WP-N2 (2) chờ slot sau WP-M.
+- [x] N4 .lbl header 5 màn (Runs, Recipes, Projects, Dashboard, RunDetail); typecheck sạch; chưa chụp (máy bận) — e26b208
+- [x] N1 engine_pack v3 match_scale (thân anim khớp sprite hướng S, chặn >2x), style review:false; test 17 pass; chưa kiểm ảnh — 481debf. Visor: prompt video do claude.anim_motion trong ops/executors.py viết → sửa ở đó làm mất cache mọi op; để chủ nhân quyết.
+- [~] N2b seed mock lô workflow/GPU/ETA giao sonnet (chỉ api/mock).
+- [x] N2b seed mock 2 lô workflow + hàng đợi GPU 1 giữ/2 chờ; typecheck sạch (agent) — 1d4d474
+- [x] WP-M minimap màu từ tileset (TMX/TMJ/LDtk) > ảnh reference > tên layer, op v2, level-pack map tiles+reference; ảnh compare scratchpad 0bc24b1f…/minimap/compare.png (main xem: nền be + đường xanh khớp màn); test 28 pass — aa1aebb. Nợ: tường/khối quantize gần đen, viền rào ngoài màn không lên minimap; mock app chưa map 2 input mới.
