@@ -454,7 +454,7 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
 
     mobile_target = engine in MOBILE_ENGINES
     if mobile_target:
-        normal2d = None
+        normal2d = normal2d if engine == "flutter" else None
         shaders = hits = toon = None
         mobile = False
     normal_note = apply_normal2d(src, normal2d)

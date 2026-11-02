@@ -1244,7 +1244,7 @@ Như Sprite 8 hướng multi-view, thêm anim đi bộ: render mặt trước th
 
 ## `sprite-normal-map` — Normal map 2D cho sprite
 
-Ảnh sprite (nền trong) hoặc sprite sheet → height từ khoảng cách tới viền alpha (vát tròn silhouette) + chi tiết độ sáng → normal map Sobel, kênh G hướng lên (OpenGL) — Godot CanvasTexture và Unity URP 2D Light đọc thẳng. Sheet tính từng khung riêng (đặt số cột/hàng) nên viền không lem sang khung bên cạnh. Ảnh xem trước: gốc | normal | chiếu sáng thử. Chạy CPU, không cần GPU. Xuất engine từ bước sprite sheet có sẵn tuỳ chọn "Normal map 2D".
+Ảnh sprite (nền trong) hoặc sprite sheet → height từ khoảng cách tới viền alpha (vát tròn silhouette) + chi tiết độ sáng → normal map Sobel, kênh G hướng lên (OpenGL) — Godot CanvasTexture và Unity URP 2D Light và Flutter/Flame (LitSpriteEffect trong Shader Pack, xuất Flutter có normal map thì kèm shader đèn 2D) đọc thẳng. Sheet tính từng khung riêng (đặt số cột/hàng) nên viền không lem sang khung bên cạnh. Ảnh xem trước: gốc | normal | chiếu sáng thử. Chạy CPU, không cần GPU. Xuất engine từ bước sprite sheet có sẵn tuỳ chọn "Normal map 2D".
 
 - runs on: CPU only; gates: approve
 - outputs: `final`, `preview`

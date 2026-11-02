@@ -77,6 +77,9 @@ def pubspec_snippet(paths: list[str], packages: list[str] | None = None) -> str:
     deps = [p for p in packages or [] if p in PACKAGE_VERSIONS]
     lines = ["dependencies:"] + [f"  {p}: {PACKAGE_VERSIONS[p]}" for p in deps] + [""] if deps else []
     lines += ["flutter:", "  assets:"] + [f"    - {d}" for d in dirs]
+    shaders = [p for p in paths if p.startswith("shaders/") and p.endswith(".frag")]
+    if shaders:
+        lines += ["  shaders:"] + [f"    - {p}" for p in dict.fromkeys(shaders)]
     fonts = [p for p in keep if p.lower().endswith(FONT_EXT)]
     if fonts:
         lines.append("  fonts:")

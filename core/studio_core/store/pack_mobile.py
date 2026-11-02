@@ -120,7 +120,8 @@ class FlutterPack:
             put("lib/gen/asset_studio_flame.dart",
                 fd.flame_dart(*(self.flags[k] for k in ("anim", "nine", "parallax", "font", "tiled"))).encode())
         root = self.tree.root
-        paths = sorted(p.relative_to(root).as_posix() for p in (root / "assets").rglob("*") if p.is_file())
+        paths = sorted(p.relative_to(root).as_posix() for d in ("assets", "shaders") if (root / d).is_dir()
+                       for p in (root / d).rglob("*") if p.is_file())
         if fd.asset_paths(paths):
             put("pubspec_assets.yaml", fd.pubspec_snippet(paths, self.packages).encode())
             put("lib/gen/asset_studio_assets.dart", fd.assets_dart(paths).encode())

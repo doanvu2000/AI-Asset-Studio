@@ -163,7 +163,9 @@ def _font_doc(font: dict) -> dict:
             "kernings": [list(k) for k in font.get("kernings") or []]}
 
 
-def export(src: Source, webp: bool = False) -> Files:
+def export(src: Source, webp: bool = False, shaders: bool | None = None) -> Files:
+    """`shaders`: None = Shader Pack only when a normal map exists, True = always for a sprite sheet (a normal map is
+    generated from alpha when missing), False = never."""
     a = ident(src.asset, "asset")
     files: Files = []
     notes: list[str] = []
@@ -175,6 +177,19 @@ def export(src: Source, webp: bool = False) -> Files:
         files += _sheet_files(src, a)
         notes.append(NOTE_ANIM.format(asset=a))
         use_anim = True
+
+    if shaders is not False and src.sheet is not None and src.meta is not None and (shaders or src.normal is not None):
+        normal = src.normal
+        if normal is None:
+            from studio_core.export.normal2d import Normal2DOptions, sheet_normal
+
+            normal = sheet_normal(Path(src.sheet), layout(src.meta, src.clip_hint, directional_rows=src.directional_rows),
+                                  Normal2DOptions())
+        from studio_core.export.flutter_shaders import shader_files
+
+        sh_files, sh_notes = shader_files(src, normal, a)
+        files += sh_files
+        notes += sh_notes
 
     names = _unique([n for n, *_ in src.ui], "ui")
     ui_items = [] if src.ui_screen else list(zip(names, src.ui))
@@ -260,7 +275,7 @@ def export(src: Source, webp: bool = False) -> Files:
     if use_anim or use_nine or use_parallax or use_font or use_tiled:
         files.append(("lib/gen/asset_studio_flame.dart",
                       flame_dart(use_anim, use_nine, use_parallax, use_font, use_tiled).encode()))
-    paths = [n for n, _ in files if n.startswith("assets/")]
+    paths = [n for n, _ in files if n.startswith(("assets/", "shaders/"))]
     if asset_paths(paths):
         files += [("pubspec_assets.yaml", pubspec_snippet(paths, packages).encode()),
                   ("lib/gen/asset_studio_assets.dart", assets_dart(paths).encode())]
