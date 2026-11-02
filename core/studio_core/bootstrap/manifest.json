@@ -34,6 +34,7 @@
    "label": "Cơ bản 2D",
    "detail": "Concept 2D, texture, tileset, tách nền. Mọi quy trình đều cần.",
    "required": true,
+   "hw": {"min_vram_gb": 6, "rec_vram_gb": 10, "min_ram_gb": 16},
    "workflows": [
     "t2i_zimage_turbo",
     "t2i_zimage_controlnet",
@@ -45,6 +46,7 @@
    "label": "Biến thể + Spine",
    "detail": "Biến thể 2D, nhân vật Spine (tách part, vá khớp).",
    "required": false,
+   "hw": {"min_vram_gb": 6, "rec_vram_gb": 10, "min_ram_gb": 16},
    "workflows": [
     "edit_flux2_klein4b",
     "inpaint_flux2_klein4b",
@@ -56,6 +58,7 @@
    "label": "Nhiều góc nhìn",
    "detail": "Sprite 8 hướng 2D, sprite 3D multi-view, hoạt ảnh, Spine trước + sau.",
    "required": false,
+   "hw": {"min_vram_gb": 8, "rec_vram_gb": 12, "min_ram_gb": 32},
    "workflows": [
     "multi_angles_qwen2511"
    ]
@@ -65,6 +68,7 @@
    "label": "3D",
    "detail": "Prop 3D, sprite 8 hướng qua mesh, hoạt ảnh.",
    "required": false,
+   "hw": {"min_vram_gb": 8, "rec_vram_gb": 12, "min_ram_gb": 24},
    "workflows": [
     "img2mesh_trellis2_textured",
     "img2mesh_trellis2_mv_textured",
@@ -76,6 +80,7 @@
    "label": "Âm thanh",
    "detail": "Hiệu ứng âm thanh (Stable Audio Open) và nhạc nền lặp (ACE-Step 1.5).",
    "required": false,
+   "hw": {"min_vram_gb": 4, "rec_vram_gb": 8, "min_ram_gb": 16},
    "workflows": [
     "sfx_stable_audio",
     "music_ace_step15"
@@ -86,6 +91,7 @@
    "label": "Hiệu ứng VFX",
    "detail": "Flipbook nổ, chém, khói, phép có kênh alpha (Wan 2.1 Alpha 14B, cần ~64GB RAM khi VRAM 12GB).",
    "required": false,
+   "hw": {"min_vram_gb": 8, "rec_vram_gb": 16, "min_ram_gb": 64},
    "workflows": [
     "vfx_wan_alpha"
    ]
@@ -95,6 +101,7 @@
    "label": "Phóng to HD",
    "detail": "Phóng ảnh / atlas x2, x4 bằng Real-ESRGAN (BSD-3), giữ nền trong suốt; pixel art phóng nearest.",
    "required": false,
+   "hw": {"min_vram_gb": 2, "rec_vram_gb": 4, "min_ram_gb": 16},
    "workflows": [
     "upscale_esrgan"
    ]
@@ -104,6 +111,7 @@
    "label": "Phóng to SeedVR2",
    "detail": "Engine phóng to nét hơn Real-ESRGAN (SeedVR2 3B fp8, Apache-2.0, ≈3.9 GB + custom node), chậm hơn; chọn engine seedvr2 trong quy trình Phóng to HD.",
    "required": false,
+   "hw": {"min_vram_gb": 6, "rec_vram_gb": 12, "min_ram_gb": 32},
    "workflows": [
     "upscale_seedvr2"
    ],
@@ -133,6 +141,7 @@
    "label": "Key art động",
    "detail": "Key art → teaser 5 giây lặp liền (Wan 2.2 TI2V 5B, Apache-2.0), xuất MP4 + WebM + GIF.",
    "required": false,
+   "hw": {"min_vram_gb": 8, "rec_vram_gb": 12, "min_ram_gb": 32},
    "workflows": [
     "keyart_wan22_ti2v"
    ]
@@ -142,6 +151,7 @@
    "label": "Tách layer PSD",
    "detail": "Ảnh → các layer RGBA theo độ sâu, vẽ bù phần bị che, xuất PSD (Qwen-Image-Layered fp8, Apache-2.0, ≈21 GB; cần ~64GB RAM khi VRAM 12GB).",
    "required": false,
+   "hw": {"min_vram_gb": 8, "rec_vram_gb": 16, "min_ram_gb": 64},
    "workflows": [
     "qwen_image_layered"
    ]
@@ -151,6 +161,7 @@
    "label": "Skybox 360",
    "detail": "Bầu trời / phông 360° liền mép cho game 3D: Qwen-Image 2512 int8 (Apache-2.0) + LoRA qwen-360-diffusion (MIT), ≈21 GB; cần ~64GB RAM khi VRAM 12GB.",
    "required": false,
+   "hw": {"min_vram_gb": 8, "rec_vram_gb": 16, "min_ram_gb": 64},
    "workflows": [
     "t2i_qwen_image_360"
    ]
@@ -160,6 +171,7 @@
    "label": "Tìm ảnh giống",
    "detail": "Tìm asset giống nhau bằng ảnh/chữ (CLIP ViT-B/32, chạy CPU, ≈150 MB).",
    "required": false,
+   "hw": {"min_vram_gb": 0, "rec_vram_gb": 0, "min_ram_gb": 4},
    "workflows": [],
    "models": [
     "vision_model_quantized.onnx",
@@ -172,6 +184,7 @@
    "label": "Giọng đọc NPC",
    "detail": "Đọc thoại NPC tiếng Việt (Piper vais1000) và tiếng Anh (Kokoro), chạy CPU, ≈200 MB tải về.",
    "required": false,
+   "hw": {"min_vram_gb": 0, "rec_vram_gb": 0, "min_ram_gb": 4},
    "workflows": [],
    "models": [
     "vits-piper-vi_VN-vais1000-medium",
