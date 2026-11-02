@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from ..contracts import Outputs, StepContext, StepError, StepResult
 from .engine_pack import _body_height, _match_scale
@@ -17,6 +17,9 @@ from .executors import OpExecutor, _images_in, _load, _out_name, _put_png
 ALPHA_MIN = 16
 # Only the lowest slice of the body decides where the feet are; a swung arm or weapon must not drag the pivot.
 FOOT_BAND = 0.1
+# Parts narrower than this share of the figure height (blades, staffs) are not feet; small sprites skip the opening.
+THIN_WIDTH = 0.04
+THIN_MIN_HEIGHT = 64
 
 
 @dataclass
@@ -44,14 +47,33 @@ def clip_name(name: str | None) -> str:
     return re.sub(r"[\s_.\-]*\d+$", "", stem) or "clip"
 
 
+def body_foot(img: Image.Image) -> tuple[float, float] | None:
+    """Ground contact (x centre of the feet, bottom y) from the thick body only: a blade or staff pointing down is
+    thinner than the legs, so a horizontal-width opening drops it before the lowest rows are read."""
+    a = np.asarray(img.getchannel("A")) >= ALPHA_MIN
+    ys = np.nonzero(a.any(axis=1))[0]
+    if not len(ys):
+        return None
+    y0, y1 = int(ys[0]), int(ys[-1]) + 1
+    k = 2 * round((y1 - y0) * THIN_WIDTH / 2) + 1 if y1 - y0 >= THIN_MIN_HEIGHT else 1
+    if k > 1:
+        im = Image.fromarray(a.astype(np.uint8) * 255)
+        thick = np.asarray(im.filter(ImageFilter.MinFilter(k)).filter(ImageFilter.MaxFilter(k))) > 127
+        if thick.any():
+            a = thick
+            ys = np.nonzero(a.any(axis=1))[0]
+            y0, y1 = int(ys[0]), int(ys[-1]) + 1
+    band = np.nonzero(a[max(y0, y1 - max(1, round((y1 - y0) * FOOT_BAND))):y1].any(axis=0))[0]
+    return float(band.mean() + 0.5), float(y1)
+
+
 def _stats(img: Image.Image) -> tuple[float, float, float, float, float] | None:
     a = np.asarray(img.getchannel("A")) >= ALPHA_MIN
     if not a.any():
         return None
     ys, xs = np.nonzero(a)
-    y0, y1 = int(ys.min()), int(ys.max()) + 1
-    band = np.nonzero(a[max(y0, y1 - max(1, round((y1 - y0) * FOOT_BAND))):y1].any(axis=0))[0]
-    return float(a.sum()), float(xs.max() + 1 - xs.min()), float(y1 - y0), float(band.mean() + 0.5), float(y1)
+    foot = body_foot(img)
+    return float(a.sum()), float(xs.max() + 1 - xs.min()), float(ys.max() + 1 - ys.min()), foot[0], foot[1]
 
 
 def smooth(values: np.ndarray, window: int, method: str) -> np.ndarray:
@@ -143,6 +165,7 @@ def _flag(v: Any) -> bool:
 
 class AnimStabilize(OpExecutor):
     kind = "op.anim_stabilize"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = _images_in(inputs)

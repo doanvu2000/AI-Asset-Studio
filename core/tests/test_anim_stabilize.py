@@ -88,3 +88,32 @@ def test_recipe_loads_and_uses_registered_kind():
     r = load_recipes(RECIPES)["anim-stabilize"]
     assert r.step("stab").kind == "op.anim_stabilize"
     assert set(r.outputs) == {"final", "meta"}
+
+
+def knight(blade: bool, size: int = 256) -> Image.Image:
+    a = np.zeros((size, size, 4), np.uint8)
+    a[60:200, 90:170] = 255
+    a[200:240, 95:120] = 255
+    a[200:240, 140:165] = 255
+    if blade:
+        a[130:256, 170:176] = 255
+    return Image.fromarray(a, "RGBA")
+
+
+def test_body_foot_ignores_blade_pointing_down():
+    from studio_core.ops.anim_stabilize import body_foot
+    x, y = body_foot(knight(True))
+    assert y == 240
+    assert body_foot(knight(False)) == (x, y)
+
+
+def test_blade_frame_pinned_to_legs_not_tip():
+    res = anim_stabilize([knight(False), knight(True)], smooth_window=0)
+    assert [f.foot[1] for f in res.frames] == [240, 240]
+    assert res.images[1].getchannel("A").getbbox()[3] > res.pivot[1]
+
+
+def test_body_foot_empty_and_small_sprite():
+    from studio_core.ops.anim_stabilize import body_foot
+    assert body_foot(Image.new("RGBA", (64, 64))) is None
+    assert body_foot(sprite((10, 10, 14, 30))) == (12.0, 30.0)
