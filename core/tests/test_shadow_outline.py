@@ -118,3 +118,22 @@ def test_cut_and_repack_atlas_roundtrip():
 def test_recipe_accepts_sheet_and_atlas():
     r = load_recipes(RECIPES)["shadow-outline"]
     assert {"sheet", "atlas"} <= set(r.inputs) and "atlas" in r.outputs
+
+
+def test_blob_follows_feet_when_pivot_is_below_them():
+    frames = [sprite(64, 64, (20, 8, 44, 40))]
+    low = shadow_outline(frames, fx(), pivot=(32, 59))
+    feet = shadow_outline(frames, fx())
+    assert low.images[0].getchannel("A").getbbox() == feet.images[0].getchannel("A").getbbox()
+    assert low.pivot[1] - feet.pivot[1] == 19
+
+
+def test_blob_ignores_blade_below_the_legs():
+    a = np.zeros((256, 256, 4), np.uint8)
+    a[60:200, 90:170] = 255
+    a[200:240, 95:120] = 255
+    a[200:240, 140:165] = 255
+    a[130:256, 170:176] = 255
+    res = shadow_outline([Image.fromarray(a, "RGBA")], fx(shadow_opacity=1.0, blob_squash=0.3))
+    alpha = np.asarray(res.images[0].getchannel("A"))
+    assert alpha[240 + res.pad[1] + 2, 95 + res.pad[0] + 5] > 0

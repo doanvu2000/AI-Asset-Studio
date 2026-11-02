@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image
 
 from ..contracts import Outputs, StepContext, StepError, StepResult
+from .anim_stabilize import body_foot
 from .executors import OpExecutor, _load, _out_name, _put_png, _read_json
 from .fx import FxParams, apply_fx, blob_geometry, fx_colors
 from .pixel_cleanup import _outline_color, palette_from_image
@@ -68,7 +69,9 @@ def shadow_outline(frames: list[Image.Image], fx: FxParams, pivot: tuple[float, 
     w, h = base[0].size
     if pivot is not None:
         pivot = (pivot[0] + offsets[0][0], pivot[1] + offsets[0][1])
-    geo = blob_geometry(base, pivot, fx) if fx.shadow == "blob" else None
+    feet = [f for f in map(body_foot, base) if f]
+    foot = (float(np.median([f[0] for f in feet])), float(np.median([f[1] for f in feet])) - 1) if feet else None
+    geo = blob_geometry(base, foot or pivot, fx) if fx.shadow == "blob" else None
     if pivot is None:
         boxes = [b for b in (_bbox(f, 16) for f in base) if b]
         pivot = ((float(np.median([(b[0] + b[2]) / 2 for b in boxes])), float(np.median([b[3] for b in boxes])))
@@ -153,6 +156,7 @@ def repack_atlas(doc: dict[str, Any], names: list[str], entries: list[dict[str, 
 
 class ShadowOutline(OpExecutor):
     kind = "op.shadow_outline"
+    version = "2"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         refs = inputs.get("images") or []
