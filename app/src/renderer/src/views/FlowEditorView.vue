@@ -634,12 +634,6 @@ const showWorkflowPanel = computed(() => !node.value)
   pointer-events: none;
 }
 .hint-empty {
-  right: auto;
-  left: 50%;
-  top: 50%;
-  bottom: auto;
-  transform: translate(-50%, -50%);
-  font-size: var(--fs-body);
   color: var(--text-2);
 }
 .inspector {
