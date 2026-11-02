@@ -15,6 +15,7 @@ import AssetViewer from '@/components/viewers/AssetViewer.vue'
 import AssetActions from '@/components/AssetActions.vue'
 import OpenInEngine from '@/components/OpenInEngine.vue'
 import ExportToEngine from '@/components/ExportToEngine.vue'
+import NextStepChips from '@/components/NextStepChips.vue'
 import ViewsReport from '@/components/ViewsReport.vue'
 import MeshReport from '@/components/MeshReport.vue'
 import StyleLockReport from '@/components/StyleLockReport.vue'
@@ -520,6 +521,8 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
     </div>
 
     <AgentRunBanner :run-id="id" />
+
+    <NextStepChips v-if="run?.status === 'succeeded' && finalStep" :recipe-id="run.recipe_id" :outputs="finalStep.outputs" :project-id="run.project_id" />
 
     <div v-if="runWarnings.length" class="note warn run-warn" role="status">
       <TriangleAlert :size="16" />

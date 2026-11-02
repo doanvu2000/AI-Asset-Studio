@@ -1,0 +1,180 @@
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue'
+import { Boxes } from '@lucide/vue'
+import type { RecipeInfo, WorkflowDef } from '@/api/types'
+import { useRecipes } from '@/stores/recipes'
+import { useFlows } from '@/stores/flows'
+import { recipeDemo, type RecipeDemo } from '@/composables/recipePeek'
+import RecipeDemoImage from './RecipeDemoImage.vue'
+
+type Goal = { id: string; title: string; text: string; flow?: string; recipes?: string[] }
+
+const GOALS: Goal[] = [
+  { id: 'character', title: 'Nhân vật game', text: 'Từ một ý tưởng ra nhân vật biết đi, chạy, đánh, dùng được ngay trong game.', flow: 'character-pack' },
+  { id: 'level', title: 'Màn chơi', text: 'Nền đất, đồ trang trí và phông xa ghép thành một màn chơi hoàn chỉnh.', flow: 'level-pack' },
+  { id: 'ui', title: 'Bộ UI app/game', text: 'Nút, khung, thanh và icon cùng một phong cách cho cả ứng dụng.', flow: 'ui-pack' },
+  { id: 'slice', title: 'Bản chơi thử đủ bộ', text: 'Một lần làm xong nhân vật, màn chơi và giao diện từ cùng một ý tưởng.', flow: 'game-slice' },
+  { id: 'icons', title: 'Icon / ảnh UI lẻ', text: 'Làm nhanh một bộ icon hoặc vài ảnh giao diện riêng lẻ.', recipes: ['icon-pack', 'ui-kit', 'ui-screen'] },
+  { id: 'prop3d', title: 'Vật phẩm 3D', text: 'Tạo một món đồ 3D như kiếm, thùng, cây rồi xuất ra ảnh hoặc mô hình.', recipes: ['prop-3d', 'icon-3d'] },
+  { id: 'pixel', title: 'Làm sạch pixel-art', text: 'Đưa ảnh pixel bị nhòe hoặc lẫn màu về điểm ảnh sắc nét, đúng bảng màu.', recipes: ['pixel-cleanup'] }
+]
+
+const emit = defineEmits<{ recipe: [id: string]; flow: [id: string]; count: [n: number] }>()
+
+const recipes = useRecipes()
+const flows = useFlows()
+const demos = ref<Record<string, RecipeDemo | null>>({})
+
+onMounted(() => {
+  void recipes.load()
+  if (!flows.defsLoaded) void flows.loadDefs()
+})
+
+interface Card {
+  goal: Goal
+  flowDef?: WorkflowDef
+  options: RecipeInfo[]
+  previewFrom: RecipeInfo[]
+}
+
+const cards = computed<Card[]>(() =>
+  GOALS.flatMap((goal) => {
+    if (goal.flow) {
+      const flowDef = flows.byId(goal.flow)
+      if (!flowDef) return []
+      const previewFrom = flowDef.nodes.map((n) => recipes.byId(n.recipe_id)).filter((r): r is RecipeInfo => !!r)
+      return [{ goal, flowDef, options: [], previewFrom }]
+    }
+    const options = (goal.recipes ?? []).map((id) => recipes.byId(id)).filter((r): r is RecipeInfo => !!r)
+    return options.length ? [{ goal, options, previewFrom: options }] : []
+  })
+)
+
+watch(
+  cards,
+  (list) => {
+    emit('count', list.length)
+    for (const c of list) void loadDemo(c)
+  },
+  { immediate: true }
+)
+
+async function loadDemo(c: Card): Promise<void> {
+  const id = c.goal.id
+  if (id in demos.value) return
+  demos.value[id] = null
+  for (const r of c.previewFrom) {
+    const d = await recipeDemo(r).catch(() => null)
+    if (d) {
+      demos.value[id] = d
+      return
+    }
+  }
+}
+
+function open(c: Card): void {
+  if (c.flowDef) emit('flow', c.flowDef.id)
+  else if (c.options[0]) emit('recipe', c.options[0].id)
+}
+</script>
+
+<template>
+  <section v-if="cards.length" class="goals" aria-labelledby="goals-h">
+    <h2 id="goals-h" class="section-label">Tôi cần…</h2>
+    <div class="g-grid">
+      <div v-for="c in cards" :key="c.goal.id" class="g-card card">
+        <button type="button" class="g-main" @click="open(c)">
+          <span class="g-art checker">
+            <RecipeDemoImage v-if="demos[c.goal.id]" :demo="demos[c.goal.id]!" :alt="`Ảnh mẫu: ${c.goal.title}`" @failed="demos[c.goal.id] = null" />
+            <Boxes v-else :size="28" :stroke-width="1.5" aria-hidden="true" />
+          </span>
+          <span class="headline">{{ c.goal.title }}</span>
+          <span class="callout g-text">{{ c.goal.text }}</span>
+        </button>
+        <span v-if="c.options.length > 1" class="g-alts">
+          <span class="caption">Hoặc</span>
+          <button v-for="r in c.options.slice(1)" :key="r.id" type="button" class="g-alt" :title="r.description" @click="emit('recipe', r.id)">
+            {{ r.name }}
+          </button>
+        </span>
+      </div>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.g-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: var(--sp-3);
+}
+.g-card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  transition:
+    box-shadow var(--t-fast) var(--ease-out),
+    translate var(--t-fast) var(--ease-out);
+}
+.g-card:hover {
+  translate: 0 -1px;
+}
+.g-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 0 0 var(--sp-3);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.g-main > .headline,
+.g-main > .g-text {
+  padding: 0 var(--sp-3);
+}
+.g-art {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin-bottom: 6px;
+  overflow: hidden;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.g-text {
+  color: var(--text-2);
+}
+.g-alts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--sp-3) var(--sp-3);
+  color: var(--text-3);
+}
+.g-alt {
+  padding: 1px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--bg-active);
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-caption);
+  cursor: pointer;
+}
+.g-alt:hover {
+  color: var(--text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .g-card {
+    transition: none;
+  }
+}
+</style>

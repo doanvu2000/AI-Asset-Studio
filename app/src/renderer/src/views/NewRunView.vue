@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, BookOpen, FolderKanban, Languages, Layers, LoaderCircle, Play, RotateCcw, RotateCw, Timer } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, FolderKanban, Languages, Layers, LoaderCircle, Play, RotateCcw, RotateCw, Timer } from '@lucide/vue'
 import type { BlobRef, RecipeInfo, RecipeInputSpec, StyleBible } from '@/api/types'
 import { NO_PROJECT } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
-import LaneTag from '@/components/LaneTag.vue'
+import GoalCards from '@/components/GoalCards.vue'
 import QuickPrompts from '@/components/QuickPrompts.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import RecipeThumb from '@/components/RecipeThumb.vue'
@@ -21,7 +21,7 @@ import { useRuns } from '@/stores/runs'
 import { api, useConnection } from '@/stores/connection'
 import type { ApiError } from '@/api/client'
 import { useToasts } from '@/stores/toasts'
-import { stepName } from '@/composables/format'
+import { LANE_LABEL, stepName } from '@/composables/format'
 import { RECIPE_GROUP_LABEL, RECOMMENDED_RECIPES, recipeGroup, recipePitch, type RecipeGroup } from '@/assets/art'
 import { QUICK_MATERIALS, quickStyleLabel } from '@/assets/quickPrompts'
 import { PREFILL_PREFIX } from '@/composables/followUp'
@@ -98,7 +98,17 @@ const groups = computed(() => {
 const lastRecipe = computed(() => (lastId.value ? recipes.byId(lastId.value) : undefined))
 const flow = (r: RecipeInfo): string => [...new Set(r.steps.map((s) => stepName(s)))].join(' · ')
 const asksPick = (r: RecipeInfo): boolean => r.steps.some((s) => s.kind === 'gate.pick')
-const lanes = (r: RecipeInfo) => [...new Set(r.steps.map((s) => s.lane).filter((l) => l && l !== 'none'))]
+const laneText = (r: RecipeInfo): string => {
+  const l = [...new Set(r.steps.map((s) => s.lane).filter((x) => x && x !== 'none'))].map((x) => LANE_LABEL[x])
+  return l.length ? `Cần: ${l.join(', ')}` : ''
+}
+// With no goal card available (older core, no flows) the full list is the only way in, so it stays open.
+const goalCount = ref(0)
+const showAll = ref(false)
+const listOpen = computed(() => showAll.value || goalCount.value === 0)
+function openFlow(id: string): void {
+  void router.push({ path: `/flows/${id}/run`, query: { project: route.query.project } })
+}
 
 // Median, not mean: wall time includes how long a gate waited for the user, and one overnight wait would skew it.
 const ETA_SAMPLE = 20
@@ -537,12 +547,17 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
             <ArrowRight :size="16" class="chev" />
           </button>
           <p v-if="selectedId && recipes.loaded" class="caption warn">Không tìm thấy quy trình này. Chọn một quy trình khác.</p>
+          <GoalCards @recipe="pick" @flow="openFlow" @count="goalCount = $event" />
+          <button v-if="goalCount" type="button" class="all-toggle" :aria-expanded="listOpen" aria-controls="all-recipes" @click="showAll = !showAll">
+            <ChevronDown :size="15" class="all-chev" :class="{ up: listOpen }" aria-hidden="true" />
+            Xem tất cả công thức
+            <span class="caption num">{{ recipes.list.length }}</span>
+          </button>
+          <div v-show="listOpen" id="all-recipes" class="all stack">
           <section v-for="g in groups" :key="g.id" class="group" :aria-labelledby="`g-${g.id}`">
             <h2 :id="`g-${g.id}`" class="section-label">{{ g.label }}</h2>
             <div class="grid">
-              <button v-for="r in g.items" :key="r.id" class="rcard card" :title="`${flow(r)}
-
-${r.description}`" @click="pick(r.id)">
+              <button v-for="r in g.items" :key="r.id" class="rcard card" :title="[flow(r), laneText(r), r.description].filter(Boolean).join(' · ')" @click="pick(r.id)">
                 <span class="rcard-art"><RecipeThumb :id="r.id" :size="76" /></span>
                 <span class="rcard-text">
                   <span class="headline rcard-name">{{ r.name }}</span>
@@ -558,13 +573,11 @@ ${r.description}`" @click="pick(r.id)">
                     </span>
                     <template v-if="asksPick(r)">Có bước bạn chọn ảnh</template>
                   </span>
-                  <span class="rcard-lanes">
-                    <LaneTag v-for="l in lanes(r)" :key="l" :lane="l" />
-                  </span>
                 </span>
               </button>
             </div>
           </section>
+          </div>
         </template>
       </div>
 
@@ -892,11 +905,36 @@ ${r.description}`" @click="pick(r.id)">
   gap: 3px;
   white-space: nowrap;
 }
-.rcard-lanes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 2px;
+.all {
+  gap: var(--sp-8);
+}
+.all-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 8px 4px 4px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.all-toggle:hover {
+  color: var(--text);
+}
+.all-chev {
+  transition: rotate var(--t-fast) var(--ease-out);
+}
+.all-chev.up {
+  rotate: 180deg;
+}
+@media (prefers-reduced-motion: reduce) {
+  .all-chev {
+    transition: none;
+  }
 }
 .resume {
   display: flex;
