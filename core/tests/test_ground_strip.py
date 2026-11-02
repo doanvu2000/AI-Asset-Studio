@@ -44,3 +44,28 @@ def test_green_patch_above_feet_band_is_kept():
     im.paste(Image.new("RGBA", (6, 6), (110, 190, 60, 255)), (28, 52))
     out, st = strip_ground(im)
     assert out.getpixel((30, 54))[3] == 255 and st["ground_px"] == 0
+
+
+def _shod_knight(grass: bool) -> Image.Image:
+    im = _knight(False)
+    im.paste(Image.new("RGBA", (30, 8), (30, 30, 36, 255)), (17, 78))
+    if grass:
+        for x in (8, 20, 32, 44):
+            im.paste(Image.new("RGBA", (10, 5), (110, 190, 60, 255)), (x, 86))
+    return im
+
+
+def test_dark_shoe_touching_grass_is_kept():
+    out, st = strip_ground(_shod_knight(True))
+    a = np.array(out)[..., 3]
+    assert a[78:86, 17:47].min() == 255
+    assert a[86:91, 8:54].max() == 0
+    assert st["ground_px"] >= 150
+
+
+def test_large_grass_patch_on_small_sprite_is_removed():
+    im = _knight(False)
+    for x in (6, 18, 30, 42):
+        im.paste(Image.new("RGBA", (12, 6), (110, 190, 60, 255)), (x, 86))
+    out, _ = strip_ground(im)
+    assert np.array(out)[86:92, 6:54, 3].max() == 0
