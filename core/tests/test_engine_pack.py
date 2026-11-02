@@ -136,3 +136,38 @@ async def test_mixed_sizes_and_bad_inputs(ctx):
         m = [await ctx.blobs.put_bytes(json.dumps(meta).encode())]
         with pytest.raises(StepError):
             await EnginePack().run(ctx, {"clips": "idle"}, {"sheet_idle": sheet, "meta_idle": m})
+
+
+async def _half_anim(ctx: FakeCtx, n: int):
+    fw, fh = 32, 48
+    sheet = Image.new("RGBA", (n * fw, fh), (0, 0, 0, 0))
+    for i in range(n):
+        sheet.alpha_composite(Image.new("RGBA", (10, 18), (9, 60, 200, 255)), (i * fw + 11, 20))
+    meta = {"frame_w": fw, "frame_h": fh, "cols": n, "rows": 1, "count": n, "padding": 0, "pivot": [16, 38]}
+    return ([await put_img(ctx, sheet, "s.png")],
+            [await ctx.blobs.put_bytes(json.dumps(meta).encode(), name="s.json", mime="application/json")])
+
+
+async def test_anim_scale_matches_direction_height(ctx):
+    inputs = {"frames": [await put_img(ctx, _tall(), f"t{i}.png") for i in range(8)]}
+    inputs["sheet_idle"], inputs["meta_idle"] = await _half_anim(ctx, 2)
+    res = await EnginePack().run(ctx, {"asset": "hero", "engines": "godot", "clips": "idle"}, inputs)
+    assert res.meta["scaled"] == {"idle": 2.0}
+    off = await EnginePack().run(ctx, {"asset": "hero", "engines": "godot", "clips": "idle", "match_scale": False},
+                                 inputs)
+    assert off.meta["scaled"] == {}
+
+
+def _tall() -> Image.Image:
+    im = Image.new("RGBA", (32, 48), (0, 0, 0, 0))
+    im.paste(Image.new("RGBA", (20, 36), (200, 0, 0, 255)), (6, 6))
+    return im
+
+
+async def test_anim_scale_refuses_big_upscale(ctx):
+    big = Image.new("RGBA", (32, 48), (0, 0, 0, 0))
+    big.paste(Image.new("RGBA", (20, 44), (200, 0, 0, 255)), (6, 2))
+    inputs = {"frames": [await put_img(ctx, big, f"b{i}.png") for i in range(8)]}
+    inputs["sheet_idle"], inputs["meta_idle"] = await _half_anim(ctx, 2)
+    res = await EnginePack().run(ctx, {"asset": "hero", "engines": "godot", "clips": "idle"}, inputs)
+    assert res.meta["scaled"] == {} and res.meta["warnings"]

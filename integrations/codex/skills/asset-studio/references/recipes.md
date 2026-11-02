@@ -207,6 +207,7 @@ Mesh nhân vật tĩnh (đứng thẳng, mặt hướng về trước) → Blend
   - `fps` (float; default 12; 1..60) — FPS clip
   - `ppu` (float; default 100; 1..1000) — Pixels per unit (Unity)
   - `pixel` (bool; default False) — Pixel art (lọc Nearest)
+  - `match_scale` (bool; default True) — Chỉnh cỡ anim khớp chiều cao nhân vật ở sprite hướng
 
 ## `combat-frame-data` — Frame data chiến đấu (hitbox / hurtbox + sự kiện)
 

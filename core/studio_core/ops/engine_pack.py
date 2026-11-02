@@ -19,6 +19,9 @@ ONESHOT = {"attack", "slash", "hit", "death", "cast", "jump"}
 DIRECTIONS = 8
 # Same bottom pivot op.sheet(pivot=bottom) and op.normalize(anchor=bottom) use.
 PIVOT_PAD = 0.06
+ALPHA_MIN = 8
+# Beyond this the anim was generated so small that upscaling it would only blur; keep it and warn.
+MAX_MATCH_SCALE = 2.0
 _ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
 
@@ -68,9 +71,22 @@ def _pivot(meta: dict[str, Any], size: tuple[int, int]) -> tuple[float, float]:
     return _bottom_pivot(size)
 
 
+def _body_height(img: Image.Image) -> int:
+    box = img.getchannel("A").point(lambda a: 255 if a >= ALPHA_MIN else 0).getbbox()
+    return box[3] - box[1] if box else 0
+
+
+def _match_scale(frames: list[Image.Image], ref_h: int) -> float | None:
+    # Median body height: a raised weapon in one frame must not shrink the whole clip.
+    heights = sorted(h for h in map(_body_height, frames) if h)
+    if not heights or ref_h <= 0:
+        return None
+    return ref_h / heights[len(heights) // 2]
+
+
 class EnginePack(OpExecutor):
     kind = "op.engine_pack"
-    version = "2"
+    version = "3"
 
     async def run(self, ctx: StepContext, params: dict[str, Any], inputs: Outputs) -> StepResult:
         from ..export.atlas import AtlasError, AtlasOptions, Sprite, engine_files, pack
@@ -87,10 +103,13 @@ class EnginePack(OpExecutor):
             raise StepError("op_bad_params", "fps and ppu must be > 0")
         asset = ident(str(params.get("asset") or "character"), "character")
         pixel = bool(params.get("pixel"))
+        match_scale = params.get("match_scale", True) not in (False, "false", "0", 0)
+        warnings: list[str] = []
         sprites: list[Sprite] = []
         dir_sprites: dict[str, tuple[int, Sprite]] = {}
         clips: dict[str, list[Sprite]] = {}
         sources: dict[str, tuple[int, int, int]] = {}
+        scales: dict[str, float] = {}
 
         dirs = inputs.get("frames") or []
         if dirs and len(dirs) != DIRECTIONS:
@@ -102,6 +121,8 @@ class EnginePack(OpExecutor):
             s = Sprite(f"{asset}_dir_{compass(angle)}", img, _bottom_pivot(img.size), pixel=pixel)
             dir_sprites[compass(angle)] = (angle, s)
             sprites.append(s)
+
+        ref_h = _body_height(dir_sprites["S"][1].image) if "S" in dir_sprites else 0
 
         for raw in str(params.get("clips") or DEFAULT_CLIPS).split(","):
             if not raw.strip():
@@ -120,8 +141,20 @@ class EnginePack(OpExecutor):
             sheet = (await _load(ctx, sheets[0])).convert("RGBA")
             sources[f"sheet_{key}"] = (sheets[0].size or 0, sheet.width, sheet.height)
             frames = _clip_frames(sheet, meta, key)
-            clips[key] = [Sprite(f"{asset}_{key}_{f:02d}", img, _pivot(meta, img.size), pixel=pixel)
-                          for f, img in enumerate(frames)]
+            pivot = _pivot(meta, frames[0].size)
+            if match_scale and ref_h:
+                k = _match_scale(frames, ref_h)
+                if k is None:
+                    warnings.append(f"clip '{key}' has no visible pixels, scale not matched")
+                elif k > MAX_MATCH_SCALE:
+                    warnings.append(f"clip '{key}' is {k:.1f}x smaller than the direction sprites, scale not matched")
+                elif abs(k - 1) > 0.01:
+                    size = (max(1, round(frames[0].width * k)), max(1, round(frames[0].height * k)))
+                    resample = Image.NEAREST if pixel else Image.LANCZOS
+                    frames = [f.resize(size, resample) for f in frames]
+                    pivot = (pivot[0] * k, pivot[1] * k)
+                    scales[key] = round(k, 3)
+            clips[key] = [Sprite(f"{asset}_{key}_{f:02d}", img, pivot, pixel=pixel) for f, img in enumerate(frames)]
             sprites += clips[key]
         if not sprites:
             raise StepError("op_no_input", "no direction frames and no animation sheet to pack")
@@ -153,7 +186,8 @@ class EnginePack(OpExecutor):
         out["atlas"] = [await ctx.blobs.put_bytes(png, name=f"{asset}_atlas{f'_{i}' if multi else ''}.png",
                                                   mime="image/png") for i, png in enumerate(atlas.png)]
         return StepResult(outputs=out, meta={"sprites": len(atlas.frames), "pages": len(atlas.pages),
-                                             "clips": list(clips)})
+                                             "clips": list(clips),
+                                             "scaled": scales, "warnings": warnings})
 
 
 ENGINE_PACK_OPS: tuple[type[OpExecutor], ...] = (EnginePack,)

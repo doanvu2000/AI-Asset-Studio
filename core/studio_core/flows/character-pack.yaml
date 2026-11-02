@@ -16,6 +16,7 @@ nodes:
   - id: style
     recipe_id: style-lock
     title: Khoá style từ concept
+    inputs: {review: false}
     map: {anchor: "concept.outputs.final[0]"}
   - id: sprite
     recipe_id: sprite-8dir-2d

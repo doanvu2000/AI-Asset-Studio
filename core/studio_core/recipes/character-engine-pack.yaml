@@ -20,6 +20,7 @@ inputs:
   fps: {type: float, default: 12, min: 1, max: 60, label: FPS clip}
   ppu: {type: float, default: 100, min: 1, max: 1000, label: "Pixels per unit (Unity)"}
   pixel: {type: bool, default: false, label: Pixel art (lọc Nearest)}
+  match_scale: {type: bool, default: true, label: Chỉnh cỡ anim khớp chiều cao nhân vật ở sprite hướng}
 steps:
   - id: pack
     kind: op.engine_pack
@@ -34,7 +35,7 @@ steps:
       sheet_hit: inputs.hit
       meta_hit: inputs.hit_meta
     params: {asset: "${inputs.asset}", engines: "${inputs.engines}", fps: "${inputs.fps}", ppu: "${inputs.ppu}",
-             pixel: "${inputs.pixel}"}
+             pixel: "${inputs.pixel}", match_scale: "${inputs.match_scale}"}
 outputs:
   final: pack.atlas
   atlas: pack.atlas
