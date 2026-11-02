@@ -87,3 +87,5 @@ Gói đợt 1: W1-A (U4 sidebar, U2 dự án mặc định + engine đích, U3 n
 - [x] Full pytest (trừ test_anim_video đang sửa): 1515 pass, 5 skip, 356s.
 - [~] N3 emotion-portraits (live nếu không có .gpu-lock) + N7 region-edit (core + RegionEditDialog, không live) giao agent.
 - [x] N3 emotion-portraits (live OK, main xem sheet: 7 biểu cảm rõ, cùng người; neutral hơi nhỏ) + N7 region-edit (versions.parent_id, RegionEditDialog; chưa live) — 92 pass, typecheck sạch.
+- [~] 4 agent song song (chủ nhân cho tăng lên 4): ANIM-2 (GPU), KT-1 compile Kotlin, QA-UI mock + Playwright, FU-1 (portrait scale, qa shadow_outline, shadow-outline sheet+atlas).
+- [x] KT-1 Kotlin compile: AGP 8.13.2/Kotlin 2.4.21/BOM 2026.05.00 compileDebugKotlin + processDebugResources sạch (scratchpad/kt). Fix tiền tố số → asset_ trong AndroidPack.

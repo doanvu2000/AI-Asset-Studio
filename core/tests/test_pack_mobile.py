@@ -149,3 +149,26 @@ def test_flutter_pack_merges_icon_tiles_and_svg(tmp_path: Path) -> None:
     assert "flame_tiled: ^" in yaml and "flutter_svg: ^" in yaml and "assets/icon" not in yaml and "    - assets/tiles/\n" in yaml
     assert "TiledComponent.load" in (out / "lib/gen/asset_studio_flame.dart").read_text(encoding="utf-8")
     assert "assets/icon" not in (out / "lib/gen/asset_studio_assets.dart").read_text(encoding="utf-8")
+
+
+def test_android_pack_resource_names_never_start_with_digit(tmp_path: Path) -> None:
+    from PIL import Image
+
+    from studio_core.export import android
+    from studio_core.export.source import Source
+    from studio_core.store.pack_mobile import AndroidPack
+
+    png = tmp_path / "c.png"
+    Image.new("RGBA", (16, 16), (200, 40, 40, 255)).save(png)
+    staged = tmp_path / "in"
+    for rel, data in android.export(Source(asset="9 Lives", ui=[("coin", png, (0, 0, 0, 0), "")])):
+        (staged / rel).parent.mkdir(parents=True, exist_ok=True)
+        (staged / rel).write_bytes(data)
+    out = tmp_path / "out"
+    pack = AndroidPack(out, "Pack", "com.acme.game", [])
+    pack.add("9 Lives", staged)
+    pack.finish()
+    names = [p.name.split(".")[0] for p in out.rglob("res/drawable-*/*")]
+    assert names and all(re.fullmatch(r"[a-z][a-z0-9_]*", n) for n in names), names
+    kt = (out / "kotlin/AssetStudioAssets.kt").read_text(encoding="utf-8")
+    assert "R.drawable.asset_9_lives_coin" in kt

@@ -169,6 +169,8 @@ class AndroidPack:
     def add(self, folder: str, d: Path) -> list[str]:
         images, patches, clips = parse_kotlin((d / an.KOTLIN_FILE).read_text(encoding="utf-8"))
         prefix = re.sub(r"[^a-z0-9_]+", "_", ident(folder, "asset").lower()).strip("_") + "_"
+        if prefix[0].isdigit():  # aapt2 rejects resource names that start with a digit
+            prefix = "asset_" + prefix
         mapping: dict[str, str] = {}
         for n in [*images, *patches, *(c.name for c in clips), *(f for c in clips for f in c.frames)]:
             if n not in mapping:
