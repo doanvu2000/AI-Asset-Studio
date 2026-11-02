@@ -233,7 +233,7 @@ useEventListener(
                   <span class="section-label">Tác giả</span>
                   <input v-model="author" class="field" placeholder="Tên studio / tác giả" />
                 </label>
-                <label class="lbl">
+                <label v-if="picks.has('unity')" class="lbl">
                   <span class="section-label">Tổ chức (tên gói Unity)</span>
                   <input v-model="org" class="field" placeholder="assetstudio" spellcheck="false" />
                 </label>
