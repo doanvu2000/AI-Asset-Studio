@@ -135,9 +135,11 @@ export interface QaRecomputeResult {
   updated: number
   skipped: number
   total: number
+  cancelled?: boolean
 }
 
 export type EventType =
+  | 'scan.progress'
   | 'project.auto_export'
   | 'run.created'
   | 'run.updated'

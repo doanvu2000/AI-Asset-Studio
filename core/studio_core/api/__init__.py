@@ -55,6 +55,7 @@ def mount_api(app: FastAPI, allowed_origins: list[str]) -> None:
     app.include_router(diagnostics.router)
     app.include_router(stats.router)
     app.include_router(qa.router)
+    app.include_router(qa.scans)
     app.include_router(setup.router)
     app.include_router(ws.router)
     app.add_middleware(CORSMiddleware, allow_origins=allowed_origins, allow_methods=["*"],

@@ -17,6 +17,8 @@ import AtlasDialog from '@/components/AtlasDialog.vue'
 import RelTime from '@/components/RelTime.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
 import QaBadge from '@/components/QaBadge.vue'
+import ScanProgressBar from '@/components/ScanProgressBar.vue'
+import { useScanProgress } from '@/composables/scanProgress'
 import { QA_LOW, QA_VERSION, groupQa, qaScore } from '@/composables/qa'
 import { api } from '@/stores/connection'
 import { featuredAcross, isAtlas, isImage, isJson, type AssetView } from '@/components/viewers/detect'
@@ -205,6 +207,7 @@ const unscored = computed(() => {
   ).length
 })
 const scoring = ref(false)
+const qaLive = useScanProgress('qa')
 const QA_CHUNK = 500
 async function scoreOld(): Promise<void> {
   if (scoring.value) return
@@ -212,13 +215,19 @@ async function scoreOld(): Promise<void> {
   try {
     const project_id = projectFilter.value === 'all' ? undefined : projectFilter.value
     let updated = 0
+    let cancelled = false
     // Unscorable rows stay "missing", so stop on a round that scored nothing instead of re-picking them forever.
     for (let round = 0; round < 20; round++) {
       const r = await api().recomputeQa({ missing_only: true, project_id, limit: QA_CHUNK })
       updated += r.updated
+      if ((r as { cancelled?: boolean }).cancelled) {
+        cancelled = true
+        break
+      }
       if (r.updated === 0 || r.total < QA_CHUNK) break
     }
-    toasts.push(updated ? `Đã chấm điểm ${updated} ảnh` : 'Không còn ảnh nào cần chấm', 'success', 2400)
+    if (cancelled) toasts.push(`Đã dừng chấm điểm, ${updated} ảnh đã có điểm`, 'info', 2800)
+    else toasts.push(updated ? `Đã chấm điểm ${updated} ảnh` : 'Không còn ảnh nào cần chấm', 'success', 2400)
   } catch (e) {
     toasts.error(e, 'Không chấm điểm được')
   } finally {
@@ -453,6 +462,9 @@ function move(d: -1 | 1): void {
         <FileInput /> <span class="lbl">Nhập Aseprite</span>
       </RouterLink>
     </PageHeader>
+    <div v-if="scoring" class="qa-strip" aria-live="polite">
+      <ScanProgressBar :progress="qaLive.progress.value" :cancelling="qaLive.cancelling.value" unit="ảnh" compact @cancel="qaLive.cancel" />
+    </div>
     <div class="bar">
       <div class="bar-row">
         <label class="search">
@@ -1075,6 +1087,9 @@ function move(d: -1 | 1): void {
 }
 .view {
   position: relative;
+}
+.qa-strip {
+  padding: var(--sp-3) var(--sp-6) 0;
 }
 @media (prefers-reduced-motion: reduce) {
   .tile,

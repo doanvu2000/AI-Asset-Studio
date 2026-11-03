@@ -275,7 +275,8 @@ def _patterns(raw: Any) -> list[str]:
     return [p.strip() for p in re.split(r"[,\n;]", str(raw or "")) if p.strip()]
 
 
-def scan_folder(folder: str | Path, include: Any = "", exclude: Any = "", max_files: int = MAX_FILES) -> dict[str, Any]:
+def scan_folder(folder: str | Path, include: Any = "", exclude: Any = "", max_files: int = MAX_FILES,
+                progress: Any = None) -> dict[str, Any]:
     root = Path(str(folder or "")).expanduser()
     if not str(folder or "").strip() or not root.is_absolute():
         raise RestyleError("folder must be an absolute path")
@@ -286,8 +287,10 @@ def scan_folder(folder: str | Path, include: Any = "", exclude: Any = "", max_fi
     root = root.resolve()
     engine, proj = project_root(root)
     inc, exc = _patterns(include), _patterns(exclude)
+    tick = progress or (lambda *_: None)
     pngs, scenes = [], []
     for p in _walk(root):
+        tick(len(pngs), 0, "walk")
         low = p.name.lower()
         if low.endswith(".png") and not _is_link(p):
             pngs.append(p)
@@ -299,7 +302,8 @@ def scan_folder(folder: str | Path, include: Any = "", exclude: Any = "", max_fi
     regions = godot_regions(proj, scenes) if engine == "godot" else {}
     items: list[Item] = []
     skipped: list[dict[str, str]] = []
-    for p in pngs:
+    for n, p in enumerate(pngs):
+        tick(n, len(pngs), "files")
         rel = p.relative_to(root).as_posix()
         if (inc and not _match(rel, inc)) or (exc and _match(rel, exc)):
             continue
@@ -347,6 +351,7 @@ def scan_folder(folder: str | Path, include: Any = "", exclude: Any = "", max_fi
         it.rects = [r for r in it.rects if r.x >= 0 and r.y >= 0 and r.x + r.w <= w and r.y + r.h <= h]
         it.kind = _classify(it, p.stem)
         items.append(it)
+    tick(len(pngs), len(pngs), "files")
     counts = {k: sum(1 for i in items if i.kind == k) for k in KINDS}
     return {"type": SCAN_TYPE, "version": 1, "root": str(root), "engine": engine, "project": str(proj),
             "items": [i.as_dict() for i in items], "skipped": skipped, "counts": counts,

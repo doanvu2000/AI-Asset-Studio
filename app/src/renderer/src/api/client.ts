@@ -110,6 +110,7 @@ export interface StudioApi {
   getRun(id: string): Promise<RunDetail>
   cancelRun(id: string): Promise<void>
   rerunRun(id: string, seed?: 'new' | 'same'): Promise<{ run_id: string }>
+  cancelScan(body: { job?: string; kind?: 'audit' | 'restyle' | 'qa' }): Promise<unknown>
   listRunPresets(recipeId: string, projectId?: string): Promise<RunPreset[]>
   saveRunPreset(body: RunPresetBody): Promise<RunPreset>
   deleteRunPreset(id: string): Promise<void>
@@ -331,6 +332,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
       ),
     getRun: (id) => call('GET', `/api/runs/${enc(id)}`),
     cancelRun: (id) => call('POST', `/api/runs/${enc(id)}/cancel`),
+    cancelScan: (body) => call('POST', '/api/scans/cancel', body),
     rerunRun: (id, seed = 'new') => call('POST', `/api/runs/${enc(id)}/rerun`, { seed }, SLOW_TIMEOUT_MS),
     listRunPresets: (recipeId, projectId) =>
       call('GET', `/api/presets/runs${query({ recipe_id: recipeId, project_id: projectId })}`),

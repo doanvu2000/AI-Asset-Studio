@@ -5,7 +5,9 @@ import { Check, CircleAlert, FolderOpen, LayoutGrid, LoaderCircle, ScanSearch, S
 import type { AuditBackup, AuditFix, AuditFixResult, AuditReport, AuditTexture } from '@/api/auditTypes'
 import EmptyState from '@/components/EmptyState.vue'
 import PageHeader from '@/components/PageHeader.vue'
+import ScanProgressBar from '@/components/ScanProgressBar.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
+import { useScanProgress } from '@/composables/scanProgress'
 import { api, useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { bytes } from '@/composables/format'
@@ -20,6 +22,7 @@ const REF_LABEL: Record<string, string> = { texture: 'Ảnh', audio: 'Âm thanh'
 const route = useRoute()
 const conn = useConnection()
 const toasts = useToasts()
+const scanLive = useScanProgress('audit')
 
 function readFolder(): string {
   try {
@@ -80,6 +83,7 @@ async function doScan(): Promise<void> {
     }
     await loadBackups()
   } catch (e) {
+    if ((e as { code?: string }).code === 'cancelled') return void toasts.push('Đã huỷ quét', 'info', 2400)
     report.value = null
     scanError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -236,13 +240,19 @@ function reveal(p: string): void {
         </section>
 
         <section v-if="!report" class="card pane" aria-live="polite">
-          <EmptyState v-if="scanning" :icon="ScanSearch" title="Đang quét project…" text="Đọc texture, mesh, âm thanh và tham chiếu trong project. Project lớn có thể mất vài chục giây." />
+          <EmptyState v-if="scanning" :icon="ScanSearch" title="Đang quét project…" text="Đọc texture, mesh, âm thanh và tham chiếu trong project. Project lớn có thể mất vài chục giây.">
+            <ScanProgressBar :progress="scanLive.progress.value" :cancelling="scanLive.cancelling.value" @cancel="scanLive.cancel" />
+          </EmptyState>
           <EmptyState v-else-if="scanError" :icon="CircleAlert" title="Không quét được project" :text="scanError">
             <button type="button" class="btn" :disabled="!canScan" @click="doScan"><ScanSearch /> Quét lại</button>
           </EmptyState>
           <EmptyState v-else :icon="FolderOpen" title="Chưa chọn project" text="Dán đường dẫn project Unity hoặc Godot vào ô trên, hoặc chọn thư mục, rồi bấm Quét.">
             <button type="button" class="btn btn-primary" @click="pickFolder"><FolderOpen /> Chọn thư mục…</button>
           </EmptyState>
+        </section>
+
+        <section v-if="report && scanning" class="card pane rescan" aria-live="polite">
+          <ScanProgressBar :progress="scanLive.progress.value" :cancelling="scanLive.cancelling.value" @cancel="scanLive.cancel" />
         </section>
 
         <Transition name="fade-up">
@@ -393,6 +403,9 @@ function reveal(p: string): void {
 <style scoped>
 .wrap {
   max-width: 1080px;
+}
+.pane.rescan {
+  padding-block: var(--sp-3);
 }
 .pane {
   display: grid;

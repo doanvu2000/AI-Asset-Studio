@@ -25,6 +25,7 @@ import { useGpu } from './gpu'
 import { NO_PROJECT } from '@/api/types'
 import { AUTO_EXPORT_EVENT, autoExportToast, recordAutoExport } from '@/composables/autoExport'
 import { useToasts } from './toasts'
+import { SCAN_EVENT, recordScan } from '@/composables/scanProgress'
 
 // One pass per animation frame: each store mutates in place and triggers its shallowRefs once.
 export function applyEvents(events: StudioEvent[]): void {
@@ -43,6 +44,10 @@ export function applyEvents(events: StudioEvent[]): void {
       const r = recordAutoExport(e.data, e.ts)
       const t = autoExportToast(r)
       if (t) useToasts().push(t.text, t.kind, t.ms)
+      continue
+    }
+    if (e.type === SCAN_EVENT) {
+      recordScan(e.data)
       continue
     }
     switch (e.type) {

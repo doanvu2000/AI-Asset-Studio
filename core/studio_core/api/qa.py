@@ -9,6 +9,7 @@ from studio_core.api.auth import require_token
 from studio_core.api.errors import ApiError, OrjsonResponse
 from studio_core.contracts import StepRow, VersionRow
 from studio_core.engine.qa import QA_VERSION, version_qa
+from studio_core.scan_jobs import ScanCancelled, jobs_of
 from studio_core.store.repo import SqliteRepo
 
 router = APIRouter(prefix="/api/qa", dependencies=[Depends(require_token)])
@@ -56,12 +57,40 @@ async def recompute(request: Request, body: RecomputeBody) -> Response:
                                             stale_than=QA_VERSION if body.missing_only else None, limit=body.limit)
     steps_by_run: dict[str, list[StepRow]] = {}
     updated = skipped = 0
-    for v in versions:
-        if v.run_id not in steps_by_run:
-            steps_by_run[v.run_id] = await repo.get_steps(v.run_id)
-        out = await _rescore(request, v, steps_by_run[v.run_id])
-        if out is None or (out.qa or {}).get("score") is None:
-            skipped += 1
-        else:
-            updated += 1
-    return OrjsonResponse({"updated": updated, "skipped": skipped, "total": len(versions)})
+    cancelled = False
+    with jobs_of(request).open("qa", body.project_id or body.run_id or "") as job:
+        for n, v in enumerate(versions):
+            try:
+                job(n, len(versions))
+            except ScanCancelled:
+                cancelled = True
+                break
+            if v.run_id not in steps_by_run:
+                steps_by_run[v.run_id] = await repo.get_steps(v.run_id)
+            out = await _rescore(request, v, steps_by_run[v.run_id])
+            if out is None or (out.qa or {}).get("score") is None:
+                skipped += 1
+            else:
+                updated += 1
+        if not cancelled:
+            job(len(versions), len(versions))
+    res: dict[str, int | bool] = {"updated": updated, "skipped": skipped, "total": len(versions)}
+    if cancelled:
+        res["cancelled"] = True
+    return OrjsonResponse(res)
+
+
+class CancelBody(BaseModel):
+    job: str | None = Field(None, max_length=64)
+    kind: str | None = Field(None, max_length=16)
+
+
+scans = APIRouter(prefix="/api/scans", dependencies=[Depends(require_token)])
+
+
+@scans.post("/cancel")
+async def cancel_scan(request: Request, body: CancelBody) -> Response:
+    """Stops a running audit / restyle scan / QA recompute at the next unit; by job id, else every job of `kind`."""
+    if not body.job and not body.kind:
+        raise ApiError(422, "bad_request", "job or kind is required")
+    return OrjsonResponse({"cancelled": jobs_of(request).cancel(body.job, body.kind)})

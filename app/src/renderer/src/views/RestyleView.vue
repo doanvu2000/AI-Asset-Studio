@@ -24,7 +24,9 @@ import PageHeader from '@/components/PageHeader.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
 import BlobDropZone from '@/components/BlobDropZone.vue'
 import BlobImage from '@/components/BlobImage.vue'
+import ScanProgressBar from '@/components/ScanProgressBar.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
+import { useScanProgress } from '@/composables/scanProgress'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
 import { api, useConnection } from '@/stores/connection'
 import { useRuns } from '@/stores/runs'
@@ -59,6 +61,7 @@ const conn = useConnection()
 const runs = useRuns()
 const projects = useProjects()
 const toasts = useToasts()
+const scanLive = useScanProgress('restyle')
 
 function readFolder(): string {
   try {
@@ -128,6 +131,7 @@ async function doScan(): Promise<void> {
       /* per-viewer convenience only */
     }
   } catch (e) {
+    if ((e as { code?: string }).code === 'cancelled') return void toasts.push('Đã huỷ quét', 'info', 2400)
     scan.value = null
     scanError.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -329,7 +333,9 @@ function openRun(): void {
             <label class="lbl"><span class="section-label">Bỏ qua (glob, phẩy)</span><input v-model="exclude" class="field mono" placeholder="Fonts/**" /></label>
           </div>
           <div v-if="!scan" aria-live="polite">
-            <EmptyState v-if="scanning" :icon="ScanSearch" title="Đang quét thư mục…" text="Đếm ảnh, phân loại sprite / UI / texture và ước tính thời gian. Chưa ghi gì vào project." />
+            <EmptyState v-if="scanning" :icon="ScanSearch" title="Đang quét thư mục…" text="Đếm ảnh, phân loại sprite / UI / texture và ước tính thời gian. Chưa ghi gì vào project.">
+              <ScanProgressBar :progress="scanLive.progress.value" :cancelling="scanLive.cancelling.value" unit="ảnh" @cancel="scanLive.cancel" />
+            </EmptyState>
             <EmptyState v-else-if="scanError" :icon="CircleAlert" title="Không quét được thư mục" :text="scanError">
               <button type="button" class="btn" :disabled="!canScan" @click="doScan"><ScanSearch /> Quét lại</button>
             </EmptyState>
@@ -338,6 +344,7 @@ function openRun(): void {
             </EmptyState>
           </div>
 
+          <ScanProgressBar v-if="scan && scanning" :progress="scanLive.progress.value" :cancelling="scanLive.cancelling.value" unit="ảnh" compact @cancel="scanLive.cancel" />
           <Transition name="fade-up">
             <div v-if="scan" class="scan">
               <EmptyState v-if="!total" :icon="ImageOff" title="Không có ảnh để vẽ lại" text="Thư mục này không có PNG nào hợp lệ. Thử bỏ bớt bộ lọc đường dẫn, hoặc chọn thư mục chứa sprite / UI / texture." />

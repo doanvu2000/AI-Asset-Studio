@@ -1949,11 +1949,50 @@ export class MockCore implements StudioApi, EventStream {
       skipped: [] })
   }
 
+  private scanJobs = new Map<string, { kind: string; cancelled: boolean }>()
+
+  async cancelScan(body: { job?: string; kind?: string }): Promise<{ cancelled: number }> {
+    let n = 0
+    for (const [id, j] of this.scanJobs) {
+      if (body.job ? id === body.job : j.kind === body.kind) {
+        j.cancelled = true
+        n++
+      }
+    }
+    return { cancelled: n }
+  }
+
+  // Paths containing "slow" stretch the scan so progress can be captured; returns true when cancelled.
+  private async mockScan(kind: 'audit' | 'restyle' | 'qa', key: string, total: number, stepMs: number): Promise<boolean> {
+    const id = `scan${++this.seq}`
+    const job = { kind, cancelled: false }
+    this.scanJobs.set(id, job)
+    const emit = (done: number, tot: number, phase: string): void => this.emit('scan.progress' as EventType, { job: id, kind, key, done, total: tot, phase })
+    emit(0, 0, 'start')
+    if (kind === 'restyle') {
+      emit(total, 0, 'walk')
+      await sleep(stepMs * 4)
+    }
+    let i = 0
+    for (; i < total && !job.cancelled; i++) {
+      emit(i, total, 'files')
+      await sleep(stepMs)
+    }
+    if (!job.cancelled && kind === 'audit') {
+      emit(total, total, 'analyze')
+      await sleep(stepMs * 6)
+    }
+    this.scanJobs.delete(id)
+    emit(0, 0, job.cancelled ? 'cancelled' : 'done')
+    return job.cancelled
+  }
+
   private restyleBackupList: RestyleBackup[] = []
 
   async restyleScan(body: { folder: string }): Promise<RestyleScan> {
-    await sleep(500)
     if (!/^([a-z]:[\\/]|\/)/i.test(body.folder)) throw new ApiError('bad_folder', 'folder must be an absolute path', 422)
+    const slow = /slow/i.test(body.folder)
+    if (await this.mockScan('restyle', body.folder, slow ? 180 : 24, slow ? 120 : 25)) throw new ApiError('cancelled', 'Đã huỷ quét', 409)
     const items = ['Sprites/hero.png', 'Sprites/slime.png', 'UI/panel.png', 'UI/button.png', 'Tiles/grass_tile.png', 'Props/crate.png', 'Props/barrel.png']
       .map((rel, i) => ({ rel, kind: (rel.startsWith('UI') ? 'ui' : rel.includes('tile') ? 'tile' : i === 0 ? 'sheet' : 'sprite') as RestyleScan['items'][number]['kind'],
         width: i === 0 ? 384 : 128, height: i === 0 ? 256 : 128, sprites: i === 0 ? 24 : 1,
@@ -1989,7 +2028,8 @@ export class MockCore implements StudioApi, EventStream {
   private auditBackupList: AuditBackup[] = []
 
   async audit(body: { path: string }): Promise<AuditReport> {
-    await sleep(900)
+    const slow = /slow/i.test(body.path)
+    if (await this.mockScan('audit', body.path, slow ? 320 : 42, slow ? 90 : 20)) throw new ApiError('cancelled', 'Đã huỷ quét', 409)
     const mb = 1048576
     const tex = (rel: string, w: number, h: number, kind: string, before: number, after: number, code = 'mobile'): AuditReport['textures'][number] => ({
       rel, w, h, bytes: Math.round(w * h * 0.6), kind, alpha_channel: true, alpha_used: true, importer: `${rel.split('/').pop()}.meta`, display: null,
@@ -2179,7 +2219,16 @@ export class MockCore implements StudioApi, EventStream {
     let updated = 0
     let skipped = 0
     const rows = [...this.versionMap.values()].filter((v) => (!body.run_id || v.run_id === body.run_id) && (!body.project_id || v.project_id === body.project_id))
+    const id = `scan${++this.seq}`
+    const job = { kind: 'qa', cancelled: false }
+    this.scanJobs.set(id, job)
+    const emit = (done: number, total: number, phase: string): void => this.emit('scan.progress' as EventType, { job: id, kind: 'qa', key: body.project_id ?? '', done, total, phase })
+    emit(0, 0, 'start')
+    let n = 0
     for (const v of rows) {
+      if (job.cancelled) break
+      emit(n++, rows.length, 'files')
+      await sleep(/slow/i.test(body.project_id ?? '') || this.slowQa ? 90 : 12)
       if ((body.missing_only ?? true) && v.qa) {
         skipped += 1
         continue
@@ -2189,8 +2238,12 @@ export class MockCore implements StudioApi, EventStream {
       else skipped += 1
       this.emit('version.updated', v, v.run_id)
     }
-    return { updated, skipped, total: rows.length }
+    this.scanJobs.delete(id)
+    emit(0, 0, job.cancelled ? 'cancelled' : 'done')
+    return { updated, skipped, total: rows.length, ...(job.cancelled ? { cancelled: true } : {}) }
   }
+
+  slowQa = false
 
   async recomputeVersionQa(id: string): Promise<VersionRow> {
     const v = this.versionMap.get(id)

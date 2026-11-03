@@ -537,7 +537,7 @@ def _rel_inside(root: Path, p: Path) -> str:
 
 
 def scan(path: str | Path, engine: str = "auto", tri_budget: int = DEFAULT_TRI_BUDGET, duplicates: bool = True,
-         max_files: int = MAX_FILES, embedder: Any = None) -> dict[str, Any]:
+         max_files: int = MAX_FILES, embedder: Any = None, progress: Any = None) -> dict[str, Any]:
     """Read-only audit of `path` (a folder inside a Unity or Godot project; references are checked project-wide).
     `embedder` (adapters.embedder.ClipEmbedder) makes near-duplicates use CLIP when its model is installed."""
     folder = Path(str(path or "")).expanduser()
@@ -581,7 +581,9 @@ def scan(path: str | Path, engine: str = "auto", tri_budget: int = DEFAULT_TRI_B
     guid_of: dict[str, str] = {}
     uid_of: dict[str, str] = {}
     displays = _unity_displays(ref_files) if engine == "unity" else _godot_displays(proj, ref_files)
-    for p in targets:
+    tick = progress or (lambda *_: None)
+    for n, p in enumerate(targets):
+        tick(n, len(targets), "files")
         low = p.name.lower()
         rel = _rel_inside(proj, p)
         importer = p.with_name(p.name + (".meta" if engine == "unity" else ".import"))
@@ -626,6 +628,7 @@ def scan(path: str | Path, engine: str = "auto", tri_budget: int = DEFAULT_TRI_B
             if uid:
                 uid_of[rel] = uid
 
+    tick(len(targets), len(targets), "analyze")
     unreferenced = _unreferenced(engine, proj, targets, ref_files, guid_of, uid_of, notes)
     dups, dup_method = _dup_groups(textures, probes, hashes, proj, embedder) if duplicates else ([], "off")
     for g in dups:

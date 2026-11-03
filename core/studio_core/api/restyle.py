@@ -16,6 +16,7 @@ from studio_core.api.errors import ApiError, OrjsonResponse
 from studio_core.contracts import StepRow, StepStatus
 from studio_core.export import restyle as rs
 from studio_core.ops.restyle import restyled_files
+from studio_core.scan_jobs import ScanCancelled, jobs_of
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_token)])
 _lock = asyncio.Lock()
@@ -69,9 +70,12 @@ async def _edit_seconds(request: Request) -> tuple[float, int]:
 async def scan(request: Request, body: ScanBody) -> Response:
     """Read-only scan of the folder: images per kind, edit units and the estimated run time (trial and full)."""
     try:
-        doc = await asyncio.to_thread(rs.scan_folder, body.folder, body.include, body.exclude)
+        with jobs_of(request).open("restyle", body.folder) as job:
+            doc = await asyncio.to_thread(rs.scan_folder, body.folder, body.include, body.exclude, rs.MAX_FILES, job)
     except rs.RestyleError as e:
         raise ApiError(422, "bad_folder", str(e)) from e
+    except ScanCancelled as e:
+        raise ApiError(409, "cancelled", "Đã huỷ quét") from e
     per, measured = await _edit_seconds(request)
     trial = rs.sample_items(doc["items"], 6)
     trial_units = sum(len(rs.units_for(doc["items"][i])) for i in trial)

@@ -273,6 +273,7 @@ EVENT_TYPES = (
     "resource.updated",  # data: ResourceHealth
     "workflow.updated",  # data: WorkflowRunRow
     "gpu.updated",  # data: {yielding, until, freed, queued: [run_id]}; other queue moves ride on step.updated
+    "scan.progress",  # data: {job, kind: audit|restyle|qa, key, done, total, phase: start|walk|files|analyze|done|cancelled|error}
 )
 
 

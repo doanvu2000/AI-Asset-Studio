@@ -16,6 +16,7 @@ from studio_core.api.auth import require_token
 from studio_core.api.errors import ApiError, OrjsonResponse
 from studio_core.export import audit as au
 from studio_core.export.restyle import project_root
+from studio_core.scan_jobs import ScanCancelled, jobs_of
 
 router = APIRouter(prefix="/api/audit", dependencies=[Depends(require_token)])
 _lock = asyncio.Lock()
@@ -90,10 +91,13 @@ def _embedder(request: Request) -> Any:
 async def _scan(request: Request, body: ScanBody) -> dict[str, Any]:
     embedder = _embedder(request) if body.duplicates else None
     try:
-        doc = await asyncio.to_thread(au.scan, body.path, body.engine, body.tri_budget, body.duplicates,
-                                      au.MAX_FILES, embedder)
+        with jobs_of(request).open("audit", body.path) as job:
+            doc = await asyncio.to_thread(au.scan, body.path, body.engine, body.tri_budget, body.duplicates,
+                                          au.MAX_FILES, embedder, job)
     except au.AuditError as e:
         raise ApiError(422, "bad_folder", str(e)) from e
+    except ScanCancelled as e:
+        raise ApiError(409, "cancelled", "Đã huỷ quét") from e
     doc["options"] = {"engine": body.engine, "tri_budget": body.tri_budget, "duplicates": body.duplicates}
     await asyncio.to_thread(_save, _report_path(request, doc["project"]), doc)
     return doc
