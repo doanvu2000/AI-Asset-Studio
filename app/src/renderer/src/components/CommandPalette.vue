@@ -126,7 +126,7 @@ const items = computed<Item[]>(() => {
       run: () => void router.push({ path: '/new', query: { recipe: r.id } })
     }))
   const flowRuns = flows.defs
-    .filter((d) => match(d.title) || match(`chạy flow workflow ${d.title}`))
+    .filter((d) => match(d.title) || match(`chạy flow ${d.title}`) || match(`workflow ${d.title}`))
     .slice(0, q ? 8 : 5)
     .map<Item>((d) => ({ id: `flow-${d.id}`, group: 'Chạy chuỗi tự động', label: `Chạy flow ${d.title}`, icon: Workflow, run: go(`/flows/${encodeURIComponent(d.id)}/run`) }))
   const recent = runs.runList
