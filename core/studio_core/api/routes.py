@@ -21,6 +21,7 @@ from studio_core.adapters.translate import MAX_TEXTS
 from studio_core.engine.kinds import describe_kinds
 from studio_core.engine.library import PREVIEW_TYPES, RecipeLibrary, issue, merge_text, to_text, validate
 from studio_core.engine.projects import apply_style
+from studio_core.engine.runner import EngineStateError, SeedUnknownError
 from studio_core.engine.recipe import Recipe, RecipeError
 from studio_core.ops.presets import ExportPreset, PresetStore
 from studio_core.export.collider import DEFAULT_TOLERANCE, ColliderOptions, default_enabled
@@ -365,6 +366,25 @@ async def create_run(request: Request, body: RunCreate) -> Response:
     run_id = await _engine_call(_engine(request).start_run(
         body.recipe_id, body.inputs, params, project_id=body.project_id, title=body.title))
     return _json({"run_id": run_id}, 201)
+
+
+class RerunBody(BaseModel):
+    seed: Literal["new", "same"] = "new"
+
+
+@api.post("/runs/{run_id}/rerun")
+async def rerun_run(request: Request, run_id: str, body: RerunBody | None = None) -> Response:
+    # engine errors map before _engine_call, which would turn both into a generic 400
+    async def call() -> str:
+        try:
+            return await _engine(request).rerun_run(run_id, body.seed if body else "new")  # type: ignore[attr-defined]
+        except SeedUnknownError as e:
+            raise ApiError(409, "seed_unknown", str(e)) from e
+        except EngineStateError as e:
+            raise ApiError(409, "conflict", str(e)) from e
+
+    new_id = await _engine_call(call())
+    return _json({"run_id": new_id}, 201)
 
 
 @api.get("/runs")

@@ -44,6 +44,7 @@ from . import style_bible as sb
 from .qa import version_qa
 from .recipe import BLOB_TYPES, Recipe, RecipeError, find_step_refs, ref_value, substitute_refs
 from .scheduler import LaneScheduler
+from .seeds import SEED_USED, pin_overrides, seed_used
 from ..store.stats import LIVE_COST, meta_cost
 
 log = logging.getLogger(__name__)
@@ -68,6 +69,10 @@ class NotFoundError(LookupError):
 
 
 class EngineStateError(ValueError):
+    pass
+
+
+class SeedUnknownError(EngineStateError):
     pass
 
 
@@ -379,6 +384,36 @@ class StudioEngine:
         self._start_driver(st)
         return run.id
 
+    async def rerun_run(self, run_id: str, seed: str = "new") -> str:
+        """Starts a copy of a finished run with the same recipe, inputs and params. `same` pins every step's seed to
+        the one it used; `new` leaves seeds as they were configured (random ones are drawn again)."""
+        if seed not in ("new", "same"):
+            raise ValueError("seed must be 'new' or 'same'")
+        run = await self.repo.get_run(run_id)
+        if run is None:
+            raise NotFoundError(f"unknown run: {run_id}")
+        if run.status not in _RUN_TERMINAL:
+            raise EngineStateError(f"run {run_id} is still {run.status.value}")
+        steps = await self.repo.get_steps(run_id)
+        old_meta = run.params.get(META_KEY) or {}
+        params = {k: dict(v) if isinstance(v, dict) else v for k, v in run.params.items() if k != META_KEY}
+        if seed == "same":
+            unknown: list[str] = []
+            for s in steps:
+                pins, missing = pin_overrides(s.params, s.meta)
+                if missing:
+                    unknown.append(s.key)
+                if pins:
+                    params[s.key] = {**(params.get(s.key) if isinstance(params.get(s.key), dict) else {}), **pins}
+            if unknown:
+                raise SeedUnknownError(f"run {run_id} did not record the seed of step(s) {', '.join(unknown)}; "
+                                       "rerun with seed 'new' or set the seed by hand")
+        meta = {k: old_meta[k] for k in (CHAIN_KEY, sb.OPT_OUT_KEY) if k in old_meta}
+        if meta:
+            params[META_KEY] = meta
+        inputs = {**run.inputs, **(old_meta.get(BASE_KEY) or {})}
+        return await self.start_run(run.recipe_id, inputs, params, project_id=run.project_id, title=run.title)
+
     async def _apply_style_bible(self, recipe: Recipe, inputs: dict[str, Any], user_inputs: dict[str, Any],
                                  project_id: str, meta: dict[str, Any]) -> dict[str, Any]:
         """Writes the applied bible version into `meta`; `$meta.use_style_bible: false` opts the run out."""
@@ -633,6 +668,8 @@ class StudioEngine:
                 if hit is not None and await self._blobs_present(hit):
                     now = _now()
                     cached_meta = await self.repo.cache_get_meta(key)
+                    if (used := seed_used(params, cached_meta)) is not None:
+                        cached_meta = {**cached_meta, SEED_USED: used}
                     await self._set_step(step, status=StepStatus.CACHED, outputs=hit, progress=1.0,
                                          started_at=now, ended_at=now, meta={**cached_meta, **step.meta})
                     return
@@ -668,6 +705,8 @@ class StudioEngine:
             finally:
                 self.gpu.holders.pop(step.id, None)
                 self.scheduler.release(lane)
+            if (used := seed_used(params, result.meta)) is not None:
+                result.meta = {**result.meta, SEED_USED: used}
             kept = {k: v for k, v in step.meta.items() if k != LIVE_COST}
             await self._set_step(step, status=StepStatus.SUCCEEDED, outputs=result.outputs, progress=1.0,
                                  meta={**kept, **result.meta}, ended_at=_now())

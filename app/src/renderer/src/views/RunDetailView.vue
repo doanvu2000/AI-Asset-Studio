@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { onClickOutside, onKeyStroke } from '@vueuse/core'
-import { ArrowLeft, CircleAlert, CircleCheck, CircleStop, Copy, Ellipsis, FolderKanban, Hourglass, Inbox, List, LoaderCircle, Library, Lock, RotateCcw, TriangleAlert, Waypoints, Workflow } from '@lucide/vue'
+import { ArrowLeft, ChevronDown, CircleAlert, CircleCheck, CircleStop, Copy, Ellipsis, FolderKanban, Hourglass, Inbox, List, LoaderCircle, Library, Lock, RotateCcw, TriangleAlert, Waypoints, Workflow } from '@lucide/vue'
 import type { BlobRef, StepRow } from '@/api/types'
 import { NO_PROJECT, RUN_ACTIVE, STEP_DONE_OK } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
@@ -27,6 +28,7 @@ import GatePicker from '@/components/gate/GatePicker.vue'
 import GateApprove from '@/components/gate/GateApprove.vue'
 import { buildRunGraph } from '@/composables/graph'
 import { errorAdvice } from '@/composables/errorAdvice'
+import { rerunRun, type RerunSeed } from '@/composables/rerun'
 import { useKinds } from '@/stores/catalog'
 import { useRuns } from '@/stores/runs'
 import { useRecipes } from '@/stores/recipes'
@@ -57,6 +59,7 @@ function onHeroStage(el: unknown): void {
   heroOrigin.value = null
   if (!reducedMotion.value && performance.now() - o.at < 2000) requestAnimationFrame(() => flyFromOrigin(o, el))
 }
+const router = useRouter()
 const runs = useRuns()
 const recipes = useRecipes()
 const conn = useConnection()
@@ -196,6 +199,35 @@ async function cancel(): Promise<void> {
     cancelling.value = false
   }
 }
+const rerunOpen = ref(false)
+const rerunRoot = ref<HTMLElement | null>(null)
+const rerunning = ref<RerunSeed | null>(null)
+onClickOutside(rerunRoot, () => (rerunOpen.value = false))
+onKeyStroke('Escape', () => rerunOpen.value && (rerunOpen.value = false))
+const hasSeed = computed(() => steps.value.some((s) => typeof s.meta.seed_used === 'number'))
+async function rerun(seed: RerunSeed): Promise<void> {
+  if (rerunning.value) return
+  rerunning.value = seed
+  rerunOpen.value = false
+  try {
+    const { run_id } = await rerunRun(props.id, seed)
+    toasts.push(seed === 'same' ? 'Đã chạy lại với seed cũ' : 'Đã chạy lại với seed mới', 'success', 2500)
+    void router.push({ name: 'run', params: { id: run_id } })
+  } catch (e) {
+    toasts.error(e, 'Không chạy lại được')
+  } finally {
+    rerunning.value = null
+  }
+}
+async function copySeed(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(String(selSeed.value))
+    toasts.push('Đã copy seed', 'success', 2000)
+  } catch (e) {
+    toasts.error(e, 'Không copy được')
+  }
+}
+
 async function copyId(): Promise<void> {
   try {
     await navigator.clipboard.writeText(props.id)
@@ -225,6 +257,10 @@ const selMeta = computed(() => {
   ]
     .filter(Boolean)
     .join(' · ')
+})
+const selSeed = computed(() => {
+  const v = sel.value?.meta.seed_used
+  return typeof v === 'number' ? v : null
 })
 const selAwaiting = computed(() => sel.value?.status === 'awaiting_human')
 // These kinds render their report as a readable block below; the raw JSON tile would only duplicate it.
@@ -464,6 +500,42 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
         <button type="button" role="radio" :aria-checked="viewMode === 'graph'" :class="{ on: viewMode === 'graph' }" title="Sơ đồ bước" aria-label="Sơ đồ" @click="setMode('graph')"><Workflow :size="14" /> <span class="lbl">Sơ đồ</span></button>
       </div>
       <RunStatusBadge v-if="run" :status="run.status" />
+      <div v-if="run && !active" ref="rerunRoot" class="rerun">
+        <button type="button" class="btn rerun-main" :disabled="!!rerunning" title="Chạy lại với cùng thiết lập, seed mới" @click="rerun('new')">
+          <LoaderCircle v-if="rerunning" class="spin" />
+          <RotateCcw v-else />
+          <span class="lbl">Chạy lại</span>
+        </button>
+        <button
+          type="button"
+          class="btn btn-icon rerun-more"
+          aria-haspopup="menu"
+          :aria-expanded="rerunOpen"
+          aria-label="Tuỳ chọn chạy lại"
+          title="Tuỳ chọn chạy lại"
+          :disabled="!!rerunning"
+          @click="rerunOpen = !rerunOpen"
+        >
+          <ChevronDown :size="14" />
+        </button>
+        <Transition name="menu-pop">
+          <div v-if="rerunOpen" class="menu" role="menu">
+            <div class="menu-list">
+              <button type="button" role="menuitem" class="mi" @click="rerun('new')"><RotateCcw :size="15" /> Chạy lại, seed mới</button>
+              <button
+                type="button"
+                role="menuitem"
+                class="mi"
+                :disabled="!hasSeed"
+                :title="hasSeed ? 'Cùng thiết lập và cùng seed: kết quả trước được dùng lại nếu có thể' : 'Lượt chạy này không có bước nào dùng seed'"
+                @click="rerun('same')"
+              >
+                <RotateCcw :size="15" /> Chạy lại, giữ seed
+              </button>
+            </div>
+          </div>
+        </Transition>
+      </div>
       <div ref="menuRoot" class="more">
         <button
           type="button"
@@ -610,6 +682,11 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
               <p v-if="hero" class="section-label">Bước đang chọn</p>
               <h2 class="title">{{ stepName(sel) }}</h2>
               <p v-if="selMeta" class="caption num">{{ selMeta }}</p>
+              <div v-if="selSeed !== null" class="seed-row">
+                <span class="caption">Seed</span>
+                <code class="mono num selectable">{{ selSeed }}</code>
+                <button type="button" class="btn btn-plain btn-icon" aria-label="Sao chép seed" title="Sao chép seed" @click="copySeed"><Copy :size="14" /></button>
+              </div>
             </header>
 
             <div v-if="sel.status === 'running'" class="live card">
@@ -781,6 +858,37 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
 .more {
   position: relative;
   margin-left: var(--sp-2);
+}
+.rerun {
+  position: relative;
+  display: flex;
+  margin-left: var(--sp-2);
+}
+.rerun-main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.rerun-more {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: 0.5px solid var(--separator);
+}
+.mi:disabled {
+  color: var(--text-3);
+  cursor: default;
+}
+.mi:disabled:hover {
+  background: transparent;
+}
+.seed-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+.seed-row code {
+  font-size: var(--fs-callout);
+  color: var(--text-2);
 }
 .menu {
   position: absolute;

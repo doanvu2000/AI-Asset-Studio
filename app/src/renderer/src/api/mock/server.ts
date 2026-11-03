@@ -5,6 +5,7 @@ import type { AgentActivitySnapshot, FlowValidateResult, FitEntry, FitReport, Ga
 import type { EnginePreviewJob, OpenInEngineResult, PreviewEngines } from '../enginePreview'
 import type { HitVfx, StepHits } from '../hitFx'
 import {
+  RUN_ACTIVE,
   STEP_DONE_OK,
   type BatchCreateBody,
   type Binding,
@@ -700,6 +701,7 @@ export class MockCore implements StudioApi, EventStream {
           s.status = s.key === 'fit' && i % 3 === 0 ? 'cached' : 'succeeded'
           s.ended_at = t
           s.outputs = { images: s.key === 'gen' ? [img, pool[(i + 5) % pool.length]!, pool[(i + 9) % pool.length]!] : [img] }
+          if (s.key === 'gen') s.meta = { seed_used: 1_718_303_421 + i * 7919 }
         }
       }
       if (status === 'succeeded') {
@@ -971,7 +973,8 @@ export class MockCore implements StudioApi, EventStream {
 
     const key = this.cacheKey(s)
     if (key && this.cache.has(key)) {
-      this.patchStep(s, { status: 'cached', cache_key: key, outputs: clone(this.cache.get(key)!), started_at: now(), ended_at: now(), progress: 1 })
+      const fixed = Number(s.params.seed)
+      this.patchStep(s, { status: 'cached', cache_key: key, outputs: clone(this.cache.get(key)!), started_at: now(), ended_at: now(), progress: 1, meta: fixed >= 0 ? { seed_used: fixed } : {} })
       this.advance(s.run_id)
       return
     }
@@ -995,7 +998,9 @@ export class MockCore implements StudioApi, EventStream {
       this.patchStep(s, { status: 'running', started_at: now(), progress: 0, meta: {} })
       const outputs = await this.simulate(s)
       if (key) this.cache.set(key, outputs)
-      this.patchStep(s, { status: 'succeeded', outputs, progress: 1, ended_at: now(), cache_key: key })
+      const fixed = Number(s.params.seed)
+      const meta = 'seed' in s.params ? { seed_used: fixed >= 0 ? fixed : Math.floor(Math.random() * 2 ** 31) } : {}
+      this.patchStep(s, { status: 'succeeded', outputs, progress: 1, ended_at: now(), cache_key: key, meta })
     } catch (e) {
       if (e instanceof Cancelled) {
         this.patchStep(s, { status: 'cancelled', ended_at: now() })
@@ -1394,6 +1399,22 @@ export class MockCore implements StudioApi, EventStream {
     for (const s of steps) this.emit('step.updated', s, run.id, s.id)
     window.setTimeout(() => this.advance(run.id), 150)
     return { run_id: run.id }
+  }
+
+  async rerunRun(id: string, seed: 'new' | 'same' = 'new'): Promise<{ run_id: string }> {
+    await this.ready
+    const run = this.runs.get(id)
+    if (!run) throw new ApiError('not_found', 'Không tìm thấy lượt chạy', 404)
+    if (RUN_ACTIVE.has(run.status)) throw new ApiError('conflict', 'Lượt chạy vẫn đang chạy', 409)
+    const inputs = { ...run.inputs }
+    if (seed === 'same' && 'seed' in inputs) {
+      const used = this.stepsOf(id).map((s) => s.meta.seed_used).find((n): n is number => typeof n === 'number')
+      if (used === undefined) throw new ApiError('seed_unknown', 'Lượt chạy này không ghi lại seed, hãy chạy với seed mới.', 409)
+      inputs.seed = used
+    }
+    const { $meta, ...stepParams } = run.params as Record<string, unknown>
+    void $meta
+    return this.startRun({ recipe_id: run.recipe_id, inputs, params: stepParams as Record<string, Record<string, unknown>>, title: run.title, project_id: run.project_id })
   }
 
   async listRuns(q: ListRunsQuery = {}): Promise<RunRow[]> {

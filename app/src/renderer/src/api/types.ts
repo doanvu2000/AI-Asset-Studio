@@ -55,6 +55,8 @@ export interface RunRow {
 }
 
 export interface StepMeta {
+  /** Seed the step actually ran with (a -1 seed resolved to the drawn number). */
+  seed_used?: number
   waiting_for?: Lane | string
   /** `allow_fail` step that failed on purpose: status is skipped, `warning` says why. */
   allowed_failure?: boolean

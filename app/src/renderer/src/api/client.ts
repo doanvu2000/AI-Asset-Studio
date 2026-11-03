@@ -108,6 +108,7 @@ export interface StudioApi {
   listRuns(q?: ListRunsQuery): Promise<RunRow[]>
   getRun(id: string): Promise<RunDetail>
   cancelRun(id: string): Promise<void>
+  rerunRun(id: string, seed?: 'new' | 'same'): Promise<{ run_id: string }>
   /** `keep`: on a regenerate, candidate hashes the step reuses instead of redrawing (storyboard frames). */
   retryStep(stepId: string, keep?: string[]): Promise<void>
   gates(): Promise<StepRow[]>
@@ -326,6 +327,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
       ),
     getRun: (id) => call('GET', `/api/runs/${enc(id)}`),
     cancelRun: (id) => call('POST', `/api/runs/${enc(id)}/cancel`),
+    rerunRun: (id, seed = 'new') => call('POST', `/api/runs/${enc(id)}/rerun`, { seed }, SLOW_TIMEOUT_MS),
     retryStep: (id, keep) => call('POST', `/api/steps/${enc(id)}/retry`, keep?.length ? { keep } : undefined),
     gates: () => call('GET', '/api/gates'),
     resolveGate: (id, res) => call('POST', `/api/gates/${enc(id)}`, res),
