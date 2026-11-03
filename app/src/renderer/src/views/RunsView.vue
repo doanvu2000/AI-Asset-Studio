@@ -2,7 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { Plus } from '@lucide/vue'
+import { onKeyStroke } from '@vueuse/core'
+import { Columns2, Plus, X } from '@lucide/vue'
 import { ART } from '@/assets/art'
 import { ILLUS } from '@/assets/illustrations'
 import type { RunStatus } from '@/api/types'
@@ -10,6 +11,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import SectionTabs from '@/components/SectionTabs.vue'
 import { HISTORY_TABS } from '@/composables/navTabs'
 import RunRowItem from '@/components/RunRowItem.vue'
+import RunDiff from '@/components/RunDiff.vue'
 import EmptyState from '@/components/EmptyState.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
 import { useRuns } from '@/stores/runs'
@@ -54,6 +56,21 @@ const counts = computed(() => {
 const rows = computed(() => {
   const f = FILTERS.find((x) => x.id === filter.value)!
   return inProject.value.filter((r) => f.match(r.status))
+})
+
+// Two picks max: a third pick drops the oldest so the bar never needs an error state.
+const picked = ref<string[]>([])
+function togglePick(id: string): void {
+  picked.value = picked.value.includes(id) ? picked.value.filter((x) => x !== id) : [...picked.value, id].slice(-2)
+}
+const diffPair = ref<[string, string] | null>(null)
+function openDiff(): void {
+  if (picked.value.length === 2) diffPair.value = [picked.value[0]!, picked.value[1]!]
+}
+onKeyStroke('Escape', (e) => {
+  const t = e.target as HTMLElement | null
+  if (diffPair.value || !picked.value.length || t?.closest('input:not([type=checkbox]), textarea, select')) return
+  picked.value = []
 })
 
 const scroller = ref<HTMLElement | null>(null)
@@ -101,6 +118,13 @@ watch([filter, projectFilter], () => rows.value.length < NEAR_END && void runs.l
       </div>
       <ProjectSelect v-model="projectFilter" all-label="Mọi dự án" label="Lọc theo dự án" />
     </div>
+    <div v-if="picked.length" class="pickbar" role="region" aria-label="So sánh lượt chạy">
+      <span class="num">Đã chọn {{ picked.length }}/2</span>
+      <span v-if="picked.length < 2" class="caption">Chọn thêm 1 lượt để so sánh</span>
+      <span class="grow" />
+      <button type="button" class="btn btn-plain" @click="picked = []"><X /> Bỏ chọn</button>
+      <button type="button" class="btn btn-primary" :disabled="picked.length < 2" @click="openDiff"><Columns2 /> So sánh 2 lượt</button>
+    </div>
     <div ref="scroller" class="list-scroll">
       <EmptyState
         v-if="runs.listLoaded && !rows.length && (filter !== 'all' || projectFilter !== 'all')"
@@ -128,7 +152,13 @@ watch([filter, projectFilter], () => rows.value.length < NEAR_END && void runs.l
           :class="{ first: it.index === 0 }"
           :style="{ transform: `translateY(${it.start}px)`, height: `${ROW_H}px` }"
         >
-          <RunRowItem :run="rows[it.index]!" menu />
+          <RunRowItem
+            :run="rows[it.index]!"
+            menu
+            selectable
+            :selected="picked.includes(rows[it.index]!.id)"
+            @select="togglePick(rows[it.index]!.id)"
+          />
         </div>
       </div>
       <div v-if="runs.listHasMore && rows.length" class="more">
@@ -137,6 +167,7 @@ watch([filter, projectFilter], () => rows.value.length < NEAR_END && void runs.l
         </button>
       </div>
     </div>
+    <RunDiff :a="diffPair?.[0] ?? null" :b="diffPair?.[1] ?? null" @close="diffPair = null" />
   </div>
 </template>
 
@@ -152,6 +183,24 @@ watch([filter, projectFilter], () => rows.value.length < NEAR_END && void runs.l
 .c {
   font-size: var(--fs-caption);
   color: var(--text-3);
+}
+.pickbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  max-width: 1180px;
+  width: calc(100% - 2 * var(--sp-6));
+  box-sizing: border-box;
+  margin: var(--sp-3) auto 0;
+  padding: 6px 8px 6px 14px;
+  border-radius: var(--r-lg);
+  background: var(--accent-soft);
+  box-shadow: var(--hairline);
+  animation: fade-up var(--t-base) var(--ease-out) backwards;
+}
+.grow {
+  flex: 1;
 }
 .list-scroll {
   flex: 1;

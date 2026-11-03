@@ -21,7 +21,8 @@ import BlobImage from './BlobImage.vue'
 import ScoreBadge from './ScoreBadge.vue'
 import { latestReview } from '@/composables/review'
 
-const props = defineProps<{ run: RunRow; steps?: StepRow[]; menu?: boolean }>()
+const props = defineProps<{ run: RunRow; steps?: StepRow[]; menu?: boolean; selectable?: boolean; selected?: boolean }>()
+const emit = defineEmits<{ select: [] }>()
 const recipes = useRecipes()
 const runs = useRuns()
 
@@ -59,6 +60,15 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', close)
   window.removeEventListener('wheel', close)
 })
+
+function onRowClick(e: MouseEvent): void {
+  if (props.selectable && e.shiftKey) {
+    e.preventDefault()
+    emit('select')
+    return
+  }
+  if (!live.value && hash.value) rememberOrigin(props.run.id, thumb.value)
+}
 
 async function toggle(): Promise<void> {
   if (open.value) return close()
@@ -102,8 +112,11 @@ async function rerun(seed: RerunSeed): Promise<void> {
 </script>
 
 <template>
-  <div class="rw" :class="{ 'has-menu': canRerun }">
-  <RouterLink :to="`/runs/${run.id}`" class="row" @click="!live && hash && rememberOrigin(run.id, thumb)">
+  <div class="rw" :class="{ 'has-menu': canRerun, selectable, picked: selected }">
+  <label v-if="selectable" class="pick" :title="selected ? 'Bỏ chọn lượt này' : 'Chọn để so sánh (Shift+bấm vào dòng cũng được)'">
+    <input type="checkbox" :checked="selected" :aria-label="`Chọn lượt ${run.title || recipeName} để so sánh`" @change="emit('select')" />
+  </label>
+  <RouterLink :to="`/runs/${run.id}`" class="row" @click="onRowClick">
     <span ref="thumb" class="thumb checker" aria-hidden="true">
       <img v-if="live" class="live" :src="live" alt="" draggable="false" />
       <BlobImage v-else-if="hash" :hash="hash" :size="96" />
@@ -189,6 +202,32 @@ async function rerun(seed: RerunSeed): Promise<void> {
 .rw {
   position: relative;
   height: 100%;
+}
+.rw.selectable {
+  display: flex;
+  align-items: center;
+}
+.rw.selectable .row {
+  flex: 1;
+  min-width: 0;
+}
+.rw.picked {
+  background: var(--accent-soft);
+}
+.pick {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 100%;
+  cursor: pointer;
+}
+.pick input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
 }
 .rw.has-menu .row {
   padding-right: 52px;

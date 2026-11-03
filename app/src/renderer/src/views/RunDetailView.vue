@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { onClickOutside, onKeyStroke } from '@vueuse/core'
-import { ArrowLeft, ChevronDown, CircleAlert, CircleCheck, CircleStop, Copy, Ellipsis, FolderKanban, Hourglass, Inbox, List, LoaderCircle, Library, Lock, RotateCcw, TriangleAlert, Waypoints, Workflow } from '@lucide/vue'
+import { ArrowLeft, ChevronDown, CircleAlert, CircleCheck, CircleStop, Columns2, Copy, Ellipsis, FolderKanban, Hourglass, Inbox, List, LoaderCircle, Library, Lock, RotateCcw, TriangleAlert, Waypoints, Workflow } from '@lucide/vue'
 import type { BlobRef, StepRow } from '@/api/types'
 import { NO_PROJECT, RUN_ACTIVE, STEP_DONE_OK } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
@@ -10,6 +10,8 @@ import RunStatusBadge from '@/components/RunStatusBadge.vue'
 import StepChip from '@/components/StepChip.vue'
 import AgentRunBanner from '@/components/AgentRunBanner.vue'
 import ElapsedTimer from '@/components/ElapsedTimer.vue'
+import RunDiff from '@/components/RunDiff.vue'
+import RelTime from '@/components/RelTime.vue'
 import BlobThumb from '@/components/BlobThumb.vue'
 import AssetViewer from '@/components/viewers/AssetViewer.vue'
 import AssetActions from '@/components/AssetActions.vue'
@@ -42,7 +44,7 @@ import { gateFromStep, useGates } from '@/stores/gates'
 import { exportName, useVersions } from '@/stores/versions'
 import ResizeHandle from '@/components/ResizeHandle.vue'
 import { usePaneWidth } from '@/composables/paneSize'
-import { absoluteTime, ALLOWED_FAILURE_LABEL, allowedFailure, allowedFailureText, humanDuration, kindName, STEP_LABEL, stepName, waitingHint, waitingLabel } from '@/composables/format'
+import { RUN_LABEL, absoluteTime, ALLOWED_FAILURE_LABEL, allowedFailure, allowedFailureText, humanDuration, kindName, STEP_LABEL, stepName, waitingHint, waitingLabel } from '@/composables/format'
 import { flyFromOrigin, takeOrigin, useReducedMotion, type SharedOrigin } from '@/composables/motion'
 
 const props = defineProps<{ id: string }>()
@@ -167,11 +169,22 @@ async function retry(s: StepRow): Promise<void> {
 
 const menuOpen = ref(false)
 const confirmCancel = ref(false)
+const pickCompare = ref(false)
+const diffWith = ref<string | null>(null)
+const COMPARE_CHOICES = 8
+const compareChoices = computed(() =>
+  runs.runList.filter((r) => r.id !== props.id && r.recipe_id === run.value?.recipe_id).slice(0, COMPARE_CHOICES)
+)
+function startCompare(id: string): void {
+  diffWith.value = id
+  closeMenu()
+}
 const cancelling = ref(false)
 const menuRoot = ref<HTMLElement | null>(null)
 function closeMenu(): void {
   menuOpen.value = false
   confirmCancel.value = false
+  pickCompare.value = false
 }
 onClickOutside(menuRoot, closeMenu)
 onKeyStroke('Escape', () => menuOpen.value && closeMenu())
@@ -551,8 +564,26 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
         </button>
         <Transition name="menu-pop">
           <div v-if="menuOpen" class="menu" role="menu">
-            <div v-if="!confirmCancel" class="menu-list">
+            <div v-if="pickCompare" class="menu-list cmp-list">
+              <p class="caption cmp-h">So sánh với lượt cùng quy trình</p>
+              <button v-for="r in compareChoices" :key="r.id" type="button" role="menuitem" class="mi cmp-i" @click="startCompare(r.id)">
+                <span class="cmp-t">{{ r.title || recipeName }}</span>
+                <span class="caption"><RelTime :ts="r.created_at" /> · {{ RUN_LABEL[r.status] }}</span>
+              </button>
+              <button type="button" role="menuitem" class="mi" @click="pickCompare = false">Quay lại</button>
+            </div>
+            <div v-else-if="!confirmCancel" class="menu-list">
               <button type="button" role="menuitem" class="mi" @click="copyId"><Copy :size="15" /> Copy mã lượt chạy</button>
+              <button
+                type="button"
+                role="menuitem"
+                class="mi"
+                :disabled="!compareChoices.length"
+                :title="compareChoices.length ? 'Chọn một lượt gần đây cùng quy trình để so sánh' : 'Chưa có lượt nào khác cùng quy trình'"
+                @click="pickCompare = true"
+              >
+                <Columns2 :size="15" /> So sánh với…
+              </button>
               <template v-if="active">
                 <div class="menu-sep" role="separator" />
                 <button type="button" role="menuitem" class="mi danger" @click="confirmCancel = true"><CircleStop :size="15" /> Huỷ lượt chạy…</button>
@@ -826,6 +857,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
       </section>
     </div>
 
+    <RunDiff :a="diffWith ? id : null" :b="diffWith" @close="diffWith = null" />
     <Lightbox :blob="lightbox" :siblings="selBlobs" :run-id="id" @close="lightbox = null" />
   </div>
 </template>
@@ -934,6 +966,26 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
   height: 0.5px;
   margin: 4px 6px;
   background: var(--separator);
+}
+.cmp-list {
+  min-width: 280px;
+  max-height: 340px;
+  overflow: auto;
+}
+.cmp-h {
+  margin: 2px 10px 4px;
+}
+.cmp-i {
+  height: auto;
+  min-height: 34px;
+  padding: 4px 10px;
+  display: grid;
+  gap: 0;
+}
+.cmp-t {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .confirm {
   display: grid;
