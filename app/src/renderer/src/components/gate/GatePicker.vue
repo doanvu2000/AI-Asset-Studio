@@ -112,6 +112,11 @@ onKeyStroke(true, (e) => {
     focus.value = Math.min(n - 1, Math.max(0, focus.value + move[e.key]!))
     return
   }
+  if ((e.key === 'v' || e.key === 'V') && n) {
+    e.preventDefault()
+    lightbox.value = candidates.value[focus.value] ?? null
+    return
+  }
   if (isSendKey(e) && n && !sending.value) {
     e.preventDefault()
     void sender.value?.show()
@@ -153,7 +158,7 @@ onKeyStroke(true, (e) => {
     <footer class="actions">
       <span v-if="keyboard && !inline" class="caption hints">
         <span class="kbd">1</span>–<span class="kbd">9</span> chọn · <span class="kbd">←</span><span class="kbd">→</span> di chuyển ·
-        <span class="kbd">Enter</span> xác nhận · <span class="kbd">S</span> gửi tới
+        <span class="kbd">Enter</span> xác nhận · <span class="kbd">V</span> xem lớn · <span class="kbd">S</span> gửi tới
       </span>
       <button
         class="btn"
