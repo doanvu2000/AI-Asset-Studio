@@ -91,12 +91,22 @@ const fileLine = computed(() => {
   return parts.filter(Boolean).join(' · ')
 })
 
-// C compares the picture on screen with the previous one in the ring.
+// C compares the picture on screen with the previous one: in the sibling ring, or (when the parent drives navigation
+// across assets, so `pos` is not an index into `ring`) the last picture shown before this one.
 const compareOpen = ref(false)
+const lastShown = ref<BlobRef | null>(null)
+watch(shown, (now, before) => {
+  if (!now) lastShown.value = null
+  else if (before && before.hash !== now.hash) lastShown.value = before
+})
 const prevBlob = computed<BlobRef | null>(() => {
-  const { i, n } = pos.value
-  const b = ring.value[(i - 1 + n) % n]
-  return n > 1 && b && shown.value && b.hash !== shown.value.hash ? b : null
+  const cur = shown.value
+  if (!cur) return null
+  if (external.value && lastShown.value && lastShown.value.hash !== cur.hash) return lastShown.value
+  const n = ring.value.length
+  const i = ring.value.findIndex((b) => b.hash === cur.hash)
+  const b = n > 1 && i >= 0 ? ring.value[(i - 1 + n) % n] : undefined
+  return b && b.hash !== cur.hash ? b : null
 })
 const canCompare = computed(() => !!shown.value && isImage(shown.value) && !!prevBlob.value && isImage(prevBlob.value))
 function compareItem(b: BlobRef, name: string): CompareItem {

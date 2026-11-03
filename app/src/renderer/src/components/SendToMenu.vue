@@ -28,7 +28,15 @@ const pos = ref<{ left: number; top?: number; bottom?: number; maxHeight: number
 const items = computed<SendItem[]>(() => sendItems(props.source, recipes.list, projects.byId(props.source.projectId), flows.defs))
 const itemId = (i: number): string => `${uid}-st-${i}`
 
+// The import/pack dialogs hand focus back to the trigger while the confirming Enter/click is still being
+// dispatched, which used to reopen the menu right after the dialog closed.
+let quietUntil = 0
+function dialogClosed(): void {
+  quietUntil = performance.now() + 300
+}
+
 async function show(): Promise<void> {
+  if (performance.now() < quietUntil) return
   const r = button.value?.getBoundingClientRect()
   if (!r) return
   const left = Math.max(8, Math.min(r.left, window.innerWidth - 308))
@@ -125,8 +133,8 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
       </div>
     </Transition>
   </Teleport>
-  <LibraryImportDialog v-if="source.importPaths?.length || source.importBlobs?.length" :open="importOpen" :paths="source.importPaths" :blobs="source.importBlobs" :project-id="source.projectId" @close="importOpen = false" />
-  <PackDialog v-if="source.projectId && source.stepIds?.length" :open="packOpen" :project-id="source.projectId" :preselect="source.stepIds" @close="packOpen = false" />
+  <LibraryImportDialog v-if="source.importPaths?.length || source.importBlobs?.length" :open="importOpen" :paths="source.importPaths" :blobs="source.importBlobs" :project-id="source.projectId" @close="importOpen = false; dialogClosed()" />
+  <PackDialog v-if="source.projectId && source.stepIds?.length" :open="packOpen" :project-id="source.projectId" :preselect="source.stepIds" @close="packOpen = false; dialogClosed()" />
 </template>
 
 <style scoped>
