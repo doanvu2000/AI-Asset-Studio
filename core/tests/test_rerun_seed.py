@@ -51,6 +51,27 @@ class CometExec(SeedExec):
         return "7.seed" in params
 
 
+class EachSeedExec(SeedExec):
+    """Mapped, seeded: every item draws its own seed for -1 and records it in its item meta."""
+
+    async def run(self, ctx: Any, params: dict[str, Any], inputs: Any) -> StepResult:
+        seed = int(params["seed"])
+        if seed < 0:
+            seed = random.randint(0, 2**31)
+        src = inputs["image"][0].hash
+        return StepResult(outputs={"images": [await ctx.blobs.put_bytes(f"m:{src}:{seed}".encode())]},
+                          meta={"seed": seed})
+
+
+MAP_RECIPE = """
+id: sd
+name: Mapped
+steps:
+  - {id: gen, kind: t.plain, params: {count: 3}}
+  - {id: each, kind: t.each, in: {image: gen.images}, map: image, params: {seed: -1}}
+"""
+
+
 def _env(tmp_path: Path, recipe: str = RECIPE, execs: list[FakeExec] | None = None) -> Env:
     return Env(tmp_path, execs or [SeedExec("t.seed"), FakeExec("t.plain")], {"sd": recipe})
 
@@ -130,6 +151,19 @@ async def test_rerun_same_comfy_style_seeds(tmp_path: Path) -> None:
     r3 = await env.engine.rerun_run(r2, "same")
     await env.engine.wait_idle(r3)
     assert env.steps(r3)["a"].status == StepStatus.CACHED
+
+
+async def test_rerun_same_pins_each_item_seed_of_mapped_step(tmp_path: Path) -> None:
+    env = _env(tmp_path, MAP_RECIPE, [FakeExec("t.plain"), EachSeedExec("t.each")])
+    r1 = await env.run("sd")
+    e1 = env.steps(r1)["each"]
+    seeds = [i["seed"] for i in e1.meta["items"]]
+    assert len(set(seeds)) == 3
+    r2 = await env.engine.rerun_run(r1, "same")
+    await env.engine.wait_idle(r2)
+    e2 = env.steps(r2)["each"]
+    assert [i["seed"] for i in e2.meta["items"]] == seeds
+    assert e2.outputs == e1.outputs
 
 
 async def test_rerun_same_on_legacy_run_without_seed_errors(tmp_path: Path) -> None:

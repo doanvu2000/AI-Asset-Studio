@@ -5,6 +5,8 @@ from typing import Any
 SEED_USED = "seed_used"
 # `$meta` key set per batch item: every step with a `seed` param runs with this value unless the run overrides it.
 SEED_OVERRIDE_KEY = "seed_override"
+# Step param holding one pin dict per item of a mapped step; the runner applies it per call and executors never see it.
+ITEM_SEEDS = "_item_seeds"
 
 
 def _num(v: Any) -> int | None:
@@ -31,15 +33,33 @@ def seed_used(params: dict[str, Any], meta: dict[str, Any]) -> int | None:
     return fixed if fixed is not None and fixed >= 0 else None
 
 
+def _item_pins(params: dict[str, Any], items: Any) -> tuple[list[dict[str, Any]], bool]:
+    pins: list[dict[str, Any]] = []
+    missing = False
+    for item in items if isinstance(items, list) else []:
+        meta = item if isinstance(item, dict) else {}
+        used = seed_used(params, meta)
+        pin = {"seed": used} if "seed" in params and used is not None else {} if "seed" in params else raw_seeds(meta)
+        missing = missing or ("seed" in params and used is None)
+        pins.append(pin)
+    return (pins if any(pins) else []), missing
+
+
 def pin_overrides(params: dict[str, Any], meta: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     """Params that replay a finished step with the same seed -> (overrides, seed_unknown). Unknown = the step has a
-    random seed param but nothing recorded which value it drew."""
+    random seed param but nothing recorded which value it drew. Mapped steps draw per item, so they pin a list."""
     if "seed" in params:
         used = seed_used(params, meta)
         if used is not None:
             return {"seed": used}, False
+        if meta.get("items"):
+            pins, missing = _item_pins(params, meta["items"])
+            return ({ITEM_SEEDS: pins} if pins else {}), missing or not pins
         return {}, _num(params["seed"]) is not None and params["seed"] < 0
-    return dict(raw_seeds(meta)), False
+    if raw := raw_seeds(meta):
+        return dict(raw), False
+    pins, _ = _item_pins(params, meta.get("items"))
+    return ({ITEM_SEEDS: pins} if pins else {}), False
 
 
 def override_seed_keys(kind: str, executor: Any, resolved: dict[str, Any]) -> list[str]:

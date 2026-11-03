@@ -1258,6 +1258,16 @@ def build_server(link: CoreLink) -> MCPServer:
         return await tools._call("POST", "/api/audit/undo", json={"backup_id": backup_id, "force": force},
                                  timeout=600)
 
+    @mcp.tool(annotations=acts)
+    async def cancel_scan(kind: str | None = None, job: str | None = None) -> dict[str, Any]:
+        """Stop running audit / restyle scan / project QA jobs at the next unit (nothing is left half-written). `job`
+        = one job id (from scan.progress events), else every running job of `kind` (audit, restyle, project_qa).
+        Returns {cancelled: n} = jobs signalled."""
+        if not job and not kind:
+            raise ToolError("pass kind or job")
+        body = {k: v for k, v in (("job", job), ("kind", kind)) if v}
+        return await tools._call("POST", "/api/scans/cancel", json=body)
+
     return mcp
 
 

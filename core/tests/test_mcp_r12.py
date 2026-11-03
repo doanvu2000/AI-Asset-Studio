@@ -77,3 +77,10 @@ async def test_theme_tool_and_pack(core: Path, tmp_path: Path) -> None:
         res = payload(await c.call_tool("build_asset_pack", {"project_id": pid, "engines": ["flutter"],
                                                              "out_dir": str(out), "theme": True}))
         assert list(Path(out).rglob("app_theme.dart")), res
+
+
+async def test_cancel_scan_tool(core: Path) -> None:
+    async with Client(build_server(CoreLink(core))) as c:
+        assert payload(await c.call_tool("cancel_scan", {"kind": "audit"})) == {"cancelled": 0}
+        assert payload(await c.call_tool("cancel_scan", {"job": "nope"})) == {"cancelled": 0}
+        assert (await c.call_tool("cancel_scan", {})).is_error

@@ -107,6 +107,34 @@ def _analyse(blobs: Any, versions: list[Any], style: Any, progress: Any = None) 
     return pq.evaluate(versions, measures, palette, source)
 
 
+async def _vision_pass(request: Request, report: dict[str, Any], project: ProjectRow | None, model: str | None, job: Any) -> None:
+    blobs = request.app.state.blobs
+    shown = [a for a in report["assets"] if a["score"] is not None][:MAX_VISION_ASSETS]
+    pairs: list[tuple[dict[str, Any], Image.Image]] = []
+    for i, a in enumerate(shown):
+        job(i, len(shown), "vision")
+        im = await asyncio.to_thread(_open, blobs, a["blob"]["hash"])
+        if im is not None:
+            pairs.append((a, im))
+    if not pairs:
+        return
+    job(len(shown), len(shown), "vision")
+    sheet = await asyncio.to_thread(pq.contact_sheet, [im for _, im in pairs])
+    context = f"{project.name}. {project.description}".strip(" .") if project is not None else ""
+    try:
+        vision = await _reviewer(request).review(sheet, [a for a, _ in pairs], report["reference"],
+                                                 project=context, model=model)
+    except StepError as e:
+        report["vision"] = {"error": {"code": e.code, "message": e.message}}
+        return
+    if job.cancelled:
+        raise ScanCancelled()
+    for a in report["assets"]:
+        if a["version_id"] in vision["notes"]:
+            a["vision_note"] = vision["notes"][a["version_id"]]
+    report["vision"] = {k: v for k, v in vision.items() if k != "notes"}
+
+
 @router.get("")
 async def get_report(request: Request, project_id: str) -> Response:
     await _project(request, project_id)
@@ -127,26 +155,11 @@ async def run_report(request: Request, project_id: str, body: QaBody) -> Respons
         try:
             with jobs_of(request).open("project_qa", project_id) as job:
                 report = await asyncio.to_thread(_analyse, blobs, versions, p.style if p else None, job)
+                report.update({"project_id": project_id, "only_approved": body.only_approved})
+                if body.vision and report["assets"]:
+                    await _vision_pass(request, report, p, body.model, job)
         except ScanCancelled as e:
             raise ApiError(409, "cancelled", "Đã huỷ kiểm tra") from e
-        report.update({"project_id": project_id, "only_approved": body.only_approved})
-        if body.vision and report["assets"]:
-            shown = [a for a in report["assets"] if a["score"] is not None][:MAX_VISION_ASSETS]
-            imgs = await asyncio.gather(*(asyncio.to_thread(_open, blobs, a["blob"]["hash"]) for a in shown))
-            pairs = [(a, im) for a, im in zip(shown, imgs) if im is not None]
-            if pairs:
-                sheet = await asyncio.to_thread(pq.contact_sheet, [im for _, im in pairs])
-                context = f"{p.name}. {p.description}".strip(" .") if p is not None else ""
-                try:
-                    vision = await _reviewer(request).review(sheet, [a for a, _ in pairs], report["reference"],
-                                                             project=context, model=body.model)
-                except StepError as e:
-                    report["vision"] = {"error": {"code": e.code, "message": e.message}}
-                else:
-                    for a in report["assets"]:
-                        if a["version_id"] in vision["notes"]:
-                            a["vision_note"] = vision["notes"][a["version_id"]]
-                    report["vision"] = {k: v for k, v in vision.items() if k != "notes"}
         await asyncio.to_thread(_write_json, _report_path(request, project_id), report)
     return OrjsonResponse(report)
 

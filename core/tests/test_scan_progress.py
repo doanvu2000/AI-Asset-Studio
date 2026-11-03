@@ -248,3 +248,58 @@ def test_project_qa_analyse_reports_then_cancels(tmp_path: Path) -> None:
     ev = _scan_events(bus)
     assert ev[-1]["phase"] == "cancelled" and ev[-1]["kind"] == "project_qa"
     assert seen == [0, 1, 2, 3]
+
+
+async def test_project_qa_vision_pass_cancels_between_images_and_after_review(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from studio_core.api.project_qa import _vision_pass
+
+    class Blobs:
+        opened: list[str] = []
+
+        def path(self, h: str) -> Path:
+            self.opened.append(h)
+            return tmp_path / f"{h}.png"
+
+    class Reviewer:
+        calls = 0
+
+        async def review(self, *_a: object, **_k: object) -> dict:
+            self.calls += 1
+            jobs.cancel(kind="project_qa")
+            return {"notes": {"v0": "n"}, "summary": "s"}
+
+    assets = []
+    for i in range(5):
+        h = f"{i:064x}"
+        Image.new("RGBA", (32, 32), (i * 30, 90, 40, 255)).save(tmp_path / f"{h}.png")
+        assets.append({"version_id": f"v{i}", "score": 80.0, "blob": {"hash": h}})
+    blobs, reviewer = Blobs(), Reviewer()
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(blobs=blobs, project_qa_reviewer=reviewer)))
+    jobs = ScanJobs(MemoryEventBus())
+
+    class StopAtTwo:
+        def __init__(self, job: object) -> None:
+            self.job = job
+
+        @property
+        def cancelled(self) -> bool:
+            return self.job.cancelled
+
+        def __call__(self, d: int, t: int, p: str) -> None:
+            if d == 2:
+                jobs.cancel(kind="project_qa")
+            self.job(d, t, p)
+
+    with pytest.raises(ScanCancelled):
+        with jobs.open("project_qa", "p") as job:
+            await _vision_pass(request, {"assets": assets, "reference": {}}, None, None, StopAtTwo(job))
+    assert len(blobs.opened) == 2 and reviewer.calls == 0
+
+    blobs.opened.clear()
+    report = {"assets": assets, "reference": {}}
+    with pytest.raises(ScanCancelled):
+        with jobs.open("project_qa", "p") as job:
+            await _vision_pass(request, report, None, None, job)
+    assert reviewer.calls == 1 and "vision" not in report and "vision_note" not in assets[0]

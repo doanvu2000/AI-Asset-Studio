@@ -45,7 +45,7 @@ from . import style_bible as sb
 from .qa import version_qa
 from .recipe import BLOB_TYPES, Recipe, RecipeError, find_step_refs, ref_value, substitute_refs
 from .scheduler import LaneScheduler
-from .seeds import SEED_OVERRIDE_KEY, SEED_USED, override_seed_keys, pin_overrides, seed_used
+from .seeds import ITEM_SEEDS, SEED_OVERRIDE_KEY, SEED_USED, override_seed_keys, pin_overrides, seed_used
 from ..store.stats import LIVE_COST, meta_cost
 
 log = logging.getLogger(__name__)
@@ -821,6 +821,9 @@ class StudioEngine:
         else:
             res, ctx.unreported = await self._call(ex, ctx, step_params, inputs)
             return res
+        pins = step_params.get(ITEM_SEEDS)
+        if isinstance(pins, list) and len(pins) == len(calls):
+            calls = [({**{k: v for k, v in p.items() if k != ITEM_SEEDS}, **pin}, i) for (p, i), pin in zip(calls, pins)]
         outputs: Outputs = {}
         metas: list[dict[str, Any]] = []
         base, recorded = ctx.spent, 0.0
