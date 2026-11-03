@@ -39,7 +39,6 @@ _EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image
         "video/mp4": ".mp4", "video/webm": ".webm"}
 INLINE_IMAGE_MAX = 6
 INLINE_JSON_MAX = 64 * 1024
-IMPORT_RECIPE = "library-import"
 CATALOG_URI = "asset-studio://recipes"
 ENGINE_WAIT = {"unity": "waiting for Unity batchmode (import + render, 1-3 min)",
                "godot": "waiting for Godot headless import + render"}
@@ -628,19 +627,13 @@ class StudioTools:
                            approve: bool) -> dict[str, Any]:
         if not paths:
             raise ToolError("paths must list at least one absolute file path")
-        title = asset_name or Path(paths[0]).stem
-        started = await self.start_run(IMPORT_RECIPE, {"files": list(paths), "review": False}, title, "auto_first",
-                                       project_id)
-        view = await self.wait_run(started["run_id"], 120, None)
-        if view["status"] != "succeeded":
-            raise ToolError(f"import run {started['run_id']} ended {view['status']}: {view.get('error')}")
-        out = []
-        for v in await self._call("GET", "/api/versions", params={"run_id": started["run_id"]}):
-            if approve:
-                v = await self._call("POST", f"/api/versions/{v['id']}/approve")
-            out.append({"version_id": v["id"], "status": v["status"], "asset_name": v["asset_name"],
-                        "name": v["blob"].get("name"), "hash": v["blob"]["hash"], "mime": v["blob"].get("mime")})
-        return {"run_id": started["run_id"], "versions": out}
+        body: dict[str, Any] = {"paths": list(paths), "approve": approve}
+        if project_id:
+            body["project_id"] = _safe_id(project_id, "project_id")
+        if asset_name:
+            body["asset_name"] = asset_name
+        out = await self._call("POST", "/api/library/import", json=body)
+        return {"run_id": out["run_id"], "versions": out["versions"]}
 
     async def _engine_step(self, run_id: str, engine: str) -> str:
         data = await self._call("GET", f"/api/runs/{_safe_id(run_id, 'run_id')}")

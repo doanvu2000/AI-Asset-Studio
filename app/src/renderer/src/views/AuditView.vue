@@ -9,7 +9,7 @@ import ScanProgressBar from '@/components/ScanProgressBar.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import { useScanProgress } from '@/composables/scanProgress'
 import SendToMenu from '@/components/SendToMenu.vue'
-import { useQueryPrefill, type SendSource } from '@/composables/sendTo'
+import { absolutePaths, useQueryPrefill, type SendSource } from '@/composables/sendTo'
 import { useProjects } from '@/stores/projects'
 import { api, useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
@@ -249,12 +249,11 @@ const linkedProject = computed(() => {
     return !!d && (d === root || d.startsWith(`${root}/`) || root.startsWith(`${d}/`))
   })
 })
-const sendSource = computed<SendSource>(() => ({
-  folder: report.value?.root,
-  files: isFlutter.value ? pickedFindings.value.map((f) => f.rel) : pickedRows.value.map((t) => t.rel),
-  projectId: linkedProject.value?.id,
-  omit: ['audit', 'recipe', 'pack']
-}))
+const sendSource = computed<SendSource>(() => {
+  const files = isFlutter.value ? pickedFindings.value.map((f) => f.rel) : pickedRows.value.map((t) => t.rel)
+  const root = report.value?.root
+  return { folder: root, files, importPaths: root ? absolutePaths(root, files) : undefined, projectId: linkedProject.value?.id, omit: ['audit', 'recipe', 'pack'] }
+})
 
 function mb(n: number): string {
   return `${(n / MB).toFixed(n >= 100 * MB ? 0 : 1)} MB`

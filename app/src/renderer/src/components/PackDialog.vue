@@ -96,7 +96,7 @@ async function load(): Promise<void> {
     const all = listing.value.assets.map((a) => a.step_id)
     const want = all.filter((id) => props.preselect?.includes(id))
     picked.value = new Set(want.length ? want : all)
-    void loadShaders([...want, ...all.filter((id) => !want.includes(id))])
+    void loadShaders()
   } catch (e) {
     loadError.value = (e as Error).message
   } finally {
@@ -104,19 +104,11 @@ async function load(): Promise<void> {
   }
 }
 
-// Only sprite steps carry the shader catalog, so probe a few approved steps instead of assuming the first one does.
-async function loadShaders(steps: string[]): Promise<void> {
-  shaderList.value = []
-  for (const id of steps.slice(0, 6)) {
-    try {
-      const o = await window.studio?.asset?.bundleOptions(id)
-      if (o?.shaders?.length) {
-        shaderList.value = o.shaders
-        return
-      }
-    } catch {
-      /* step without an export folder: try the next one */
-    }
+async function loadShaders(): Promise<void> {
+  try {
+    shaderList.value = await api().shaderCatalog()
+  } catch {
+    shaderList.value = []
   }
 }
 

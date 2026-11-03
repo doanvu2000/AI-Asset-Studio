@@ -57,10 +57,12 @@ import type {
   QaRecomputeResult,
   SetupJob,
   SetupPlan,
-  SetupStartBody
+  SetupStartBody,
+  ImportToLibraryBody,
+  ImportToLibraryResult
 } from './types'
 import type { FlowValidateResult, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from './types'
-import type { CoreDiagnostics } from '../../../preload/types'
+import type { CoreDiagnostics, ShaderPresetInfo } from '../../../preload/types'
 import type { AgentActivitySnapshot, GpuState } from './types'
 import type { RunPreset, RunPresetBody, RunPresetPatch } from './runPresets'
 import type { FlowBatchBody, FlowBatchDetail, FlowBatchSummary, GddPlan, GddPlanBody, GddStartBody, GddStartResult } from './types'
@@ -143,6 +145,9 @@ export interface StudioApi {
   saveToolPaths(paths: Partial<Record<ToolKey, string>>): Promise<ToolPaths>
   diagnostics(): Promise<CoreDiagnostics>
   agentActivity(limit?: number): Promise<AgentActivitySnapshot>
+  shaderCatalog(): Promise<ShaderPresetInfo[]>
+  /** Copies existing absolute-path files into the Library as versions of a project (approved by default). */
+  importToLibrary(body: ImportToLibraryBody): Promise<ImportToLibraryResult>
   projects(q?: { archived?: boolean }): Promise<ProjectWithSummary[]>
   getProject(id: string): Promise<ProjectRow>
   createProject(body: ProjectCreateBody): Promise<ProjectRow>
@@ -369,6 +374,8 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     saveToolPaths: (paths) => call('PUT', '/api/settings/tools', { paths }),
     diagnostics: () => call('GET', '/api/diagnostics', undefined, SLOW_TIMEOUT_MS),
     agentActivity: (limit) => call('GET', `/api/agent/activity${query({ limit })}`),
+    shaderCatalog: () => call('GET', '/api/shaders'),
+    importToLibrary: (body) => call('POST', '/api/library/import', body, SLOW_TIMEOUT_MS),
     setupPlan: (dirs = {}) => call('GET', `/api/setup${query(dirs)}`, undefined, SLOW_TIMEOUT_MS),
     setupJob: () => call('GET', '/api/setup/job'),
     startSetup: (body) => call('POST', '/api/setup/start', body),

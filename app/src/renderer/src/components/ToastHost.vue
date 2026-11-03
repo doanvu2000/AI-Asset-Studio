@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { CircleAlert, CircleCheck, Info } from '@lucide/vue'
-import { useToasts } from '@/stores/toasts'
+import { useRouter } from 'vue-router'
+import { useToasts, type Toast } from '@/stores/toasts'
 
 const toasts = useToasts()
+const router = useRouter()
+function run(t: Toast): void {
+  if (t.action) void router.push(t.action.to)
+}
 const icons = { info: Info, success: CircleCheck, error: CircleAlert }
 </script>
 
@@ -12,6 +17,7 @@ const icons = { info: Info, success: CircleCheck, error: CircleAlert }
       <div v-for="t in toasts.items" :key="t.id" class="toast" :class="t.kind" @click="toasts.dismiss(t.id)">
         <component :is="icons[t.kind]" :size="16" />
         <span>{{ t.text }}</span>
+        <button v-if="t.action" type="button" class="act" @click="run(t)">{{ t.action.label }}</button>
       </div>
     </TransitionGroup>
   </div>
@@ -51,6 +57,20 @@ const icons = { info: Info, success: CircleCheck, error: CircleAlert }
 svg {
   flex: none;
   margin-top: 1px;
+}
+.act {
+  flex: none;
+  margin-left: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.act:hover {
+  text-decoration: underline;
 }
 .toast-enter-active {
   transition:

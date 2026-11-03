@@ -7,6 +7,7 @@ import { useProjects } from '@/stores/projects'
 import { useRecipes } from '@/stores/recipes'
 import { sendItems, type SendItem, type SendSource } from '@/composables/sendTo'
 import PackDialog from './PackDialog.vue'
+import LibraryImportDialog from './LibraryImportDialog.vue'
 
 const props = defineProps<{ source: SendSource; compact?: boolean; extra?: string }>()
 
@@ -16,6 +17,7 @@ const projects = useProjects()
 const uid = useId()
 const open = ref(false)
 const packOpen = ref(false)
+const importOpen = ref(false)
 const active = ref(0)
 const button = ref<HTMLButtonElement | null>(null)
 const menu = ref<HTMLElement | null>(null)
@@ -49,6 +51,7 @@ function choose(i: number): void {
   if (!it) return
   close(false)
   if (it.target === 'pack') packOpen.value = true
+  else if (it.target === 'import') importOpen.value = true
   else if (it.to) void router.push(it.to)
 }
 
@@ -117,6 +120,7 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
       </div>
     </Transition>
   </Teleport>
+  <LibraryImportDialog v-if="source.importPaths?.length" :open="importOpen" :paths="source.importPaths" :project-id="source.projectId" @close="importOpen = false" />
   <PackDialog v-if="source.projectId && source.stepIds?.length" :open="packOpen" :project-id="source.projectId" :preselect="source.stepIds" @close="packOpen = false" />
 </template>
 

@@ -1,6 +1,6 @@
 import { ApiError, type ListRunsQuery, type RecipeBody, type StudioApi, type VersionsQuery } from '../client'
 import { FrameBatcher, type EventSink, type EventStream } from '../ws'
-import type { CoreDiagnostics } from '../../../../preload/types'
+import type { CoreDiagnostics, ShaderPresetInfo } from '../../../../preload/types'
 import type { AgentActivitySnapshot, FlowValidateResult, FitEntry, FitReport, GameEngine, GpuSlot, HardwareInfo, GpuState, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from '../types'
 import type { EnginePreviewJob, OpenInEngineResult, PreviewEngines } from '../enginePreview'
 import type { HitVfx, StepHits } from '../hitFx'
@@ -34,6 +34,10 @@ import {
   type RunDetail,
   type RunRow,
   type StartRunBody,
+  type ImportToLibraryBody,
+  type ImportToLibraryResult,
+  type ImportedVersion,
+  type VersionStatus,
   type StepRow,
   type RegionEditBody,
   type VersionRow
@@ -1305,6 +1309,37 @@ export class MockCore implements StudioApi, EventStream {
 
   async agentActivity(): Promise<AgentActivitySnapshot> {
     return { sessions: [], events: [] }
+  }
+
+  async shaderCatalog(): Promise<ShaderPresetInfo[]> {
+    await sleep(80)
+    return [
+      { id: 'hit_flash', label: 'Nháy khi trúng đòn', hint: 'Sprite loé trắng ngắn khi nhận sát thương.', color: '#ffffff', speed: null },
+      { id: 'dissolve', label: 'Tan biến', hint: 'Sprite tan dần thành điểm ảnh.', color: '#ff7a1a', speed: 1 },
+      { id: 'outline_glow', label: 'Viền sáng', hint: 'Viền phát sáng quanh sprite.', color: '#4fd8ff', speed: 2 }
+    ]
+  }
+
+  async importToLibrary(body: ImportToLibraryBody): Promise<ImportToLibraryResult> {
+    await this.ready
+    await sleep(400)
+    const paths = [...new Set(body.paths)]
+    if (!paths.length) throw new ApiError('invalid', 'paths must list at least one absolute file path', 400)
+    const project_id = body.project_id || 'default'
+    if (project_id !== 'default') this.project(project_id)
+    const run_id = uid('run')
+    const status: VersionStatus = body.approve === false ? 'draft' : 'approved'
+    const versions: ImportedVersion[] = []
+    for (const [i, path] of paths.entries()) {
+      const name = path.split(/[\/]/).pop() ?? path
+      const blob = await this.makeBlob(7000 + i * 13, { size: 256, transparent: true })
+      const v: VersionRow = { id: uid('ver'), project_id, asset_name: body.asset_name || name.replace(/\.[^.]+$/, ''), run_id,
+        step_id: uid('step'), blob: { ...blob, name }, status, created_at: now() }
+      this.versionMap.set(v.id, v)
+      this.emit('version.updated', v, run_id)
+      versions.push({ version_id: v.id, status, asset_name: v.asset_name, name, hash: blob.hash, mime: blob.mime ?? null })
+    }
+    return { run_id, project_id, versions }
   }
 
   async diagnostics(): Promise<CoreDiagnostics> {

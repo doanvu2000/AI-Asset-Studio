@@ -1298,3 +1298,26 @@ export interface FlowBatchBody {
   title?: string
 }
 
+
+export interface ImportToLibraryBody {
+  paths: string[]
+  project_id?: string
+  asset_name?: string
+  /** Default true: imported versions are marked approved. */
+  approve?: boolean
+}
+
+export interface ImportedVersion {
+  version_id: string
+  status: VersionStatus
+  asset_name: string
+  name: string | null
+  hash: string
+  mime: string | null
+}
+
+export interface ImportToLibraryResult {
+  run_id: string
+  project_id: string
+  versions: ImportedVersion[]
+}

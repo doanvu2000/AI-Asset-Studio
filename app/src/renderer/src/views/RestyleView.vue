@@ -28,7 +28,7 @@ import ScanProgressBar from '@/components/ScanProgressBar.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import { useScanProgress } from '@/composables/scanProgress'
 import SendToMenu from '@/components/SendToMenu.vue'
-import { useQueryPrefill } from '@/composables/sendTo'
+import { absolutePaths, useQueryPrefill } from '@/composables/sendTo'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
 import { api, useConnection } from '@/stores/connection'
 import { useRuns } from '@/stores/runs'
@@ -249,6 +249,7 @@ const applying = ref(false)
 const undoing = ref<string | null>(null)
 const canApply = computed(() => run.value?.status === 'succeeded' && !!report.value && !isTrial.value)
 const liveBackup = computed(() => backups.value.find((b) => !b.undone_at))
+const writtenPaths = computed(() => (applied.value?.root ? absolutePaths(applied.value.root, applied.value.files.filter((f) => f.action === 'write').map((f) => f.rel)) : []))
 
 async function loadBackups(): Promise<void> {
   if (!runId.value || !conn.transport) return void (backups.value = [])
@@ -435,7 +436,7 @@ function openRun(): void {
               <RunStatusBadge :status="run.status" />
               <span v-if="eta !== null" class="caption num">còn ~{{ fmtS(eta) }}</span>
               <button type="button" class="btn btn-plain push" @click="openRun"><ExternalLink /> Chi tiết lượt chạy</button>
-              <SendToMenu v-if="report" :source="{ projectId, runId: runId ?? undefined, folder: scan?.root, stepIds: steps.map((s) => s.id), omit: ['restyle', 'recipe'] }" />
+              <SendToMenu v-if="report" :source="{ projectId, runId: runId ?? undefined, folder: scan?.root, importPaths: writtenPaths, stepIds: steps.map((s) => s.id), omit: ['restyle', 'recipe'] }" />
             </div>
             <div class="bar" role="progressbar" :aria-valuenow="Math.round(overall * 100)" aria-valuemin="0" aria-valuemax="100">
               <span :style="{ transform: `scaleX(${overall})` }" :class="{ live: active }" />

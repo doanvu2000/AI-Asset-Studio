@@ -4,7 +4,7 @@ import type { BlobRef, ProjectRow, RecipeInfo } from '@/api/types'
 import { NO_PROJECT } from '@/api/types'
 import { followUps, prefillQuery } from './followUp'
 
-export type SendTarget = 'recipe' | 'restyle' | 'audit' | 'pack' | 'gallery'
+export type SendTarget = 'recipe' | 'restyle' | 'audit' | 'pack' | 'gallery' | 'import'
 
 /** What the caller has in hand; each destination only shows when the fields it needs are present. */
 export interface SendSource {
@@ -18,6 +18,8 @@ export interface SendSource {
   /** Project folder on disk (Audit/Restyle) and files inside it, relative. */
   folder?: string
   files?: string[]
+  /** Absolute paths of files outside the Library that "Nhập vào thư viện" copies in. */
+  importPaths?: string[]
   /** Hide destinations that would point back at the screen the menu sits on. */
   omit?: SendTarget[]
 }
@@ -32,6 +34,12 @@ export interface SendItem {
 
 const MAX_RECIPES = 4
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i
+/** Joins scan-relative paths onto the folder using the folder's own separator. */
+export function absolutePaths(root: string, rels: string[]): string[] {
+  const sep = root.includes('\\') ? '\\' : '/'
+  const base = root.replace(/[\\/]+$/, '')
+  return rels.filter((r) => IMAGE_EXT.test(r)).map((r) => `${base}${sep}${r.replace(/[\\/]+/g, sep)}`)
+}
 const globOf = (rel: string): string => rel.replace(/[,*?[\]]/g, '?')
 
 export function sendItems(src: SendSource, recipes: RecipeInfo[], project?: ProjectRow): SendItem[] {
@@ -60,6 +68,8 @@ export function sendItems(src: SendSource, recipes: RecipeInfo[], project?: Proj
   if (folder && !skip.has('audit'))
     out.push({ id: 'audit', target: 'audit', label: 'Kiểm tra project', hint: src.folder ? undefined : 'thư mục xuất của dự án', to: { path: '/audit', query: { folder, scan: '1' } } })
   if (src.stepIds?.length && pid && !skip.has('pack')) out.push({ id: 'pack', target: 'pack', label: 'Đóng gói asset pack', hint: `${src.stepIds.length} asset` })
+  if (src.importPaths?.length && !skip.has('import'))
+    out.push({ id: 'import', target: 'import', label: 'Nhập vào thư viện', hint: `${src.importPaths.length} file` })
   if ((pid || src.runId || src.versionIds?.length) && !skip.has('gallery')) {
     const query: LocationQueryRaw = { project: pid, run: src.runId, focus: src.versionIds?.[0] }
     out.push({ id: 'gallery', target: 'gallery', label: 'Thư viện', hint: src.versionIds?.length ? 'làm nổi bản này' : src.runId ? 'bản của lượt chạy' : 'lọc theo dự án', to: { path: '/gallery', query } })

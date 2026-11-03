@@ -21,6 +21,7 @@ from studio_core.api import agent
 from studio_core.api import flows
 from studio_core.api import gdd
 from studio_core.api import gpu
+from studio_core.api import library
 from studio_core.api import run_presets
 from studio_core.api import hardware as hardware_api
 from studio_core.api.auth import OriginCheckMiddleware
@@ -51,6 +52,7 @@ def mount_api(app: FastAPI, allowed_origins: list[str]) -> None:
     app.include_router(flows.router)
     app.include_router(gdd.router)
     app.include_router(gpu.router)
+    app.include_router(library.router)
     app.include_router(hardware_api.router)
     app.include_router(diagnostics.router)
     app.include_router(stats.router)

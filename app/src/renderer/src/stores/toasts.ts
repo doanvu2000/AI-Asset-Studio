@@ -1,19 +1,21 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import type { RouteLocationRaw } from 'vue-router'
 
 export interface Toast {
   id: number
   kind: 'info' | 'success' | 'error'
   text: string
+  action?: { label: string; to: RouteLocationRaw }
 }
 
 export const useToasts = defineStore('toasts', () => {
   const items = ref<Toast[]>([])
   let seq = 0
 
-  function push(text: string, kind: Toast['kind'] = 'info', ms = 4000): void {
+  function push(text: string, kind: Toast['kind'] = 'info', ms = 4000, action?: Toast['action']): void {
     const id = ++seq
-    items.value.push({ id, kind, text })
+    items.value.push({ id, kind, text, action })
     if (items.value.length > 4) items.value.shift()
     window.setTimeout(() => dismiss(id), ms)
   }
