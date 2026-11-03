@@ -5,9 +5,10 @@ description: >-
   Ảnh sprite (nền trong) hoặc sprite sheet → height từ khoảng cách tới viền alpha (vát tròn silhouette) + chi tiết độ
   sáng → normal map Sobel, kênh G hướng lên (OpenGL) — Godot CanvasTexture và Unity URP 2D Light và Flutter/Flame (LitSpriteEffect trong Shader Pack, xuất Flutter có normal map thì kèm shader đèn 2D) đọc thẳng. Sheet tính
   từng khung riêng (đặt số cột/hàng) nên viền không lem sang khung bên cạnh. Ảnh xem trước: gốc | normal | chiếu sáng
-  thử. Chạy CPU, không cần GPU. Xuất engine từ bước sprite sheet có sẵn tuỳ chọn "Normal map 2D".
+  thử. Chạy CPU, không cần GPU. Tuỳ chọn "ai": MoGe-2 ViT-S (MIT) ước lượng normal từ ảnh, có khối thật hơn filter; thiếu model thì tự về filter kèm cảnh báo. Xuất engine từ bước sprite sheet có sẵn tuỳ chọn "Normal map 2D".
 inputs:
   image: {type: image, label: Sprite hoặc sprite sheet (nền trong suốt)}
+  method: {type: enum, default: auto, options: [auto, ai, filter], label: "Cách tính (auto = AI nếu đã cài model, không thì filter)"}
   strength: {type: float, default: 1.0, min: 0.1, max: 10, label: Độ nổi}
   bevel: {type: float, default: 0, min: 0, max: 64, label: "Độ vát viền (px, 0 = tự động)"}
   detail: {type: float, default: 0.5, min: 0, max: 4, label: Chi tiết từ độ sáng}
@@ -18,7 +19,7 @@ steps:
   - id: normal
     kind: op.normal2d
     in: {images: inputs.image}
-    params: {strength: "${inputs.strength}", bevel: "${inputs.bevel}", detail: "${inputs.detail}",
+    params: {method: "${inputs.method}", strength: "${inputs.strength}", bevel: "${inputs.bevel}", detail: "${inputs.detail}",
              cols: "${inputs.cols}", rows: "${inputs.rows}"}
   - id: approve
     kind: gate.approve

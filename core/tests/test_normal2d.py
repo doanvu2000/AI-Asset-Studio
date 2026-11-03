@@ -24,6 +24,11 @@ RECIPES = Path(__file__).resolve().parents[1] / "studio_core" / "recipes"
 F = 48
 
 
+@pytest.fixture(autouse=True)
+def _no_ai_model(monkeypatch, tmp_path_factory) -> None:
+    monkeypatch.setenv("STUDIO_NORMAL_AI_DIR", str(tmp_path_factory.getbasetemp() / "no-normal-ai"))
+
+
 def _disc(size: int = 64, r: int = 24, color=(180, 120, 90)) -> np.ndarray:
     im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     c = size // 2
