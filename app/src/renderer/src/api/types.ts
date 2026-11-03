@@ -1060,6 +1060,8 @@ export interface PackBody {
   webp?: boolean
   /** Flutter: also write flutter/demo/, a runnable Flame project (`flutter run`). */
   flutter_demo?: boolean
+  /** Flutter/Android/iOS: theme code (ThemeData / MaterialTheme / SwiftUI) from the project's style bible. */
+  theme?: boolean
   /** One shared trimmed atlas of every 2D sprite, beside the per-asset exports. */
   atlas?: boolean
   atlas_max_size?: AtlasPageSize

@@ -4,9 +4,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
@@ -17,8 +17,11 @@ from studio_core.api.project_qa import _open, _project
 from studio_core.contracts import StepError
 from studio_core.engine import project_qa as pq
 from studio_core.engine import style_bible as sb
+from studio_core.export import theme as th
+from studio_core.store.pack import ANDROID_PACKAGE
 from studio_core.store.repo import SqliteRepo
 
+PACKAGE_RE = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$"
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/projects/{project_id}/style", dependencies=[Depends(require_token)])
 _locks: dict[str, asyncio.Lock] = {}
@@ -52,6 +55,12 @@ async def load_bible(repo: SqliteRepo, project_id: str) -> sb.StyleBible | None:
     return sb.StyleBible.model_validate(raw) if raw else None
 
 
+async def theme_spec(repo: SqliteRepo, project_id: str, name: str = "") -> th.ThemeSpec:
+    """Palette of the project's style bible; empty (neutral fallback) when it has none."""
+    bible = await load_bible(repo, project_id)
+    return th.ThemeSpec(name=name, palette=tuple(bible.palette) if bible else ())
+
+
 async def _real_project(request: Request, project_id: str) -> Any:
     p = await _project(request, project_id)
     if p is None:
@@ -67,6 +76,19 @@ def _out(project_id: str, bible: sb.StyleBible | None) -> Response:
 async def get_bible(request: Request, project_id: str) -> Response:
     await _project(request, project_id)
     return _out(project_id, await load_bible(_repo(request), project_id))
+
+
+@router.get("/theme")
+async def get_theme(request: Request, project_id: str, target: Literal["flutter", "android", "ios"],
+                    package: str = Query(ANDROID_PACKAGE, max_length=120, pattern=PACKAGE_RE)) -> Response:
+    """UI theme files (Flutter app_theme.dart / Compose Theme.kt / SwiftUI AppTheme.swift) from the style bible."""
+    p = await _project(request, project_id)
+    spec = await theme_spec(_repo(request), project_id, p.name if p else project_id)
+    files = th.theme_files(spec, target, package)
+    return OrjsonResponse({"project_id": project_id, "target": target, "source": "bible" if th.has_palette(spec) else
+                           "fallback", "contrast": th.contrast_report(th.build_schemes(spec)),
+                           "files": [{"path": rel, "content": data.decode()} for rel, data in files
+                                     if isinstance(data, bytes)]})
 
 
 @router.post("/build")

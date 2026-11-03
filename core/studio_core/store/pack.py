@@ -67,6 +67,8 @@ class EngineOptions:
     webp: bool = False
     # Flutter pack only: also write flutter/demo/, a runnable Flame project built from the pack's assets.
     demo: bool = False
+    # export/theme.py ThemeSpec: flutter/android/ios packs also get a UI theme (app_theme.dart, Theme.kt, AppTheme.swift).
+    theme: Any = None
 
 
 @dataclass
@@ -752,6 +754,24 @@ def _pack_atlas(assets: list[PackAsset], folders: list[str], blobs: BlobStore, o
     return {"folder": sub, "name": atlas.name, **atlas.stats}
 
 
+def _write_theme(spec: Any, merges: dict[str, Any], package: str, warnings: list[str]) -> dict[str, Any]:
+    from dataclasses import replace as dc_replace
+
+    from studio_core.export import theme as th
+
+    if not th.has_palette(spec):
+        warnings.append("theme: style bible has no palette, used the neutral fallback palette")
+    out: dict[str, Any] = {"source": "bible" if th.has_palette(spec) else "fallback"}
+    for engine, m in merges.items():
+        font = spec.font or th.detect_font(m.tree.root, engine)
+        made = th.theme_files(dc_replace(spec, font=font), engine, package)
+        out[engine] = [rel for rel, _ in made]
+        for rel, data in made:
+            if rel not in m.tree.rels:
+                m.tree.put(rel, data, "theme")
+    return out
+
+
 def _zip(src: Path, dst: Path) -> None:
     tmp = dst.with_name(f".{dst.name}.{uuid.uuid4().hex[:8]}.tmp")
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
@@ -865,6 +885,8 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
             shared = m.finish()
             if shared:
                 result.setdefault("shared", {})[engine] = shared
+        if opts.export.theme is not None:
+            result["theme"] = _write_theme(opts.export.theme, merges, opts.export.package, warnings)
         if opts.export.mobile:
             from studio_core.export.mobile import merge_reports
 

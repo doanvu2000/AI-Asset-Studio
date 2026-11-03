@@ -12,6 +12,7 @@ from starlette.responses import Response
 from studio_core.api.auth import require_token
 from studio_core.api.errors import ApiError, OrjsonResponse
 from studio_core.api.project_qa import _project
+from studio_core.api.style_bible import theme_spec
 from studio_core.contracts import StepStatus, VersionRow, VersionStatus
 from studio_core.export.atlas import AtlasOptions
 from studio_core.export.collider import DEFAULT_TOLERANCE, ColliderOptions, default_enabled
@@ -55,6 +56,7 @@ class PackBody(BaseModel):
     package: str = Field(pk.ANDROID_PACKAGE, max_length=120, pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
     webp: bool = False
     flutter_demo: bool = False
+    theme: bool = False
     material_style: Literal["pbr", "toon"] = "pbr"
     toon: dict[str, float | int | str] | None = None
     atlas: bool = False
@@ -182,6 +184,8 @@ async def build_pack(request: Request, project_id: str, body: PackBody) -> Respo
                           out_dir=Path(body.out_dir) if body.out_dir else None, zip=body.zip,
                           export=_engine_options(body), atlas=atlas_options(body) if body.atlas else None,
                           latest_only=body.include is None)
+    if body.theme:
+        opts.export.theme = await theme_spec(_repo(request), project_id, p.name if p else project_id)
     lock = _locks.setdefault(project_id, asyncio.Lock())
     if lock.locked():
         raise ApiError(409, "busy", "a pack for this project is already being built")
