@@ -2,7 +2,7 @@
 import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { onKeyStroke } from '@vueuse/core'
-import { CornerDownLeft, FolderKanban, Paintbrush, RotateCcw, ShieldCheck, Images, Inbox, Keyboard, Layers, LayoutDashboard, ListChecks, Monitor, Moon, Plus, ScanSearch, Search, Settings, Sparkles, Sun, Workflow } from '@lucide/vue'
+import { CornerDownLeft, FolderKanban, Paintbrush, RotateCcw, ShieldCheck, Images, Inbox, Keyboard, Send, Layers, LayoutDashboard, ListChecks, Monitor, Moon, Plus, ScanSearch, Search, Settings, Sparkles, Sun, Workflow } from '@lucide/vue'
 import { useRecipes } from '@/stores/recipes'
 import { useRuns } from '@/stores/runs'
 import { useGates } from '@/stores/gates'
@@ -13,6 +13,7 @@ import { ApiError } from '@/api/client'
 import { RUN_ACTIVE } from '@/api/types'
 import { rerunRun } from '@/composables/rerun'
 import { RUN_LABEL } from '@/composables/format'
+import { markSent, recentSends } from '@/composables/sendTo'
 import { fold, openShortcuts, paletteOpen, shortcutsOpen } from '@/composables/palette'
 import { THEME_OPTIONS, useTheme } from '@/composables/theme'
 import { APP_VERSION, whatsNewOpen } from '@/composables/changelog'
@@ -129,6 +130,20 @@ const items = computed<Item[]>(() => {
     .filter((d) => match(d.title) || match(`chạy flow ${d.title}`) || match(`workflow ${d.title}`))
     .slice(0, q ? 8 : 5)
     .map<Item>((d) => ({ id: `flow-${d.id}`, group: 'Chạy chuỗi tự động', label: `Chạy flow ${d.title}`, icon: Workflow, run: go(`/flows/${encodeURIComponent(d.id)}/run`) }))
+  const sent = recentSends.value
+    .filter((r) => match(r.label) || match(r.source ?? '') || match('gửi gần đây'))
+    .slice(0, q ? 8 : 4)
+    .map<Item>((r, i) => ({
+      id: `sent-${i}`,
+      group: 'Gửi gần đây',
+      label: r.label,
+      hint: r.source,
+      icon: Send,
+      run: () => {
+        markSent(r.to)
+        void router.push(r.to)
+      }
+    }))
   const recent = runs.runList
     .filter((r) => match(r.title || '') || match(recipes.byId(r.recipe_id)?.name ?? ''))
     .slice(0, q ? 8 : 5)
@@ -141,7 +156,7 @@ const items = computed<Item[]>(() => {
       previewHash: runs.previewHash(r.id),
       run: () => void router.push(`/runs/${r.id}`)
     }))
-  return q ? [...act, ...flowRuns, ...make, ...recent, ...nav, ...look] : [...act, ...recent, ...make, ...flowRuns, ...nav, ...look]
+  return q ? [...act, ...sent, ...flowRuns, ...make, ...recent, ...nav, ...look] : [...act, ...sent, ...recent, ...make, ...flowRuns, ...nav, ...look]
 })
 
 const groups = computed(() => {

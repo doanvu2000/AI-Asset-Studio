@@ -1,4 +1,4 @@
-import { onScopeDispose, watch } from 'vue'
+import { onScopeDispose, shallowRef, watch } from 'vue'
 import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import type { BlobRef, ProjectRow, RecipeInfo, RecipeInputSpec, WorkflowDef } from '@/api/types'
 import { NO_PROJECT } from '@/api/types'
@@ -101,8 +101,69 @@ export function sendItems(src: SendSource, recipes: RecipeInfo[], project?: Proj
 
 export class SentFileMismatch extends Error {}
 
+export interface RecentSend {
+  target: SendTarget
+  label: string
+  source?: string
+  to: { path: string; query: LocationQueryRaw }
+  at: number
+}
+
+const RECENT_KEY = 'sendto:recent'
+const RECENT_MAX = 8
+// Destination views report a missing file long after the push, so only a send this recent can be blamed for it.
+const BLAME_MS = 15000
+const recentKey = (to: RecentSend['to']): string => JSON.stringify([to.path, to.query])
+
+function readRecent(): RecentSend[] {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]')
+    if (!Array.isArray(raw)) return []
+    return raw
+      .filter((r): r is RecentSend => !!r && typeof r.label === 'string' && typeof r.at === 'number' && typeof r.to?.path === 'string' && r.to.path.startsWith('/') && typeof r.to.query === 'object' && r.to.query !== null)
+      .slice(0, RECENT_MAX)
+  } catch {
+    return []
+  }
+}
+
+/** Newest first. Only destinations with a route are kept: the Pack and Import dialogs have none to replay. */
+export const recentSends = shallowRef<RecentSend[]>(readRecent())
+let blamed: { key: string; at: number } | null = null
+
+function saveRecent(list: RecentSend[]): void {
+  recentSends.value = list
+  try {
+    localStorage.setItem(RECENT_KEY, JSON.stringify(list))
+  } catch {
+    // storage unavailable: the in-memory list still works for this session
+  }
+}
+
+export function markSent(to: RecentSend['to']): void {
+  blamed = { key: recentKey(to), at: Date.now() }
+}
+
+export function recordRecent(item: SendItem, source?: string): void {
+  if (!item.to) return
+  const to = JSON.parse(JSON.stringify(item.to)) as RecentSend['to']
+  const key = recentKey(to)
+  markSent(to)
+  saveRecent([{ target: item.target, label: item.label, source: source || undefined, to, at: Date.now() }, ...recentSends.value.filter((r) => recentKey(r.to) !== key)].slice(0, RECENT_MAX))
+}
+
+export function removeRecent(to: RecentSend['to']): void {
+  const key = recentKey(to)
+  if (recentSends.value.some((r) => recentKey(r.to) === key)) saveRecent(recentSends.value.filter((r) => recentKey(r.to) !== key))
+}
+
 /** Core/IPC errors for a stale or garbage blob hash are English; a link can outlive the file, so show one VN line. */
 export function sentFileError(e: unknown): string {
+  if (blamed && Date.now() - blamed.at < BLAME_MS) {
+    const key = blamed.key
+    blamed = null
+    saveRecent(recentSends.value.filter((r) => recentKey(r.to) !== key))
+  }
   return e instanceof SentFileMismatch ? e.message : 'Tệp gửi sang không còn trong kho'
 }
 

@@ -6,7 +6,7 @@ import { ChevronDown, Send } from '@lucide/vue'
 import { useFlows } from '@/stores/flows'
 import { useProjects } from '@/stores/projects'
 import { useRecipes } from '@/stores/recipes'
-import { sendItems, type SendItem, type SendSource } from '@/composables/sendTo'
+import { recordRecent, sendItems, type SendItem, type SendSource } from '@/composables/sendTo'
 import PackDialog from './PackDialog.vue'
 import LibraryImportDialog from './LibraryImportDialog.vue'
 
@@ -63,7 +63,17 @@ function choose(i: number): void {
   close(false)
   if (it.target === 'pack') packOpen.value = true
   else if (it.target === 'import') importOpen.value = true
-  else if (it.to) void router.push(it.to)
+  else if (it.to) {
+    recordRecent(it, sourceName())
+    void router.push(it.to)
+  }
+}
+
+function sourceName(): string | undefined {
+  const s = props.source
+  const name = s.blobs?.[0]?.name || s.importBlobs?.[0]?.name
+  if (name) return name
+  return s.folder?.split(/[\\/]/).filter(Boolean).pop() ?? projects.byId(s.projectId)?.name
 }
 
 function onKey(e: KeyboardEvent): void {
