@@ -152,7 +152,9 @@ async def fix(request: Request, body: FixBody) -> Response:
                         root / "audit_atlas", a.get("max_size") or 2048))
         except au.AuditError as e:
             raise ApiError(409, "fix_failed", str(e)) from e
-        if out.get("cancelled") and not out.get("written"):
+        if out.get("cancelled"):
+            # No re-scan here: it would delay the cancel by the whole scan; the UI re-audits when it wants fresh hashes.
+            out["rescan_needed"] = bool(out.get("written"))
             return OrjsonResponse(out)
         if not body.dry_run and out.get("written"):
             opts = report.get("options") or {}

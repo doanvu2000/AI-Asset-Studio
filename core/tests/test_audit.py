@@ -1,5 +1,6 @@
 import json
 import struct
+import time
 import zlib
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from PIL import Image
 from studio_core.export import audit as au
 from studio_core.export.audit_media import _fbx_ascii, _fbx_binary, audio_seconds, mesh_tris
 from studio_core.export.restyle import file_hash
+from studio_core.scan_jobs import ScanCancelled
 from test_api_basic import AUTH, StubEngine, TOKEN, _settings
 
 GUIDS = {"hero": "a" * 32, "hero_copy": "b" * 32, "bg": "c" * 32, "orphan": "d" * 32, "icon": "e" * 32}
@@ -181,6 +183,52 @@ def test_unity_fix_dry_run_apply_and_undo(tmp_path: Path):
     with pytest.raises(au.AuditError):
         au.undo(backups, doc["backup_id"])
     assert au.list_backups(backups, str(proj.resolve()))[0]["undone_at"]
+
+
+def _cancel_at(n: int):
+    def progress(i: int, total: int, what: str) -> None:
+        if i >= n:
+            raise ScanCancelled()
+    return progress
+
+
+def test_cancelled_fix_totals_count_only_written_files(tmp_path: Path):
+    proj = _unity(tmp_path)
+    rep = au.scan(str(proj))
+    acts = [i["fix"] for t in rep["textures"] for i in t["issues"] if i.get("fix")]
+    full = au.apply_fixes(rep, acts, tmp_path / "bk_full", dry_run=True)
+    doc = au.apply_fixes(rep, acts, tmp_path / "bk", dry_run=False, progress=_cancel_at(1))
+    assert doc["cancelled"] and doc["written"] == 1
+    assert 0 < doc["gpu_before"] < full["gpu_before"]
+    wrote = [f for f in doc["files"] if f["action"] == "write"]
+    assert len(wrote) == 1 and doc["gpu_before"] == wrote[0]["gpu_before"]
+    assert au.list_backups(tmp_path / "bk")[0]["gpu_before"] == doc["gpu_before"]
+    assert au.undo(tmp_path / "bk", doc["backup_id"])["restored"] == [wrote[0]["rel"]]
+
+
+async def test_api_cancelled_fix_returns_without_rescan(tmp_path: Path, monkeypatch):
+    from studio_core.app import build_app
+
+    proj = _unity(tmp_path)
+    app = build_app(_settings(tmp_path / "data"), TOKEN, engine=StubEngine(), load_plugins=False)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+            rep = (await c.post("/api/audit", json={"path": str(proj / "Assets")}, headers=AUTH)).json()
+            acts = [i["fix"] for t in rep["textures"] for i in t["issues"] if i.get("fix")]
+            real = au.apply_fixes
+            monkeypatch.setattr(au, "apply_fixes", lambda r, a, b, dry=True, src=None, progress=None:
+                                real(r, a, b, dry, src, None if dry else _cancel_at(1)))
+
+            def no_scan(*a, **k):
+                raise AssertionError("cancelled fix must not re-scan the project")
+            monkeypatch.setattr(au, "scan", no_scan)
+            t0 = time.monotonic()
+            r = await c.post("/api/audit/fix", json={"path": str(proj), "actions": acts, "dry_run": False},
+                             headers=AUTH)
+            assert time.monotonic() - t0 < 1
+            out = r.json()
+            assert r.status_code == 200 and out["cancelled"] and out["written"] == 1
+            assert out["rescan_needed"] and "report" not in out
 
 
 def test_fix_refuses_unknown_and_escaping_paths(tmp_path: Path):

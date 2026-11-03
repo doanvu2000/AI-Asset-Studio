@@ -977,6 +977,7 @@ def apply_fixes(report: dict[str, Any], actions: list[dict[str, Any]], backups: 
             raise AuditError("backup zip failed verification; nothing written")
     doc.update(backup_id=bid, backup=str(zpath))
     written = 0
+    done: list[dict[str, Any]] = []
     pending = [f for f in files if f["action"] == "write"]
     try:
         for i, (r, f) in enumerate(zip(todo, pending)):
@@ -995,9 +996,12 @@ def apply_fixes(report: dict[str, Any], actions: list[dict[str, Any]], backups: 
             _atomic_write(dst, r["data"])
             f["new"] = file_hash(dst)
             written += 1
+            done.append(r)
     finally:
         doc["written"] = written
         doc["skipped"] = len(files) - written
+        doc["gpu_before"] = sum(int(r.get("gpu_before") or 0) for r in done)
+        doc["gpu_after"] = sum(int(r.get("gpu_after") or 0) for r in done)
         if doc.get("cancelled") and not written:
             zpath.unlink(missing_ok=True)
             doc.pop("backup_id", None)
