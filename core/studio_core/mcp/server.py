@@ -554,7 +554,8 @@ class StudioTools:
         return style
 
     async def save_project(self, project_id: str | None, name: str | None, description: str | None,
-                           archived: bool | None, style: dict[str, Any], replace_style: bool) -> dict[str, Any]:
+                           archived: bool | None, style: dict[str, Any], replace_style: bool,
+                           auto_export: bool | None = None, auto_export_dir: str | None = None) -> dict[str, Any]:
         if project_id is None:
             if not name:
                 raise ToolError("name is required to create a project")
@@ -563,7 +564,8 @@ class StudioTools:
             p = await self._call("POST", "/api/projects", json=body)
         else:
             pid = _safe_id(project_id, "project_id")
-            body = {k: v for k, v in (("name", name), ("description", description), ("archived", archived))
+            body = {k: v for k, v in (("name", name), ("description", description), ("archived", archived),
+                                     ("auto_export", auto_export), ("auto_export_dir", auto_export_dir))
                     if v is not None}
             if any(v is not None for v in style.values()) or replace_style:
                 current = {} if replace_style else (await self._call("GET", f"/api/projects/{pid}")).get("style", {})
@@ -572,7 +574,8 @@ class StudioTools:
                 raise ToolError("nothing to change")
             p = await self._call("PATCH", f"/api/projects/{pid}", json=body)
         return {"project_id": p["id"], "name": p["name"], "description": p.get("description", ""),
-                "archived": p.get("archived", False), "style": p.get("style", {})}
+                "archived": p.get("archived", False), "style": p.get("style", {}),
+                "auto_export": p.get("auto_export", False), "auto_export_dir": p.get("auto_export_dir", "")}
 
     async def follow_up_options(self, run_id: str, output: str | None, blob: str | None) -> dict[str, Any]:
         data = await self._call("GET", f"/api/runs/{_safe_id(run_id, 'run_id')}")
@@ -864,6 +867,13 @@ def build_server(link: CoreLink) -> MCPServer:
         return {"ok": True, "step_id": step_id, "next": "call wait_run(run_id)"}
 
     @mcp.tool(annotations=acts)
+    async def rerun_run(run_id: str, seed: Literal["new", "same"] = "new") -> dict[str, Any]:
+        """Start a new run with the same recipe and inputs as a finished one. seed="new" draws fresh seeds, "same"
+        reuses the recorded ones (fails with seed_unknown for runs made before seeds were recorded). Returns the new
+        run_id; then wait_run."""
+        return await tools._call("POST", f"/api/runs/{_safe_id(run_id, 'run_id')}/rerun", json={"seed": seed})
+
+    @mcp.tool(annotations=acts)
     async def get_outputs(run_id: str, include_images: bool = True) -> CallToolResult:
         """Export the run's final outputs to <data>/exports/mcp/<run_id>/ with readable names and return
         their absolute paths plus metadata (size, mime, JSON content such as sprite-sheet metadata,
@@ -987,7 +997,7 @@ def build_server(link: CoreLink) -> MCPServer:
                                out_dir: str | None = None, author: str = "", org: str = "assetstudio",
                                description: str = "", atlas: bool = False, mobile: bool = False,
                                package: str | None = None, webp: bool = False,
-                               flutter_demo: bool = False) -> dict[str, Any]:
+                               flutter_demo: bool = False, theme: bool = False) -> dict[str, Any]:
         """Package a project's approved assets into per-engine folders + zip on local disk (never pushed anywhere):
         flutter (main target: assets/ + merged pubspec + Assets.dart), android (res/drawable-*dpi + Kotlin helper),
         ios (xcassets + Swift helper), Unity UPM package and/or Godot addon, with README, CHANGELOG (vs the previous pack), LICENSE and provenance.json
@@ -998,7 +1008,8 @@ def build_server(link: CoreLink) -> MCPServer:
         mobile = Android/iOS texture budget (ASTC/ETC2, max size, mipmaps per asset type; result.mobile has the
         estimated GPU memory table). package = Android package of the Kotlin helper (engine android); webp = Flutter
         density images as lossless WebP. flutter_demo = also write flutter/demo/, a runnable Flame project
-        (8-dir player, follow camera, tmx map, parallax; `flutter run` inside it). engines None = ["flutter"]."""
+        (8-dir player, follow camera, tmx map, parallax; `flutter run` inside it). theme = also write the UI theme
+        (Flutter/Compose/SwiftUI files from the style bible palette, WCAG AA light+dark; see get_ui_theme). engines None = ["flutter"]."""
         body: dict[str, Any] = {"engines": engines or ["flutter"], "license": license, "author": author, "org": org,
                                 "description": description, "atlas": atlas, "mobile": mobile}
         if package:
@@ -1007,11 +1018,26 @@ def build_server(link: CoreLink) -> MCPServer:
             body["webp"] = True
         if flutter_demo:
             body["flutter_demo"] = True
+        if theme:
+            body["theme"] = True
         for k, v in (("version", version), ("include", include), ("out_dir", out_dir)):
             if v is not None:
                 body[k] = v
         return await tools._call("POST", f"/api/projects/{_safe_id(project_id, 'project_id')}/pack", json=body,
                                  timeout=900)
+
+    @mcp.tool(annotations=read_only)
+    async def get_ui_theme(project_id: str, target: Literal["flutter", "android", "ios"] = "flutter",
+                           package: str | None = None) -> dict[str, Any]:
+        """UI theme source files for a project, generated from its style bible palette (neutral fallback when it
+        has none; `source` says which): flutter app_theme.dart, android Compose Theme.kt (`package` = Kotlin package),
+        ios SwiftUI AppTheme.swift. Returns files [{path, content}] and a WCAG contrast report; nothing is written
+        to disk (build_asset_pack theme=true bundles them)."""
+        params = {"target": target}
+        if package:
+            params["package"] = package
+        return await tools._call("GET", f"/api/projects/{_safe_id(project_id, 'project_id')}/style/theme",
+                                 params=params)
 
     @mcp.tool(annotations=read_only)
     async def recipe_stats(days: int | None = 30, project_id: str | None = None) -> dict[str, Any]:
@@ -1112,14 +1138,17 @@ def build_server(link: CoreLink) -> MCPServer:
                              preset: str | None = None, reference_image: str | None = None,
                              palette_image: str | None = None, default_inputs: dict[str, Any] | None = None,
                              pixel: dict[str, Any] | None = None, notes: str | None = None,
-                             replace_style: bool = False) -> dict[str, Any]:
+                             replace_style: bool = False, auto_export: bool | None = None,
+                             auto_export_dir: str | None = None) -> dict[str, Any]:
         """Rename / describe / archive (archived=true) or restore a project, or change its locked style. Style
         fields you pass are merged into the current style (an empty string clears one); replace_style=true starts
-        from an empty style instead."""
+        from an empty style instead. auto_export=true copies each newly approved version into auto_export_dir
+        (absolute game folder; "" clears it) in the background."""
         style = {"prompt_prefix": prompt_prefix, "prompt_suffix": prompt_suffix, "negative": negative,
                  "preset": preset, "reference_image": reference_image, "palette_image": palette_image,
                  "inputs": default_inputs, "pixel": pixel, "notes": notes}
-        return await tools.save_project(project_id, name, description, archived, style, replace_style)
+        return await tools.save_project(project_id, name, description, archived, style, replace_style,
+                                        auto_export, auto_export_dir)
 
     @mcp.tool(annotations=acts)
     async def import_to_library(paths: list[str], project_id: str | None = None, asset_name: str | None = None,

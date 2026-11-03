@@ -53,7 +53,10 @@ Typical flows:
 - Blender MCP: `get_outputs` gives GLB paths → `execute_blender_code` to import, `look` to inspect topology/scale
   before shipping a prop; send fixes back via `mesh-retexture` or `import_to_library`.
 - Ship: `project_qa` (consistency) → `project_qa_fix` → `build_style_bible` → `build_asset_pack(engines, atlas,
-  mobile)`.
+  mobile, theme)`. `get_ui_theme(project_id, target)` previews the Flutter/Compose/SwiftUI theme from the style
+  bible palette.
+- Another take: `rerun_run(run_id, seed="new"|"same")`. Game folder sync: `update_project(auto_export=true,
+  auto_export_dir=<abs folder>)` copies newly approved versions there.
 
 ## Rules
 - Do not choose at `human` gates unless the user said so. Don't start several GPU recipes at once "to be fast".
