@@ -445,7 +445,7 @@ function reveal(p: string): void {
                 <div v-if="plan" class="confirm callout" role="alertdialog" aria-label="Xác nhận sửa">
                   <span>
                     Sẽ sửa <strong class="num">{{ plan.files?.filter((f) => f.action === 'write').length ?? 0 }}</strong> {{ isFlutter ? 'mục' : 'file import' }}<template v-if="isFlutter"><template v-if="plan.bytes_before"> · ảnh chuyển WebP
-                    <strong class="num">{{ mb(plan.bytes_before) }} → {{ mb(plan.bytes_after ?? 0) }}</strong></template></template><template v-else> · RAM GPU
+                    <strong class="num">{{ mb(plan.bytes_before) }} → {{ plan.estimated ? '~' : '' }}{{ mb(plan.bytes_after ?? 0) }}</strong><template v-if="plan.estimated"> (ước tính)</template></template></template><template v-else> · RAM GPU
                     <strong class="num">{{ mb(plan.gpu_before ?? 0) }} → {{ mb(plan.gpu_after ?? 0) }}</strong></template>. File gốc nén vào backup zip trước.
                   </span>
                   <button type="button" class="btn btn-primary" :disabled="applying || !plan.files?.some((f) => f.action === 'write')" @click="apply">

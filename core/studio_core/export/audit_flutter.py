@@ -10,6 +10,8 @@ import re
 import time
 import uuid
 import zipfile
+from zipfile import ZIP_DEFLATED, ZIP_STORED
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
@@ -30,6 +32,13 @@ BIG_BYTES = 1 << 20
 BIG_WAV_BYTES = 1 << 20
 BIG_SIDE = mobile.BUDGETS["sprite"].max_size
 WEBP_QUALITY = 90
+MAX_WORKERS = 6
+PACKED_EXTS = (".png", ".jpg", ".jpeg", ".webp")  # already compressed: deflate costs ~10 s per 200 MB for nothing
+EST_MIN_PIXELS = 2_000_000
+EST_TILE = 192
+EST_TILES = 48
+EST_LOSSY_BIAS = 0.92  # tiles carry per-tile headers and no cross-tile context; measured ~+9% on real images
+EST_RECHECK = 0.8  # estimated after/before above this is re-encoded exactly before deciding "not lighter"
 IGNORED = {".ds_store", "thumbs.db", "desktop.ini"}
 CODE_DIRS = ("lib", "test", "integration_test", "bin", "tool", "example")
 FONT_EXTS = (".ttf", ".otf", ".ttc")
@@ -565,23 +574,49 @@ def rewrite_refs(text: str, old: str, new: str, bare: bool) -> str:
 
 # --- image work ---------------------------------------------------------------------------------------------------
 
-def _webp_bytes(img: Image.Image) -> bytes:
+def _webp_bytes(img: Image.Image, lossless: bool | None = None) -> bytes:
     """Hard (really used) alpha stays lossless; opaque pixels go lossy at WEBP_QUALITY."""
     buf = io.BytesIO()
-    if "A" in img.getbands() and img.getchannel("A").getextrema()[0] < 255:
+    if lossless is None:
+        lossless = "A" in img.getbands() and img.getchannel("A").getextrema()[0] < 255
+    if lossless:
         img.save(buf, "WEBP", lossless=True, quality=75, method=4)
     else:
         img.convert("RGB").save(buf, "WEBP", quality=WEBP_QUALITY, method=4)
     return buf.getvalue()
 
 
-def encode_webp(p: Path) -> bytes:
+def _loaded(p: Path) -> tuple[Image.Image, bool]:
     with Image.open(p) as im:
         if getattr(im, "n_frames", 1) > 1:
             raise au.AuditError("ảnh động (APNG), không chuyển WebP")
         im.load()
         has_alpha = "A" in im.getbands() or "transparency" in im.info
-        return _webp_bytes(im.convert("RGBA" if has_alpha else "RGB"))
+        return im.convert("RGBA" if has_alpha else "RGB"), has_alpha
+
+
+def encode_webp(p: Path) -> bytes:
+    return _webp_bytes(_loaded(p)[0])
+
+
+def estimate_webp(p: Path) -> tuple[int, bool]:
+    """(bytes, estimated). Images over EST_MIN_PIXELS encode ~EST_TILES full-resolution tiles spread over the image
+    and scale by area: a downscaled copy would be denser per pixel and overshoot."""
+    img, has_alpha = _loaded(p)
+    w, h = img.size
+    if w * h <= EST_MIN_PIXELS:
+        return len(_webp_bytes(img)), False
+    lossless = has_alpha and img.getchannel("A").getextrema()[0] < 255
+    t = EST_TILE
+    cols = max(1, round((EST_TILES * w / h) ** 0.5))
+    rows = max(1, EST_TILES // cols)
+    total = 0
+    for i in range(cols * rows):
+        x = min(max(0, int((i % cols * 2 + 1) / (cols * 2) * w - t / 2)), w - t)
+        y = min(max(0, int((i // cols * 2 + 1) / (rows * 2) * h - t / 2)), h - t)
+        total += len(_webp_bytes(img.crop((x, y, x + t, y + t)), lossless))
+    scale = w * h / (t * t * cols * rows)
+    return int(total * scale * (1.0 if lossless else EST_LOSSY_BIAS)), True
 
 
 def make_variant(src: Path, src_scale: float, target: float, ext: str) -> bytes:
@@ -698,37 +733,66 @@ def plan_fixes(report: dict[str, Any], actions: list[dict[str, Any]], progress: 
         units.append({"rel": str(a.get("rel") or ""), "type": str(a.get("type")), "kind": a.get("kind"),
                       "action": "write", "fixes": [str(a.get("type"))], "_a": a})
     units.sort(key=lambda u: ORDER.get(u["type"], 9))
-    for i, u in enumerate(units):
-        if progress is not None:
-            progress(i, len(units), "plan")
-        try:
-            f = _find(report, u["_a"]) if u["type"] in FIX_TYPES else None
-            if f is None:
-                raise au.AuditError("không có trong lần quét gần nhất")
-            if u["type"] in ("flutter_declare", "flutter_font"):
-                if not pub_ok:
-                    raise au.AuditError("pubspec.yaml đã đổi sau lần quét; quét lại")
-                if _hash_of(proj, u["rel"]) is None:
-                    raise au.AuditError("file không còn trên đĩa")
-                declare = declare_font if u["type"] == "flutter_font" else declare_entry
-                if declare(pub_text, u["rel"]) == pub_text:
-                    raise au.AuditError("đã khai báo")
-                u["touch"] = ["pubspec.yaml"]
-            elif u["type"] == "flutter_variant":
-                if _hash_of(proj, f["src"]) != f["src_hash"]:
-                    raise au.AuditError("ảnh nguồn đã đổi sau lần quét; quét lại")
-                u["target"] = _variant_path(u["rel"], u["kind"])
-                if _hash_of(proj, u["target"]) is not None:
-                    raise au.AuditError("biến thể đã có")
-                u["src"], u["src_scale"] = f["src"], f["src_scale"]
-                u["touch"] = [u["target"]]
-            else:
-                if not pub_ok:
-                    raise au.AuditError("pubspec.yaml đã đổi sau lần quét; quét lại")
-                _plan_webp(proj, u, f, dart, names)
-        except (au.AuditError, OSError, UnicodeDecodeError, ValueError) as e:
-            u.update(action="skip", why=str(e))
+    pool = ThreadPoolExecutor(_workers())
+    ahead: dict[int, Future[None]] = {}
+    try:
+        for i, u in enumerate(units):
+            if progress is not None:
+                progress(i, len(units), "plan")
+            _plan_unit(proj, report, u, i, units, ahead, pool, pub_ok, pub_text, dart, names)
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
     return units
+
+
+def _workers() -> int:
+    return max(1, min(MAX_WORKERS, (os.cpu_count() or 2) - 1))
+
+
+def _plan_unit(proj: Path, report: dict[str, Any], u: dict[str, Any], i: int, units: list[dict[str, Any]],
+               ahead: dict[int, Future[None]], pool: ThreadPoolExecutor, pub_ok: bool, pub_text: str,
+               dart: list[str], names: dict[str, int]) -> None:
+    for j in range(i, min(len(units), i + 2 * _workers())):
+        if j not in ahead and units[j]["type"] == "flutter_webp":
+            ahead[j] = pool.submit(_plan_webp_unit, proj, report, units[j], pub_ok, dart, names)
+    try:
+        if i in ahead:
+            ahead.pop(i).result()
+            return
+        f = _find(report, u["_a"]) if u["type"] in FIX_TYPES else None
+        if f is None:
+            raise au.AuditError("không có trong lần quét gần nhất")
+        if u["type"] in ("flutter_declare", "flutter_font"):
+            if not pub_ok:
+                raise au.AuditError("pubspec.yaml đã đổi sau lần quét; quét lại")
+            if _hash_of(proj, u["rel"]) is None:
+                raise au.AuditError("file không còn trên đĩa")
+            declare = declare_font if u["type"] == "flutter_font" else declare_entry
+            if declare(pub_text, u["rel"]) == pub_text:
+                raise au.AuditError("đã khai báo")
+            u["touch"] = ["pubspec.yaml"]
+        elif u["type"] == "flutter_variant":
+            if _hash_of(proj, f["src"]) != f["src_hash"]:
+                raise au.AuditError("ảnh nguồn đã đổi sau lần quét; quét lại")
+            u["target"] = _variant_path(u["rel"], u["kind"])
+            if _hash_of(proj, u["target"]) is not None:
+                raise au.AuditError("biến thể đã có")
+            u["src"], u["src_scale"] = f["src"], f["src_scale"]
+            u["touch"] = [u["target"]]
+        else:
+            raise au.AuditError("không có trong lần quét gần nhất")
+    except (au.AuditError, OSError, UnicodeDecodeError, ValueError) as e:
+        u.update(action="skip", why=str(e))
+
+
+def _plan_webp_unit(proj: Path, report: dict[str, Any], u: dict[str, Any], pub_ok: bool, dart: list[str],
+                    names: dict[str, int]) -> None:
+    f = _find(report, u["_a"])
+    if f is None:
+        raise au.AuditError("không có trong lần quét gần nhất")
+    if not pub_ok:
+        raise au.AuditError("pubspec.yaml đã đổi sau lần quét; quét lại")
+    _plan_webp(proj, u, f, dart, names)
 
 
 def _variant_path(base: str, kind: str) -> str:
@@ -747,18 +811,26 @@ def _plan_webp(proj: Path, u: dict[str, Any], f: dict[str, Any], dart: list[str]
     if any(_hash_of(proj, n) is not None for n in new_of.values()):
         raise au.AuditError("đã có file .webp cùng tên")
     before = sum(_safe(proj, m["rel"]).stat().st_size for m in members)
-    after = sum(len(encode_webp(_safe(proj, m["rel"]))) for m in members)
+    sized = [estimate_webp(_safe(proj, m["rel"])) for m in members]
+    after, estimated = sum(n for n, _ in sized), any(e for _, e in sized)
+    if estimated and after >= before * EST_RECHECK:
+        after, estimated = sum(len(encode_webp(_safe(proj, m["rel"]))) for m in members), False
     if after >= before:
         raise au.AuditError("WebP không nhẹ hơn bản gốc")
     base = u["rel"]
     bare = _bare_unique(names, PurePosixPath(base).name)
     edits = [r for r in dart if rewrite_refs(_read_text(proj, r), base, new_of[base], bare) != _read_text(proj, r)]
     u.update(members=[m["rel"] for m in members], new_of=new_of, dart=edits, bare=bare, bytes_before=before,
-             bytes_after=after,
+             bytes_after=after, estimated=estimated,
              touch=["pubspec.yaml", *edits, *new_of.keys(), *new_of.values()])
 
 
-def _run_unit(proj: Path, u: dict[str, Any], expected: dict[str, str | None]) -> None:
+def _encode_members(proj: Path, u: dict[str, Any]) -> dict[str, bytes]:
+    return {m: encode_webp(_safe(proj, m)) for m in u["members"]}
+
+
+def _run_unit(proj: Path, u: dict[str, Any], expected: dict[str, str | None],
+              blobs: dict[str, bytes] | None = None) -> None:
     for rel in u.get("touch", []):
         if expected.get(rel, _hash_of(proj, rel)) != _hash_of(proj, rel):
             raise au.AuditError(f"{rel} đã đổi trong lúc sửa")
@@ -772,7 +844,11 @@ def _run_unit(proj: Path, u: dict[str, Any], expected: dict[str, str | None]) ->
             tx.write(u["target"], make_variant(_safe(proj, u["src"]), u["src_scale"], _scale(u["kind"]) or 1.0, ext))
         else:
             new_of = u["new_of"]
-            data = {m: encode_webp(_safe(proj, m)) for m in u["members"]}
+            data = blobs if blobs is not None else _encode_members(proj, u)
+            real = sum(len(b) for b in data.values())
+            if real >= sum(_safe(proj, m).stat().st_size for m in u["members"]):
+                raise au.AuditError("WebP không nhẹ hơn bản gốc")
+            u.update(bytes_after=real, estimated=False)
             for m, blob in data.items():
                 tx.write(new_of[m], blob)
             for rel in u["dart"]:
@@ -800,10 +876,12 @@ def apply(report: dict[str, Any], actions: list[dict[str, Any]], backups: Path, 
         doc.update(cancelled=True)
         return doc
     todo = [u for u in units if u["action"] == "write"]
-    keep = ("rel", "action", "why", "fixes", "bytes_before", "bytes_after")
+    keep = ("rel", "action", "why", "fixes", "bytes_before", "bytes_after", "estimated")
     doc["files"] = [{k: u[k] for k in keep if k in u} for u in units]
     doc.update(skipped=len(units) - len(todo), bytes_before=sum(u.get("bytes_before", 0) for u in todo),
                bytes_after=sum(u.get("bytes_after", 0) for u in todo))
+    if dry_run:
+        doc["estimated"] = any(u.get("estimated") for u in todo)
     if dry_run or not todo:
         return doc
     touched = sorted({r for u in todo for r in u["touch"]})
@@ -814,7 +892,7 @@ def apply(report: dict[str, Any], actions: list[dict[str, Any]], backups: Path, 
     saved = [r for r in touched if orig[r] is not None]
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
         for r in saved:
-            z.write(_safe(proj, r), r)
+            z.write(_safe(proj, r), r, ZIP_STORED if r.lower().endswith(PACKED_EXTS) else ZIP_DEFLATED)
     with zipfile.ZipFile(zpath) as z:
         if z.testzip() is not None or len(z.namelist()) != len(saved):
             raise au.AuditError("backup zip failed verification; nothing written")
@@ -823,6 +901,8 @@ def apply(report: dict[str, Any], actions: list[dict[str, Any]], backups: Path, 
     written = 0
     done: list[dict[str, Any]] = []
     files = [f for f in doc["files"] if f["action"] == "write"]
+    pool = ThreadPoolExecutor(_workers())
+    ahead: dict[int, Future[dict[str, bytes]]] = {}
     try:
         for i, (u, f) in enumerate(zip(todo, files)):
             try:
@@ -832,16 +912,22 @@ def apply(report: dict[str, Any], actions: list[dict[str, Any]], backups: Path, 
                 for left in files[i:]:
                     left.update(action="skip", why="cancelled")
                 break
+            for j in range(i, min(len(todo), i + _workers())):
+                if j not in ahead and todo[j]["type"] == "flutter_webp":
+                    ahead[j] = pool.submit(_encode_members, proj, todo[j])
             try:
-                _run_unit(proj, u, expected)
+                _run_unit(proj, u, expected, ahead.pop(i).result() if i in ahead else None)
             except (au.AuditError, OSError, UnicodeDecodeError, ValueError) as e:
                 f.update(action="skip", why=str(e))
                 continue
+            f.pop("estimated", None)
+            f["bytes_after"] = u.get("bytes_after", f.get("bytes_after"))
             for r in u["touch"]:
                 expected[r] = _hash_of(proj, r)
             done.append(u)
             written += 1
     finally:
+        pool.shutdown(wait=True, cancel_futures=True)
         doc["written"] = written
         doc["skipped"] = len(doc["files"]) - written
         doc["bytes_before"] = sum(u.get("bytes_before", 0) for u in done)

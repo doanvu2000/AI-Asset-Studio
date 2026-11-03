@@ -83,6 +83,8 @@ export interface AuditFixResult {
   gpu_after?: number
   bytes_before?: number
   bytes_after?: number
+  /** Dry run: WebP sizes of big images are sampled, not fully encoded. */
+  estimated?: boolean
   backup_id?: string
   /** Dry run only: pass back to apply so the core reuses the plan instead of planning again. */
   plan_id?: string
