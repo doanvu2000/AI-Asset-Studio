@@ -1,0 +1,9 @@
+## WP-15C — DONE
+- Đã đổi: core/studio_core/api/library.py (mới: GET /api/shaders, POST /api/library/import) + api/__init__.py; mcp/server.py import_files gọi endpoint mới (bỏ IMPORT_RECIPE); core/tests/test_library_import.py (mới, 7 test); app api/types.ts, client.ts (shaderCatalog, importToLibrary), mock/server.ts; composables/sendTo.ts (đích 'import', absolutePaths); components/LibraryImportDialog.vue (mới), SendToMenu.vue, ToastHost.vue + stores/toasts.ts (toast có nút hành động), PackDialog.vue (lấy shader từ catalog), AuditView.vue, RestyleView.vue (importPaths).
+- Tiêu chí 3/3 (catalog, endpoint import dùng chung với MCP, UI Nhập vào thư viện).
+- Audit: import chạy trong core (không HTTP vòng); path tuyệt đối, tồn tại, đuôi trong whitelist (ảnh/glb/gltf/fbx/obj/json/atlas/video/audio); MCP cũ chỉ kiểm is_file nên không có quy tắc symlink để giữ.
+- Review edge: paths rỗng 400, tương đối 400, không tồn tại/thư mục 404, đuôi .exe 400, project lạ 404 (không tạo version), trùng path gộp, approve=false giữ draft, default project không cần tồn tại trong DB.
+- Test: test_library_import 7/7; MCP test_agent_mcp/mcp_r12/p4b_mcp 19 pass (import_to_library cũ ok); full pytest 1828 passed, 6 skipped (>=1821); typecheck sạch; gen_agent_docs không đổi file.
+- Nhìn: ĐÃ NHÌN (Electron thật + core thật, data tạm scratch/qa15c-data, tắt theo PID): docs/qa/r15/WP-15C/ 00 scan, 01 menu, 02 dialog, 03 toast, 04 gallery (version mới), 05 toast vào project, 06 PackDialog hiện shader dù asset là PNG nhập (không có step sprite).
+- Lưu ý: Restyle chỉ hiện đích Nhập sau khi "Ghi vào project" (file ghi ra đĩa); Audit lấy file ảnh đang chọn. Chưa nhìn riêng Restyle (cần GPU).
+- Commit: feat(api): GET /api/shaders and POST /api/library/import shared with MCP import_to_library; app Send to > Import to library from Audit/Restyle, Pack dialog shader list from catalog

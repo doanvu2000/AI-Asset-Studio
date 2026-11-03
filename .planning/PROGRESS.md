@@ -69,3 +69,26 @@ Plan: PLAN-2026-11-03-r14.md. Commit từng phần + push cuối.
 - [x] WP-14B tiến độ + huỷ an toàn cho audit fix (undo phần đã sửa) và project QA — 46 pass cùng 14A (main chạy), typecheck sạch — 8ff3158. CHƯA KIỂM Electron thật; bước vision không huỷ được.
 - [x] WP-14A PATCH preset (đổi tên/ghi đè, trùng 409), mũi tên nón ±45°, PageHeader fit qua rAF (ResizeObserver loop) — 33f6efa (kèm client/mock phần scan kind của 14B). CHƯA so lỗi RO trước/sau; nón chưa thử nhiều cột.
 - [x] Full pytest 1785 pass, 6 skip, 78 s. Push.
+- [x] 11:54 Handoff mới: .planning/HANDOFF-2026-11-03-1154.md (thay HANDOFF-latest → archive).
+
+## Phiên 2026-11-03 12:0x — lượt 15 (sau HANDOFF-1154)
+Chủ nhân: "làm tiếp, hết thì nghĩ 3 chức năng mới, tối ưu UI-UX + flow, các chức năng gọi được sang nhau". Commit từng phần + push cuối (DECISIONS 2026-11-03). Plan: PLAN-2026-11-03-r15.md (đang soạn).
+- [~] WP-15QA QA Electron lượt 14 (sonnet), WP-15A MCP cancel_scan + huỷ vision project QA + pin seed map (sonnet), khảo sát cross-link (haiku) — chạy nền.
+- [x] Khảo sát: Audit không link đi đâu; follow_up chỉ MCP + renderer followUp.ts; palette Ctrl+K có; clone recipe /recipes/new?from= nghi sai route; chưa có AGSL/Metal, chưa đọc pubspec user. PLAN-2026-11-03-r15.md viết.
+- [~] WP-15F Flutter lint, WP-15S shader AGSL/Metal giao sonnet. WP-15L brief sẵn, giao sau 15F.
+- [x] WP-15A MCP cancel_scan, project QA vision huỷ được ≤1 ảnh, rerun same pin seed theo item cho step map (test fail trước) — 42 pass (main chạy), full 1788 pass (agent) — c886d80 (kèm rename HANDOFF-latest→archive đã stage sẵn).
+- [x] WP-15S shader AGSL (RuntimeShader, API 33 gate, hitFlash fallback) + Metal (iOS 17 stitchable + View modifier) × 6 hiệu ứng, pack android/ios cờ shaders — 53 pass (main chạy), CHƯA biên dịch thật Kotlin/Swift (main sửa: spec thêm shader_templates/flutter vì glob * không lấy thư mục con) — 62a722f. UI chọn shader cho android/ios → gộp vào 15L.
+- [x] WP-15QA Electron thật lượt 14: 1–5 ĐẠT (preset PATCH, nón 45° 24/24, 0× ResizeObserver, Audit fix huỷ 407/2540 + hoàn tác md5 khớp, project QA huỷ) — docs/qa/r14/QA. Lỗi: 409 trùng tên preset tiếng Anh thô → main sửa RunPresetMenu (toast VN + tải lại list), typecheck sạch. Còn: (a) audit fix huỷ toast trễ ~10 s do quét lại cùng request, (b) backup ghi dung lượng theo todo thay vì written (audit.py ~946) → làm sau WP-15F (cùng file).
+- [x] WP-15F Flutter lint trong Audit (audit_flutter.py: thiếu/chưa khai báo pubspec, biến thể 2.0x/3.0x, WebP + sửa chuỗi .dart, không dùng; backup + undo all-or-nothing) — 34 pass + typecheck (main chạy), ảnh docs/qa/r15/WP-15F đã xem (main sửa: MCP audit_project engine flutter + findings/fixes, client.ts engine 'flutter') — f44a801.
+- [~] WP-15L (Gửi tới…, palette, clone route, shader UI android/ios) + WP-15B (audit fix huỷ nhanh + bytes backup) giao sonnet.
+- [x] WP-15B audit fix huỷ trả ngay (rescan_needed), gpu totals theo file đã ghi — 15 pass (main chạy, test_p4b_mcp flake khi chạy song song, riêng thì pass) — 0f0b73e. UI rescan_needed giao thêm cho 15L (AuditView).
+- [x] WP-15L Gửi tới… (SendToMenu + sendTo.ts, Gallery/RunDetail/Restyle/Audit/ProjectDetail, đích nhận query), palette +4 hành động, bảng phím khớp NAV, Audit cancel+rescan_needed; clone route OK sẵn, Ctrl+Enter có handler — typecheck sạch (main chạy), ảnh mock docs/qa/r15/WP-15L — c923cb3. Thiếu: shader trong PackDialog (→ WP-15L2, main thêm PackBody.shaders vào types.ts), nhập thư viện từ Audit (chưa có HTTP).
+- [x] Full pytest sau 15A/15S/15F/15B: 1821 pass, 6 skip, 93 s.
+- [x] WP-15L2 ShaderPicker dùng chung BundleMenu + PackDialog (gửi shaders/shader_params) — typecheck sạch (main chạy), ảnh mock — a23155c. Catalog dò qua bundleOptions tối đa 6 asset (tạm) → WP-15C endpoint.
+- [~] WP-15C endpoint /api/shaders + /api/library/import + Audit/Restyle → Nhập thư viện (sonnet, chủ hot file).
+- [x] WP-15C /api/shaders + /api/library/import (MCP import_to_library dùng chung), Audit/Restyle → Nhập thư viện (dialog chọn dự án, toast Mở Thư viện), PackDialog shader từ catalog — 21 pass + typecheck (main chạy), full 1828 (agent), Electron thật docs/qa/r15/WP-15C (Restyle chưa nhìn: cần GPU) — d3a4bdd. Main dọn scratch/qa15c-*.
+- [~] WP-15QA2 Electron thật lượt 15 (sonnet).
+- [x] WP-15QA2 Electron thật lượt 15: Gửi tới, Ctrl+K, Audit Flutter + huỷ <1 s ĐẠT; đóng gói sprite + shader ĐẠT, PNG nhập 500 (L1); L2 focus Gallery, L3 palette rerun 409 thô, L4 RO 18× Gallery, L5 đếm chưa sửa sai — docs/qa/r15/QA — 8e31f88. [~] WP-15FIX giao sonnet.
+- [x] WP-15FIX L1 pack chỉ PNG nhập android/ios → 201 + skipped (hết 500; PNG tĩnh chưa xuất được cho android/ios — exporter cần sheet), L2 Gallery focus, L3 palette rerun run đã kết thúc + 409 VN, L4 RO Gallery qua rAF, L5 đếm chưa sửa, xem trước audit có tiến độ + huỷ — 35 pass + typecheck (main chạy), ảnh mock docs/qa/r15/FIX — af524d7.
+- [x] Full pytest lượt 15: 1830 pass, 6 skip, 87 s. Typecheck sạch. Push.
+- [x] 13:40 Handoff mới: .planning/HANDOFF-2026-11-03-1340.md (1154 → archive).

@@ -1,0 +1,11 @@
+## WP-15FIX — DONE (nhìn L2/L4 bằng mock; L3/L5/UX chỉ test + typecheck)
+- Đã đổi: core store/pack.py (mkdir work + warning skip android/ios), export/audit_flutter.py + api/audit.py (dry_run có job audit_fix, tick plan, huỷ được), test_pack_mobile.py, test_audit_flutter.py; app GalleryView.vue, CommandPalette.vue, AuditView.vue, ScanProgressBar.vue, composables/scanProgress.ts.
+- L1: pack chỉ PNG nhập + android/ios -> 201, skipped + warning; PNG tĩnh vẫn chưa xuất được (exporter cần sheet/textures). Test fail(500)->pass.
+- L2: nguyên nhân watch focus không immediate (prefill chạy trước watch khi mount mới); sửa + chờ width + flash. Ảnh docs/qa/r15/FIX/L2_focus_selected.jpg.
+- L3: chọn lượt gần nhất đã kết thúc; 409 -> toast VN. L5: left = skipped || picked - written.
+- L4: bỏ useElementSize, rAF cho observer + virtualizer.observeElementRect; mock: resize + chọn = 0 lỗi RO.
+- UX: preview hiện ScanProgressBar "Đang lập kế hoạch N/M" + huỷ; nhãn plan không còn "Đã sửa" sai.
+- Test: pytest 1830 passed, 6 skipped; typecheck sạch.
+- Chưa kiểm Electron thật + core thật (L3/L5/UX).
+- Hot file cần thêm: không.
+- Commit: fix(pack,audit,app): pack skips no longer 500, gallery focus selects version, rerun picks finished run, audit cancel count, plan progress for audit preview, ResizeObserver loop in gallery
