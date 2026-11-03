@@ -237,8 +237,9 @@ class SqliteRepo:
         row = await self.db.fetchone("SELECT * FROM versions WHERE id = ?", (version_id,))
         return _VERSIONS.decode(row) if row else None
 
-    async def list_versions(self, run_id: str | None = None, status: VersionStatus | None = None,
-                            limit: int = 200, project_id: str | None = None) -> list[VersionRow]:
+    @staticmethod
+    def _versions_where(run_id: str | None, status: VersionStatus | None,
+                        project_id: str | None) -> tuple[str, list[Any]]:
         where: list[str] = []
         params: list[Any] = []
         if project_id is not None:
@@ -250,12 +251,21 @@ class SqliteRepo:
         if status is not None:
             where.append("status = ?")
             params.append(VersionStatus(status).value)
-        sql = "SELECT * FROM versions"
-        if where:
-            sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY created_at DESC LIMIT ?"
-        rows = await self.db.fetchall(sql, [*params, limit])
+        return (" WHERE " + " AND ".join(where)) if where else "", params
+
+    async def list_versions(self, run_id: str | None = None, status: VersionStatus | None = None,
+                            limit: int = 200, project_id: str | None = None, offset: int = 0) -> list[VersionRow]:
+        clause, params = self._versions_where(run_id, status, project_id)
+        # id breaks created_at ties so offset pages never skip or repeat rows within one snapshot.
+        sql = f"SELECT * FROM versions{clause} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
+        rows = await self.db.fetchall(sql, [*params, max(limit, 0), max(offset, 0)])
         return [_VERSIONS.decode(r) for r in rows]
+
+    async def count_versions(self, run_id: str | None = None, status: VersionStatus | None = None,
+                             project_id: str | None = None) -> int:
+        clause, params = self._versions_where(run_id, status, project_id)
+        row = await self.db.fetchone(f"SELECT COUNT(*) AS n FROM versions{clause}", params)
+        return int(row["n"]) if row else 0
 
     async def versions_to_score(self, run_id: str | None = None, project_id: str | None = None,
                                 stale_than: int | None = None, limit: int = 500) -> list[VersionRow]:

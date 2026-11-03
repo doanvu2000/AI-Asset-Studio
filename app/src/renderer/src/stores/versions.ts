@@ -4,6 +4,9 @@ import type { VersionRow } from '@/api/types'
 import { settlePool } from '@/composables/pool'
 import { api, flushEvents } from './connection'
 
+const PAGE_SIZE = 200
+const MAX_PAGES = 100
+
 // Generator output names like "1074.png", "00012_.png" or a bare hash say nothing about the asset.
 const MEANINGLESS = /^(?:[\d_\-\s]+|[0-9a-f]{12,})$/i
 
@@ -54,14 +57,33 @@ export const useVersions = defineStore('versions', () => {
     dirty = false
   }
 
+  // Newest-first offset paging: a version added mid-load only repeats a boundary row (deduped by id), never skips one.
+  // Stops on a short page, or when a page adds nothing new (a client that ignores offset would otherwise loop).
+  async function fetchAll(): Promise<VersionRow[]> {
+    const client = api()
+    const seen = new Set<string>()
+    const out: VersionRow[] = []
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const rows = await client.versions({ limit: PAGE_SIZE, offset: page * PAGE_SIZE })
+      let added = 0
+      for (const v of rows) {
+        if (seen.has(v.id)) continue
+        seen.add(v.id)
+        out.push(v)
+        added++
+      }
+      if (rows.length < PAGE_SIZE || !added) break
+    }
+    return out
+  }
+
   async function load(): Promise<void> {
     flushEvents()
     const live = new Set<string>()
     inflight.add(live)
     try {
-      const rows = await api().versions()
       const next = new Map<string, VersionRow>()
-      for (const v of rows) next.set(v.id, v)
+      for (const v of await fetchAll()) next.set(v.id, v)
       for (const id of live) {
         const cur = map.value.get(id)
         if (cur) next.set(id, cur)

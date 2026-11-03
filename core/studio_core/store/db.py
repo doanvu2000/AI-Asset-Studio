@@ -202,6 +202,8 @@ class Database:
         await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_versions_project ON versions(project_id, created_at)")
         await self.conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_versions_project_mime ON versions(project_id, mime, status, created_at)")
+        await self.conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_versions_project_status ON versions(project_id, status, created_at DESC)")
 
     async def close(self) -> None:
         if self._conn is not None:

@@ -93,6 +93,8 @@ export interface VersionsQuery {
   run_id?: string
   status?: VersionStatus
   project_id?: string
+  limit?: number
+  offset?: number
 }
 
 export interface StudioApi {
@@ -333,7 +335,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
       return call('POST', '/api/blobs', fd, SLOW_TIMEOUT_MS)
     },
     blobInfo: (hash) => call('GET', `/api/blobs/${enc(hash)}/info`),
-    versions: (q = {}) => call('GET', `/api/versions${query({ run_id: q.run_id, status: q.status, project_id: q.project_id })}`),
+    versions: (q = {}) => call('GET', `/api/versions${query({ run_id: q.run_id, status: q.status, project_id: q.project_id, limit: q.limit, offset: q.offset })}`),
     setVersionStatus: (id, action) => call('POST', `/api/versions/${enc(id)}/${action}`),
     regionEdit: (id, body) => call('POST', `/api/versions/${enc(id)}/region-edit`, body),
     blobUrl: (hash) => `${baseUrl}/api/blobs/${enc(hash)}?t=${enc(token)}`,

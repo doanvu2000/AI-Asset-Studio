@@ -1469,6 +1469,8 @@ export class MockCore implements StudioApi, EventStream {
     if (q.run_id) rows = rows.filter((v) => v.run_id === q.run_id)
     if (q.project_id) rows = rows.filter((v) => v.project_id === q.project_id)
     if (q.status) rows = rows.filter((v) => v.status === q.status)
+    const offset = q.offset ?? 0
+    rows = rows.slice(offset, offset + (q.limit ?? 200))
     return clone(rows)
   }
 

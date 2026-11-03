@@ -205,12 +205,20 @@ const unscored = computed(() => {
   ).length
 })
 const scoring = ref(false)
+const QA_CHUNK = 500
 async function scoreOld(): Promise<void> {
   if (scoring.value) return
   scoring.value = true
   try {
-    const r = await api().recomputeQa({ missing_only: true, project_id: projectFilter.value === 'all' ? undefined : projectFilter.value, limit: 5000 })
-    toasts.push(r.updated ? `Đã chấm điểm ${r.updated} ảnh` : 'Không còn ảnh nào cần chấm', 'success', 2400)
+    const project_id = projectFilter.value === 'all' ? undefined : projectFilter.value
+    let updated = 0
+    // Unscorable rows stay "missing", so stop on a round that scored nothing instead of re-picking them forever.
+    for (let round = 0; round < 20; round++) {
+      const r = await api().recomputeQa({ missing_only: true, project_id, limit: QA_CHUNK })
+      updated += r.updated
+      if (r.updated === 0 || r.total < QA_CHUNK) break
+    }
+    toasts.push(updated ? `Đã chấm điểm ${updated} ảnh` : 'Không còn ảnh nào cần chấm', 'success', 2400)
   } catch (e) {
     toasts.error(e, 'Không chấm điểm được')
   } finally {

@@ -417,8 +417,13 @@ async def list_gates(request: Request) -> Response:
 
 @api.get("/versions")
 async def list_versions(request: Request, run_id: str | None = None,
-                        status: VersionStatus | None = None, project_id: str | None = None) -> Response:
-    return _json(await _repo(request).list_versions(run_id=run_id, status=status, project_id=project_id))
+                        status: VersionStatus | None = None, project_id: str | None = None,
+                        limit: int = Query(200, ge=0, le=5000), offset: int = Query(0, ge=0)) -> Response:
+    repo = _repo(request)
+    rows = await repo.list_versions(run_id=run_id, status=status, project_id=project_id, limit=limit, offset=offset)
+    res = _json(rows)
+    res.headers["X-Total-Count"] = str(await repo.count_versions(run_id=run_id, status=status, project_id=project_id))
+    return res
 
 
 async def _set_version(request: Request, version_id: str, status: VersionStatus) -> Response:
