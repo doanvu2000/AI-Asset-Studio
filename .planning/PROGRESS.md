@@ -51,3 +51,13 @@ Chủ nhân: "làm liên tục; tối ưu quy trình, UI/UX, hiệu năng + 3 ch
 - [x] WP-12R README 87 dòng + changelog 1.5.0-dev (chưa phát hành, không bump) — typecheck sạch, test_version 2 pass.
 - [x] WP-12FIX L1 fit.load cold-start, L2 giữ field khi recipe reload, L3 thư mục theo asset_name + gộp toast, L4 BundleError.code dịch VN (nothing_to_export = info), Q1 preset lưu seed_count/seed_base; Q2 giữ nguyên (gate approve ≠ duyệt asset) — 9 pass + typecheck (main chạy), ảnh docs/qa/r12/FIX — a9f6746.
 - [x] Full pytest song song: 1749 pass, 6 skip, 74 s. Handoff: HANDOFF-latest.md.
+
+## Phiên 2026-11-03 — lượt 13
+Chủ nhân: "cứ làm liên tục". Plan: PLAN-2026-11-03-r13.md. Commit từng phần + push cuối.
+- [~] WP-13A RunsView chạy lại + Delete dây + bàn phím StepNode; WP-13B normal AI worker giữ ấm; WP-13C tiến độ quét Audit/Restyle/QA — 3 agent sonnet chạy nền.
+- [x] WP-13B normal AI worker ấm: lạnh 4.2 s → ấm 1.7–2.0 s/ảnh 256 px; review opus 0 HIGH/MED, 5 LOW đã sửa (cờ closed, dup fd1, dòng lạ, loop khác, REAP_SECONDS) — 40 pass (main chạy).
+- [x] WP-13C scan.progress + huỷ cho Audit/Restyle/QA recompute, ScanProgressBar — 30 pass + typecheck (main chạy); main xem audit_scanning_light; main sửa: types EventType scan.progress + QaRecomputeResult.cancelled, client cancelScan, bỏ fetch riêng/cast — 43262b9.
+- [x] WP-13A menu Chạy lại ở RunRowItem, chọn dây + Delete/Esc + thanh Gỡ dây, Enter/mũi tên giữa node — typecheck sạch — e2bf0ee. CHƯA KIỂM Electron thật.
+- [x] Full pytest sau 13A–C: 1768 pass, 6 skip, 78 s. [~] WP-13QA Electron thật (sonnet).
+- [x] WP-13QA Electron thật: 1,2,4,5 ĐẠT; 3 ĐẠT (Audit 4000 tệp huỷ ở 601, Restyle huỷ, Gallery huỷ giữ điểm đã chấm); normal AI 4.0/1.7/1.6 s, worker tự tắt 120 s, đóng app không sót PID — docs/qa/r13/QA. Lỗi: nhãn "ảnh cũ" không giảm (QA_VERSION renderer 1 ≠ core 2) → main sửa + test đồng bộ — 2f04cd0; thanh Audit dừng ~318/409 khi sang analyze → main sửa scan_jobs + test — commit sau.
+- [x] Full pytest 1770 pass. Handoff cập nhật lượt 13. Push.
