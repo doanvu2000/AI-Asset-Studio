@@ -118,3 +118,15 @@ Plan: PLAN-2026-11-03-r17.md. Commit từng phần + push cuối.
 - [x] WP-17QA Electron thật 1–6 ĐẠT: Ghi có plan_id Flutter 349 MB 62,7→39,0 s (Godot không đổi 4,4 s — plan rẻ), tên Android sạch; 17A/B/C/D đúng; console sạch — docs/qa/r17/QA — 0705644. Lỗi: GatePicker lightbox không mở được (biến chết) → main thêm phím V xem lớn — 5e86498, typecheck sạch.
 - [x] Full pytest lượt 17: 1858 pass (1 flake chạy lại pass). Push.
 - [x] 15:20 Handoff mới: .planning/HANDOFF-2026-11-03-1520.md (1500 → archive).
+
+## Phiên 2026-11-03 15:2x — lượt 18
+Plan: PLAN-2026-11-03-r18.md. Commit từng phần + push cuối.
+- [x] Lượt 17 push.
+- [~] WP-18A/B/C sonnet.
+- [x] WP-18B import theo hash (API/MCP/Gửi tới ở cổng), recipe CPU ui-icon-variants có gate.pick, bảng phím V — 27 pass (main chạy) — 781f5d4.
+- [x] WP-18C CompareView trượt/cạnh nhau/nháy (reduced-motion), zoom+pan đồng bộ, Lightbox phím C — typecheck sạch (main chạy), ảnh mock docs/qa/r18/WP-18C (main xem 01) — 366e6db.
+- [x] WP-18A Flutter Xem trước 49.5→~7 s, Ghi 57.8→12.3 s (230 MB), ước tính WebP lấy mẫu ±8%, song song encode/ghi tuần tự, zip STORED — 34 pass (main chạy), full 1880 (agent) — 4d25238.
+- [~] WP-18QA Electron thật (sonnet).
+- [x] WP-18QA Electron thật: 18A Xem trước 7,8 s / Ghi 12,6 s (282 MB), ước tính -5,5%, huỷ 0,67 s + hoàn tác md5 khớp; 18B ui-icon-variants → cổng chọn → V/S → Nhập thư viện ĐẠT; 18C so sánh ĐẠT (cặp khác cỡ, zoom/pan đồng bộ) trừ Lightbox C trong Thư viện; console sạch — docs/qa/r18/QA — 97fd1d9. Main sửa: Lightbox C dùng ảnh vừa xem trước (điều hướng do cha), Gửi tới không tự mở lại sau dialog — 7839c8e (typecheck sạch, CHƯA KIỂM Electron).
+- [x] Full pytest lượt 18: 1881 pass, 6 skip. Push.
+- [x] 16:05 Handoff mới: .planning/HANDOFF-2026-11-03-1605.md (1520 → archive).
