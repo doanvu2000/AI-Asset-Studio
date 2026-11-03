@@ -4,7 +4,7 @@ export type QaTier = 'good' | 'warn' | 'bad'
 
 export const QA_LOW = 70
 /** Must match core `engine/qa.py` QA_VERSION; older results count as not scored. */
-export const QA_VERSION = 1
+export const QA_VERSION = 2
 
 export function qaTier(score: number): QaTier {
   return score >= 85 ? 'good' : score >= QA_LOW ? 'warn' : 'bad'
