@@ -33,6 +33,7 @@ const itemId = (i: number): string => `${uid}-st-${i}`
 let quietUntil = 0
 function dialogClosed(): void {
   quietUntil = performance.now() + 300
+  void nextTick(() => button.value?.focus())
 }
 
 async function show(): Promise<void> {

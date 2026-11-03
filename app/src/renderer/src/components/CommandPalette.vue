@@ -13,7 +13,7 @@ import { ApiError } from '@/api/client'
 import { RUN_ACTIVE } from '@/api/types'
 import { rerunRun } from '@/composables/rerun'
 import { RUN_LABEL } from '@/composables/format'
-import { markSent, recentSends } from '@/composables/sendTo'
+import { replayRecent, recentSends } from '@/composables/sendTo'
 import { fold, openShortcuts, paletteOpen, shortcutsOpen } from '@/composables/palette'
 import { THEME_OPTIONS, useTheme } from '@/composables/theme'
 import { APP_VERSION, whatsNewOpen } from '@/composables/changelog'
@@ -140,7 +140,7 @@ const items = computed<Item[]>(() => {
       hint: r.source,
       icon: Send,
       run: () => {
-        markSent(r.to)
+        replayRecent(r.to)
         void router.push(r.to)
       }
     }))

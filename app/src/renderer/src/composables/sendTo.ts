@@ -152,6 +152,14 @@ export function recordRecent(item: SendItem, source?: string): void {
   saveRecent([{ target: item.target, label: item.label, source: source || undefined, to, at: Date.now() }, ...recentSends.value.filter((r) => recentKey(r.to) !== key)].slice(0, RECENT_MAX))
 }
 
+/** Replaying a recent send from the palette moves it back to the top. */
+export function replayRecent(to: RecentSend['to']): void {
+  const key = recentKey(to)
+  const hit = recentSends.value.find((r) => recentKey(r.to) === key)
+  markSent(to)
+  if (hit) saveRecent([{ ...hit, at: Date.now() }, ...recentSends.value.filter((r) => r !== hit)])
+}
+
 export function removeRecent(to: RecentSend['to']): void {
   const key = recentKey(to)
   if (recentSends.value.some((r) => recentKey(r.to) === key)) saveRecent(recentSends.value.filter((r) => recentKey(r.to) !== key))
