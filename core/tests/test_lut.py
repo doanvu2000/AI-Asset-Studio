@@ -8,6 +8,7 @@ from PIL import Image
 from studio_core.contracts import StepError
 from studio_core.engine.library import validate
 from studio_core.engine.recipe import load_recipe_file
+from studio_core.ops import lut as lut_mod
 from studio_core.ops.lut import (FitLut, LutPrep, apply_lut, cube_text, delta_e, detect_seamless, fit_lut,
                                  identity_lut, parse_cube, strip_image, strip_to_lut, variant_names)
 from test_ops_executors import FakeCtx, put_img
@@ -205,3 +206,83 @@ def test_recipe_loads_and_lints():
     assert r.step("edit").map_param == "75:74.text"
     _, issues = validate((RECIPES / "time-season-pack.yaml").read_text(encoding="utf-8"), None)
     assert issues == []
+
+
+def _reference_solve(idx, wts, weight, rhs, m, n, smooth, iters):
+    """Gather/scatter CG as it was before the stencil rewrite: the golden the fast solver must match."""
+    def splat(v):
+        return np.stack([sum(np.bincount(i, w * v[:, k], m) for i, w in zip(idx, wts)) for k in range(3)], 1)
+
+    def lap(x):
+        g = x.reshape(n, n, n, -1)
+        out = np.zeros_like(g)
+        for ax in range(3):
+            d = np.diff(g, axis=ax)
+            lo, hi = [slice(None)] * 4, [slice(None)] * 4
+            lo[ax], hi[ax] = slice(None, -1), slice(1, None)
+            out[tuple(lo)] -= d
+            out[tuple(hi)] += d
+        return out.reshape(x.shape)
+
+    diag = sum(np.bincount(i, w * w * weight, m) for i, w in zip(idx, wts))
+    occ = diag[diag > 1e-12]
+    alpha = 1.0 / float(occ.mean()) if len(occ) else 1.0
+    mu = 1e-6
+
+    def op(x):
+        y = sum(w[:, None] * x[i] for i, w in zip(idx, wts)) * weight[:, None]
+        return alpha * splat(y) + smooth * lap(x) + mu * x
+
+    edge = (np.arange(n) == 0) | (np.arange(n) == n - 1)
+    deg = 6.0 - (edge[:, None, None].astype(float) + edge[None, :, None] + edge[None, None, :]).reshape(-1)
+    pre = 1.0 / (alpha * diag + smooth * deg + mu)
+    b = alpha * splat(rhs * weight[:, None])
+    x = np.zeros((m, 3))
+    r = b - op(x)
+    z = r * pre[:, None]
+    p = z.copy()
+    rz = (r * z).sum(0)
+    bn = np.sqrt((b * b).sum(0)) + 1e-12
+    for _ in range(iters):
+        ap = op(p)
+        a = rz / np.maximum((p * ap).sum(0), 1e-30)
+        x += a * p
+        r -= a * ap
+        if np.all(np.sqrt((r * r).sum(0)) / bn < 1e-6):
+            break
+        z = r * pre[:, None]
+        rzn = (r * z).sum(0)
+        p = z + (rzn / np.maximum(rz, 1e-30)) * p
+        rz = rzn
+    return x
+
+
+@pytest.mark.parametrize("kind", ["noisy", "mono", "few", "partial_weight"])
+def test_solve_matches_reference(kind):
+    rng = np.random.default_rng(7)
+    src = rng.random((6000, 3))
+    if kind == "mono":
+        src = np.tile([0.3, 0.6, 0.2], (500, 1))
+    elif kind == "few":
+        src = rng.random((5, 3))
+    dst = np.clip(night(src) + rng.normal(0, 0.02, src.shape), 0, 1)
+    n = 17
+    idx, wts = lut_mod._corners(src, n)
+    weight = np.sqrt(rng.integers(1, 9, len(src)).astype(float))
+    if kind == "partial_weight":
+        weight[::3] = 0.0
+    for smooth in (0.3, 5.0):
+        ref = _reference_solve(idx, wts, weight, dst - src, n ** 3, n, smooth, 400)
+        new = lut_mod._solve(idx, wts, weight, dst - src, n ** 3, n, smooth, 400)
+        assert np.abs(ref - new).max() < 1 / 255 / 4, (kind, smooth)
+
+
+def test_fit_lut_matches_reference_on_graded_texture():
+    img = tileable(96)
+    a = np.asarray(img, np.float64).reshape(-1, 3) / 255
+    lut = fit_lut(a, night(a), n=17)
+    s, d, cnt = lut_mod._bin_pairs(a, night(a))
+    idx, wts = lut_mod._corners(s, 17)
+    off = _reference_solve(idx, wts, np.sqrt(cnt), d - s, 17 ** 3, 17, 0.3, 400)
+    ref = np.clip(identity_lut(17).reshape(-1, 3) + off, 0, 1).reshape(17, 17, 17, 3)
+    assert np.abs(lut - ref).max() < 1 / 255 / 4

@@ -20,6 +20,8 @@ LUT_TYPE = "asset-studio/color-lut"
 GRID = 33
 STRIP = 32
 FIT_SIDE = 256
+COARSE_SMOOTH = 2.0
+CG_TOL = 1e-5
 DE_SIDE = 512
 SEAM_MAX = 1.0
 REF_BG = (128, 128, 128)
@@ -78,20 +80,6 @@ def apply_lut(lut: np.ndarray, rgb: np.ndarray) -> np.ndarray:
     return np.clip(out, 0, 1).reshape(rgb.shape).astype(np.float32)
 
 
-def _laplacian(x: np.ndarray, n: int) -> np.ndarray:
-    """Gradient of the sum of squared neighbour differences on the n³ grid (graph Laplacian, open boundary)."""
-    g = x.reshape(n, n, n, -1)
-    out = np.zeros_like(g)
-    for ax in range(3):
-        d = np.diff(g, axis=ax)
-        lo = [slice(None)] * 4
-        hi = [slice(None)] * 4
-        lo[ax], hi[ax] = slice(None, -1), slice(1, None)
-        out[tuple(lo)] -= d
-        out[tuple(hi)] += d
-    return out.reshape(x.shape)
-
-
 def _bin_pairs(src: np.ndarray, dst: np.ndarray, levels: int = 128) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Pairs averaged per quantized source colour: flat areas collapse to one weighted sample."""
     q = np.clip(np.round(src * (levels - 1)), 0, levels - 1).astype(np.int64)
@@ -102,26 +90,84 @@ def _bin_pairs(src: np.ndarray, dst: np.ndarray, levels: int = 128) -> tuple[np.
     return s, d, cnt.astype(np.float64)
 
 
+_CORNER_OFFSETS = [(db, dg, dr) for db in (0, 1) for dg in (0, 1) for dr in (0, 1)]
+
+
+def _normal_stencil(idx: list[np.ndarray], wts: list[np.ndarray], weight: np.ndarray, m: int) -> np.ndarray:
+    """A^T W A as 27 per-cell coefficients (one per neighbour offset): every sample only touches the 2x2x2 cells
+    around it, so the data term is a stencil and each CG step costs 27 shifted multiplies, not a gather/scatter
+    over all samples."""
+    st = np.zeros((27, m))
+    for a, (ia, wa, da) in enumerate(zip(idx, wts, _CORNER_OFFSETS)):
+        wa = wa * weight
+        for wb, db in zip(wts, _CORNER_OFFSETS):
+            k = (db[0] - da[0] + 1) * 9 + (db[1] - da[1] + 1) * 3 + (db[2] - da[2] + 1)
+            st[k] += np.bincount(ia, wa * wb, m)
+    return st
+
+
 def _solve(idx: list[np.ndarray], wts: list[np.ndarray], weight: np.ndarray, rhs_samples: np.ndarray, m: int,
-           n: int, smooth: float, iters: int) -> np.ndarray:
+           n: int, smooth: float, iters: int, x0: np.ndarray | None = None) -> np.ndarray:
     def splat(v: np.ndarray) -> np.ndarray:
         return np.stack([sum(np.bincount(i, w * v[:, k], m) for i, w in zip(idx, wts)) for k in range(3)], 1)
 
-    diag = sum(np.bincount(i, w * w * weight, m) for i, w in zip(idx, wts))
+    st = _normal_stencil(idx, wts, weight, m)
+    diag = st[13]
     occupied = diag[diag > 1e-12]
     # Data weights scaled so an occupied cell weighs ~1: `smooth` then means the same thing for any image size.
     alpha = 1.0 / float(occupied.mean()) if len(occupied) else 1.0
     mu = 1e-6
-
-    def op(x: np.ndarray) -> np.ndarray:
-        y = sum(w[:, None] * x[i] for i, w in zip(idx, wts)) * weight[:, None]
-        return alpha * splat(y) + smooth * _laplacian(x, n) + mu * x
-
     edge = (np.arange(n) == 0) | (np.arange(n) == n - 1)
     deg = 6.0 - (edge[:, None, None].astype(float) + edge[None, :, None] + edge[None, None, :]).reshape(-1)
-    precond = 1.0 / (alpha * diag + smooth * deg + mu)
+    # Flat padded grid: a neighbour offset is then one contiguous slice shift, far cheaper than strided 3D slices.
+    q = n + 2
+    shifts = np.array([ob * q * q + og * q + orr for ob in (-1, 0, 1) for og in (-1, 0, 1) for orr in (-1, 0, 1)])
+    lo = q * q + q + 1
+    hi = q ** 3 - lo
+    xpad = np.zeros((3, q, q, q))
+    xflat = xpad.reshape(3, -1)
+    ypad = np.zeros((3, q ** 3))
+    tmp = np.empty((3, hi - lo))
+    st = st * alpha
+    precond = 1.0 / (st[13] + smooth * deg + mu)
+    cells = np.flatnonzero(np.abs(st).max(0) > 0)
+    dense = len(cells) * 3 > m
+    interior = np.zeros((q, q, q), bool)
+    interior[1:-1, 1:-1, 1:-1] = True
+    pos = np.flatnonzero(interior.reshape(-1))[cells]
+    if dense:
+        st[13] += smooth * deg + mu
+        st[[4, 10, 12, 14, 16, 22]] -= smooth
+        st_pad = np.zeros((27, q, q, q))
+        st_pad[:, 1:-1, 1:-1, 1:-1] = st.reshape(27, n, n, n)
+        st_pad = st_pad.reshape(27, -1)
+    else:
+        # Mostly empty grid (flat or tiny images): data stencil only where samples land, Laplacian as 7 shifts.
+        cols = pos[:, None] + shifts[None, :]
+        cd = st[:, cells].T
+        lap_cell = np.zeros((q, q, q))
+        lap_cell[1:-1, 1:-1, 1:-1] = (smooth * deg + mu).reshape(n, n, n)
+        lap_cell = lap_cell.reshape(-1)
+        axis_shifts = shifts[[4, 10, 12, 14, 16, 22]]
+
+    def op(x: np.ndarray) -> np.ndarray:
+        xpad[:, 1:-1, 1:-1, 1:-1] = x.reshape(n, n, n, 3).transpose(3, 0, 1, 2)
+        if dense:
+            ypad[:] = 0
+            for c, s in zip(st_pad, shifts):
+                np.multiply(c[lo:hi], xflat[:, lo + s:hi + s], out=tmp)
+                ypad[:, lo:hi] += tmp
+        else:
+            ypad[:] = 0
+            nb = ypad[:, lo:hi]
+            for s in axis_shifts:
+                nb += xflat[:, lo + s:hi + s]
+            ypad[:, lo:hi] = lap_cell[lo:hi] * xflat[:, lo:hi] - smooth * nb
+            ypad[:, pos] += np.einsum("lk,clk->cl", cd, xflat[:, cols])
+        return ypad.reshape(3, q, q, q)[:, 1:-1, 1:-1, 1:-1].transpose(1, 2, 3, 0).reshape(m, 3)
+
     b = alpha * splat(rhs_samples * weight[:, None])
-    x = np.zeros((m, 3))
+    x = np.zeros((m, 3)) if x0 is None else x0.copy()
     r = b - op(x)
     z = r * precond[:, None]
     p = z.copy()
@@ -132,13 +178,40 @@ def _solve(idx: list[np.ndarray], wts: list[np.ndarray], weight: np.ndarray, rhs
         a = rz / np.maximum((p * ap).sum(0), 1e-30)
         x += a * p
         r -= a * ap
-        if np.all(np.sqrt((r * r).sum(0)) / b_norm < 1e-6):
+        if np.all(np.sqrt((r * r).sum(0)) / b_norm < CG_TOL):
             break
         z = r * precond[:, None]
         rz_new = (r * z).sum(0)
         p = z + (rz_new / np.maximum(rz, 1e-30)) * p
         rz = rz_new
     return x
+
+
+def _prolong(x: np.ndarray, nc: int) -> np.ndarray:
+    """Coarse (nc³, 3) field to the (2nc-1)³ grid whose even nodes coincide with it, linear in between."""
+    g = x.reshape(nc, nc, nc, 3)
+    for ax in range(3):
+        mid = (np.take(g, range(nc - 1), ax) + np.take(g, range(1, nc), ax)) / 2
+        new = np.empty(g.shape[:ax] + (2 * nc - 1,) + g.shape[ax + 1:])
+        sl = [slice(None)] * 4
+        sl[ax] = slice(0, None, 2)
+        new[tuple(sl)] = g
+        sl[ax] = slice(1, None, 2)
+        new[tuple(sl)] = mid
+        g = new
+    return g.reshape(-1, 3)
+
+
+def _solve_pyramid(s: np.ndarray, d: np.ndarray, weight: np.ndarray, n: int, smooth: float, iters: int):
+    """Fine-grid solve warm-started from a half-resolution one: with few samples the Laplacian fill is what CG spends
+    hundreds of steps on, and the coarse grid (8x fewer cells) gets most of the way there. The fine solve still runs
+    to the same tolerance, so only the iteration count changes."""
+    x0 = None
+    if n >= 17 and n % 2 == 1:
+        nc = (n - 1) // 2 + 1
+        x0 = _prolong(_solve_pyramid(s, d, weight, nc, smooth * COARSE_SMOOTH, iters)[0], nc)
+    idx, wts = _corners(s, n)
+    return _solve(idx, wts, weight, d - s, n ** 3, n, smooth, iters, x0=x0), idx, wts
 
 
 def fit_lut(src: np.ndarray, dst: np.ndarray, n: int = GRID, smooth: float = 0.3, iters: int = 400,
@@ -151,9 +224,8 @@ def fit_lut(src: np.ndarray, dst: np.ndarray, n: int = GRID, smooth: float = 0.3
     s, d, cnt = _bin_pairs(src.reshape(-1, 3).astype(np.float64), dst.reshape(-1, 3).astype(np.float64))
     ident = identity_lut(n).reshape(-1, 3)
     m = n ** 3
-    idx, wts = _corners(s, n)
     weight = np.sqrt(cnt)
-    off = _solve(idx, wts, weight, d - s, m, n, smooth, iters)
+    off, idx, wts = _solve_pyramid(s, d, weight, n, smooth, iters)
     if robust and len(s) > 64:
         pred = s + sum(w[:, None] * off[i] for i, w in zip(idx, wts))
         res = np.sqrt(((pred - d) ** 2).sum(1))
@@ -161,7 +233,7 @@ def fit_lut(src: np.ndarray, dst: np.ndarray, n: int = GRID, smooth: float = 0.3
         keep = res <= cut
         if keep.sum() >= 32 and not keep.all():
             weight = np.where(keep, weight, 0.0)
-            off = _solve(idx, wts, weight, d - s, m, n, smooth, iters)
+            off = _solve(idx, wts, weight, d - s, m, n, smooth, iters, x0=off)
     return np.clip(ident + off, 0, 1).reshape(n, n, n, 3)
 
 
