@@ -133,13 +133,9 @@ async def fix(request: Request, body: FixBody) -> Response:
     async with _lock:
         try:
             if importer:
-                if body.dry_run:
+                with jobs_of(request).open("audit_fix", body.path) as job:
                     out = await asyncio.to_thread(au.apply_fixes, report, importer, au.backup_dir(_data(request)),
-                                                  True, {"path": body.path})
-                else:
-                    with jobs_of(request).open("audit_fix", body.path) as job:
-                        out = await asyncio.to_thread(au.apply_fixes, report, importer, au.backup_dir(_data(request)),
-                                                      False, {"path": body.path}, job)
+                                                  body.dry_run, {"path": body.path}, job)
             if atlases and not out.get("cancelled"):
                 root = Path(getattr(request.app.state.settings, "app_exports_dir", _data(request) / "exports" / "app"))
                 out["atlases"] = []

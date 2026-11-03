@@ -2,7 +2,7 @@ import { computed, shallowRef, type ComputedRef } from 'vue'
 import { api } from '@/stores/connection'
 
 export type ScanKind = 'audit' | 'restyle' | 'qa' | 'audit_fix' | 'project_qa'
-export type ScanPhase = 'start' | 'walk' | 'files' | 'analyze' | 'done' | 'cancelled' | 'error'
+export type ScanPhase = 'start' | 'walk' | 'plan' | 'files' | 'analyze' | 'done' | 'cancelled' | 'error'
 
 export interface ScanProgress {
   job: string

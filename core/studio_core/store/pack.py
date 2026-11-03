@@ -674,6 +674,8 @@ def _raw_copy(a: PackAsset, blobs: BlobStore, dst: Path) -> list[str]:
 def _export_one(a: PackAsset, blobs: BlobStore, staging: Path, folder: str, engine: str, opts: EngineOptions,
                 warnings: list[str], budgets: list[dict[str, Any]] | None = None) -> Path | None:
     if not engine_ready(a.step, blobs):
+        if engine in MOBILE_ENGINES:
+            warnings.append(f"{folder} ({engine}): no engine-ready output; skipped")
         return None
     args = (a.step, a.siblings, blobs, staging, folder, engine, opts.ppu, opts.pixel, opts.collider(a))
     if engine in MOBILE_ENGINES:
@@ -831,6 +833,8 @@ def build_pack(assets: list[PackAsset], blobs: BlobStore, opts: PackOptions, pro
     staging = Path(tempfile.mkdtemp(prefix="pack-"))
     now = time.time()
     try:
+        # Mobile engines write nothing under work when every asset is skipped, yet the docs still land here.
+        work.mkdir(parents=True, exist_ok=True)
         folders, used = [], set()
         for a in assets:
             f = folder_name(a.name, "asset")

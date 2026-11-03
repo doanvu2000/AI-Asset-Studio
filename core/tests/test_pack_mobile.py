@@ -182,3 +182,16 @@ async def test_pack_flutter_demo_flag_is_forwarded(app_ctx, tmp_path: Path) -> N
                           json={"engines": ["flutter"], "out_dir": str(tmp_path / "demo"), "flutter_demo": True})
     assert r.status_code == 201, r.text
     assert "demo" in json.dumps(r.json())
+
+
+async def test_pack_android_ios_only_unexportable_assets(app_ctx, tmp_path: Path) -> None:  # noqa: F811
+    app, client, _ = app_ctx
+    await _project(app)
+    await _image_run(app, "r5", "Icon")
+    r = await client.post("/api/projects/p1/pack", headers=AUTH,
+                          json={"engines": ["android", "ios"], "out_dir": str(tmp_path)})
+    assert r.status_code == 201, r.text
+    res = r.json()
+    assert res["android"]["skipped"] == ["Icon"] and res["ios"]["skipped"] == ["Icon"]
+    assert any("Icon" in w and "android" in w for w in res["warnings"])
+    assert (Path(res["dir"]) / "provenance.json").is_file()

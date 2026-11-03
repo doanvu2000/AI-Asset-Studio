@@ -306,3 +306,18 @@ def test_missing_variant_of_a_webp_is_a_webp(tmp_path: Path):
     assert au.scan(str(proj))["findings"] == []
     au.undo(tmp_path / "bk", doc["backup_id"])
     assert not (proj / "assets" / "2.0x").exists()
+
+
+def test_dry_run_reports_plan_progress_and_can_cancel(tmp_path: Path):
+    proj = _flutter(tmp_path)
+    rep = au.scan(str(proj))
+    acts = [f["fix"] for f in rep["findings"] if f.get("fix")]
+    ticks: list[tuple[int, int, str]] = []
+    doc = au.apply_fixes(rep, acts, tmp_path / "bk", dry_run=True, progress=lambda d, t, p="files": ticks.append((d, t, p)))
+    assert not doc.get("cancelled") and ticks and all(p == "plan" for _, _, p in ticks)
+
+    def never(done: int, total: int, phase: str = "files") -> None:
+        raise ScanCancelled()
+
+    assert au.apply_fixes(rep, acts, tmp_path / "bk", dry_run=True, progress=never)["cancelled"]
+    assert not (tmp_path / "bk").exists() or not list((tmp_path / "bk").glob("*"))

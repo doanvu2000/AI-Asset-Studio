@@ -671,7 +671,7 @@ def apply(report: dict[str, Any], actions: list[dict[str, Any]], backups: Path, 
                            "engine": "flutter", "at": time.time(), "source": source or {}, "files": [],
                            "written": 0, "skipped": 0, "gpu_before": 0, "gpu_after": 0}
     try:
-        units = plan_fixes(report, actions, None if dry_run else progress)
+        units = plan_fixes(report, actions, progress)
     except ScanCancelled:
         doc.update(cancelled=True)
         return doc

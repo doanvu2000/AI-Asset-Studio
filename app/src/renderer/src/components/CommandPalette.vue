@@ -8,6 +8,8 @@ import { useRuns } from '@/stores/runs'
 import { useGates } from '@/stores/gates'
 import { useProjects } from '@/stores/projects'
 import { useToasts } from '@/stores/toasts'
+import { ApiError } from '@/api/client'
+import { RUN_ACTIVE } from '@/api/types'
 import { rerunRun } from '@/composables/rerun'
 import { RUN_LABEL } from '@/composables/format'
 import { fold, openShortcuts, paletteOpen, shortcutsOpen } from '@/composables/palette'
@@ -59,21 +61,25 @@ const NAV: Item[] = [
   { id: 'nav-whats-new', group: 'Đi tới', label: 'Có gì mới', hint: APP_VERSION, icon: Sparkles, run: () => (whatsNewOpen.value = true) }
 ]
 
+// Core refuses to rerun a run that is still going (409), so the shortcut targets the newest finished one.
+const latestFinished = computed(() => runs.runList.find((r) => !RUN_ACTIVE.has(r.status)))
+
 async function rerunLatest(): Promise<void> {
-  const last = runs.runList[0]
+  const last = latestFinished.value
   if (!last) return void toasts.push('Chưa có lượt chạy nào để chạy lại', 'info', 2400)
   try {
     const { run_id } = await rerunRun(last.id, 'new')
     toasts.push('Đã chạy lại lượt gần nhất với seed mới', 'success', 2400)
     await router.push(`/runs/${run_id}`)
   } catch (e) {
-    toasts.error(e, 'Không chạy lại được')
+    if (e instanceof ApiError && e.status === 409) toasts.push('Lượt này đang chạy hoặc chờ duyệt, chưa chạy lại được', 'info', 3600)
+    else toasts.error(e, 'Không chạy lại được')
   }
 }
 
 const actionItems = computed<Item[]>(() => {
   const list: Item[] = []
-  const last = runs.runList[0]
+  const last = latestFinished.value
   if (last) list.push({ id: 'act-rerun', group: 'Thao tác', label: 'Chạy lại lượt gần nhất', hint: last.title || undefined, icon: RotateCcw, run: () => void rerunLatest() })
   const first = gates.list[0]
   if (first) list.push({ id: 'act-gate', group: 'Thao tác', label: 'Duyệt cổng đang chờ', hint: `${gates.count} cổng`, icon: Inbox, run: go(`/gates?step=${encodeURIComponent(first.stepId)}`) })

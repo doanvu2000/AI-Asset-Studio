@@ -21,6 +21,7 @@ const label = computed(() => {
   if (props.cancelling) return 'Đang huỷ…'
   if (!p || p.phase === 'start') return 'Đang chuẩn bị…'
   if (p.phase === 'walk') return `Đang đọc cấu trúc thư mục · ${p.done.toLocaleString('vi-VN')} ${unit.value}`
+  if (p.phase === 'plan') return `Đang lập kế hoạch · ${p.done.toLocaleString('vi-VN')}/${p.total.toLocaleString('vi-VN')} ${unit.value}`
   if (p.phase === 'analyze') return 'Đang phân tích ảnh trùng và asset thừa…'
   return `Đã ${verb.value} ${p.done.toLocaleString('vi-VN')}/${p.total.toLocaleString('vi-VN')} ${unit.value}`
 })
@@ -33,7 +34,7 @@ const label = computed(() => {
       <button type="button" class="btn btn-plain cancel" :disabled="cancelling" @click="$emit('cancel')"><X :size="14" /> Huỷ</button>
     </div>
     <div class="bar" role="progressbar" aria-label="Tiến độ" :aria-valuemin="0" :aria-valuemax="100" :aria-valuenow="known ? Math.round(pct) : undefined">
-      <span v-if="known && progress?.phase === 'files'" class="fill" :style="{ transform: `scaleX(${pct / 100})` }" />
+      <span v-if="known && (progress?.phase === 'files' || progress?.phase === 'plan')" class="fill" :style="{ transform: `scaleX(${pct / 100})` }" />
       <span v-else class="fill indet" />
     </div>
   </div>

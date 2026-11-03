@@ -171,7 +171,9 @@ async function preview(): Promise<void> {
   if (!report.value || planning.value || !pickedCount.value) return
   planning.value = true
   try {
-    plan.value = await api().auditFix({ path: report.value.project, actions: actions(), dry_run: true })
+    const r = await api().auditFix({ path: report.value.project, actions: actions(), dry_run: true })
+    if (r.cancelled) toasts.push('Đã dừng lập kế hoạch sửa', 'info', 2400)
+    else plan.value = r
   } catch (e) {
     toasts.error(e, 'Không lập được kế hoạch sửa')
   } finally {
@@ -187,7 +189,8 @@ async function apply(): Promise<void> {
     if (r.cancelled) {
       applying.value = false
       plan.value = null
-      const left = r.skipped ?? 0
+      // Cancelling before the first write reports skipped 0; the picked count is what was left undone.
+      const left = r.skipped || Math.max(0, pickedCount.value - (r.written ?? 0))
       toasts.push(`Đã dừng: ghi ${r.written ?? 0} file, ${left} file chưa sửa${r.backup_id ? ` · hoàn tác được ở backup ${r.backup_id}` : ''}`, 'info', 6000)
     } else toasts.push(`Đã ghi ${r.written ?? 0} ${isFlutter.value ? 'mục sửa' : 'file import'}${r.skipped ? `, bỏ qua ${r.skipped}` : ''} · backup ${r.backup_id ?? ''}`, r.written ? 'success' : 'info')
     if (r.report) setReport(r.report)
@@ -433,6 +436,7 @@ function reveal(p: string): void {
                 </button>
                 <SendToMenu :source="sendSource" />
               </div>
+              <ScanProgressBar v-if="planning" verb="lập kế hoạch" :progress="fixLive.progress.value" :cancelling="fixLive.cancelling.value" @cancel="fixLive.cancel" />
               <p v-if="atlasOut" class="callout caption">
                 Atlas ở <button type="button" class="link mono" @click="reveal(atlasOut)">{{ atlasOut }}</button> — chép vào project nếu muốn, rồi tự đổi tham chiếu sang sprite trong atlas.
               </p>

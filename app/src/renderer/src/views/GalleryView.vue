@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from 'vue'
-import { onClickOutside, useElementSize, useEventListener, useIntervalFn } from '@vueuse/core'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { onClickOutside, useEventListener, useIntervalFn } from '@vueuse/core'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { Check, Columns2, FileInput, Gauge, LayoutGrid, LoaderCircle, Search, SlidersHorizontal, X } from '@lucide/vue'
 import { ART } from '@/assets/art'
@@ -255,7 +255,33 @@ function clearFilters(): void {
 }
 
 const scroller = ref<HTMLElement | null>(null)
-const { width } = useElementSize(scroller)
+const width = ref(0)
+// Reacting to a size change in the observer callback relays out the observed box in the same frame ("ResizeObserver loop"); defer to rAF.
+function observeRect(el: Element, apply: (w: number, h: number) => void): () => void {
+  let raf = 0
+  const measure = (): void => {
+    raf = 0
+    const cs = getComputedStyle(el)
+    apply(
+      el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight),
+      el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
+    )
+  }
+  const ro = new ResizeObserver(() => {
+    if (!raf) raf = requestAnimationFrame(measure)
+  })
+  ro.observe(el)
+  measure()
+  return () => {
+    ro.disconnect()
+    cancelAnimationFrame(raf)
+  }
+}
+let stopObserve: (() => void) | undefined
+onMounted(() => {
+  if (scroller.value) stopObserve = observeRect(scroller.value, (w) => (width.value = w))
+})
+onBeforeUnmount(() => stopObserve?.())
 const GAP = 20
 const TILE_MIN = 184
 const CAPTION_H = 92
@@ -269,6 +295,7 @@ const virtualizer = useVirtualizer(
   computed(() => ({
     count: rowCount.value,
     getScrollElement: () => scroller.value,
+    observeElementRect: (_: unknown, cb: (r: { width: number; height: number }) => void) => (scroller.value ? observeRect(scroller.value, (w, h) => cb({ width: w, height: h })) : undefined),
     estimateSize: () => rowH.value,
     overscan: 3
   }))
@@ -470,20 +497,32 @@ useQueryPrefill(['project', 'run', 'focus'], (q) => {
   showTechnical.value = true
   pendingFocus.value = q.focus
 })
-watch([pendingFocus, items, () => versions.loaded], () => {
-  const id = pendingFocus.value
-  if (!id) return
-  const i = items.value.findIndex((g) => g.versions.some((v) => v.id === id))
-  if (i >= 0) {
-    pendingFocus.value = null
-    selected.value = new Set([items.value[i]!.key])
-    anchor = items.value[i]!.key
-    virtualizer.value.scrollToIndex(Math.floor(i / cols.value), { align: 'center' })
-  } else if (versions.loaded) {
-    pendingFocus.value = null
-    toasts.push('Không thấy bản đó trong thư viện (có thể đã bị lọc hoặc xoá)', 'info', 3600)
-  }
-})
+const flashKey = ref<string | null>(null)
+// The prefill runs during setup, before this watch exists, so it needs `immediate`; the grid has no width yet on a fresh mount.
+watch(
+  [pendingFocus, items, () => versions.loaded, inner],
+  () => {
+    const id = pendingFocus.value
+    if (!id) return
+    const i = items.value.findIndex((g) => g.versions.some((v) => v.id === id))
+    if (i >= 0) {
+      if (!inner.value) return
+      const key = items.value[i]!.key
+      pendingFocus.value = null
+      selected.value = new Set([key])
+      anchor = key
+      virtualizer.value.scrollToIndex(Math.floor(i / cols.value), { align: 'center' })
+      flashKey.value = key
+      setTimeout(() => {
+        if (flashKey.value === key) flashKey.value = null
+      }, 1800)
+    } else if (versions.loaded) {
+      pendingFocus.value = null
+      toasts.push('Không thấy bản đó trong thư viện (có thể đã bị lọc hoặc xoá)', 'info', 3600)
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
@@ -582,7 +621,7 @@ watch([pendingFocus, items, () => versions.loaded], () => {
             gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`
           }"
         >
-          <article v-for="g in rowItems(r.index)" :key="g.key" class="tile" :class="[`vs-${g.status}`, { sel: selected.has(g.key), selecting }]">
+          <article v-for="g in rowItems(r.index)" :key="g.key" class="tile" :class="[`vs-${g.status}`, { sel: selected.has(g.key), selecting, flash: flashKey === g.key }]">
             <div class="stage">
               <button
                 class="img-btn"
@@ -865,6 +904,15 @@ watch([pendingFocus, items, () => versions.loaded], () => {
 .tile.sel {
   box-shadow: var(--shadow-2), 0 0 0 2px var(--accent);
 }
+.tile.flash {
+  animation: tile-flash 1.6s var(--ease-out, ease-out);
+}
+@keyframes tile-flash {
+  0%,
+  40% {
+    box-shadow: var(--shadow-2), 0 0 0 2px var(--accent), 0 0 0 8px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+}
 .img-btn :deep(.blob),
 .img-btn :deep(.glyph) {
   transition: transform var(--t-base) var(--ease-spring);
@@ -1146,6 +1194,9 @@ watch([pendingFocus, items, () => versions.loaded], () => {
   }
   .tile:hover {
     transform: none;
+  }
+  .tile.flash {
+    animation: none;
   }
 }
 </style>
