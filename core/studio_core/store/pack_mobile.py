@@ -266,7 +266,8 @@ class IosPack:
                         self.nine.append((short[s[:-9]], (c["left"], c["top"], c["right"], c["bottom"])))
         got: list[str] = []
         for rel in rels:
-            if rel.startswith("Sources/") or rel in ("README_IOS.md", "Info_plist_fonts.xml"):
+            if rel in ("Sources/AssetStudioKit.swift", "Sources/AssetStudioAssets.swift", "README_IOS.md",
+                       "Info_plist_fonts.xml"):
                 continue
             data: Path | bytes = d / rel
             out = rel

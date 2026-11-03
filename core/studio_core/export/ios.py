@@ -238,6 +238,11 @@ def export(src: Source) -> Files:
         files += [(f"{base}/{n}", p) for n, p in src.spine_pages]
         notes.append(NOTE_SPINE.format(asset=a))
 
+    from studio_core.export import ios_fx
+
+    fx_files, fx_notes = ios_fx.fx(src)
+    files += fx_files
+    notes += fx_notes
     if not files:
         return []
     ttf = sorted({n.split("/", 1)[1] for n, _ in files if n.startswith("Fonts/") and n.lower().endswith(FONT_EXT)})
