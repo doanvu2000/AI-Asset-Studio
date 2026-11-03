@@ -195,7 +195,7 @@ async function save(): Promise<void> {
               <label v-if="projectId" class="d-chk">
                 <input v-model="projectOnly" type="checkbox" /> Chỉ dùng cho dự án <strong>{{ projectName }}</strong>
               </label>
-              <p class="caption d-hint">Lưu các giá trị đang điền, cả file đã thêm. Không lưu danh sách nhiều lượt.</p>
+              <p class="caption d-hint">Lưu các giá trị đang điền, cả file đã thêm. Chế độ nhiều seed lưu số lượt và seed gốc; danh sách nhiều prompt thì không.</p>
             </div>
             <footer class="d-foot">
               <button type="button" class="btn" @click="closeSave">Huỷ</button>

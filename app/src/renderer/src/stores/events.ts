@@ -23,7 +23,7 @@ import { useAgents } from './agents'
 import { useFlows } from './flows'
 import { useGpu } from './gpu'
 import { NO_PROJECT } from '@/api/types'
-import { AUTO_EXPORT_EVENT, autoExportText, recordAutoExport } from '@/composables/autoExport'
+import { AUTO_EXPORT_EVENT, autoExportToast, recordAutoExport } from '@/composables/autoExport'
 import { useToasts } from './toasts'
 
 // One pass per animation frame: each store mutates in place and triggers its shallowRefs once.
@@ -41,7 +41,8 @@ export function applyEvents(events: StudioEvent[]): void {
     // Not in EventType until api/types.ts is patched; handled before the exhaustive switch.
     if (e.type === AUTO_EXPORT_EVENT) {
       const r = recordAutoExport(e.data, e.ts)
-      useToasts().push(autoExportText(r), r.ok ? 'success' : 'error', r.ok ? 5000 : 8000)
+      const t = autoExportToast(r)
+      if (t) useToasts().push(t.text, t.kind, t.ms)
       continue
     }
     switch (e.type) {

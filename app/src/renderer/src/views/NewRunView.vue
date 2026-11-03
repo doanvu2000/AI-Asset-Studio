@@ -210,10 +210,17 @@ const touched = reactive(new Set<string>())
 const withBatchStyle = (text: string): string => (batchStyle.value ? `${text.replace(/[,\s]+$/, '')}, ${batchStyle.value}` : text)
 const unit = computed(() => (textInputs.value.length ? 'prompt' : 'file'))
 
+// The recipe list reloads shortly after mount and hands back new objects with the same id; that must not wipe what was typed.
+let initialisedFor: string | null = null
 watch(
   selected,
   (r) => {
-    if (!r) return
+    if (!r) {
+      initialisedFor = null
+      return
+    }
+    if (r.id === initialisedFor) return
+    initialisedFor = r.id
     lastId.value = r.id
     try {
       localStorage.setItem(LAST_KEY, r.id)
@@ -476,7 +483,12 @@ function presetSnapshot(): { inputs: Record<string, unknown>; params: Record<str
       if (refs.length) inputs[name] = refs.map((b) => b.hash)
     } else inputs[name] = isNum(spec.type) ? Number(values[name]) : values[name]
   }
-  return { inputs, params: { no_cache: noCache.value, auto_pick_qa: autoPickQa.value } }
+  const params: Record<string, unknown> = { no_cache: noCache.value, auto_pick_qa: autoPickQa.value }
+  if (mode.value === 'batch' && varyBy.value === 'seeds') {
+    params.seed_count = seedCount.value
+    params.seed_base = seedBase.value
+  }
+  return { inputs, params }
 }
 
 async function applyPreset(p: RunPreset): Promise<void> {
@@ -499,6 +511,12 @@ async function applyPreset(p: RunPreset): Promise<void> {
   }
   noCache.value = p.params.no_cache === true
   autoPickQa.value = p.params.auto_pick_qa === true
+  if (hasSeeds.value && typeof p.params.seed_count === 'number') {
+    seedCount.value = p.params.seed_count
+    seedBase.value = typeof p.params.seed_base === 'number' ? p.params.seed_base : -1
+    varyBy.value = 'seeds'
+    if (mode.value !== 'batch') setMode('batch')
+  }
   toasts.push(missingFiles ? `Đã áp “${p.name}”, ${missingFiles} tệp không còn trong thư viện` : `Đã áp thiết lập “${p.name}”`, missingFiles ? 'info' : 'success', 2600)
 }
 

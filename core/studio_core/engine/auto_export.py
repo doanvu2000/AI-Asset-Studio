@@ -87,10 +87,12 @@ class AutoExporter:
         root = getattr(settings, "app_exports_dir", None) or Path(settings.data_dir) / "exports" / "app"
         siblings = await repo.get_steps(step.run_id)
         try:
-            out = await asyncio.to_thread(export_engine, step, siblings, self._st.blobs, Path(root), None, engine)
+            out = await asyncio.to_thread(export_engine, step, siblings, self._st.blobs, Path(root), v.asset_name or None, engine)
             target = await asyncio.to_thread(_place, Path(out["dir"]), dest, engine)
-        except (BundleError, ValueError) as e:
-            return {**base, "ok": False, "error": str(e)}
+        except BundleError as e:
+            return {**base, "ok": False, "error": str(e), "code": e.code}
+        except ValueError as e:
+            return {**base, "ok": False, "error": str(e), "code": "invalid_target"}
         except OSError as e:
             return {**base, "ok": False, "error": f"Không ghi được vào {dest_dir}: {e.strerror or e}"}
         return {**base, "ok": True, "path": str(target), "files": len(out["files"])}

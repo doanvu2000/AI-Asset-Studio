@@ -20,7 +20,9 @@ from studio_core.store.export import safe_component, safe_filename
 
 
 class BundleError(ValueError):
-    pass
+    def __init__(self, message: str, code: str = "bundle_error") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 ENGINES = {"flutter": flutter.export, "android": android.export, "ios": ios.export, "unity": unity.export,
@@ -470,7 +472,8 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
         files = append_readme(files, normal_note)
     if not files:
         raise BundleError("nothing to export for this target (needs a sprite sheet, Spine export, GLB, tileable "
-                          "texture, PBR material, sound, UI kit, rarity set, LUT pack, parallax or image layers)")
+                          "texture, PBR material, sound, UI kit, rarity set, LUT pack, parallax or image layers)",
+                          code="nothing_to_export")
     if shaders:
         from studio_core.export.shaders import ShaderError, apply
 

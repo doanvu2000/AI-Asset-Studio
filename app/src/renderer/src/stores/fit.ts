@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
-import { computed, ref, shallowRef } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import type { FitEntry, FitLevel, FitReport } from '@/api/types'
-import { api } from './connection'
+import { api, useConnection } from './connection'
 
 export const LEVEL_RANK: Record<FitLevel, number> = { green: 0, yellow: 1, red: 2 }
 
@@ -11,11 +11,14 @@ export const useFit = defineStore('fit', () => {
   const loaded = ref(false)
   let inflight: Promise<void> | null = null
 
+  const conn = useConnection()
   const hardware = computed(() => report.value?.hardware ?? null)
 
   function load(force = false): Promise<void> {
     if (inflight) return inflight
     if (loaded.value && !force) return Promise.resolve()
+    // Cold start: api() throws before the core is up, and a throw inside a view's setup breaks the whole route.
+    if (!conn.transport) return Promise.resolve()
     inflight = api()
       .fit()
       .then((r) => {
@@ -30,6 +33,12 @@ export const useFit = defineStore('fit', () => {
       })
     return inflight
   }
+
+  watch(
+    () => conn.transport,
+    (t) => t && void load(),
+    { immediate: true }
+  )
 
   const recipe = (id: string): FitEntry | null => report.value?.recipes?.[id] ?? null
   const flow = (id: string): FitEntry | null => report.value?.flows?.[id] ?? null

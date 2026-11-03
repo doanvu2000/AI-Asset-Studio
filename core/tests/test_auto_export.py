@@ -156,3 +156,39 @@ async def test_migration_twice_adds_columns(tmp_path: Path) -> None:
             assert p is not None and p.auto_export is False and p.auto_export_dir == ""
         finally:
             await db.close()
+
+
+async def test_folder_named_after_asset_not_step_key(app_ctx, tmp_path) -> None:  # noqa: F811
+    from test_step_export import _step
+
+    app, client, _ = app_ctx
+    await _sprite(app)
+    sheet = await app.state.repo.get_step("sheet-1")
+    await _step(app, "approve-1", "op.sheet", sheet.outputs)
+    dest = tmp_path / "game"
+    dest.mkdir()
+    pid = await _project(client, engine_target="flutter", auto_export=True, auto_export_dir=str(dest))
+    blob = await app.state.blobs.put_bytes(_frame(0), name="sheet.png", mime="image/png")
+    await app.state.repo.add_version(VersionRow(id="v1", project_id=pid, asset_name="knight", run_id="r1",
+                                                step_id="approve-1", blob=blob, created_at=time.time()))
+    assert (await client.post("/api/versions/v1/approve", headers=AUTH)).status_code == 200
+    (ev,) = await _events(app, "v1")
+    assert ev["ok"] is True, ev.get("error")
+    assert Path(ev["path"]).name == "knight" and [p.name for p in dest.iterdir()] == ["knight"]
+
+
+async def test_nothing_to_export_carries_code(app_ctx, tmp_path) -> None:  # noqa: F811
+    from test_step_export import _step
+
+    app, client, _ = app_ctx
+    note = await app.state.blobs.put_bytes(b"hello", name="notes.txt", mime="text/plain")
+    await _step(app, "approve-1", "gate.approve", {"out": [note]})
+    dest = tmp_path / "game"
+    dest.mkdir()
+    pid = await _project(client, engine_target="flutter", auto_export=True, auto_export_dir=str(dest))
+    blob = await app.state.blobs.put_bytes(_frame(0), name="sheet.png", mime="image/png")
+    await app.state.repo.add_version(VersionRow(id="v1", project_id=pid, asset_name="knight", run_id="r1",
+                                                step_id="approve-1", blob=blob, created_at=time.time()))
+    assert (await client.post("/api/versions/v1/approve", headers=AUTH)).status_code == 200
+    (ev,) = await _events(app, "v1")
+    assert ev["ok"] is False and ev["code"] == "nothing_to_export", ev
