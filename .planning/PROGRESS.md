@@ -105,3 +105,16 @@ Plan: PLAN-2026-11-03-r16.md. Commit từng phần + push cuối.
 - [x] Palette match nhãn "Chạy flow <tên>" — 6c4f4f8. WP-16FIX: Audit Ghi dùng lại plan dry-run qua plan_id (PlanCache TTL 600 s, 8 entry, fingerprint mtime+size; app + MCP audit_fix), tên Android ảnh tĩnh không lặp tiền tố, toast VN tệp gửi sang hết hạn (main sửa: client/mock plan_id, MCP plan_id, timing test shader preview bỏ qua khi chạy xdist) — c4e50ea. CHƯA đo Ghi trước/sau trên Electron.
 - [x] Full pytest lượt 16: 1850 pass, 6 skip, 96 s; typecheck sạch. Push.
 - [x] 15:00 Handoff mới: .planning/HANDOFF-2026-11-03-1500.md (1340 → archive).
+
+## Phiên 2026-11-03 15:0x — lượt 17
+Plan: PLAN-2026-11-03-r17.md. Commit từng phần + push cuối.
+- [x] Lượt 16 push (4f66e4a).
+- [~] WP-17A/B/C sonnet (17D sau 17A vì cùng AuditView? không — 17A không chạm AuditView; 17D chờ slot thứ 4).
+- [x] WP-17C xem trước shader trên ảnh asset (?blob=, 8 MB/16 MP, fit 88 px) — 27 pass (agent) — b7b324c; phần PackDialog (shaderSample) commit cùng 17A.
+- [x] WP-17B Cổng duyệt Gửi tới… + phím S (Picker/Approve/Lightbox, chặn khi gõ/palette/lightbox) — typecheck phần 17B sạch, ảnh mock docs/qa/r17/WP-17B (main xem 02) — ae0605e.
+- [x] WP-17A toast VN prefill Restyle/NewRun, pack listing engines theo asset + nhãn 'chỉ Android/iOS', mock shader id thật + flow sprite-lighting — test_pack 12 pass, typecheck sạch (main chạy); kèm PackDialog shaderSample của 17C — 7fea0cd.
+- [x] WP-17D Flutter lint font (thiếu file, chưa khai báo + fix flutter_font qua plan cache + undo) + wav > 1 MB cảnh báo — 31 pass (agent), full 1858 pass (1 flake chạy lại pass) (main sửa: MCP audit_fix mô tả flutter_font) — 41e2545.
+- [~] WP-17QA Electron thật (sonnet).
+- [x] WP-17QA Electron thật 1–6 ĐẠT: Ghi có plan_id Flutter 349 MB 62,7→39,0 s (Godot không đổi 4,4 s — plan rẻ), tên Android sạch; 17A/B/C/D đúng; console sạch — docs/qa/r17/QA — 0705644. Lỗi: GatePicker lightbox không mở được (biến chết) → main thêm phím V xem lớn — 5e86498, typecheck sạch.
+- [x] Full pytest lượt 17: 1858 pass (1 flake chạy lại pass). Push.
+- [x] 15:20 Handoff mới: .planning/HANDOFF-2026-11-03-1520.md (1500 → archive).
