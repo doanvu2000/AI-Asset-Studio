@@ -1244,12 +1244,13 @@ Như Sprite 8 hướng multi-view, thêm anim đi bộ: render mặt trước th
 
 ## `sprite-normal-map` — Normal map 2D cho sprite
 
-Ảnh sprite (nền trong) hoặc sprite sheet → height từ khoảng cách tới viền alpha (vát tròn silhouette) + chi tiết độ sáng → normal map Sobel, kênh G hướng lên (OpenGL) — Godot CanvasTexture và Unity URP 2D Light và Flutter/Flame (LitSpriteEffect trong Shader Pack, xuất Flutter có normal map thì kèm shader đèn 2D) đọc thẳng. Sheet tính từng khung riêng (đặt số cột/hàng) nên viền không lem sang khung bên cạnh. Ảnh xem trước: gốc | normal | chiếu sáng thử. Chạy CPU, không cần GPU. Xuất engine từ bước sprite sheet có sẵn tuỳ chọn "Normal map 2D".
+Ảnh sprite (nền trong) hoặc sprite sheet → height từ khoảng cách tới viền alpha (vát tròn silhouette) + chi tiết độ sáng → normal map Sobel, kênh G hướng lên (OpenGL) — Godot CanvasTexture và Unity URP 2D Light và Flutter/Flame (LitSpriteEffect trong Shader Pack, xuất Flutter có normal map thì kèm shader đèn 2D) đọc thẳng. Sheet tính từng khung riêng (đặt số cột/hàng) nên viền không lem sang khung bên cạnh. Ảnh xem trước: gốc | normal | chiếu sáng thử. Chạy CPU, không cần GPU. Tuỳ chọn "ai": MoGe-2 ViT-S (MIT) ước lượng normal từ ảnh, có khối thật hơn filter; thiếu model thì tự về filter kèm cảnh báo. Xuất engine từ bước sprite sheet có sẵn tuỳ chọn "Normal map 2D".
 
 - runs on: CPU only; gates: approve
 - outputs: `final`, `preview`
 - inputs:
   - `image` (image; required) — Sprite hoặc sprite sheet (nền trong suốt)
+  - `method` (enum; default 'auto'; one of auto, ai, filter) — Cách tính (auto = AI nếu đã cài model, không thì filter)
   - `strength` (float; default 1.0; 0.1..10) — Độ nổi
   - `bevel` (float; default 0; 0..64) — Độ vát viền (px, 0 = tự động)
   - `detail` (float; default 0.5; 0..4) — Chi tiết từ độ sáng
