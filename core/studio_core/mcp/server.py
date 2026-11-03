@@ -624,7 +624,7 @@ class StudioTools:
         return res
 
     async def import_files(self, paths: list[str], project_id: str | None, asset_name: str | None,
-                           approve: bool, hashes: list[str] | None = None) -> dict[str, Any]:
+                           approve: bool, hashes: list[str] | None = None, group: str | None = None) -> dict[str, Any]:
         if not paths and not hashes:
             raise ToolError("pass paths (absolute file paths) and/or hashes (blobs already in the store)")
         body: dict[str, Any] = {"paths": list(paths), "hashes": list(hashes or []), "approve": approve}
@@ -632,8 +632,10 @@ class StudioTools:
             body["project_id"] = _safe_id(project_id, "project_id")
         if asset_name:
             body["asset_name"] = asset_name
+        if group:
+            body["group"] = group
         out = await self._call("POST", "/api/library/import", json=body)
-        return {"run_id": out["run_id"], "versions": out["versions"]}
+        return {"run_id": out["run_id"], "versions": out["versions"], "group": out["group"], "items": out["items"]}
 
     async def _engine_step(self, run_id: str, engine: str) -> str:
         data = await self._call("GET", f"/api/runs/{_safe_id(run_id, 'run_id')}")
@@ -1146,11 +1148,15 @@ def build_server(link: CoreLink) -> MCPServer:
     @mcp.tool(annotations=acts)
     async def import_to_library(paths: list[str] | None = None, project_id: str | None = None,
                                 asset_name: str | None = None, approve: bool = True,
-                                hashes: list[str] | None = None) -> dict[str, Any]:
+                                hashes: list[str] | None = None,
+                                group: Literal["per_file", "single"] | None = None) -> dict[str, Any]:
         """Put existing files (absolute paths: PNG, GLB/FBX, JSON, atlas...) and/or blobs already in the store
         (hashes: 64-hex, e.g. a rejected gate candidate) into the Library as versions of a project, like generated
-        assets (approve=true marks them approved so packs/QA/similar search see them)."""
-        return await tools.import_files(paths or [], project_id, asset_name, approve, hashes)
+        assets (approve=true marks them approved so packs/QA/similar search see them). group: per_file = one asset
+        (run) per file named after its stem, duplicates get " 2", " 3"; single = all files as versions of one asset.
+        Default: per_file for several files, single for one file or when asset_name is given. Returns items
+        [{run_id, asset_name, versions}] (run_id/versions at top level = first item)."""
+        return await tools.import_files(paths or [], project_id, asset_name, approve, hashes, group)
 
     @mcp.tool(annotations=read_only)
     async def follow_up_options(run_id: str, output: str | None = None, blob: str | None = None) -> dict[str, Any]:

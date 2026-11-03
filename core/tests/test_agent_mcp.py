@@ -101,6 +101,7 @@ async def test_new_tools_and_activity(core: Path, tmp_path: Path) -> None:
         again = payload(await c.call_tool("import_to_library", {"hashes": [imp["versions"][0]["hash"]],
                                                                   "project_id": pid, "asset_name": "Hero B"}))
         assert again["versions"][0]["hash"] == imp["versions"][0]["hash"]
+        assert imp["group"] == "single" and len(imp["items"]) == 1
         bad = await c.call_tool("import_to_library", {"hashes": ["../x"]})
         assert bad.is_error
         assert (await c.call_tool("import_to_library", {})).is_error

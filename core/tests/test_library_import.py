@@ -49,7 +49,7 @@ async def test_import_creates_approved_versions_in_project(ctx, tmp_path: Path) 
     _, c = ctx
     pid = (await c.post("/api/projects", json={"name": "Game"}, headers=AUTH)).json()["id"]
     a, b = _png(tmp_path / "hero.png"), _png(tmp_path / "tree.png", "green")
-    r = await c.post("/api/library/import", json={"paths": [str(a), str(b), str(a)], "project_id": pid}, headers=AUTH)
+    r = await c.post("/api/library/import", json={"paths": [str(a), str(b), str(a)], "project_id": pid, "group": "single"}, headers=AUTH)
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["project_id"] == pid and len(body["versions"]) == 2
@@ -86,3 +86,54 @@ async def test_import_rejects_extension_folder_and_unknown_project(ctx, tmp_path
     assert r.status_code == 404
     assert (await c.get("/api/versions", headers=AUTH)).json() == []
     assert (await c.post("/api/library/import", json={"paths": [str(png)]})).status_code == 401
+
+
+async def test_import_per_file_default_one_asset_each(ctx, tmp_path: Path) -> None:
+    _, c = ctx
+    pid = (await c.post("/api/projects", json={"name": "Game"}, headers=AUTH)).json()["id"]
+    (tmp_path / "d").mkdir()
+    paths = [_png(tmp_path / "hero.png"), _png(tmp_path / "d" / "hero.png", "blue"), _png(tmp_path / "tree.png", "green")]
+    r = await c.post("/api/library/import", json={"paths": [str(p) for p in paths], "project_id": pid}, headers=AUTH)
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["group"] == "per_file" and len(body["items"]) == 3
+    assert [i["asset_name"] for i in body["items"]] == ["hero", "hero 2", "tree"]
+    assert len({i["run_id"] for i in body["items"]}) == 3
+    assert body["run_id"] == body["items"][0]["run_id"] and body["versions"] == body["items"][0]["versions"]
+    assert all(len(i["versions"]) == 1 and i["versions"][0]["asset_name"] == i["asset_name"] for i in body["items"])
+    vs = (await c.get(f"/api/versions?project_id={pid}", headers=AUTH)).json()
+    assert len(vs) == 3 and len({v["run_id"] for v in vs}) == 3
+
+
+async def test_import_single_for_one_file_or_asset_name(ctx, tmp_path: Path) -> None:
+    _, c = ctx
+    a, b = _png(tmp_path / "a.png"), _png(tmp_path / "b.png", "green")
+    one = (await c.post("/api/library/import", json={"paths": [str(a)]}, headers=AUTH)).json()
+    assert one["group"] == "single" and len(one["items"]) == 1
+    named = (await c.post("/api/library/import", json={"paths": [str(a), str(b)], "asset_name": "Boss"}, headers=AUTH)).json()
+    assert named["group"] == "single" and len(named["items"]) == 1 and len(named["versions"]) == 2
+    assert {v["asset_name"] for v in named["versions"]} == {"Boss"}
+    r = await c.post("/api/library/import", json={"paths": [str(a), str(b)], "asset_name": "Boss", "group": "per_file"},
+                     headers=AUTH)
+    assert r.status_code == 400
+
+
+async def test_import_per_file_midway_failure_reports_created(ctx, tmp_path: Path, monkeypatch) -> None:
+    from studio_core.api import library
+    app, c = ctx
+    real = library._import_run
+    calls = 0
+
+    async def flaky(state, refs, title, project_id, approve):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise library.ApiError(409, "import_failed", "boom")
+        return await real(state, refs, title, project_id, approve)
+
+    monkeypatch.setattr(library, "_import_run", flaky)
+    paths = [str(_png(tmp_path / f"{n}.png", col)) for n, col in (("a", "red"), ("b", "green"), ("c", "blue"))]
+    r = await c.post("/api/library/import", json={"paths": paths}, headers=AUTH)
+    assert r.status_code == 409
+    assert "after 1 of 3 assets were already created" in r.text
+    assert len((await c.get("/api/versions", headers=AUTH)).json()) == 1

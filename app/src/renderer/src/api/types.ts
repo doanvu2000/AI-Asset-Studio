@@ -1308,6 +1308,16 @@ export interface ImportToLibraryBody {
   asset_name?: string
   /** Default true: imported versions are marked approved. */
   approve?: boolean
+  /** per_file: one asset per file named after its stem; single: all as versions of one asset. Core default: per_file for several files unless asset_name is set. */
+  group?: ImportGroup
+}
+
+export type ImportGroup = 'per_file' | 'single'
+
+export interface ImportedItem {
+  run_id: string
+  asset_name: string
+  versions: ImportedVersion[]
 }
 
 export interface ImportedVersion {
@@ -1323,4 +1333,6 @@ export interface ImportToLibraryResult {
   run_id: string
   project_id: string
   versions: ImportedVersion[]
+  group: ImportGroup
+  items: ImportedItem[]
 }

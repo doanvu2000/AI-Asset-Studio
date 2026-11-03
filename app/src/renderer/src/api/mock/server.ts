@@ -34,6 +34,8 @@ import {
   type RunDetail,
   type RunRow,
   type StartRunBody,
+  type ImportGroup,
+  type ImportedItem,
   type ImportToLibraryBody,
   type ImportToLibraryResult,
   type ImportedVersion,
@@ -1335,28 +1337,40 @@ export class MockCore implements StudioApi, EventStream {
     }
     const project_id = body.project_id || 'default'
     if (project_id !== 'default') this.project(project_id)
-    const run_id = uid('run')
     const status: VersionStatus = body.approve === false ? 'draft' : 'approved'
-    const versions: ImportedVersion[] = []
-    for (const [i, path] of paths.entries()) {
-      const name = path.split(/[\/]/).pop() ?? path
-      const blob = await this.makeBlob(7000 + i * 13, { size: 256, transparent: true })
-      const v: VersionRow = { id: uid('ver'), project_id, asset_name: body.asset_name || name.replace(/\.[^.]+$/, ''), run_id,
-        step_id: uid('step'), blob: { ...blob, name }, status, created_at: now() }
-      this.versionMap.set(v.id, v)
-      this.emit('version.updated', v, run_id)
-      versions.push({ version_id: v.id, status, asset_name: v.asset_name, name, hash: blob.hash, mime: blob.mime ?? null })
+    const units: { name: string; hash: string | null; blob: BlobRef | null }[] = [
+      ...paths.map((path) => ({ name: path.split(/[\\/]/).pop() ?? path, hash: null, blob: null })),
+      ...hashes.map((h) => {
+        const blob = this.blobs.get(h)!.ref
+        return { name: blob.name || h.slice(0, 12), hash: h, blob }
+      })
+    ]
+    const group: ImportGroup = body.group ?? (units.length === 1 || body.asset_name ? 'single' : 'per_file')
+    if (group === 'per_file' && body.asset_name && units.length > 1) throw new ApiError('invalid', 'asset_name only applies to group=single', 400)
+    const seen = new Map<string, number>()
+    const titles = units.map((u) => {
+      const stem = u.name.replace(/\.[^.]+$/, '')
+      const n = (seen.get(stem.toLowerCase()) ?? 0) + 1
+      seen.set(stem.toLowerCase(), n)
+      return n === 1 ? stem : `${stem} ${n}`
+    })
+    const batches = group === 'single' ? [{ title: body.asset_name || titles[0]!, units }] : units.map((u, i) => ({ title: titles[i]!, units: [u] }))
+    const items: ImportedItem[] = []
+    let seed = 0
+    for (const batch of batches) {
+      const run_id = uid('run')
+      const versions: ImportedVersion[] = []
+      for (const u of batch.units) {
+        const blob = u.blob ?? { ...(await this.makeBlob(7000 + seed * 13, { size: 256, transparent: true })), name: u.name }
+        seed++
+        const v: VersionRow = { id: uid('ver'), project_id, asset_name: batch.title, run_id, step_id: uid('step'), blob, status, created_at: now() }
+        this.versionMap.set(v.id, v)
+        this.emit('version.updated', v, run_id)
+        versions.push({ version_id: v.id, status, asset_name: v.asset_name, name: u.name, hash: blob.hash, mime: blob.mime ?? null })
+      }
+      items.push({ run_id, asset_name: batch.title, versions })
     }
-    for (const h of hashes) {
-      const blob = this.blobs.get(h)!.ref
-      const name = blob.name || h.slice(0, 12)
-      const v: VersionRow = { id: uid('ver'), project_id, asset_name: body.asset_name || name.replace(/\.[^.]+$/, ''), run_id,
-        step_id: uid('step'), blob, status, created_at: now() }
-      this.versionMap.set(v.id, v)
-      this.emit('version.updated', v, run_id)
-      versions.push({ version_id: v.id, status, asset_name: v.asset_name, name, hash: h, mime: blob.mime ?? null })
-    }
-    return { run_id, project_id, versions }
+    return { run_id: items[0]!.run_id, project_id, versions: items[0]!.versions, group, items }
   }
 
   async diagnostics(): Promise<CoreDiagnostics> {

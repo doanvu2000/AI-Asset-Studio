@@ -64,7 +64,7 @@ async def test_import_mixes_paths_and_hashes(ctx, tmp_path: Path) -> None:
     ref = await app.state.blobs.put_bytes(_png(coin()), name="b.png", mime="image/png")
     p = tmp_path / "a.png"
     Image.new("RGBA", (8, 8), "red").save(p)
-    r = await c.post("/api/library/import", json={"paths": [str(p)], "hashes": [ref.hash], "approve": False}, headers=AUTH)
+    r = await c.post("/api/library/import", json={"paths": [str(p)], "hashes": [ref.hash], "approve": False, "group": "single"}, headers=AUTH)
     assert r.status_code == 201 and {v["name"] for v in r.json()["versions"]} == {"a.png", "b.png"}
 
 
@@ -95,3 +95,13 @@ async def test_ui_icon_variants_runs_on_cpu_with_pick_gate(tmp_path: Path) -> No
     await asyncio.wait_for(env.engine.wait_idle(run_id), 60)
     assert env.status(run_id) == RunStatus.SUCCEEDED
     assert [b.hash for b in env.steps(run_id)["pick"].outputs["images"]] == [cands[2].hash]
+
+
+async def test_import_mixed_per_file_names_and_dedupes(ctx, tmp_path: Path) -> None:
+    app, c = ctx
+    ref = await app.state.blobs.put_bytes(_png(coin()), name="a.png", mime="image/png")
+    p = tmp_path / "a.png"
+    Image.new("RGBA", (8, 8), "red").save(p)
+    r = await c.post("/api/library/import", json={"paths": [str(p)], "hashes": [ref.hash]}, headers=AUTH)
+    assert r.status_code == 201, r.text
+    assert [i["asset_name"] for i in r.json()["items"]] == ["a", "a 2"]

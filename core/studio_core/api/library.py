@@ -5,6 +5,7 @@ import asyncio
 import re
 import time
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
@@ -35,6 +36,7 @@ class ImportBody(BaseModel):
     project_id: str | None = None
     asset_name: str | None = Field(default=None, max_length=200)
     approve: bool = True
+    group: Literal["per_file", "single"] | None = None
 
 
 @router.get("/shaders", dependencies=authed)
@@ -99,22 +101,20 @@ async def _checked_hashes(state, hashes: list[str]) -> list[tuple[str, str]]:
     return out
 
 
-@router.post("/library/import", dependencies=authed)
-async def import_files(request: Request, body: ImportBody) -> Response:
-    state = request.app.state
-    if not body.paths and not body.hashes:
-        raise ApiError(400, "invalid", "paths or hashes must list at least one item")
-    files = await asyncio.to_thread(_checked, body.paths) if body.paths else []
-    blobs = await _checked_hashes(state, body.hashes)
-    project_id = body.project_id or DEFAULT_PROJECT
-    if project_id != DEFAULT_PROJECT and await state.repo.get_project(project_id) is None:
-        raise ApiError(404, "not_found", f"unknown project: {project_id}")
-    refs = [(await state.blobs.put_file(p, name=p.name)).hash for p in files]
-    refs += [h for h, _ in blobs if h not in refs]
-    first_stem = files[0].stem if files else Path(blobs[0][1]).stem
+def _unique_names(stems: list[str]) -> list[str]:
+    seen: dict[str, int] = {}
+    out: list[str] = []
+    for stem in stems:
+        key = stem.casefold()
+        seen[key] = seen.get(key, 0) + 1
+        out.append(stem if seen[key] == 1 else f"{stem} {seen[key]}")
+    return out
+
+
+async def _import_run(state, refs: list[str], title: str, project_id: str, approve: bool) -> dict:
     try:
-        run_id = await state.engine.start_run(
-            RECIPE, {"files": refs, "review": False}, None, project_id=project_id, title=body.asset_name or first_stem)
+        run_id = await state.engine.start_run(RECIPE, {"files": refs, "review": False}, None,
+                                              project_id=project_id, title=title)
     except LookupError as e:
         raise ApiError(404, "not_found", str(e.args[0]) if e.args else "recipe not found") from e
     deadline = time.monotonic() + IMPORT_TIMEOUT_S
@@ -129,9 +129,47 @@ async def import_files(request: Request, body: ImportBody) -> Response:
         raise ApiError(409, "import_failed", f"import run {run_id} ended {run.status.value}: {run.error or ''}".strip())
     versions = []
     for v in await state.repo.list_versions(run_id=run_id, limit=5000):
-        if body.approve and v.status != VersionStatus.APPROVED:
+        if approve and v.status != VersionStatus.APPROVED:
             v = await state.repo.set_version_status(v.id, VersionStatus.APPROVED) or v
             state.bus.publish("version.updated", v.model_dump(mode="json"), run_id=run_id)
         versions.append({"version_id": v.id, "status": v.status.value, "asset_name": v.asset_name,
                          "name": v.blob.name, "hash": v.blob.hash, "mime": v.blob.mime})
-    return OrjsonResponse({"run_id": run_id, "project_id": project_id, "versions": versions}, status_code=201)
+    return {"run_id": run_id, "asset_name": title, "versions": versions}
+
+
+@router.post("/library/import", dependencies=authed)
+async def import_files(request: Request, body: ImportBody) -> Response:
+    state = request.app.state
+    if not body.paths and not body.hashes:
+        raise ApiError(400, "invalid", "paths or hashes must list at least one item")
+    files = await asyncio.to_thread(_checked, body.paths) if body.paths else []
+    blobs = await _checked_hashes(state, body.hashes)
+    project_id = body.project_id or DEFAULT_PROJECT
+    if project_id != DEFAULT_PROJECT and await state.repo.get_project(project_id) is None:
+        raise ApiError(404, "not_found", f"unknown project: {project_id}")
+    units: list[tuple[str, str]] = []  # (blob hash, display name), one per distinct blob
+    for p in files:
+        ref = await state.blobs.put_file(p, name=p.name)
+        if all(ref.hash != h for h, _ in units):
+            units.append((ref.hash, p.name))
+    units += [(h, n) for h, n in blobs if all(h != u for u, _ in units)]
+    group = body.group or ("single" if len(units) == 1 or body.asset_name else "per_file")
+    if group == "per_file" and body.asset_name and len(units) > 1:
+        raise ApiError(400, "invalid", "asset_name only applies to group=single (per_file names assets after each file)")
+    if group == "single":
+        jobs = [([h for h, _ in units], body.asset_name or Path(units[0][1]).stem)]
+    else:
+        jobs = [([h], n) for (h, _), n in zip(units, _unique_names([Path(n).stem for _, n in units]), strict=True)]
+    items: list[dict] = []
+    for refs, title in jobs:
+        try:
+            items.append(await _import_run(state, refs, title, project_id, body.approve))
+        except ApiError as e:
+            if not items:
+                raise
+            done = ", ".join(i["run_id"] for i in items)
+            raise ApiError(e.status, e.code, f"{e.message} (after {len(items)} of {len(jobs)} assets were already created: {done})",
+                           {"created_run_ids": [i["run_id"] for i in items]}) from e
+    first = items[0]
+    return OrjsonResponse({"run_id": first["run_id"], "project_id": project_id, "versions": first["versions"],
+                           "group": group, "items": items}, status_code=201)

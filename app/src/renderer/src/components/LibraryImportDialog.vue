@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { Download, LoaderCircle, X } from '@lucide/vue'
-import { NO_PROJECT, type BlobRef } from '@/api/types'
+import { NO_PROJECT, type BlobRef, type ImportGroup } from '@/api/types'
 import ProjectSelect from './ProjectSelect.vue'
 import { api } from '@/stores/connection'
 import { useProjects } from '@/stores/projects'
@@ -20,6 +20,8 @@ const isOpen = computed(() => props.open)
 const trap = useFocusTrap(root, isOpen, closeBtn)
 const project = ref(NO_PROJECT)
 const approve = ref(true)
+const group = ref<ImportGroup>('per_file')
+const assetName = ref('')
 const busy = ref(false)
 const error = ref<string | null>(null)
 
@@ -34,6 +36,8 @@ watch(
   (on) => {
     if (!on) return
     error.value = null
+    group.value = 'per_file'
+    assetName.value = ''
     project.value = props.projectId && props.projectId !== NO_PROJECT ? props.projectId : (projects.activeId ?? NO_PROJECT)
   },
   { immediate: true }
@@ -44,8 +48,19 @@ async function submit(): Promise<void> {
   busy.value = true
   error.value = null
   try {
-    const res = await api().importToLibrary({ paths: props.paths?.length ? props.paths : undefined, hashes: props.blobs?.length ? props.blobs.map((b) => b.hash) : undefined, project_id: project.value, approve: approve.value })
-    toasts.push(`Đã nhập ${res.versions.length} file vào thư viện${approve.value ? ' (đã duyệt)' : ''}`, 'success', 8000, {
+    const many = total.value > 1
+    const res = await api().importToLibrary({
+      paths: props.paths?.length ? props.paths : undefined,
+      hashes: props.blobs?.length ? props.blobs.map((b) => b.hash) : undefined,
+      project_id: project.value,
+      approve: approve.value,
+      group: many ? group.value : 'single',
+      asset_name: many && group.value === 'single' ? assetName.value.trim() || undefined : undefined
+    })
+    const assets = res.items.length
+    const files = res.items.reduce((n, i) => n + i.versions.length, 0)
+    const what = assets > 1 ? `${assets} asset` : files > 1 ? `1 asset (${files} phiên bản)` : '1 asset'
+    toasts.push(`Đã nhập ${what} vào thư viện${approve.value ? ' (đã duyệt)' : ''}`, 'success', 8000, {
       label: 'Mở Thư viện',
       to: { path: '/gallery', query: { project: res.project_id, run: res.run_id, focus: res.versions[0]?.version_id } }
     })
@@ -94,6 +109,12 @@ useEventListener(
               <span class="section-label">Dự án</span>
               <ProjectSelect v-model="project" label="Dự án nhận file" />
             </div>
+            <fieldset v-if="total > 1" class="grp" :disabled="busy">
+              <legend class="section-label">Cách nhập</legend>
+              <label class="chk"><input v-model="group" type="radio" value="per_file" name="li-group" /> Mỗi tệp một asset</label>
+              <label class="chk"><input v-model="group" type="radio" value="single" name="li-group" /> Gộp thành 1 asset (nhiều phiên bản)</label>
+              <input v-if="group === 'single'" v-model="assetName" class="field" type="text" maxlength="200" spellcheck="false" placeholder="Tên asset (để trống: lấy theo tệp đầu)" aria-label="Tên asset" />
+            </fieldset>
             <label class="chk"><input v-model="approve" type="checkbox" /> Đánh dấu đã duyệt (đóng gói, QA, tìm tương tự thấy ngay)</label>
             <p v-if="error" class="caption err" role="alert">{{ error }}</p>
           </div>
@@ -179,6 +200,18 @@ useEventListener(
   align-items: center;
   gap: 8px;
   font-size: var(--fs-callout);
+}
+.grp {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.grp legend {
+  padding: 0;
+  margin-bottom: 2px;
 }
 .err {
   color: var(--st-fail);
