@@ -1222,11 +1222,13 @@ def build_server(link: CoreLink) -> MCPServer:
                                  timeout=600)
 
     @mcp.tool(annotations=read_only)
-    async def audit_project(path: str, engine: Literal["auto", "unity", "godot"] = "auto", tri_budget: int = 15000,
+    async def audit_project(path: str, engine: Literal["auto", "unity", "godot", "flutter"] = "auto", tri_budget: int = 15000,
                             duplicates: bool = True, max_rows: int = 80) -> dict[str, Any]:
         """Read-only audit of a Unity / Godot project folder (absolute path): textures vs. mobile budget and on-screen
         size (estimated GPU MB before/after), duplicate images (pHash), assets nothing references, meshes over
-        tri_budget, audio import settings. Each texture issue may carry a `fix` to pass to audit_fix."""
+        tri_budget, audio import settings. Each texture issue may carry a `fix` to pass to audit_fix. A Flutter
+        project (pubspec.yaml) returns `findings` instead: missing/undeclared pubspec assets, missing 2.0x/3.0x
+        variants, heavy PNG/JPG, unused assets."""
         rep = await tools._call("POST", "/api/audit", json={"path": path, "engine": engine, "tri_budget": tri_budget,
                                                             "duplicates": duplicates}, timeout=600)
         n = max(1, min(int(max_rows), 500))
@@ -1235,13 +1237,16 @@ def build_server(link: CoreLink) -> MCPServer:
         for k in ("duplicates", "unreferenced", "meshes", "audio"):
             rep[k] = rep.get(k, [])[:n]
         rep["fixes"] = [i["fix"] for t in rep["textures"] for i in t.get("issues", []) if i.get("fix")]
+        rep["findings"] = rep.get("findings", [])[:n]
+        rep["fixes"] += [f["fix"] for f in rep["findings"] if f.get("fix")]
         return rep
 
     @mcp.tool(annotations=acts)
     async def audit_fix(path: str, actions: list[dict[str, Any]], dry_run: bool = True) -> dict[str, Any]:
         """Apply fixes from the last audit_project of that project: {type: mobile_preset | max_size | drop_alpha,
         rel, ...} rewrite only .meta / .import (zip backup, undo via backup_id with audit_undo); {type: atlas, rels,
-        name} packs sprites into a folder outside the project. dry_run=true (default) only plans. Duplicates and
+        name} packs sprites into a folder outside the project; Flutter: flutter_declare | flutter_variant {kind: "2.0x"}
+        | flutter_webp (edits pubspec.yaml / .dart references, same backup + undo). dry_run=true (default) only plans. Duplicates and
         unreferenced assets are never deleted."""
         out = await tools._call("POST", "/api/audit/fix", json={"path": path, "actions": actions, "dry_run": dry_run},
                                 timeout=600)

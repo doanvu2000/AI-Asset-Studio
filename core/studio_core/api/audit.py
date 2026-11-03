@@ -1,4 +1,4 @@
-"""Game project audit: read-only scan of a Unity / Godot folder, one-click importer fixes (backup zip + undo) and an
+"""Game project audit: read-only scan of a Unity / Godot / Flutter folder, one-click importer fixes (backup zip + undo) and an
 optional atlas written outside the project. The last report per project is kept so a fix can be checked against it."""
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from starlette.responses import Response
 from studio_core.api.auth import require_token
 from studio_core.api.errors import ApiError, OrjsonResponse
 from studio_core.export import audit as au
-from studio_core.export.restyle import project_root
 from studio_core.scan_jobs import ScanCancelled, jobs_of
 
 router = APIRouter(prefix="/api/audit", dependencies=[Depends(require_token)])
@@ -24,13 +23,14 @@ _lock = asyncio.Lock()
 
 class ScanBody(BaseModel):
     path: str = Field(min_length=1, max_length=1024)
-    engine: Literal["auto", "unity", "godot"] = "auto"
+    engine: Literal["auto", "unity", "godot", "flutter"] = "auto"
     tri_budget: int = Field(au.DEFAULT_TRI_BUDGET, ge=100, le=10_000_000)
     duplicates: bool = True
 
 
 class FixAction(BaseModel):
-    type: Literal["mobile_preset", "max_size", "drop_alpha", "atlas"]
+    type: Literal["mobile_preset", "max_size", "drop_alpha", "atlas", "flutter_declare", "flutter_variant",
+                  "flutter_webp"]
     rel: str | None = Field(None, max_length=1024)
     rels: list[str] | None = Field(None, max_length=2000)
     kind: str | None = Field(None, max_length=32)
@@ -69,9 +69,9 @@ def _project_of(path: str) -> str:
     folder = Path(path).expanduser()
     if not folder.is_absolute() or not folder.is_dir():
         raise ApiError(422, "bad_folder", "path must be an existing absolute folder")
-    engine, proj = project_root(folder)
+    engine, proj = au.detect_engine(folder)
     if engine == "none":
-        raise ApiError(422, "bad_folder", "not inside a Unity or Godot project")
+        raise ApiError(422, "bad_folder", "not inside a Unity, Godot or Flutter project")
     return str(proj)
 
 

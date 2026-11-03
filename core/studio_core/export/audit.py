@@ -1,4 +1,4 @@
-"""Game project audit (Unity / Godot): textures vs. mobile budget and on-screen size, duplicate images, assets nothing
+"""Game project audit (Unity / Godot; Flutter lives in audit_flutter): textures vs. mobile budget and on-screen size, duplicate images, assets nothing
 references, heavy meshes and audio import settings; one-click fixes that only rewrite importer files (.meta /
 .import) with a zip backup, a manifest and undo. Images, scenes and GUIDs/UIDs are never written."""
 from __future__ import annotations
@@ -77,6 +77,17 @@ class AuditError(Exception):
 
 def backup_dir(data_dir: Path) -> Path:
     return data_dir / "audit_backups"
+
+
+def detect_engine(folder: Path) -> tuple[str, Path]:
+    """('unity' | 'godot' | 'flutter' | 'none', project root) for a folder anywhere inside a project."""
+    found, proj = project_root(folder)
+    if found != "none":
+        return found, proj
+    from studio_core.export.audit_flutter import flutter_root
+
+    root = flutter_root(folder.resolve())
+    return ("flutter", root) if root else ("none", proj)
 
 
 def _walk(root: Path, skip: set[str]) -> Iterable[Path]:
@@ -549,12 +560,17 @@ def scan(path: str | Path, engine: str = "auto", tri_budget: int = DEFAULT_TRI_B
     if _is_link(folder):
         raise AuditError("folder is a link")
     folder = folder.resolve()
-    found, proj = project_root(folder)
-    if engine not in ("auto", "unity", "godot"):
-        raise AuditError("engine must be auto, unity or godot")
+    found, proj = detect_engine(folder)
+    if engine not in ("auto", "unity", "godot", "flutter"):
+        raise AuditError("engine must be auto, unity, godot or flutter")
     if found == "none" or (engine != "auto" and engine != found):
-        raise AuditError("not inside a Unity project (Assets + ProjectSettings) or a Godot project (project.godot)")
+        raise AuditError("not inside a Unity project (Assets + ProjectSettings), a Godot project (project.godot) "
+                         "or a Flutter project (pubspec.yaml)")
     engine = found
+    if engine == "flutter":
+        from studio_core.export import audit_flutter
+
+        return audit_flutter.scan(folder, proj, progress)
     t0 = time.time()
     skip = SKIP_DIRS | ({"library", "temp", "logs"} if engine == "unity" else set())
     scope = proj / "Assets" if engine == "unity" else proj
@@ -935,6 +951,10 @@ def apply_fixes(report: dict[str, Any], actions: list[dict[str, Any]], backups: 
     """dry_run plans only; otherwise every importer file to change goes into one verified zip first, then each is
     replaced atomically and a manifest is kept for undo. `progress` may cancel between two files: the files already
     written stay (undoable), the rest are marked skipped and doc["cancelled"] is set."""
+    if report.get("engine") == "flutter":
+        from studio_core.export import audit_flutter
+
+        return audit_flutter.apply(report, actions, backups, dry_run, source, progress)
     proj = Path(report["project"])
     plan = plan_fixes(report, actions)
     todo = [r for r in plan if r["action"] == "write"]
@@ -1001,6 +1021,10 @@ def undo(backups: Path, bid: str, force: bool = False) -> dict[str, Any]:
     doc = load_manifest(backups, bid)
     if doc.get("undone_at"):
         raise AuditError("already undone")
+    if doc.get("engine") == "flutter":
+        from studio_core.export import audit_flutter
+
+        return audit_flutter.undo(backups, doc, bid, force)
     proj = Path(doc["project"])
     restored, conflicts = [], []
     with zipfile.ZipFile(backups / f"{bid}.zip") as z:
@@ -1034,7 +1058,8 @@ def list_backups(backups: Path, project: str | None = None) -> list[dict[str, An
             continue
         out.append({"backup_id": p.stem, "project": d.get("project"), "engine": d.get("engine"), "at": d.get("at"),
                     "written": d.get("written"), "undone_at": d.get("undone_at"),
-                    "gpu_before": d.get("gpu_before"), "gpu_after": d.get("gpu_after")})
+                    "gpu_before": d.get("gpu_before"), "gpu_after": d.get("gpu_after"),
+                    "bytes_before": d.get("bytes_before"), "bytes_after": d.get("bytes_after")})
     return out
 
 
@@ -1044,6 +1069,8 @@ def build_atlas(report: dict[str, Any], rels: list[str], name: str, out_root: Pa
     from studio_core.export.atlas import AtlasError, AtlasOptions, Sprite, engine_files, pack
     from studio_core.export.sheet import ident
 
+    if report.get("engine") == "flutter":
+        raise AuditError("atlas is only for Unity / Godot projects")
     proj = Path(report["project"])
     rows = {t["rel"]: t for t in report.get("textures") or []}
     sprites: list[Sprite] = []

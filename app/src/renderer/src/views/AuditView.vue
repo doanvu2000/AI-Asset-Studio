@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Check, CircleAlert, FolderOpen, LayoutGrid, LoaderCircle, ScanSearch, ShieldCheck, Undo2, Wrench } from '@lucide/vue'
-import type { AuditBackup, AuditFix, AuditFixResult, AuditReport, AuditTexture } from '@/api/auditTypes'
+import type { AuditBackup, AuditFinding, AuditFix, AuditFixResult, AuditReport, AuditTexture } from '@/api/auditTypes'
 import EmptyState from '@/components/EmptyState.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ScanProgressBar from '@/components/ScanProgressBar.vue'
@@ -12,12 +12,14 @@ import { api, useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { bytes } from '@/composables/format'
 
-type Tab = 'textures' | 'duplicates' | 'unreferenced' | 'meshes' | 'audio'
+type Tab = 'textures' | 'flutter' | 'duplicates' | 'unreferenced' | 'meshes' | 'audio'
 const FOLDER_KEY = 'audit.folder'
 const MB = 1048576
 const KIND_LABEL: Record<string, string> = { sprite: 'Sprite', ui: 'UI', texture: 'Texture 3D', tileset: 'Tileset', normal: 'Normal', pixel: 'Pixel art' }
-const FIX_LABEL: Record<string, string> = { mobile_preset: 'Nén mobile', max_size: 'Giảm max size', drop_alpha: 'Bỏ alpha' }
-const REF_LABEL: Record<string, string> = { texture: 'Ảnh', audio: 'Âm thanh', model: 'Mesh', material: 'Material', prefab: 'Prefab / scene' }
+const FIX_LABEL: Record<string, string> = { mobile_preset: 'Nén mobile', max_size: 'Giảm max size', drop_alpha: 'Bỏ alpha', flutter_declare: 'Khai báo vào pubspec', flutter_variant: 'Sinh biến thể', flutter_webp: 'Chuyển WebP' }
+const REF_LABEL: Record<string, string> = { texture: 'Ảnh', audio: 'Âm thanh', model: 'Mesh', material: 'Material', prefab: 'Prefab / scene', other: 'Tệp khác' }
+const ENGINE_LABEL: Record<string, string> = { unity: 'Unity', godot: 'Godot', flutter: 'Flutter' }
+const FINDING_LABEL: Record<string, string> = { asset_missing: 'Thiếu file', asset_undeclared: 'Chưa khai báo', variant_missing: 'Thiếu biến thể', image_big: 'Ảnh nặng' }
 
 const route = useRoute()
 const conn = useConnection()
@@ -54,7 +56,7 @@ async function pickFolder(): Promise<void> {
   if (!window.studio) return void toasts.push('Chọn thư mục chỉ có trong ứng dụng desktop; dán đường dẫn vào ô', 'info')
   let p: string | null
   try {
-    p = await window.studio.pickPath({ kind: 'dir', title: 'Chọn project Unity / Godot (hoặc thư mục con)', defaultPath: folder.value || undefined })
+    p = await window.studio.pickPath({ kind: 'dir', title: 'Chọn project Unity / Godot / Flutter (hoặc thư mục con)', defaultPath: folder.value || undefined })
   } catch (e) {
     return void toasts.error(e, 'Không mở được hộp chọn thư mục')
   }
@@ -64,9 +66,14 @@ async function pickFolder(): Promise<void> {
   }
 }
 
+function fkey(f: AuditFinding): string {
+  return `${f.fix?.type}:${f.rel}:${f.fix?.kind ?? ''}`
+}
+
 function setReport(r: AuditReport): void {
   report.value = r
-  picked.value = new Set(r.textures.filter((t) => t.issues.some((i) => i.fix)).map((t) => t.rel))
+  picked.value = new Set(r.engine === 'flutter' ? (r.findings ?? []).filter((f) => f.fix).map(fkey) : r.textures.filter((t) => t.issues.some((i) => i.fix)).map((t) => t.rel))
+  if (r.engine === 'flutter' ? tab.value === 'textures' : tab.value === 'flutter') tab.value = r.engine === 'flutter' ? 'flutter' : 'textures'
   plan.value = null
 }
 
@@ -109,10 +116,29 @@ const pickedRows = computed(() => fixable.value.filter((t) => picked.value.has(t
 const savedPicked = computed(() => pickedRows.value.reduce((a, t) => a + (t.gpu_before - t.gpu_after), 0))
 const audioIssues = computed(() => (report.value?.audio ?? []).filter((a) => a.issues.length))
 const scannedFiles = computed(() => (s.value ? s.value.textures + s.value.meshes + s.value.audio : 0))
-const clean = computed(
-  () => !!report.value && !fixRows.value.length && !report.value.duplicates.length && !report.value.unreferenced.length && !s.value?.meshes_over && !audioIssues.value.length
+const isFlutter = computed(() => report.value?.engine === 'flutter')
+const findings = computed(() => report.value?.findings ?? [])
+const fixableFindings = computed(() => findings.value.filter((f) => f.fix))
+const pickedFindings = computed(() => fixableFindings.value.filter((f) => picked.value.has(fkey(f))))
+const allKeys = computed(() => (isFlutter.value ? fixableFindings.value.map(fkey) : fixable.value.map((t) => t.rel)))
+const pickedCount = computed(() => (isFlutter.value ? pickedFindings.value.length : pickedRows.value.length))
+const safeText = computed(() =>
+  isFlutter.value
+    ? 'Quét chỉ đọc. Sửa ghi pubspec.yaml, file .dart có chuỗi đường dẫn ảnh và ảnh mới / WebP (có backup zip + hoàn tác); không tự xoá asset.'
+    : 'Quét chỉ đọc. Sửa chỉ ghi .meta / .import (có backup zip + hoàn tác); không xoá hay ghi đè ảnh.'
 )
-const tabs = computed<{ id: Tab; label: string; n: number }[]>(() => [
+const unusedNote = computed(() =>
+  isFlutter.value
+    ? '“Có thể” không dùng: không file .dart / yaml nào nhắc tên file. Asset ghép tên bằng chuỗi (vd img_$i.png) vẫn hiện ở đây — kiểm trước khi xoá; app không tự xoá.'
+    : '“Có thể” không dùng: không thấy GUID / đường dẫn trong scene, prefab, material… Asset nạp bằng code (Resources, Addressables, load theo tên) vẫn hiện ở đây — kiểm trước khi xoá.'
+)
+const clean = computed(
+  () => !!report.value && !findings.value.length && !fixRows.value.length && !report.value.duplicates.length && !report.value.unreferenced.length && !s.value?.meshes_over && !audioIssues.value.length
+)
+const tabs = computed<{ id: Tab; label: string; n: number }[]>(() => isFlutter.value ? [
+  { id: 'flutter', label: 'Vấn đề', n: findings.value.length },
+  { id: 'unreferenced', label: 'Không ai dùng', n: report.value?.unreferenced.length ?? 0 }
+] : [
   { id: 'textures', label: 'Texture', n: fixRows.value.length },
   { id: 'duplicates', label: 'Ảnh trùng', n: report.value?.duplicates.length ?? 0 },
   { id: 'unreferenced', label: 'Không ai dùng', n: report.value?.unreferenced.length ?? 0 },
@@ -128,16 +154,17 @@ function toggle(rel: string): void {
   plan.value = null
 }
 function toggleAll(): void {
-  picked.value = pickedRows.value.length === fixable.value.length ? new Set() : new Set(fixable.value.map((t) => t.rel))
+  picked.value = pickedCount.value === allKeys.value.length ? new Set() : new Set(allKeys.value)
   plan.value = null
 }
 
 function actions(): AuditFix[] {
+  if (isFlutter.value) return pickedFindings.value.flatMap((f) => (f.fix ? [f.fix] : []))
   return pickedRows.value.flatMap((t) => t.issues.map((i) => i.fix).filter((f): f is AuditFix => !!f))
 }
 
 async function preview(): Promise<void> {
-  if (!report.value || planning.value || !pickedRows.value.length) return
+  if (!report.value || planning.value || !pickedCount.value) return
   planning.value = true
   try {
     plan.value = await api().auditFix({ path: report.value.project, actions: actions(), dry_run: true })
@@ -156,7 +183,7 @@ async function apply(): Promise<void> {
     if (r.cancelled) {
       const left = r.skipped ?? 0
       toasts.push(`Đã dừng: ghi ${r.written ?? 0} file, ${left} file chưa sửa${r.backup_id ? ` · hoàn tác được ở backup ${r.backup_id}` : ''}`, 'info', 6000)
-    } else toasts.push(`Đã ghi ${r.written ?? 0} file import${r.skipped ? `, bỏ qua ${r.skipped}` : ''} · backup ${r.backup_id ?? ''}`, r.written ? 'success' : 'info')
+    } else toasts.push(`Đã ghi ${r.written ?? 0} ${isFlutter.value ? 'mục sửa' : 'file import'}${r.skipped ? `, bỏ qua ${r.skipped}` : ''} · backup ${r.backup_id ?? ''}`, r.written ? 'success' : 'info')
     if (r.report) setReport(r.report)
     else plan.value = null
     await loadBackups()
@@ -210,14 +237,14 @@ function reveal(p: string): void {
 
 <template>
   <div class="view" @keydown.ctrl.enter.prevent="doScan" @keydown.meta.enter.prevent="doScan">
-    <PageHeader title="Kiểm tra project" subtitle="Soát texture, ảnh trùng, asset không ai dùng, mesh nặng, âm thanh của project Unity / Godot" />
+    <PageHeader title="Kiểm tra project" subtitle="Soát project Unity / Godot (texture, ảnh trùng, mesh, âm thanh) và Flutter (asset pubspec, biến thể, ảnh nặng)" />
     <div class="scroll">
       <div class="stack wrap">
         <section class="card pane">
           <div class="pane-head">
             <FolderOpen class="pi" aria-hidden="true" />
             <h2 class="headline">Project</h2>
-            <span v-if="report" class="tag" :class="`e-${report.engine}`">{{ report.engine === 'unity' ? 'Unity' : 'Godot' }}</span>
+            <span v-if="report" class="tag" :class="`e-${report.engine}`">{{ ENGINE_LABEL[report.engine] ?? report.engine }}</span>
             <span v-if="report" class="caption num push">quét {{ report.seconds }} s</span>
           </div>
           <div class="folder-row">
@@ -225,8 +252,8 @@ function reveal(p: string): void {
               v-model="folder"
               class="field mono"
               spellcheck="false"
-              placeholder="L:\Game\MyProject  (Unity hoặc Godot)"
-              title="Thư mục gốc project: có Assets + ProjectSettings (Unity) hoặc project.godot (Godot)"
+              placeholder="L:\Game\MyProject  (Unity, Godot hoặc Flutter)"
+              title="Thư mục gốc project: có Assets + ProjectSettings (Unity), project.godot (Godot) hoặc pubspec.yaml (Flutter)"
               aria-label="Đường dẫn project"
               @keydown.enter.exact="doScan"
             />
@@ -240,7 +267,7 @@ function reveal(p: string): void {
             <input v-model.number="triBudget" type="number" min="100" step="1000" class="field num tri" aria-label="Số tam giác tối đa mỗi mesh" />
             tam giác
           </label>
-          <span class="caption safe"><ShieldCheck :size="14" /> Quét chỉ đọc. Sửa chỉ ghi .meta / .import (có backup zip + hoàn tác); không xoá hay ghi đè ảnh.</span>
+          <span class="caption safe"><ShieldCheck :size="14" /> {{ safeText }}</span>
         </section>
 
         <section v-if="!report" class="card pane" aria-live="polite">
@@ -250,7 +277,7 @@ function reveal(p: string): void {
           <EmptyState v-else-if="scanError" :icon="CircleAlert" title="Không quét được project" :text="scanError">
             <button type="button" class="btn" :disabled="!canScan" @click="doScan"><ScanSearch /> Quét lại</button>
           </EmptyState>
-          <EmptyState v-else :icon="FolderOpen" title="Chưa chọn project" text="Dán đường dẫn project Unity hoặc Godot vào ô trên, hoặc chọn thư mục, rồi bấm Quét.">
+          <EmptyState v-else :icon="FolderOpen" title="Chưa chọn project" text="Dán đường dẫn project Unity, Godot hoặc Flutter vào ô trên, hoặc chọn thư mục, rồi bấm Quét.">
             <button type="button" class="btn btn-primary" @click="pickFolder"><FolderOpen /> Chọn thư mục…</button>
           </EmptyState>
         </section>
@@ -261,7 +288,26 @@ function reveal(p: string): void {
 
         <Transition name="fade-up">
           <section v-if="report && s" class="card pane">
-            <div class="tiles">
+            <div v-if="isFlutter && s.flutter" class="tiles">
+              <div class="tile main">
+                <span class="caption">Dung lượng ảnh trong assets</span>
+                <span class="big"><TweenNumber :value="s.texture_bytes / MB" :decimals="1" /> MB</span>
+                <span class="caption">{{ s.flutter.assets }} asset · {{ s.flutter.declared }} đã khai báo · {{ s.textures }} ảnh</span>
+              </div>
+              <div class="tile">
+                <span class="big"><TweenNumber :value="s.fixable" /></span>
+                <span class="caption">mục sửa 1 chạm</span>
+              </div>
+              <div class="tile" :class="{ warn: s.flutter.errors }">
+                <span class="big"><TweenNumber :value="s.flutter.errors" /></span>
+                <span class="caption">khai báo trỏ vào file không có</span>
+              </div>
+              <div class="tile">
+                <span class="big"><TweenNumber :value="s.unreferenced" /></span>
+                <span class="caption">không ai dùng · {{ mb(s.unreferenced_bytes) }}</span>
+              </div>
+            </div>
+            <div v-else class="tiles">
               <div class="tile main">
                 <span class="caption">RAM GPU texture (mobile, ước tính)</span>
                 <span class="big"><TweenNumber :value="s.gpu_before / MB" :decimals="1" /> → <TweenNumber :value="s.gpu_after / MB" :decimals="1" /> MB</span>
@@ -286,7 +332,7 @@ function reveal(p: string): void {
             </div>
             <p v-for="n in report.notes" :key="n" class="caption note">{{ n }}</p>
 
-            <EmptyState v-if="clean" :icon="Check" title="Không có vấn đề nào" :text="`Đã quét ${scannedFiles.toLocaleString('vi-VN')} tệp (ảnh, mesh, âm thanh): không có texture cần sửa, ảnh trùng, asset thừa hay mesh quá nặng.`" />
+            <EmptyState v-if="clean" :icon="Check" title="Không có vấn đề nào" :text="isFlutter ? `Đã soát ${s.flutter?.assets ?? 0} asset: pubspec khớp với file trên đĩa, biến thể đủ, không ảnh nặng hay asset thừa.` : `Đã quét ${scannedFiles.toLocaleString('vi-VN')} tệp (ảnh, mesh, âm thanh): không có texture cần sửa, ảnh trùng, asset thừa hay mesh quá nặng.`" />
             <template v-else>
             <div class="seg" role="tablist" aria-label="Nhóm vấn đề">
               <button v-for="t in tabs" :key="t.id" type="button" role="tab" :aria-selected="tab === t.id" @click="tab = t.id">
@@ -294,7 +340,8 @@ function reveal(p: string): void {
               </button>
             </div>
 
-            <template v-if="tab === 'textures'">
+            <template v-if="tab === 'textures' || tab === 'flutter'">
+              <template v-if="tab === 'textures'">
               <div v-if="fixRows.length" class="table" role="table" aria-label="Texture có vấn đề">
                 <div class="tr th" role="row">
                   <span role="columnheader">
@@ -319,13 +366,38 @@ function reveal(p: string): void {
                 </TransitionGroup>
               </div>
               <p v-else class="callout ok"><Check :size="14" /> Không có texture nào cần sửa.</p>
+              </template>
 
-              <div v-if="fixable.length" class="fixbar">
-                <button type="button" class="btn btn-primary" :disabled="!pickedRows.length || planning" @click="preview">
-                  <LoaderCircle v-if="planning" class="spin" /><Wrench v-else /> Xem trước sửa {{ pickedRows.length }} ảnh
+              <div v-else class="table" role="table" aria-label="Vấn đề của project Flutter">
+                <div class="tr th" role="row">
+                  <span role="columnheader">
+                    <input type="checkbox" :checked="pickedCount === allKeys.length && allKeys.length > 0" :indeterminate="pickedCount > 0 && pickedCount < allKeys.length" aria-label="Chọn tất cả" @change="toggleAll" />
+                  </span>
+                  <span role="columnheader">Asset</span><span role="columnheader">Vấn đề</span><span role="columnheader" class="r">Dung lượng</span>
+                </div>
+                <TransitionGroup name="row" tag="div" class="tbody">
+                  <label v-for="f in findings" :key="fkey(f) + f.code + f.rel" class="tr" role="row">
+                    <span><input v-if="f.fix" type="checkbox" :checked="picked.has(fkey(f))" :aria-label="`Sửa ${f.rel}`" @change="toggle(fkey(f))" /></span>
+                    <span class="meta">
+                      <span class="mono rel">{{ f.rel }}</span>
+                      <span class="caption">{{ FINDING_LABEL[f.code] ?? f.code }}</span>
+                    </span>
+                    <span class="issues">
+                      <span class="caption" :class="f.severity">
+                        <strong v-if="f.fix">{{ FIX_LABEL[f.fix.type] }}{{ f.fix.kind ? ` ${f.fix.kind}` : '' }}:</strong> {{ f.msg }}
+                      </span>
+                    </span>
+                    <span class="r num caption">{{ f.bytes ? bytes(f.bytes) : '' }}</span>
+                  </label>
+                </TransitionGroup>
+              </div>
+
+              <div v-if="allKeys.length" class="fixbar">
+                <button type="button" class="btn btn-primary" :disabled="!pickedCount || planning" @click="preview">
+                  <LoaderCircle v-if="planning" class="spin" /><Wrench v-else /> Xem trước sửa {{ pickedCount }} {{ isFlutter ? 'mục' : 'ảnh' }}
                 </button>
-                <span class="caption num">tiết kiệm ~{{ mb(savedPicked) }} RAM GPU</span>
-                <button type="button" class="btn push" :disabled="atlasRels.length < 2 || atlasBusy" title="Gộp các sprite đã chọn vào atlas, ghi ra thư mục riêng ngoài project; không đổi tham chiếu" @click="makeAtlas">
+                <span v-if="!isFlutter" class="caption num">tiết kiệm ~{{ mb(savedPicked) }} RAM GPU</span>
+                <button v-if="!isFlutter" type="button" class="btn push" :disabled="atlasRels.length < 2 || atlasBusy" title="Gộp các sprite đã chọn vào atlas, ghi ra thư mục riêng ngoài project; không đổi tham chiếu" @click="makeAtlas">
                   <LoaderCircle v-if="atlasBusy" class="spin" /><LayoutGrid v-else /> Tạo atlas ({{ atlasRels.length }})
                 </button>
               </div>
@@ -335,8 +407,9 @@ function reveal(p: string): void {
               <Transition name="fade-up">
                 <div v-if="plan" class="confirm callout" role="alertdialog" aria-label="Xác nhận sửa">
                   <span>
-                    Sẽ ghi <strong class="num">{{ plan.files?.filter((f) => f.action === 'write').length ?? 0 }}</strong> file import · RAM GPU
-                    <strong class="num">{{ mb(plan.gpu_before ?? 0) }} → {{ mb(plan.gpu_after ?? 0) }}</strong>. File gốc nén vào backup zip trước.
+                    Sẽ sửa <strong class="num">{{ plan.files?.filter((f) => f.action === 'write').length ?? 0 }}</strong> {{ isFlutter ? 'mục' : 'file import' }}<template v-if="isFlutter"><template v-if="plan.bytes_before"> · ảnh chuyển WebP
+                    <strong class="num">{{ mb(plan.bytes_before) }} → {{ mb(plan.bytes_after ?? 0) }}</strong></template></template><template v-else> · RAM GPU
+                    <strong class="num">{{ mb(plan.gpu_before ?? 0) }} → {{ mb(plan.gpu_after ?? 0) }}</strong></template>. File gốc nén vào backup zip trước.
                   </span>
                   <button type="button" class="btn btn-primary" :disabled="applying || !plan.files?.some((f) => f.action === 'write')" @click="apply">
                     <LoaderCircle v-if="applying" class="spin" /><Check v-else /> Ghi
@@ -365,7 +438,7 @@ function reveal(p: string): void {
                 <span class="caption">{{ REF_LABEL[u.kind] ?? u.kind }} · {{ bytes(u.bytes) }}</span>
               </li>
               <li v-if="!report.unreferenced.length" class="caption">Mọi asset đều có chỗ dùng.</li>
-              <li v-else class="caption note">“Có thể” không dùng: không thấy GUID / đường dẫn trong scene, prefab, material… Asset nạp bằng code (Resources, Addressables, load theo tên) vẫn hiện ở đây — kiểm trước khi xoá.</li>
+              <li v-else class="caption note">{{ unusedNote }}</li>
             </ul>
 
             <ul v-else-if="tab === 'meshes'" class="list">
@@ -394,6 +467,7 @@ function reveal(p: string): void {
             <span class="mono">{{ b.backup_id }}</span>
             <span>{{ b.written }} file</span>
             <span v-if="b.gpu_before" class="num">{{ mb(b.gpu_before) }} → {{ mb(b.gpu_after ?? 0) }}</span>
+            <span v-else-if="b.bytes_before" class="num">{{ mb(b.bytes_before) }} → {{ mb(b.bytes_after ?? 0) }}</span>
             <span v-if="b.undone_at">đã hoàn tác</span>
             <button v-else type="button" class="btn" :disabled="undoing === b.backup_id" @click="undo(b.backup_id)">
               <LoaderCircle v-if="undoing === b.backup_id" class="spin" /><Undo2 v-else /> Hoàn tác
@@ -440,6 +514,13 @@ function reveal(p: string): void {
 .e-unity {
   background: var(--accent-soft);
   color: var(--accent);
+}
+.e-flutter {
+  background: var(--st-ok-soft);
+  color: var(--st-ok);
+}
+.error {
+  color: var(--st-fail);
 }
 .e-godot {
   background: var(--st-cached-soft);

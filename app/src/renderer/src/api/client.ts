@@ -215,8 +215,8 @@ export interface StudioApi {
   restyleApply(runId: string): Promise<RestyleApplyResult>
   restyleUndo(backupId: string, force?: boolean): Promise<RestyleUndoResult>
   restyleBackups(runId?: string): Promise<{ backups: RestyleBackup[] }>
-  /** Read-only audit of a Unity / Godot project folder (texture budget, duplicates, unreferenced, meshes, audio). */
-  audit(body: { path: string; engine?: 'auto' | 'unity' | 'godot'; tri_budget?: number; duplicates?: boolean }): Promise<AuditReport>
+  /** Read-only audit of a Unity / Godot / Flutter project folder (texture budget, duplicates, unreferenced, meshes, audio, pubspec assets). */
+  audit(body: { path: string; engine?: 'auto' | 'unity' | 'godot' | 'flutter'; tri_budget?: number; duplicates?: boolean }): Promise<AuditReport>
   /** Importer-only fixes from the last audit (dry_run plans them; zip backup + undo). */
   auditFix(body: { path: string; actions: AuditFix[]; dry_run: boolean }): Promise<AuditFixResult>
   auditUndo(backupId: string, force?: boolean): Promise<{ backup_id: string; restored: string[]; conflicts: { rel: string; why: string }[] }>

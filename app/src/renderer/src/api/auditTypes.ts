@@ -1,5 +1,5 @@
-export type AuditEngine = 'unity' | 'godot'
-export type AuditFixType = 'mobile_preset' | 'max_size' | 'drop_alpha' | 'atlas'
+export type AuditEngine = 'unity' | 'godot' | 'flutter'
+export type AuditFixType = 'mobile_preset' | 'max_size' | 'drop_alpha' | 'atlas' | 'flutter_declare' | 'flutter_variant' | 'flutter_webp'
 
 export interface AuditFix {
   type: AuditFixType
@@ -14,6 +14,16 @@ export interface AuditIssue {
   code: string
   severity: 'warn' | 'info'
   msg: string
+  fix?: AuditFix
+}
+
+/** Flutter project finding (pubspec assets, resolution variants, heavy images). */
+export interface AuditFinding {
+  code: 'asset_missing' | 'asset_undeclared' | 'variant_missing' | 'image_big'
+  severity: 'error' | 'warn' | 'info'
+  rel: string
+  msg: string
+  bytes?: number
   fix?: AuditFix
 }
 
@@ -54,7 +64,9 @@ export interface AuditReport {
     meshes_over: number
     audio: number
     issues: Record<string, number>
+    flutter?: { assets: number; declared: number; big_bytes: number; errors: number }
   }
+  findings?: AuditFinding[]
   textures: AuditTexture[]
   duplicates: { kind: 'exact' | 'near'; files: string[]; wasted_bytes: number; method?: 'clip' | 'phash' }[]
   unreferenced: { rel: string; kind: string; bytes: number }[]
@@ -69,6 +81,8 @@ export interface AuditFixResult {
   skipped?: number
   gpu_before?: number
   gpu_after?: number
+  bytes_before?: number
+  bytes_after?: number
   backup_id?: string
   cancelled?: boolean
   files?: { rel: string; action: 'write' | 'skip'; why?: string; fixes?: string[] }[]
@@ -85,4 +99,6 @@ export interface AuditBackup {
   undone_at: number | null
   gpu_before: number | null
   gpu_after: number | null
+  bytes_before?: number | null
+  bytes_after?: number | null
 }
