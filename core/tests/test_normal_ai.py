@@ -1,4 +1,6 @@
+import asyncio
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -138,20 +140,218 @@ async def test_op_ai_runs_and_worker_failure_warns(installed, tmp_path, monkeypa
     assert np.asarray(Image.open(ctx.blobs.path(res.outputs["images"][0].hash))).shape == (64, 64, 3)
 
 
-async def test_estimate_mocks_the_subprocess(tmp_path, monkeypatch) -> None:
-    async def fake_run(args, env, cancelled, timeout):
-        m = json.loads(Path(args[-1]).read_text(encoding="utf-8"))
+FAKE_WORKER = """
+import json, os, sys, time
+from PIL import Image
+ctl = os.environ["FAKE_CTL"]
+for line in sys.stdin:
+    m = json.load(open(json.loads(line)["manifest"]))
+    with open(os.path.join(ctl, "pids"), "a") as f:
+        f.write(str(os.getpid()) + " ")
+    if os.path.exists(os.path.join(ctl, "die")):
+        os.remove(os.path.join(ctl, "die"))
+        sys.exit(3)
+    if os.path.exists(os.path.join(ctl, "hang")):
+        time.sleep(600)
+    if os.path.exists(os.path.join(ctl, "weird")):
+        print("[1, 2]", flush=True)
+    if os.path.exists(os.path.join(ctl, "big")):
+        print("x" * 2000000, flush=True)
+        time.sleep(600)
+    if os.path.exists(os.path.join(ctl, "eof")):
+        os.close(1)
+        time.sleep(600)
+    for it in m["items"]:
+        Image.new("RGB", (64, 64), (128, 128, 255)).save(it["out"])
+        print(json.dumps({"out": it["out"], "s": 0.0}), flush=True)
+    print(json.dumps({"done": True}), flush=True)
+"""
+
+
+@pytest.fixture
+def fake_worker(tmp_path, monkeypatch):
+    ctl = tmp_path / "ctl"
+    ctl.mkdir()
+    script = tmp_path / "fake_worker.py"
+    script.write_text(FAKE_WORKER, encoding="utf-8")
+    monkeypatch.setenv("FAKE_CTL", str(ctl))
+    monkeypatch.setattr(normal_ai, "_worker_args", lambda ai: [sys.executable, str(script), "--serve"])
+    ai = normal_ai.NormalAi(_fake_install(tmp_path / "other"))
+    yield ai, ctl
+    normal_ai._pool.discard()
+    normal_ai.reopen()
+
+
+def _pids(ctl: Path) -> list[int]:
+    f = ctl / "pids"
+    return [int(x) for x in f.read_text().split()] if f.exists() else []
+
+
+def _alive(pid: int) -> bool:
+    from studio_core.adapters._winproc import pid_alive
+    return pid_alive(pid)
+
+
+async def _gone(pid: int, secs: float = 5) -> bool:
+    for _ in range(int(secs / 0.1)):
+        if not _alive(pid):
+            return True
+        await asyncio.sleep(0.1)
+    return False
+
+
+async def test_estimate_reuses_one_warm_worker(fake_worker) -> None:
+    ai, ctl = fake_worker
+    for _ in range(3):
+        out = await normal_ai.estimate(ai, [_disc()])
+        assert out[0].shape == (64, 64, 3) and abs(out[0][0, 0, 2] - 1) < 0.01
+    pids = _pids(ctl)
+    assert len(pids) == 3 and len(set(pids)) == 1
+    await normal_ai.shutdown()
+    assert normal_ai.worker_pids() == [] and await _gone(pids[0])
+
+
+async def test_calls_are_serialised_on_one_worker(fake_worker) -> None:
+    ai, ctl = fake_worker
+    res = await asyncio.gather(*(normal_ai.estimate(ai, [_disc()]) for _ in range(4)))
+    assert len(res) == 4 and len(set(_pids(ctl))) == 1
+    await normal_ai.shutdown()
+
+
+async def test_idle_worker_is_stopped(fake_worker, monkeypatch) -> None:
+    ai, ctl = fake_worker
+    monkeypatch.setattr(normal_ai, "IDLE_SECONDS", 0.3)
+    await normal_ai.estimate(ai, [_disc()])
+    pid = _pids(ctl)[0]
+    assert _alive(pid)
+    await asyncio.sleep(0.6)
+    assert normal_ai._pool.worker is None and await _gone(pid)
+    await normal_ai.estimate(ai, [_disc()])
+    assert _pids(ctl)[-1] != pid
+    await normal_ai.shutdown()
+
+
+async def test_dead_warm_worker_is_respawned(fake_worker) -> None:
+    ai, ctl = fake_worker
+    await normal_ai.estimate(ai, [_disc()])
+    first = _pids(ctl)[0]
+    (ctl / "die").write_text("")
+    await normal_ai.estimate(ai, [_disc()])  # warm worker dies on the request -> one transparent retry
+    assert _pids(ctl)[-1] != first and await _gone(first)
+    await normal_ai.shutdown()
+
+
+async def test_fresh_worker_that_dies_raises(fake_worker) -> None:
+    ai, ctl = fake_worker
+    (ctl / "die").write_text("")
+    with pytest.raises(normal_ai.NormalAiError):
+        await normal_ai.estimate(ai, [_disc()])
+    assert normal_ai._pool.worker is None
+    await normal_ai.estimate(ai, [_disc()])
+    await normal_ai.shutdown()
+
+
+async def test_cancel_kills_the_worker_and_next_call_respawns(fake_worker) -> None:
+    ai, ctl = fake_worker
+    await normal_ai.estimate(ai, [_disc()])
+    (ctl / "hang").write_text("")
+    ev = asyncio.Event()
+    task = asyncio.ensure_future(normal_ai.estimate(ai, [_disc()], ev))
+    for _ in range(100):
+        if len(_pids(ctl)) >= 2:
+            break
+        await asyncio.sleep(0.05)
+    ev.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    pid = _pids(ctl)[0]
+    assert normal_ai._pool.worker is None and await _gone(pid)
+    (ctl / "hang").unlink()
+    await normal_ai.estimate(ai, [_disc()])
+    assert _pids(ctl)[-1] != pid
+    await normal_ai.shutdown()
+
+
+async def test_cancel_while_queued_does_not_leak_the_lock(fake_worker) -> None:
+    ai, ctl = fake_worker
+    (ctl / "hang").write_text("")
+    first = asyncio.ensure_future(normal_ai.estimate(ai, [_disc()]))
+    await asyncio.sleep(1)
+    ev = asyncio.Event()
+    queued = asyncio.ensure_future(normal_ai.estimate(ai, [_disc()], ev))
+    await asyncio.sleep(0.2)
+    ev.set()
+    with pytest.raises(asyncio.CancelledError):
+        await queued
+    first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    (ctl / "hang").unlink()
+    await normal_ai.estimate(ai, [_disc()])
+    await normal_ai.shutdown()
+
+
+async def test_timeout_kills_the_worker(fake_worker, monkeypatch) -> None:
+    ai, ctl = fake_worker
+    monkeypatch.setattr(normal_ai, "SECONDS_PER_FRAME", 0.5)
+    monkeypatch.setattr(normal_ai, "LOAD_SECONDS", 1)
+    (ctl / "hang").write_text("")
+    with pytest.raises(normal_ai.NormalAiError, match="timed out"):
+        await normal_ai.estimate(ai, [_disc()])
+    assert normal_ai._pool.worker is None and await _gone(_pids(ctl)[0])
+
+
+async def test_shutdown_blocks_respawn_until_reopen(fake_worker) -> None:
+    ai, ctl = fake_worker
+    await normal_ai.estimate(ai, [_disc()])
+    await normal_ai.shutdown()
+    with pytest.raises(normal_ai.NormalAiError, match="shut down"):
+        await normal_ai.estimate(ai, [_disc()])
+    assert len(_pids(ctl)) == 1 and normal_ai._pool.worker is None
+    normal_ai.reopen()
+    await normal_ai.estimate(ai, [_disc()])
+    assert len(_pids(ctl)) == 2
+    await normal_ai.shutdown()
+
+
+async def test_non_dict_line_is_ignored(fake_worker) -> None:
+    ai, ctl = fake_worker
+    (ctl / "weird").write_text("")
+    out = await normal_ai.estimate(ai, [_disc()])
+    assert out[0].shape == (64, 64, 3)
+    await normal_ai.shutdown()
+
+
+async def test_oversized_line_raises_normal_ai_error_and_kills_worker(fake_worker) -> None:
+    ai, ctl = fake_worker
+    (ctl / "big").write_text("")
+    with pytest.raises(normal_ai.NormalAiError, match="oversized"):
+        await normal_ai.estimate(ai, [_disc()])
+    assert normal_ai._pool.worker is None and await _gone(_pids(ctl)[0])
+
+
+async def test_eof_without_exit_is_killed_after_grace(fake_worker, monkeypatch) -> None:
+    ai, ctl = fake_worker
+    monkeypatch.setattr(normal_ai, "REAP_SECONDS", 0.3)
+    (ctl / "eof").write_text("")
+    with pytest.raises(normal_ai.NormalAiError):
+        await normal_ai.estimate(ai, [_disc()])
+    assert normal_ai._pool.worker is None and await _gone(_pids(ctl)[0])
+
+
+async def test_estimate_mocks_the_worker(tmp_path, monkeypatch) -> None:
+    async def fake_run(ai, env, manifest, n, cancelled):
+        m = json.loads(manifest.read_text(encoding="utf-8"))
         assert env["CUDA_VISIBLE_DEVICES"] == "" and env["HF_HUB_OFFLINE"] == "1"
         for it in m["items"]:
             Image.new("RGB", (64, 64), (128, 128, 255)).save(it["out"])
-        return ""
 
     monkeypatch.setattr(normal_ai, "_run", fake_run)
     ai = normal_ai.NormalAi(_fake_install(tmp_path / "other"))
     out = await normal_ai.estimate(ai, [_disc()])
     assert out[0].shape == (64, 64, 3) and abs(out[0][0, 0, 2] - 1) < 0.01
 
-    async def dead(args, env, cancelled, timeout):
+    async def dead(ai, env, manifest, n, cancelled):
         raise normal_ai.NormalAiError("boom")
 
     monkeypatch.setattr(normal_ai, "_run", dead)

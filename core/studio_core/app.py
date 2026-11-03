@@ -122,6 +122,8 @@ def build_app(settings: Settings, token: str, *, engine: Engine | None = None,
         from studio_core.engine.auto_export import AutoExporter
         auto_export = AutoExporter(app.state)
         auto_export.start(bus)
+        from studio_core.adapters import normal_ai
+        normal_ai.reopen()
         try:
             await eng.recover()
             yield
@@ -150,6 +152,11 @@ async def _shutdown(engine: Engine, resources: list[Resource], db: Database) -> 
             await r.stop()
         except Exception:
             log.exception("resource %s stop failed", getattr(r, "name", r))
+    try:
+        from studio_core.adapters import normal_ai
+        await normal_ai.shutdown()
+    except Exception:
+        log.exception("normal-ai worker stop failed")
     await db.close()
 
 
