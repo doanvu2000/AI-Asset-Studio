@@ -12,7 +12,7 @@ from starlette.responses import Response
 from studio_core.api.auth import require_token, require_token_or_query
 from studio_core.api.errors import ApiError, OrjsonResponse
 from studio_core.contracts import DEFAULT_PROJECT, RunStatus, VersionStatus
-from studio_core.export.shader_preview import preview
+from studio_core.export.shader_preview import MAX_SAMPLE_BYTES, SampleError, preview
 from studio_core.export.shaders import PRESETS, ShaderError
 from studio_core.export.shaders import catalog as shader_catalog
 
@@ -42,13 +42,26 @@ async def shaders() -> Response:
 @router.get("/shaders/{shader_id}/preview", dependencies=[Depends(require_token_or_query)])
 async def shader_preview_image(request: Request, shader_id: str, color: str | None = None,
                                speed: float | None = Query(default=None, ge=0, le=20),
-                               still: bool = False) -> Response:
+                               still: bool = False, blob: str | None = None) -> Response:
     if shader_id not in PRESETS:
         raise ApiError(404, "not_found", f"unknown shader preset '{shader_id}'")
+    sample = None
+    if blob is not None:
+        blobs = request.app.state.blobs
+        try:
+            path = blobs.path(blob)
+        except ValueError as e:
+            raise ApiError(400, "invalid_hash", str(e)) from e
+        ref = await blobs.get(blob)
+        if ref is None or not await asyncio.to_thread(path.is_file):
+            raise ApiError(404, "not_found", f"unknown blob: {blob}")
+        if ref.size > MAX_SAMPLE_BYTES:
+            raise ApiError(400, "invalid", "sample image is larger than 8 MB")
+        sample = (blob, path)
     try:
         data, animated = await asyncio.to_thread(
-            preview, request.app.state.settings.thumbs_dir / "shaders", shader_id, color, speed, still)
-    except ShaderError as e:
+            preview, request.app.state.settings.thumbs_dir / "shaders", shader_id, color, speed, still, sample)
+    except (ShaderError, SampleError) as e:
         raise ApiError(400, "invalid", str(e)) from e
     return Response(data, media_type="image/webp",
                     headers={"Cache-Control": "private, max-age=3600", "X-Shader-Preview": "animated" if animated and not still else "static"})

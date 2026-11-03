@@ -88,3 +88,48 @@ async def test_route_rejects(client: httpx.AsyncClient) -> None:
     assert (await client.get(f"/api/shaders/dissolve/preview?speed=99&t={TOKEN}")).status_code == 422
     r = await client.get("/api/shaders", headers={"Authorization": f"Bearer {TOKEN}"})
     assert r.status_code == 200
+
+
+def _png(size: tuple[int, int], color=(200, 30, 30, 255)) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGBA", size, color).save(buf, "PNG")
+    return buf.getvalue()
+
+
+async def _put(client: httpx.AsyncClient, data: bytes) -> str:
+    r = await client.post("/api/blobs", headers={"Authorization": f"Bearer {TOKEN}"},
+                          files={"file": ("a.png", data, "image/png")})
+    return r.json()["hash"]
+
+
+async def test_route_blob_sample_resized_and_keyed(client: httpx.AsyncClient) -> None:
+    h = await _put(client, _png((300, 200)))
+    r = await client.get(f"/api/shaders/hit_flash/preview?still=1&blob={h}&t={TOKEN}")
+    assert r.status_code == 200
+    img = Image.open(io.BytesIO(r.content))
+    assert img.size == (96, 96) and img.mode == "RGBA"
+    assert img.getpixel((0, 0))[3] == 0
+    default = await client.get(f"/api/shaders/hit_flash/preview?still=1&t={TOKEN}")
+    assert default.content != r.content
+    h2 = await _put(client, _png((40, 40), (10, 200, 10, 255)))
+    other = await client.get(f"/api/shaders/hit_flash/preview?still=1&blob={h2}&t={TOKEN}")
+    assert other.content != r.content
+
+
+async def test_route_blob_rejects(client: httpx.AsyncClient) -> None:
+    base = f"/api/shaders/dissolve/preview?t={TOKEN}&blob="
+    assert (await client.get(base + "../../etc/passwd")).status_code == 400
+    assert (await client.get(base + "zz")).status_code == 400
+    assert (await client.get(base + "a" * 64)).status_code == 404
+    text = await _put(client, b"not an image at all")
+    assert (await client.get(base + text)).status_code == 400
+    big = await _put(client, b"\x89PNG" + os.urandom(shader_preview.MAX_SAMPLE_BYTES + 10))
+    assert (await client.get(base + big)).status_code == 400
+
+
+def test_pixel_limit_rejected_before_decode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    p = tmp_path / "x.png"
+    p.write_bytes(_png((100, 100)))
+    monkeypatch.setattr(shader_preview, "MAX_SAMPLE_PIXELS", 5000)
+    with pytest.raises(shader_preview.SampleError, match="pixels"):
+        shader_preview.sprite_from_file(p)

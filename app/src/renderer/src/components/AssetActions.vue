@@ -35,6 +35,7 @@ const runLink = computed(() => {
   return id && !(route.name === 'run' && route.params.id === id) ? id : null
 })
 const bundleStep = computed(() => props.stepId ?? version.value?.step_id)
+const sampleHash = computed(() => ((props.blob ?? version.value?.blob)?.mime ?? '').startsWith('image/') ? props.hash : null)
 const sourceRun = computed(() => props.runId ?? version.value?.run_id)
 const editOpen = ref(false)
 const editable = computed(() => !!version.value && (version.value.blob.mime ?? '').startsWith('image/'))
@@ -56,7 +57,7 @@ const offTitle = 'Chỉ dùng được trong app desktop'
       <Download v-else />
       <span v-if="!compact">Xuất tệp</span>
     </button>
-    <BundleMenu v-if="bundleStep && file.available" :step-id="bundleStep" :name="version?.asset_name.trim() || undefined" :compact="compact" />
+    <BundleMenu v-if="bundleStep && file.available" :step-id="bundleStep" :name="version?.asset_name.trim() || undefined" :compact="compact" :sample-hash="sampleHash" />
     <EnginePreview v-if="bundleStep && file.available" :step-id="bundleStep" :name="version?.asset_name.trim() || undefined" :compact="compact" />
     <FollowUpMenu :hash="hash" :blob="blob ?? version?.blob" :run-id="sourceRun" :step-id="bundleStep" :compact="compact" />
     <SimilarButton :hash="hash" :blob="blob ?? version?.blob" :version-id="versionId ?? version?.id" :compact="compact" />

@@ -21,6 +21,15 @@ LUM = np.array([0.299, 0.587, 0.114], np.float32)
 # Presets that do nothing without speed get one here, so the preview shows the effect.
 DEMO_SPEED = {"hit_flash": 2.0, "dissolve": 0.8, "palette_swap": 1.0}
 _VERSION = 1
+MAX_SAMPLE_BYTES = 8 * 1024 * 1024
+# Checked from the header before any decode, so a decompression bomb never gets allocated.
+MAX_SAMPLE_PIXELS = 16_000_000
+SAMPLE_FORMATS = ("PNG", "JPEG", "WEBP", "GIF", "BMP")
+FIT = SIZE - 8
+
+
+class SampleError(ValueError):
+    pass
 
 
 def sample_sprite() -> np.ndarray:
@@ -40,6 +49,30 @@ def sample_sprite() -> np.ndarray:
     d.ellipse((30 * s, 32 * s, 40 * s, 38 * s), fill=(176, 232, 184, 255))
     img = img.resize((SIZE, SIZE), Image.LANCZOS)
     return np.asarray(img, np.float32) / 255.0
+
+
+def sprite_from_file(path: Path) -> np.ndarray:
+    """Same (SIZE, SIZE, 4) layout as sample_sprite() from an image file: fitted with a transparent margin so outlines fit."""
+    try:
+        if path.stat().st_size > MAX_SAMPLE_BYTES:
+            raise SampleError("sample image is larger than 8 MB")
+        with Image.open(path, formats=SAMPLE_FORMATS) as im:
+            if im.width * im.height > MAX_SAMPLE_PIXELS:
+                raise SampleError("sample image has too many pixels")
+            im.seek(0)
+            rgba = im.convert("RGBA")
+    except SampleError:
+        raise
+    except (OSError, ValueError, SyntaxError, Image.DecompressionBombError) as e:
+        raise SampleError("sample is not a readable image") from e
+    bbox = rgba.getchannel("A").getbbox()
+    if bbox is None:
+        raise SampleError("sample image is fully transparent")
+    rgba = rgba.crop(bbox)
+    rgba.thumbnail((FIT, FIT), Image.LANCZOS)
+    canvas = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    canvas.paste(rgba, ((SIZE - rgba.width) // 2, SIZE - 4 - rgba.height))
+    return np.asarray(canvas, np.float32) / 255.0
 
 
 def _premul(img: np.ndarray) -> np.ndarray:
@@ -180,9 +213,10 @@ def _resolve(preset: Preset, color: str | None, speed: float | None) -> dict:
     return p
 
 
-def cache_key(preset_id: str, color: str | None, speed: float | None, still: bool = False) -> str:
+def cache_key(preset_id: str, color: str | None, speed: float | None, still: bool = False,
+              sample_hash: str | None = None) -> str:
     p = _resolve(PRESETS[preset_id], color, speed)
-    blob = json.dumps([preset_id, p, SIZE, FRAMES, _VERSION, still], sort_keys=True)
+    blob = json.dumps([preset_id, p, SIZE, FRAMES, _VERSION, still, sample_hash], sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:16]
 
 
@@ -190,13 +224,13 @@ STILL_AT = 0.3
 
 
 def render(preset_id: str, color: str | None = None, speed: float | None = None,
-           still: bool = False) -> tuple[bytes, bool]:
+           still: bool = False, sprite: np.ndarray | None = None) -> tuple[bytes, bool]:
     """(webp bytes, animated). A preset whose speed is 0 and has no demo motion, or still=True, is one frame."""
     preset = PRESETS[preset_id]
     p = _resolve(preset, color, speed)
     if preset_id in DEMO_SPEED and (speed is None or "speed" not in p) and p.get("speed", 0) <= 0:
         p["speed"] = DEMO_SPEED[preset_id]
-    sprite = sample_sprite()
+    sprite = sample_sprite() if sprite is None else sprite
     fn = RENDERERS[preset_id]
     animated = p.get("speed", 0) > 0
     period = (2.0 if preset_id == "dissolve" else 1.0) / p["speed"] if animated else 1.0
@@ -216,14 +250,15 @@ def render(preset_id: str, color: str | None = None, speed: float | None = None,
 
 
 def preview(cache_dir: Path, preset_id: str, color: str | None = None, speed: float | None = None,
-            still: bool = False) -> tuple[bytes, bool]:
-    path = cache_dir / f"{preset_id}-{cache_key(preset_id, color, speed, still)}.webp"
+            still: bool = False, sample: tuple[str, Path] | None = None) -> tuple[bytes, bool]:
+    """sample = (blob hash, file): the hash keys the cache, the file is only decoded on a miss."""
+    path = cache_dir / f"{preset_id}-{cache_key(preset_id, color, speed, still, sample[0] if sample else None)}.webp"
     animated_path = path.with_suffix(".anim")
     try:
         return path.read_bytes(), animated_path.exists()
     except OSError:
         pass
-    data, animated = render(preset_id, color, speed, still)
+    data, animated = render(preset_id, color, speed, still, sprite_from_file(sample[1]) if sample else None)
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)

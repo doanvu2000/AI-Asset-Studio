@@ -12,7 +12,7 @@ import HitFxDialog from './HitFxDialog.vue'
 import ShaderPicker from './ShaderPicker.vue'
 import { useShaderPicker } from '@/composables/shaderPicker'
 
-const props = defineProps<{ stepId: string; name?: string; compact?: boolean }>()
+const props = defineProps<{ stepId: string; name?: string; compact?: boolean; sampleHash?: string | null }>()
 
 const file = useAssetFile()
 const presets = usePresets()
@@ -461,6 +461,7 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
               v-if="shaderList.length"
               :list="shaderList"
               :picker="shaderPicker"
+              :sample-hash="sampleHash"
               note="Áp cho Unity, Godot, Android (Android 13+) và iOS (iOS 17+); Flutter bỏ qua."
               assign-hint
             />

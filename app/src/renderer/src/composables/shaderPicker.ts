@@ -25,7 +25,9 @@ function loadConn(): void {
   void window.studio?.getConnection().then((c) => (conn.value = c)).catch(() => (connAsked = false))
 }
 
-export function shaderPreviewUrl(id: string, t: Tweak | undefined, still: boolean): string {
+const HASH_RE = /^[0-9a-f]{64}$/
+
+export function shaderPreviewUrl(id: string, t: Tweak | undefined, still: boolean, sampleHash?: string | null): string {
   loadConn()
   const c = conn.value
   if (!c) return ''
@@ -33,6 +35,7 @@ export function shaderPreviewUrl(id: string, t: Tweak | undefined, still: boolea
   if (t?.color) q.set('color', t.color)
   if (t?.speed !== undefined && speedOk(t.speed)) q.set('speed', String(t.speed))
   if (still) q.set('still', '1')
+  if (sampleHash && HASH_RE.test(sampleHash)) q.set('blob', sampleHash)
   q.set('t', c.token)
   return `${c.baseUrl}/api/shaders/${encodeURIComponent(id)}/preview?${q}`
 }

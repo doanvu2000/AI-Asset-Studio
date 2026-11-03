@@ -1,18 +1,20 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useMediaQuery } from '@vueuse/core'
 import type { ShaderPresetInfo } from '../../../preload/types'
 import { shaderPreviewUrl, speedOk, type ShaderPicker } from '@/composables/shaderPicker'
 
-defineProps<{ list: ShaderPresetInfo[]; picker: ShaderPicker; note: string; assignHint?: boolean }>()
+const props = defineProps<{ list: ShaderPresetInfo[]; picker: ShaderPicker; note: string; assignHint?: boolean; sampleHash?: string | null }>()
 
 const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
 const live = ref('')
 const broken = ref<string[]>([])
+// A new sample image gets a fresh chance: the old one may have been what failed.
+watch(() => props.sampleHash, () => (broken.value = []))
 
 // A still frame until hover/focus, so a dozen looping thumbnails never compete with the form.
 function src(picker: ShaderPicker, id: string): string {
-  return shaderPreviewUrl(id, picker.tweaks.value[id], reduceMotion.value || live.value !== id)
+  return shaderPreviewUrl(id, picker.tweaks.value[id], reduceMotion.value || live.value !== id, props.sampleHash)
 }
 </script>
 
