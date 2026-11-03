@@ -1,0 +1,24 @@
+uniform float4 uColor;
+uniform float uWidth;
+uniform float uSpeed;
+uniform float uMinAlpha;
+
+half4 main(float2 fragCoord) {
+  float2 p = fragCoord;
+  float4 c = unpre(tap(p));
+  float2 d = float2(uWidth);
+  float2 e = d * 0.7071;
+  float a = 0.0;
+  a = max(a, tap(p + float2(d.x, 0.0)).a);
+  a = max(a, tap(p - float2(d.x, 0.0)).a);
+  a = max(a, tap(p + float2(0.0, d.y)).a);
+  a = max(a, tap(p - float2(0.0, d.y)).a);
+  a = max(a, tap(p + e).a);
+  a = max(a, tap(p - e).a);
+  a = max(a, tap(p + float2(e.x, -e.y)).a);
+  a = max(a, tap(p + float2(-e.x, e.y)).a);
+  float pulse = mix(uMinAlpha, 1.0, 0.5 + 0.5 * sin(uTime * uSpeed * TAU));
+  float oa = clamp(a - c.a, 0.0, 1.0) * uColor.a * pulse;
+  float outA = c.a + oa * (1.0 - c.a);
+  return half4(float4(c.rgb * c.a + uColor.rgb * oa * (1.0 - c.a), outA));
+}

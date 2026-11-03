@@ -1,0 +1,22 @@
+uniform shader uTexture;
+uniform float2 uSize;
+uniform float uTime;
+
+const float TAU = 6.28318530718;
+
+// Outside the layer reads as transparent so displaced taps never pull in clamped edge pixels.
+float4 tap(float2 p) {
+  if (p.x < 0.0 || p.y < 0.0 || p.x >= uSize.x || p.y >= uSize.y) {
+    return float4(0.0);
+  }
+  return uTexture.eval(p);
+}
+
+// eval() returns premultiplied colour and main() must return premultiplied colour.
+float4 unpre(float4 c) {
+  return c.a > 0.0001 ? float4(c.rgb / c.a, c.a) : float4(0.0);
+}
+
+float4 pre(float3 rgb, float a) {
+  return float4(rgb * a, a);
+}

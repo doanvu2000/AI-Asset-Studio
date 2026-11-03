@@ -182,7 +182,8 @@ def app_icon_files(image_path: Path, variants: bool = False) -> Files:
     return files
 
 
-def export(src: Source) -> Files:
+def export(src: Source, shaders: bool = False) -> Files:
+    """`shaders`: add the Metal Shader Pack (Sources/AssetStudioShaders.metal + AssetStudioShaderEffects.swift)."""
     a = ident(src.asset, "asset")
     take = _namer()
     files: Files = []
@@ -243,6 +244,14 @@ def export(src: Source) -> Files:
     fx_files, fx_notes = ios_fx.fx(src)
     files += fx_files
     notes += fx_notes
+    if shaders:
+        from studio_core.export.shaders import applies_to
+        from studio_core.export.shaders_metal import shader_files
+
+        if applies_to(src):
+            sh_files, sh_notes = shader_files()
+            files += sh_files
+            notes += sh_notes
     if not files:
         return []
     ttf = sorted({n.split("/", 1)[1] for n, _ in files if n.startswith("Fonts/") and n.lower().endswith(FONT_EXT)})

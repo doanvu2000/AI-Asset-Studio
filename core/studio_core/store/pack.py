@@ -678,7 +678,8 @@ def _export_one(a: PackAsset, blobs: BlobStore, staging: Path, folder: str, engi
     args = (a.step, a.siblings, blobs, staging, folder, engine, opts.ppu, opts.pixel, opts.collider(a))
     if engine in MOBILE_ENGINES:
         try:
-            out = export_engine(*args, None, None, False, package=opts.package, webp=opts.webp)
+            out = export_engine(*args, opts.shaders if engine in ("android", "ios") else None, None, False,
+                                package=opts.package, webp=opts.webp)
         except BundleError as e:
             warnings.append(f"{folder} ({engine}): {e}; skipped")
             return None

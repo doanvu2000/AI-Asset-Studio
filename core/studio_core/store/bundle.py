@@ -455,6 +455,7 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
     from studio_core.export.normal2d import apply as apply_normal2d, append_readme
 
     mobile_target = engine in MOBILE_ENGINES
+    shader_pack = bool(shaders) and engine in ("android", "ios")
     if mobile_target:
         normal2d = normal2d if engine == "flutter" else None
         shaders = hits = toon = None
@@ -465,7 +466,9 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
     elif engine == "android":
         if package and not _PACKAGE.match(package):
             raise BundleError(f"invalid Android package '{package}' (use lowercase dotted name, e.g. com.example.app)")
-        files = exporter(src, package or android.PACKAGE)
+        files = exporter(src, package or android.PACKAGE, shaders=shader_pack)
+    elif engine == "ios":
+        files = exporter(src, shaders=shader_pack)
     else:
         files = exporter(src)
     if normal_note:

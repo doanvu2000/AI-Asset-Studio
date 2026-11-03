@@ -1,0 +1,11 @@
+uniform float uStrength;
+uniform float uSpeed;
+uniform float uWave;
+uniform float uWorldX;
+
+half4 main(float2 fragCoord) {
+  // AGSL, like Flutter, has its origin top-left with y down, so the foot is the largest y of the layer.
+  float h = max(uSize.y - fragCoord.y, 0.0);
+  float off = sin(uTime * uSpeed * TAU + uWorldX * uWave) * uStrength * h;
+  return half4(tap(fragCoord - float2(off, 0.0)));
+}

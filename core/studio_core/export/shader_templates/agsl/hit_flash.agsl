@@ -1,0 +1,10 @@
+uniform float4 uColor;
+uniform float uAmount;
+uniform float uSpeed;
+
+half4 main(float2 fragCoord) {
+  float4 c = unpre(tap(fragCoord));
+  float blink = uSpeed > 0.0 ? step(0.5, fract(uTime * uSpeed)) : 0.0;
+  float k = max(uAmount, blink) * uColor.a;
+  return half4(pre(mix(c.rgb, uColor.rgb, k), c.a));
+}

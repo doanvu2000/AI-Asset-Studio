@@ -1,0 +1,10 @@
+uniform float4 uTint;
+uniform float uAmplitude;
+uniform float uWavelength;
+uniform float uSpeed;
+
+half4 main(float2 fragCoord) {
+  float s = sin((fragCoord.y / max(uWavelength, 1.0) + uTime * uSpeed) * TAU);
+  float4 c = unpre(tap(fragCoord + float2(s * uAmplitude, 0.0)));
+  return half4(pre(c.rgb * uTint.rgb, c.a * uTint.a));
+}

@@ -1,0 +1,13 @@
+uniform shader uRamp;
+uniform float uRow;
+uniform float uRows;
+uniform float uStrength;
+
+half4 main(float2 fragCoord) {
+  float4 c = unpre(tap(fragCoord));
+  float l = clamp(dot(c.rgb, float3(0.299, 0.587, 0.114)), 0.0, 1.0);
+  float row = clamp(uRow, 0.0, max(uRows - 1.0, 0.0));
+  // The ramp is a 256 x rows bitmap shader, so eval() takes pixel coordinates (not 0..1 like the Flutter sampler).
+  float3 r = uRamp.eval(float2(l * 255.0 + 0.5, row + 0.5)).rgb;
+  return half4(pre(mix(c.rgb, r, uStrength), c.a));
+}

@@ -373,7 +373,8 @@ def _fx(src: Source, package: str, names: list[str]) -> tuple[Files, list[str]]:
     return files, ([fx.README_FX, *notes] if notes else [])
 
 
-def export(src: Source, package: str = PACKAGE) -> Files:
+def export(src: Source, package: str = PACKAGE, shaders: bool = False) -> Files:
+    """`shaders`: add the AGSL Shader Pack (kotlin/AssetStudioShaders.kt) for a sprite sheet, UI kit or rarity set."""
     a = src.asset
     used: set[str] = set()
     files: Files = []
@@ -407,6 +408,15 @@ def export(src: Source, package: str = PACKAGE) -> Files:
     notes += fx_notes
     if not files:
         return []
+    if shaders:
+        from studio_core.export.shaders import applies_to
+        from studio_core.export.shaders_agsl import shader_files
+
+        if applies_to(src):
+            sh_files, sh_notes = shader_files(package)
+            files += sh_files
+            notes += sh_notes
+            names.append("fx shaders (AGSL)")
     if has_res:
         files.append((KOTLIN_FILE, kotlin_source(package, images, patches, clips).encode()))
     listing = "\n".join(f"  * {n}" for n in names)
