@@ -67,7 +67,7 @@ function setReport(r: AuditReport): void {
 }
 
 async function doScan(): Promise<void> {
-  if (!canScan.value) return
+  if (!canScan.value || scanning.value) return
   scanning.value = true
   scanError.value = null
   try {
@@ -201,7 +201,7 @@ function reveal(p: string): void {
 </script>
 
 <template>
-  <div class="view">
+  <div class="view" @keydown.ctrl.enter.prevent="doScan" @keydown.meta.enter.prevent="doScan">
     <PageHeader title="Kiểm tra project" subtitle="Soát texture, ảnh trùng, asset không ai dùng, mesh nặng, âm thanh của project Unity / Godot" />
     <div class="scroll">
       <div class="stack wrap">
@@ -220,7 +220,7 @@ function reveal(p: string): void {
               placeholder="L:\Game\MyProject  (Unity hoặc Godot)"
               title="Thư mục gốc project: có Assets + ProjectSettings (Unity) hoặc project.godot (Godot)"
               aria-label="Đường dẫn project"
-              @keydown.enter="doScan"
+              @keydown.enter.exact="doScan"
             />
             <button type="button" class="btn" @click="pickFolder"><FolderOpen /> Chọn…</button>
             <button type="button" class="btn btn-primary" :disabled="!canScan" @click="doScan">

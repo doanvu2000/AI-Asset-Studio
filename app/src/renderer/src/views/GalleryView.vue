@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { useElementSize, useEventListener, useIntervalFn } from '@vueuse/core'
+import { onClickOutside, useElementSize, useEventListener, useIntervalFn } from '@vueuse/core'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { Check, Columns2, FileInput, Gauge, LayoutGrid, LoaderCircle, Search, X } from '@lucide/vue'
+import { Check, Columns2, FileInput, Gauge, LayoutGrid, LoaderCircle, Search, SlidersHorizontal, X } from '@lucide/vue'
 import { ART } from '@/assets/art'
 import { ILLUS } from '@/assets/illustrations'
 import type { BlobRef, QaResult, VersionRow, VersionStatus } from '@/api/types'
@@ -226,6 +226,10 @@ async function scoreOld(): Promise<void> {
   }
 }
 const versionFor = (hash: string): VersionRow | undefined => current.value?.versions.find((v) => v.blob.hash === hash) ?? versions.byHash.get(hash)
+const filterOpen = ref(false)
+const filterRoot = ref<HTMLElement | null>(null)
+onClickOutside(filterRoot, () => (filterOpen.value = false))
+const activeFilters = computed(() => [typeFilter.value !== 'all', statusFilter.value !== 'all', sortOrder.value !== 'new', lowOnly.value, showTechnical.value].filter(Boolean).length)
 const filtered = computed(() => !!query.value.trim() || typeFilter.value !== 'all' || statusFilter.value !== 'all' || projectFilter.value !== 'all' || lowOnly.value)
 
 function clearFilters(): void {
@@ -234,6 +238,8 @@ function clearFilters(): void {
   statusFilter.value = 'all'
   projectFilter.value = 'all'
   lowOnly.value = false
+  sortOrder.value = 'new'
+  showTechnical.value = false
 }
 
 const scroller = ref<HTMLElement | null>(null)
@@ -453,43 +459,51 @@ function move(d: -1 | 1): void {
           <Search :size="14" aria-hidden="true" />
           <input v-model="query" type="search" placeholder="Tìm theo tên, quy trình…" aria-label="Tìm asset" spellcheck="false" />
         </label>
-        <div class="seg" role="radiogroup" aria-label="Loại asset">
-          <button v-for="f in TYPE_FILTERS" :key="f.id" type="button" role="radio" :aria-checked="typeFilter === f.id" :class="{ on: typeFilter === f.id }" @click="typeFilter = f.id">
-            {{ f.label }}
+        <ProjectSelect v-model="projectFilter" all-label="Mọi dự án" label="Lọc theo dự án" />
+        <div ref="filterRoot" class="filter-wrap" @keydown.esc="filterOpen = false">
+          <button type="button" class="chip-toggle" :class="{ on: activeFilters > 0 }" aria-haspopup="dialog" :aria-expanded="filterOpen" @click="filterOpen = !filterOpen">
+            <SlidersHorizontal :size="14" aria-hidden="true" />
+            Lọc<template v-if="activeFilters"> ({{ activeFilters }})</template>
           </button>
+          <div v-if="filterOpen" class="pop card" role="dialog" aria-label="Bộ lọc thư viện">
+            <div class="pg">
+              <span class="pg-l" id="lbl-type">Loại asset</span>
+              <div class="seg" role="radiogroup" aria-labelledby="lbl-type">
+                <button v-for="f in TYPE_FILTERS" :key="f.id" type="button" role="radio" :aria-checked="typeFilter === f.id" :class="{ on: typeFilter === f.id }" @click="typeFilter = f.id">
+                  {{ f.label }}
+                </button>
+              </div>
+            </div>
+            <div class="pg">
+              <span class="pg-l" id="lbl-status">Trạng thái duyệt</span>
+              <div class="seg" role="radiogroup" aria-labelledby="lbl-status">
+                <button v-for="f in STATUS_FILTERS" :key="f.id" type="button" role="radio" :aria-checked="statusFilter === f.id" :class="{ on: statusFilter === f.id }" @click="statusFilter = f.id">
+                  {{ f.label }}
+                  <span class="num c">{{ counts[f.id] }}</span>
+                </button>
+              </div>
+            </div>
+            <div class="pg">
+              <span class="pg-l" id="lbl-sort">Sắp xếp</span>
+              <div class="seg" role="radiogroup" aria-labelledby="lbl-sort">
+                <button v-for="o in SORTS" :key="o.id" type="button" role="radio" :aria-checked="sortOrder === o.id" :class="{ on: sortOrder === o.id }" @click="sortOrder = o.id">
+                  {{ o.label }}
+                </button>
+              </div>
+            </div>
+            <div class="pg pg-checks">
+              <label class="toggle caption" :title="`Chỉ hiện asset có điểm chất lượng dưới ${QA_LOW}`">
+                <input v-model="lowOnly" type="checkbox" />
+                Chỉ điểm thấp ({{ lowCount }})
+              </label>
+              <label v-if="technicalCount" class="toggle caption" title="Bản chỉ gồm JSON / Atlas (dữ liệu phụ của sprite, Spine)">
+                <input v-model="showTechnical" type="checkbox" />
+                Hiện tệp dữ liệu ({{ technicalCount }})
+              </label>
+            </div>
+          </div>
         </div>
-        <label v-if="technicalCount" class="toggle caption" title="Bản chỉ gồm JSON / Atlas (dữ liệu phụ của sprite, Spine)">
-          <input v-model="showTechnical" type="checkbox" />
-          Hiện tệp dữ liệu ({{ technicalCount }})
-        </label>
-      </div>
-      <div class="bar-row">
-        <div class="seg" role="radiogroup" aria-label="Trạng thái duyệt">
-          <button v-for="f in STATUS_FILTERS" :key="f.id" type="button" role="radio" :aria-checked="statusFilter === f.id" :class="{ on: statusFilter === f.id }" @click="statusFilter = f.id">
-            {{ f.label }}
-            <span class="num c">{{ counts[f.id] }}</span>
-          </button>
-        </div>
-        <button
-          type="button"
-          class="chip-toggle"
-          :class="{ on: lowOnly }"
-          :aria-pressed="lowOnly"
-          :title="`Chỉ hiện asset có điểm chất lượng dưới ${QA_LOW}`"
-          @click="lowOnly = !lowOnly"
-        >
-          Điểm thấp
-          <span class="num c">{{ lowCount }}</span>
-        </button>
-        <div class="bar-end">
-          <ProjectSelect v-model="projectFilter" all-label="Mọi dự án" label="Lọc theo dự án" />
-          <label class="sort caption">
-            <span class="sr-only">Sắp xếp</span>
-            <select v-model="sortOrder" aria-label="Sắp xếp asset">
-              <option v-for="o in SORTS" :key="o.id" :value="o.id">{{ o.label }}</option>
-            </select>
-          </label>
-        </div>
+        <button v-if="filtered || activeFilters" type="button" class="btn btn-plain" @click="clearFilters"><X :size="14" /> Xoá lọc</button>
       </div>
     </div>
     <div ref="scroller" class="grid-scroll">
@@ -703,8 +717,8 @@ function move(d: -1 | 1): void {
     color var(--t-fast);
 }
 .chip-toggle.on {
-  color: var(--st-fail);
-  background: var(--st-fail-soft);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-control));
 }
 .sr-only {
   position: absolute;
@@ -721,8 +735,39 @@ function move(d: -1 | 1): void {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
   cursor: pointer;
+}
+.filter-wrap {
+  position: relative;
+}
+.pop {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  width: min(460px, 90vw);
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-3, var(--shadow-2)), var(--hairline);
+}
+.pg {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.pg-l {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  color: var(--text-2);
+}
+.pg .seg {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.pg-checks {
+  gap: 8px;
 }
 .toggle input {
   accent-color: var(--accent);

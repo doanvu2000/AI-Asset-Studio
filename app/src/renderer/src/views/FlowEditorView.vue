@@ -12,6 +12,7 @@ import FlowCanvas from '@/components/flow/FlowCanvas.vue'
 import { buildFlowEditGraph } from '@/composables/flowGraph'
 import { flowRows, formatSource, isBlobType, issueText, nodeIssues, parseSource, slugId, WINPUTS_NODE, WORKFLOW_REF, wouldCycle } from '@/composables/flows'
 import { useUnsavedChanges } from '@/composables/unsaved'
+import { useUndoStack } from '@/composables/undoStack'
 import { useFlows } from '@/stores/flows'
 import { useRecipes } from '@/stores/recipes'
 import { api, useConnection } from '@/stores/connection'
@@ -47,6 +48,27 @@ onBeforeRouteLeave((to) => {
   return window.confirm('Workflow có thay đổi chưa lưu. Rời đi và bỏ thay đổi?')
 })
 
+const history = useUndoStack<string>()
+const graphState = (): string => JSON.stringify({ nodes: doc.nodes, positions })
+function remember(): void {
+  history.push(graphState())
+}
+function restore(raw: string): void {
+  const s = JSON.parse(raw) as { nodes: WorkflowNodeDef[]; positions: Record<string, { x: number; y: number }> }
+  doc.nodes = s.nodes
+  for (const k of Object.keys(positions)) delete positions[k]
+  Object.assign(positions, s.positions)
+  if (selected.value && !doc.nodes.some((n) => n.id === selected.value)) selected.value = null
+}
+function undo(): void {
+  const prev = history.undo(graphState())
+  if (prev) restore(prev)
+}
+function redo(): void {
+  const next = history.redo(graphState())
+  if (next) restore(next)
+}
+
 function setDoc(d: WorkflowDef): void {
   const copy = structuredClone(d)
   Object.assign(doc, { ...blankDef(), ...copy, nodes: copy.nodes.map((n) => ({ ...n, inputs: n.inputs ?? {}, map: n.map ?? {}, params: n.params ?? {} })) })
@@ -54,6 +76,7 @@ function setDoc(d: WorkflowDef): void {
   selected.value = null
   issues.value = []
   baseline.value = snapshot()
+  history.clear()
 }
 
 // declared before the immediate watch below, which calls validate() synchronously on setup
@@ -174,6 +197,23 @@ onKeyStroke('s', (e) => {
   void save()
 })
 
+const typing = (t: EventTarget | null): boolean => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
+onKeyStroke(['z', 'Z', 'y', 'Y'], (e) => {
+  if (!(e.ctrlKey || e.metaKey) || typing(e.target) || !loaded.value) return
+  e.preventDefault()
+  const k = e.key.toLowerCase()
+  if (k === 'y' || e.shiftKey) redo()
+  else undo()
+})
+onKeyStroke(['Delete', 'Backspace'], (e) => {
+  const id = selected.value
+  if (typing(e.target) || !loaded.value || !node.value || id === null) return
+  e.preventDefault()
+  const wired = Object.keys(node.value.map).length > 0 || doc.nodes.some((n) => Object.values(n.map).some((src) => parseSource(src)?.ref === id))
+  if (wired && !window.confirm(`Xoá node "${node.value.title || id}" và các dây nối của nó? Có thể hoàn tác bằng Ctrl+Z.`)) return
+  removeNode(id)
+})
+
 // ---- add / remove nodes ----
 const picker = ref(false)
 const pickerRoot = ref<HTMLElement | null>(null)
@@ -204,6 +244,7 @@ function uniqueNodeId(base: string): string {
 }
 
 function addNode(r: RecipeInfo): void {
+  remember()
   const n: WorkflowNodeDef = { id: uniqueNodeId(r.id), recipe_id: r.id, title: r.name, inputs: {}, map: {}, params: {} }
   doc.nodes.push(n)
   selected.value = n.id
@@ -211,6 +252,7 @@ function addNode(r: RecipeInfo): void {
 }
 
 function removeNode(id: string): void {
+  remember()
   doc.nodes = doc.nodes.filter((n) => n.id !== id)
   for (const n of doc.nodes) for (const [k, src] of Object.entries(n.map)) if (parseSource(src)?.ref === id) delete n.map[k]
   delete positions[id]
@@ -266,16 +308,19 @@ function onConnect(c: Connection): void {
   const out = c.sourceHandle?.startsWith('o:') ? c.sourceHandle.slice(2) : null
   const input = c.targetHandle?.startsWith('i:') ? c.targetHandle.slice(2) : null
   if (!out || !input || c.source === c.target) return
-  wire(c.target, input, c.source, out)
+  const before = graphState()
+  if (wire(c.target, input, c.source, out)) history.push(before)
 }
 
 function onEdgeClick(id: string): void {
   const [kind, nodeId, input] = id.split('|')
   if (kind !== 'm') return
+  remember()
   delete doc.nodes.find((n) => n.id === nodeId)?.map[input!]
 }
 
 function onDragStop(list: Array<{ id: string; x: number; y: number }>): void {
+  remember()
   for (const p of list) positions[p.id] = { x: p.x, y: p.y }
 }
 
@@ -469,7 +514,7 @@ const showWorkflowPanel = computed(() => !node.value)
           @drag-stop="onDragStop"
         />
         <p v-if="!doc.nodes.length" class="hint-empty">Bấm "Thêm node" để chọn quy trình đầu tiên.</p>
-        <p v-else class="hint caption">Kéo từ chấm bên phải sang chấm bên trái để nối. Bấm vào dây để gỡ.</p>
+        <p v-else class="hint caption">Kéo từ chấm bên phải sang chấm bên trái để nối. Bấm vào dây để gỡ. Delete xoá node, Ctrl+Z hoàn tác.</p>
       </section>
 
       <aside class="inspector scroll" aria-label="Thuộc tính">

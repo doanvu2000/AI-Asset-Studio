@@ -117,7 +117,7 @@ async function pickFolder(): Promise<void> {
 }
 
 async function doScan(): Promise<void> {
-  if (!canScan.value) return
+  if (!canScan.value || scanning.value) return
   scanning.value = true
   scanError.value = null
   try {
@@ -297,7 +297,7 @@ function openRun(): void {
 </script>
 
 <template>
-  <div class="view">
+  <div class="view" @keydown.ctrl.enter.prevent="doScan" @keydown.meta.enter.prevent="doScan">
     <PageHeader title="Restyle project" subtitle="Vẽ lại cả thư mục theo style dự án, giữ nguyên GUID, .meta/.import và mọi tham chiếu">
       <ProjectSelect v-model="projectId" label="Dự án (style)" />
     </PageHeader>
@@ -316,7 +316,7 @@ function openRun(): void {
               spellcheck="false"
               placeholder="L:\Game\Assets\Sprites  hoặc  D:\GodotGame\art"
               aria-label="Đường dẫn thư mục"
-              @keydown.enter="doScan"
+              @keydown.enter.exact="doScan"
             />
             <button type="button" class="btn" @click="pickFolder"><FolderOpen /> Chọn…</button>
             <button type="button" class="btn btn-primary" :disabled="!canScan" @click="doScan">

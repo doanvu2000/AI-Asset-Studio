@@ -209,7 +209,7 @@ async function submit(): Promise<void> {
 </script>
 
 <template>
-  <div class="view">
+  <div class="view" @keydown.ctrl.enter.prevent="submit" @keydown.meta.enter.prevent="submit">
     <PageHeader :title="def?.title ?? 'Chạy workflow'" subtitle="Điền đầu vào rồi bấm chạy">
       <template #leading>
         <RouterLink to="/flows" class="btn btn-plain btn-icon" aria-label="Về danh sách workflow"><ArrowLeft /></RouterLink>

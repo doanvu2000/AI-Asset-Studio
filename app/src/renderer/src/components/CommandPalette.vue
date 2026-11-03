@@ -176,7 +176,17 @@ const SHORTCUTS: Array<{ group: string; rows: Array<{ keys: string[]; label: str
       { keys: ['?'], label: 'Bảng phím tắt này' }
     ]
   },
-  { group: 'Tạo mới', rows: [{ keys: ['Ctrl', 'Enter'], label: 'Bắt đầu chạy' }] },
+  { group: 'Tạo mới', rows: [{ keys: ['Ctrl', 'Enter'], label: 'Bắt đầu chạy (cả chạy workflow)' }] },
+  { group: 'Quét project', rows: [{ keys: ['Ctrl', 'Enter'], label: 'Quét (Kiểm tra project, Đổi phong cách)' }] },
+  {
+    group: 'Sửa workflow',
+    rows: [
+      { keys: ['Delete'], label: 'Xoá node đang chọn' },
+      { keys: ['Ctrl', 'Z'], label: 'Hoàn tác' },
+      { keys: ['Ctrl', 'Y'], label: 'Làm lại (Ctrl + Shift + Z)' },
+      { keys: ['Ctrl', 'S'], label: 'Lưu' }
+    ]
+  },
   {
     group: 'Cần duyệt',
     rows: [
