@@ -2,10 +2,13 @@
 import { computed, ref, watch } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { FileArchive, FolderOpen, LoaderCircle, Package, RotateCcw, TriangleAlert, X } from '@lucide/vue'
+import type { ShaderPresetInfo } from '../../../preload/types'
 import type { AtlasPageSize, MobileBudget, PackCommercial, PackEngine, PackLicense, PackListing, PackResult } from '@/api/types'
 import BlobImage from './BlobImage.vue'
 import MobileStats from './MobileStats.vue'
 import RelTime from './RelTime.vue'
+import ShaderPicker from './ShaderPicker.vue'
+import { useShaderPicker } from '@/composables/shaderPicker'
 import { api } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { useFocusTrap } from '@/composables/focusTrap'
@@ -59,6 +62,8 @@ const atlas = ref(false)
 const atlasSize = ref<AtlasPageSize>(2048)
 const mobile = ref(false)
 const toon = ref(false)
+const shaderList = ref<ShaderPresetInfo[]>([])
+const shaderPicker = useShaderPicker(shaderList)
 const PAGE_SIZES: AtlasPageSize[] = [1024, 2048, 4096]
 const budgets = computed<MobileBudget[]>(() => Object.values(result.value?.mobile ?? {}).filter((b): b is MobileBudget => !!b))
 
@@ -69,11 +74,17 @@ const hasAppEngine = computed(() => picks.value.has('flutter') || picks.value.ha
 const hasGameEngine = computed(() => picks.value.has('unity') || picks.value.has('godot'))
 const packageOk = computed(() => !picks.value.has('android') || PACKAGE_RE.test(androidPackage.value.trim()))
 const versionOk = computed(() => !version.value.trim() || /^\d+\.\d+\.\d+$/.test(version.value.trim()))
-const canBuild = computed(() => !building.value && picked.value.size > 0 && versionOk.value && engines.value.length > 0 && packageOk.value)
+const canBuild = computed(() => !building.value && picked.value.size > 0 && versionOk.value && engines.value.length > 0 && packageOk.value && shaderPicker.valid.value)
 const skippedTargets = computed(() =>
   (['flutter', 'android', 'ios'] as const)
     .map((id) => ({ id, label: ENGINES.find((e) => e.id === id)?.label ?? id, names: result.value?.[id]?.skipped ?? [] }))
     .filter((s) => s.names.length)
+)
+const hasShaderEngine = computed(() => hasAppEngine.value || hasGameEngine.value)
+const shaderNote = computed(() =>
+  hasAppEngine.value && !picks.value.has('android') && !picks.value.has('ios')
+    ? 'Flutter bỏ qua shader.'
+    : 'Android 13+ (AGSL) / iOS 17+ (Metal) nhận cả bộ shader; Unity và Godot nhận các shader đã chọn; Flutter bỏ qua.'
 )
 const flagged = computed(() => (result.value ? result.value.items.filter((i) => i.commercial !== 'yes') : []))
 
@@ -85,10 +96,27 @@ async function load(): Promise<void> {
     const all = listing.value.assets.map((a) => a.step_id)
     const want = all.filter((id) => props.preselect?.includes(id))
     picked.value = new Set(want.length ? want : all)
+    void loadShaders([...want, ...all.filter((id) => !want.includes(id))])
   } catch (e) {
     loadError.value = (e as Error).message
   } finally {
     loading.value = false
+  }
+}
+
+// Only sprite steps carry the shader catalog, so probe a few approved steps instead of assuming the first one does.
+async function loadShaders(steps: string[]): Promise<void> {
+  shaderList.value = []
+  for (const id of steps.slice(0, 6)) {
+    try {
+      const o = await window.studio?.asset?.bundleOptions(id)
+      if (o?.shaders?.length) {
+        shaderList.value = o.shaders
+        return
+      }
+    } catch {
+      /* step without an export folder: try the next one */
+    }
   }
 }
 
@@ -157,7 +185,8 @@ async function build(): Promise<void> {
       theme: hasAppEngine.value && theme.value ? true : undefined,
       atlas: atlas.value || undefined,
       atlas_max_size: atlas.value ? atlasSize.value : undefined,
-      material_style: hasGameEngine.value && toon.value ? 'toon' : undefined
+      material_style: hasGameEngine.value && toon.value ? 'toon' : undefined,
+      ...(hasShaderEngine.value ? shaderPicker.options() : {})
     })
     version.value = ''
     toasts.push(`Đã đóng gói bản ${result.value.version}`, 'success')
@@ -260,6 +289,8 @@ useEventListener(
                   </div>
                 </div>
               </div>
+
+              <ShaderPicker v-if="hasShaderEngine && shaderList.length" class="shaders" :list="shaderList" :picker="shaderPicker" :note="shaderNote" />
 
               <div class="row mob">
                 <span class="section-label">Mobile</span>

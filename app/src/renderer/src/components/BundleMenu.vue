@@ -9,6 +9,8 @@ import { useRuns } from '@/stores/runs'
 import { isGlb } from './viewers/detect'
 import { hitExportOption, savedHit } from '@/composables/hitFx'
 import HitFxDialog from './HitFxDialog.vue'
+import ShaderPicker from './ShaderPicker.vue'
+import { useShaderPicker } from '@/composables/shaderPicker'
 
 const props = defineProps<{ stepId: string; name?: string; compact?: boolean }>()
 
@@ -91,12 +93,8 @@ const ASE_KEY = 'export:aseprite'
 const aseprite = ref(readPref(ASE_KEY) === 'on')
 watch(aseprite, (v) => writePref(ASE_KEY, v ? 'on' : 'off'))
 watch(normalStrength, (v) => strengthValid.value && writePref(NSTRENGTH_KEY, String(v)))
-const SHADERS_KEY = 'export:shaders'
 const shaderList = computed<ShaderPresetInfo[]>(() => opts.value?.shaders ?? [])
-const picked = ref<string[]>(readJson<string[]>(SHADERS_KEY, []).filter((s) => typeof s === 'string'))
-const shaderTweaks = ref<Record<string, { color?: string; speed?: number }>>({})
-const pickedInfo = computed(() => shaderList.value.filter((s) => picked.value.includes(s.id)))
-watch(picked, (v) => writePref(SHADERS_KEY, JSON.stringify(v)), { deep: true })
+const shaderPicker = useShaderPicker(shaderList)
 function readJson<T>(key: string, fallback: T): T {
   try {
     const v = JSON.parse(readPref(key) ?? 'null') as T | null
@@ -104,26 +102,6 @@ function readJson<T>(key: string, fallback: T): T {
   } catch {
     return fallback
   }
-}
-function toggleShader(id: string): void {
-  picked.value = picked.value.includes(id) ? picked.value.filter((s) => s !== id) : [...picked.value, id]
-}
-function tweak(id: string, key: 'color' | 'speed', v: string | number): void {
-  shaderTweaks.value = { ...shaderTweaks.value, [id]: { ...shaderTweaks.value[id], [key]: v } }
-}
-const speedOk = (v: number | undefined): boolean => v === undefined || (Number.isFinite(v) && v >= 0 && v <= 20)
-function shaderOpts(): Pick<EngineExportOptions, 'shaders' | 'shader_params'> {
-  const ids = pickedInfo.value.map((s) => s.id)
-  if (!ids.length) return {}
-  const params: Record<string, Record<string, number | string>> = {}
-  for (const id of ids) {
-    const t = shaderTweaks.value[id]
-    if (!t) continue
-    params[id] = {}
-    if (t.color) params[id].color = t.color
-    if (t.speed !== undefined && speedOk(t.speed)) params[id].speed = t.speed
-  }
-  return { shaders: ids, shader_params: params }
 }
 // Off by default: Godot's VRAM import also changes desktop builds, and block compression smears UI / pixel art.
 const MOBILE_KEY = 'export:mobile'
@@ -177,7 +155,7 @@ function engineOpts(): EngineExportOptions {
   const base = {
     ppu: ppuValid.value ? ppu.value : 100,
     pixel: pixelMode.value === 'auto' ? null : pixelMode.value === 'on',
-    ...shaderOpts(),
+    ...shaderPicker.options(),
     ...materialOpts(),
     ...(hits ? { hits } : {}),
     ...(mobile.value ? { mobile: true } : {}),
@@ -479,50 +457,13 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
                 </div>
               </template>
             </div>
-            <div v-if="shaderList.length" class="b-shaders">
-              <span class="b-opt-label" title="Shader viết tay: Godot 4 và Unity URP 2D (kèm material), Android Compose (AGSL, Android 13+), iOS SwiftUI (Metal, iOS 17+). Flutter không dùng">Shader</span>
-              <span class="b-shader-note">Áp cho Unity, Godot, Android (Android 13+) và iOS (iOS 17+); Flutter bỏ qua.</span>
-              <div class="b-chips" role="group" aria-label="Shader preset cho sprite">
-                <button
-                  v-for="s in shaderList"
-                  :key="s.id"
-                  type="button"
-                  class="b-chip"
-                  :class="{ on: picked.includes(s.id) }"
-                  :aria-pressed="picked.includes(s.id)"
-                  :title="s.hint"
-                  @click="toggleShader(s.id)"
-                >
-                  {{ s.label }}
-                </button>
-              </div>
-              <div v-for="s in pickedInfo" :key="s.id" class="b-opt b-shader">
-                <span class="b-shader-name">{{ s.label }}</span>
-                <input
-                  v-if="s.color"
-                  type="color"
-                  class="b-color"
-                  :value="shaderTweaks[s.id]?.color ?? s.color"
-                  :aria-label="`Màu ${s.label}`"
-                  @input="tweak(s.id, 'color', ($event.target as HTMLInputElement).value)"
-                />
-                <input
-                  v-if="s.speed !== null"
-                  class="field num b-speed"
-                  :class="{ bad: !speedOk(shaderTweaks[s.id]?.speed) }"
-                  type="number"
-                  min="0"
-                  max="20"
-                  step="0.1"
-                  :value="shaderTweaks[s.id]?.speed ?? s.speed"
-                  :title="`Tốc độ (Hz), 0 = đứng yên — ${s.hint}`"
-                  :aria-label="`Tốc độ ${s.label} (Hz)`"
-                  :aria-invalid="!speedOk(shaderTweaks[s.id]?.speed)"
-                  @input="tweak(s.id, 'speed', ($event.target as HTMLInputElement).valueAsNumber)"
-                />
-              </div>
-              <p v-if="pickedInfo.length === 1 && opts?.sprite_sheet" class="b-note caption">Gán sẵn material vào sprite chính</p>
-            </div>
+            <ShaderPicker
+              v-if="shaderList.length"
+              :list="shaderList"
+              :picker="shaderPicker"
+              note="Áp cho Unity, Godot, Android (Android 13+) và iOS (iOS 17+); Flutter bỏ qua."
+              assign-hint
+            />
             <div class="b-opt">
               <label
                 class="b-check"
@@ -699,44 +640,6 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
   display: grid;
   gap: 6px;
 }
-.b-pair {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.b-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.b-chip {
-  height: 22px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 11px;
-  background: var(--bg-sunken);
-  color: var(--text-2);
-  font: inherit;
-  font-size: var(--fs-caption);
-  transition: background-color var(--t-fast), color var(--t-fast);
-}
-.b-chip.on {
-  background: var(--accent);
-  color: var(--text-on-accent);
-}
-.b-shader-note {
-  font-size: var(--fs-caption);
-  color: var(--text-3);
-}
-.b-shader {
-  justify-content: flex-start;
-}
-.b-shader-name {
-  flex: 1;
-  min-width: 0;
-  font-size: var(--fs-caption);
-  color: var(--text-2);
-}
 .b-color {
   width: 26px;
   height: 22px;
@@ -752,8 +655,10 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
 .b-speed.bad {
   box-shadow: 0 0 0 1.5px var(--danger);
 }
-.b-note {
-  color: var(--text-3);
+.b-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .spin {
   animation: spin 1s linear infinite;
@@ -774,7 +679,6 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
   opacity: 0;
 }
 @media (prefers-reduced-motion: reduce) {
-  .b-chip,
   .chev,
   .menu-enter-active,
   .menu-leave-active {

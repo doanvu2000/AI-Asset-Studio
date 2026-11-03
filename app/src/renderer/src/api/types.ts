@@ -1072,6 +1072,9 @@ export interface PackBody {
   flutter_demo?: boolean
   /** Flutter/Android/iOS: theme code (ThemeData / MaterialTheme / SwiftUI) from the project's style bible. */
   theme?: boolean
+  /** Shader presets for 2D sprites (Unity/Godot/Flutter files; Android AGSL 13+ / iOS Metal 17+ get the whole shader pack). */
+  shaders?: string[]
+  shader_params?: Record<string, Record<string, number | string>>
   /** One shared trimmed atlas of every 2D sprite, beside the per-asset exports. */
   atlas?: boolean
   atlas_max_size?: AtlasPageSize
