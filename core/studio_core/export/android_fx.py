@@ -327,7 +327,7 @@ def screen_files(src: Source, package: str) -> FxResult:
                      f"{b[3]}, {w}, {h})")
     code = "\n".join([
         f"package {package}", "", "import androidx.compose.runtime.Composable", "import androidx.compose.ui.Modifier",
-        "import androidx.compose.ui.graphics.Color", "", *specs, "", f"/** Screen \"{doc.get('screen')}\": every rect is a "
+        "import androidx.compose.ui.graphics.Color", "", *specs, "", f"/** Screen \"{' '.join(str(doc.get('screen')).replace('*/', '* /').split())}\": every rect is a "
         f"fraction of its parent, text scales with width / {ref[0]}. [onTap] gets the node name of a pressed button. */",
         "@Composable", f"fun {cls}(", "    modifier: Modifier = Modifier,", "    onTap: ((String) -> Unit)? = null,",
         "    texts: Map<String, String> = emptyMap(),", ") {",
