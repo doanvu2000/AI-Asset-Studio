@@ -10,6 +10,8 @@ import BlobImage from './BlobImage.vue'
 import AssetActions from './AssetActions.vue'
 import AssetViewer from './viewers/AssetViewer.vue'
 import QaBreakdown from './QaBreakdown.vue'
+import SendToMenu from './SendToMenu.vue'
+import type { SendSource } from '@/composables/sendTo'
 import { api } from '@/stores/connection'
 import { useVersions } from '@/stores/versions'
 import { useToasts } from '@/stores/toasts'
@@ -35,11 +37,14 @@ const props = withDefaults(
     origin?: DOMRect | null
     /** Library version behind a shown blob; enables the quality-score panel. */
     versionFor?: (hash: string) => VersionRow | undefined
+    /** Adds "Gửi tới…" (and the S key) for the blob on screen. */
+    sendFor?: (blob: BlobRef) => SendSource
   }>(),
   { siblings: () => [] }
 )
 const emit = defineEmits<{ close: []; prev: []; next: []; review: [action: 'approve' | 'reject', advance: boolean] }>()
 const closeBtn = ref<HTMLButtonElement | null>(null)
+const sender = ref<InstanceType<typeof SendToMenu> | null>(null)
 const scrim = ref<HTMLElement | null>(null)
 const isOpen = computed(() => !!props.blob)
 const trap = useFocusTrap(scrim, isOpen, closeBtn)
@@ -120,6 +125,7 @@ useEventListener(
     if (e.key === 'Escape') emit('close')
     else if (e.key === 'ArrowLeft' && canNav.value) step(-1)
     else if (e.key === 'ArrowRight' && canNav.value) step(1)
+    else if (plainKey && props.sendFor && (e.key === 's' || e.key === 'S')) void sender.value?.show()
     else if (plainKey && props.status && (e.key === 'a' || e.key === 'A')) emit('review', 'approve', true)
     else if (plainKey && props.status && (e.key === 'r' || e.key === 'R')) emit('review', 'reject', true)
     else return
@@ -206,6 +212,7 @@ function growFromOrigin(el: Element): void {
                   {{ status === 'rejected' ? 'Đã từ chối' : 'Từ chối' }}
                 </button>
               </div>
+              <SendToMenu v-if="sendFor" ref="sender" :source="sendFor(shown)" />
               <button ref="closeBtn" class="btn btn-plain btn-icon" aria-label="Đóng (Esc)" title="Đóng (Esc)" @click="emit('close')"><X /></button>
             </div>
             <QaBreakdown v-if="showQa" class="row-qa" :qa="shownVersion?.qa" :busy="qaBusy" can-recompute @recompute="recomputeQa" />

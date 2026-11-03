@@ -7,8 +7,9 @@ import Lightbox from '@/components/Lightbox.vue'
 import { useGates, type GateItem } from '@/stores/gates'
 import { useRuns } from '@/stores/runs'
 import { useToasts } from '@/stores/toasts'
+import SendToMenu from '@/components/SendToMenu.vue'
 import GateTile from './GateTile.vue'
-import { isTypingTarget, sourcePrompt } from './gateUtil'
+import { candidateSource, isSendKey, isTypingTarget, sourcePrompt } from './gateUtil'
 
 const props = withDefaults(defineProps<{ gate: GateItem; keyboard?: boolean; inline?: boolean }>(), { keyboard: true, inline: false })
 const emit = defineEmits<{ resolved: [] }>()
@@ -22,6 +23,7 @@ const focus = ref(0)
 const sending = ref(false)
 const regenerating = ref(false)
 const lightbox = ref<BlobRef | null>(null)
+const sender = ref<InstanceType<typeof SendToMenu> | null>(null)
 
 watch(
   () => props.gate.stepId,
@@ -36,6 +38,8 @@ const need = computed(() => (props.gate.k > 0 ? Math.min(props.gate.k, candidate
 const valid = computed(() => (need.value ? picked.value.size === need.value : picked.value.size >= 1))
 const instruction = computed(() => (need.value ? `Chọn ${need.value} ảnh để chạy tiếp` : 'Chọn ít nhất 1 ảnh để chạy tiếp'))
 const prompt = computed(() => sourcePrompt(runs.runs.get(props.gate.runId)))
+const run = computed(() => runs.runs.get(props.gate.runId))
+const sendFor = (b: BlobRef) => candidateSource(run.value, b)
 const canRegenerate = computed(() => !!gates.sourceStep(props.gate))
 // Storyboard frames: the picked tiles are kept and only the rest are redrawn.
 const keepSome = computed(
@@ -108,6 +112,11 @@ onKeyStroke(true, (e) => {
     focus.value = Math.min(n - 1, Math.max(0, focus.value + move[e.key]!))
     return
   }
+  if (isSendKey(e) && n && !sending.value) {
+    e.preventDefault()
+    void sender.value?.show()
+    return
+  }
   if (e.key === ' ') {
     e.preventDefault()
     toggle(focus.value)
@@ -144,7 +153,7 @@ onKeyStroke(true, (e) => {
     <footer class="actions">
       <span v-if="keyboard && !inline" class="caption hints">
         <span class="kbd">1</span>–<span class="kbd">9</span> chọn · <span class="kbd">←</span><span class="kbd">→</span> di chuyển ·
-        <span class="kbd">Enter</span> xác nhận
+        <span class="kbd">Enter</span> xác nhận · <span class="kbd">S</span> gửi tới
       </span>
       <button
         class="btn"
@@ -162,6 +171,7 @@ onKeyStroke(true, (e) => {
         <RefreshCw v-else />
         {{ keepSome ? 'Tạo lại ảnh chưa chọn' : 'Tạo lại ảnh' }}
       </button>
+      <SendToMenu v-if="candidates[focus]" ref="sender" :source="sendFor(candidates[focus]!)" />
       <button v-if="!need && candidates.length > 1" class="btn" :disabled="sending" @click="selectAll">Chọn tất cả</button>
       <span class="spacer" />
       <span class="num secondary">{{ picked.size }}{{ need ? ` / ${need}` : '' }} đã chọn</span>
@@ -172,7 +182,7 @@ onKeyStroke(true, (e) => {
       </button>
     </footer>
 
-    <Lightbox :blob="lightbox" :siblings="candidates" @close="lightbox = null" />
+    <Lightbox :blob="lightbox" :siblings="candidates" :send-for="sendFor" @close="lightbox = null" />
   </div>
 </template>
 
@@ -220,8 +230,9 @@ onKeyStroke(true, (e) => {
 .actions {
   flex: none;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   padding: 12px 24px;
   border-top: 0.5px solid var(--separator);
   background: color-mix(in srgb, var(--bg-content) 85%, transparent);
@@ -231,7 +242,7 @@ onKeyStroke(true, (e) => {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  flex-wrap: wrap;
+  white-space: nowrap;
 }
 .spacer {
   flex: 1;

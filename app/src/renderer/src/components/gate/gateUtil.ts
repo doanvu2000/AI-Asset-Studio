@@ -1,4 +1,5 @@
-import type { RunRow } from '@/api/types'
+import type { BlobRef, RunRow } from '@/api/types'
+import type { SendSource } from '@/composables/sendTo'
 import { paletteOpen, shortcutsOpen } from '@/composables/palette'
 
 /** True when a gate shortcut must not fire: typing, an overlay is open, or Enter/Space belongs to a focused control. */
@@ -20,3 +21,10 @@ export function sourcePrompt(run: RunRow | undefined): string {
   }
   return ''
 }
+
+/** Rejected or unpicked candidates stay in the blob store, so any of them can be sent on. */
+export function candidateSource(run: RunRow | undefined, blob: BlobRef | undefined): SendSource {
+  return { blobs: blob ? [blob] : undefined, projectId: run?.project_id, runId: run?.id, omit: ['gallery'] }
+}
+
+export const isSendKey = (e: KeyboardEvent): boolean => (e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && !e.altKey

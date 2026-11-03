@@ -244,7 +244,8 @@ const SHORTCUTS: Array<{ group: string; rows: Array<{ keys: string[]; label: str
       { keys: ['1 … 9'], label: 'Chọn ảnh theo số' },
       { keys: ['←', '→'], label: 'Mục trước / sau' },
       { keys: ['Enter'], label: 'Duyệt' },
-      { keys: ['X'], label: 'Từ chối' }
+      { keys: ['X'], label: 'Từ chối' },
+      { keys: ['S'], label: 'Gửi ảnh đang chọn tới màn khác' }
     ]
   }
 ]

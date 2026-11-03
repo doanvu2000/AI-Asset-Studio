@@ -11,9 +11,10 @@ import { useRuns } from '@/stores/runs'
 import { useToasts } from '@/stores/toasts'
 import ScoreBadge from '@/components/ScoreBadge.vue'
 import { latestReview } from '@/composables/review'
+import SendToMenu from '@/components/SendToMenu.vue'
 import GateTile from './GateTile.vue'
 import ReviewDialog from './ReviewDialog.vue'
-import { isTypingTarget, sourcePrompt } from './gateUtil'
+import { candidateSource, isSendKey, isTypingTarget, sourcePrompt } from './gateUtil'
 
 const props = withDefaults(defineProps<{ gate: GateItem; keyboard?: boolean; inline?: boolean }>(), { keyboard: true, inline: false })
 const emit = defineEmits<{ resolved: [] }>()
@@ -25,6 +26,7 @@ const toasts = useToasts()
 const sending = ref<'yes' | 'no' | null>(null)
 const lightbox = ref<BlobRef | null>(null)
 const focus = ref(0)
+const sender = ref<InstanceType<typeof SendToMenu> | null>(null)
 watch(
   () => props.gate.stepId,
   () => (focus.value = 0)
@@ -35,6 +37,7 @@ const featured = computed(() => {
   const c = candidates.value
   return featuredAsset(c) ?? (c[0] ? (viewsFor(c[0], c)[0] ?? null) : null)
 })
+const sendFor = (b: BlobRef) => candidateSource(runs.runs.get(props.gate.runId), b)
 const prompt = computed(() => sourcePrompt(runs.runs.get(props.gate.runId)))
 const review = computed(() => latestReview(runs.stepsOf(props.gate.runId), props.gate.step?.order))
 const reviewOpen = ref(false)
@@ -80,6 +83,9 @@ onKeyStroke(true, (e) => {
   } else if (e.key === 'Enter') {
     e.preventDefault()
     void resolve(true)
+  } else if (isSendKey(e) && candidates.value.length && !sending.value) {
+    e.preventDefault()
+    void sender.value?.show()
   } else if (e.key === 'x' || e.key === 'X') {
     e.preventDefault()
     void resolve(false)
@@ -123,8 +129,9 @@ onKeyStroke(true, (e) => {
 
     <footer class="actions">
       <span v-if="keyboard && !inline" class="caption hints">
-        <span class="kbd">Enter</span> duyệt · <span class="kbd">X</span> từ chối · <span class="kbd">1</span>–<span class="kbd">9</span> xem lớn
+        <span class="kbd">Enter</span> duyệt · <span class="kbd">X</span> từ chối · <span class="kbd">1</span>–<span class="kbd">9</span> xem lớn · <span class="kbd">S</span> gửi tới
       </span>
+      <SendToMenu v-if="candidates[focus]" ref="sender" :source="sendFor(candidates[focus]!)" />
       <span class="spacer" />
       <button class="btn btn-danger" :class="{ 'btn-lg': !inline }" :disabled="!!sending" @click="resolve(false)">
         <LoaderCircle v-if="sending === 'no'" class="spin" />
@@ -138,7 +145,7 @@ onKeyStroke(true, (e) => {
       </button>
     </footer>
 
-    <Lightbox :blob="lightbox" :siblings="candidates" @close="lightbox = null" />
+    <Lightbox :blob="lightbox" :siblings="candidates" :send-for="sendFor" @close="lightbox = null" />
     <ReviewDialog :review="review" :open="reviewOpen" :old-spec="oldSpec" @close="reviewOpen = false" />
   </div>
 </template>

@@ -77,6 +77,8 @@ function onKey(e: KeyboardEvent): void {
   fn()
 }
 
+defineExpose({ show })
+
 onClickOutside(menu, () => close(false), { ignore: [button] })
 useEventListener(window, 'resize', () => close(false))
 useEventListener(window, 'scroll', () => close(false), { capture: true, passive: true })
