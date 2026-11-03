@@ -131,3 +131,23 @@ async def test_qa_cancel_stops_between_versions(app_ctx, monkeypatch) -> None:  
     r = await client.post("/api/qa/recompute", headers=AUTH, json={})
     assert r.json() == {"updated": 3, "skipped": 0, "total": 10, "cancelled": True}
     assert seen == ["v0", "v1", "v2"] and _scan_events(app.state.bus)[-1]["phase"] == "cancelled"
+
+
+def test_phase_handover_reports_full_count() -> None:
+    from studio_core.scan_jobs import ScanJob
+
+    class Bus:
+        def __init__(self) -> None:
+            self.events: list[dict] = []
+
+        def publish(self, _ev: str, data: dict, **_kw: object) -> None:
+            self.events.append(data)
+
+    bus = Bus()
+    job = ScanJob(bus, "audit", "k")
+    for n in range(50):
+        job(n, 50, "files")
+    job(0, 0, "analyze")
+    files = [e for e in bus.events if e["phase"] == "files"]
+    assert files[-1]["done"] == 50 and files[-1]["total"] == 50
+    assert bus.events[-1]["phase"] == "analyze"

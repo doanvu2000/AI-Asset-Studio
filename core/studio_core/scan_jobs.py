@@ -26,6 +26,7 @@ class ScanJob:
         self._stop = threading.Event()
         self._last = 0.0
         self._phase = ""
+        self._total = 0
 
     def cancel(self) -> None:
         self._stop.set()
@@ -44,8 +45,12 @@ class ScanJob:
             raise ScanCancelled()
         now = time.monotonic()
         if phase == self._phase and now - self._last < MIN_GAP_S and done != total:
+            self._total = total
             return
-        self._phase, self._last = phase, now
+        # Loops tick before each unit, so a phase never reports its own last unit; close it out on hand-over.
+        if phase != self._phase and self._phase and self._total:
+            self.emit(self._total, self._total, self._phase)
+        self._phase, self._last, self._total = phase, now, total
         self.emit(done, total, phase)
 
 
