@@ -15,10 +15,12 @@ from starlette.responses import Response
 from studio_core.api.auth import require_token
 from studio_core.api.errors import ApiError, OrjsonResponse
 from studio_core.export import audit as au
+from studio_core.export.audit_plans import PlanCache
 from studio_core.scan_jobs import ScanCancelled, jobs_of
 
 router = APIRouter(prefix="/api/audit", dependencies=[Depends(require_token)])
 _lock = asyncio.Lock()
+_plans = PlanCache()
 
 
 class ScanBody(BaseModel):
@@ -42,6 +44,7 @@ class FixBody(BaseModel):
     path: str = Field(min_length=1, max_length=1024)
     actions: list[FixAction] = Field(min_length=1, max_length=5000)
     dry_run: bool = True
+    plan_id: str | None = Field(None, max_length=64)
 
 
 class UndoBody(BaseModel):
@@ -117,6 +120,19 @@ async def last(request: Request, path: str) -> Response:
     return OrjsonResponse(json.loads(await asyncio.to_thread(p.read_text, encoding="utf-8")))
 
 
+def _dry_run(report: dict[str, Any], importer: list[dict[str, Any]], rp: Path, project: str, path: str,
+             job: Any) -> dict[str, Any]:
+    try:
+        plan = au.make_plan(report, importer, job)
+    except ScanCancelled:
+        return {"type": au.FIX_TYPE, "version": 1, "dry_run": True, "project": report["project"],
+                "engine": report["engine"], "files": [], "written": 0, "skipped": 0, "cancelled": True}
+    out = au.apply_fixes(report, importer, Path(), True, {"path": path}, None, plan)
+    if any(u.get("action") == "write" for u in plan):
+        out["plan_id"] = _plans.put(project, importer, plan, [rp, *au.plan_paths(report, plan)])
+    return out
+
+
 @router.post("/fix")
 async def fix(request: Request, body: FixBody) -> Response:
     """Importer-only fixes from the last audit (dry_run plans them); `atlas` packs sprites into a folder outside the
@@ -133,9 +149,18 @@ async def fix(request: Request, body: FixBody) -> Response:
     async with _lock:
         try:
             if importer:
+                cached = None if body.dry_run else _plans.get(body.plan_id, project, importer)
                 with jobs_of(request).open("audit_fix", body.path) as job:
-                    out = await asyncio.to_thread(au.apply_fixes, report, importer, au.backup_dir(_data(request)),
-                                                  body.dry_run, {"path": body.path}, job)
+                    if cached is not None:
+                        out = await asyncio.to_thread(au.apply_fixes, report, importer, au.backup_dir(_data(request)),
+                                                      False, {"path": body.path}, job, cached)
+                    elif body.dry_run:
+                        out = await asyncio.to_thread(_dry_run, report, importer, rp, project, body.path, job)
+                    else:
+                        out = await asyncio.to_thread(au.apply_fixes, report, importer, au.backup_dir(_data(request)),
+                                                      False, {"path": body.path}, job)
+                if not body.dry_run:
+                    _plans.drop_project(project)
             if atlases and not out.get("cancelled"):
                 root = Path(getattr(request.app.state.settings, "app_exports_dir", _data(request) / "exports" / "app"))
                 out["atlases"] = []

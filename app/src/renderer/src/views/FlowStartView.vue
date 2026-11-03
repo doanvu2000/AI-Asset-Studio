@@ -12,7 +12,7 @@ import PresetSelect from '@/components/PresetSelect.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
 import { chainNames, isBlobType } from '@/composables/flows'
 import { fits, PREFILL_PREFIX } from '@/composables/followUp'
-import { useQueryPrefill } from '@/composables/sendTo'
+import { SentFileMismatch, sentFileError, useQueryPrefill } from '@/composables/sendTo'
 import { settlePool } from '@/composables/pool'
 import { useFlows } from '@/stores/flows'
 import { useFit } from '@/stores/fit'
@@ -139,11 +139,11 @@ watch(
       if (!spec || !isBlobType(spec.type)) continue
       try {
         const info = await api().blobInfo(hash)
-        if (!fits(spec as RecipeInputSpec, info)) throw new Error('Tệp không hợp lệ cho đầu vào này')
+        if (!fits(spec as RecipeInputSpec, info)) throw new SentFileMismatch('Tệp không hợp lệ cho đầu vào này')
         blobs[name] = [info]
         errors[name] = null
       } catch (e) {
-        toasts.error(e, 'Không nạp được tệp gửi sang')
+        toasts.push(sentFileError(e), 'error', 6000)
       }
     }
   },

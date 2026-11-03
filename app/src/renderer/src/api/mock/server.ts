@@ -2111,7 +2111,7 @@ export class MockCore implements StudioApi, EventStream {
     }
   }
 
-  async auditFix(body: { path: string; actions: AuditFix[]; dry_run: boolean }): Promise<AuditFixResult> {
+  async auditFix(body: { path: string; actions: AuditFix[]; dry_run: boolean; plan_id?: string }): Promise<AuditFixResult> {
     let files = body.actions.filter((a) => a.rel).map((a) => ({ rel: a.rel!, action: 'write' as 'write' | 'skip', why: undefined as string | undefined, fixes: [a.type] }))
     let cancelled = false
     if (body.dry_run) await sleep(600)

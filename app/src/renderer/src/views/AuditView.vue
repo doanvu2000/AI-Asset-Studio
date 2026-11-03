@@ -185,7 +185,8 @@ async function apply(): Promise<void> {
   if (!report.value || applying.value) return
   applying.value = true
   try {
-    const r = await api().auditFix({ path: report.value.project, actions: actions(), dry_run: false })
+    // A stale plan_id is harmless: the core re-plans when files changed since the preview.
+    const r = await api().auditFix({ path: report.value.project, actions: actions(), dry_run: false, plan_id: plan.value?.plan_id })
     if (r.cancelled) {
       applying.value = false
       plan.value = null

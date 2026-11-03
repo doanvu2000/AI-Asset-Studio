@@ -84,6 +84,8 @@ export interface AuditFixResult {
   bytes_before?: number
   bytes_after?: number
   backup_id?: string
+  /** Dry run only: pass back to apply so the core reuses the plan instead of planning again. */
+  plan_id?: string
   cancelled?: boolean
   /** Set with `cancelled`: at least one file was written, so the last report is stale. */
   rescan_needed?: boolean

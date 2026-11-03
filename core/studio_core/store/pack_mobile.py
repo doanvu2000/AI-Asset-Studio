@@ -185,7 +185,7 @@ class AndroidPack:
         mapping: dict[str, str] = {}
         for n in [*images, *patches, *(c.name for c in clips), *(f for c in clips for f in c.frames)]:
             if n not in mapping:
-                mapping[n] = self._unique(prefix + n)
+                mapping[n] = self._unique(n if n == prefix[:-1] or n.startswith(prefix) else prefix + n)
         self.images += [mapping[n] for n in images]
         self.patches += [mapping[n] for n in patches]
         self.clips += [an.Clip(mapping[c.name], [mapping[f] for f in c.frames], c.fps, c.loop) for c in clips]

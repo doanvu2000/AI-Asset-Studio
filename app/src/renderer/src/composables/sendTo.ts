@@ -96,6 +96,13 @@ export function sendItems(src: SendSource, recipes: RecipeInfo[], project?: Proj
   return out
 }
 
+export class SentFileMismatch extends Error {}
+
+/** Core/IPC errors for a stale or garbage blob hash are English; a link can outlive the file, so show one VN line. */
+export function sentFileError(e: unknown): string {
+  return e instanceof SentFileMismatch ? e.message : 'Tệp gửi sang không còn trong kho'
+}
+
 /**
  * Reads one-shot query keys (a menu elsewhere sent us here), hands them over and strips them from the URL so Back and
  * reload do not replay them. Also fires when the view is already mounted and only the query changes.

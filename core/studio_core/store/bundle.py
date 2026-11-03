@@ -446,6 +446,12 @@ def still_images(step: StepRow, blobs: BlobStore, only: list[BlobRef] | None = N
             for r in picked.values()]
 
 
+def still_name(asset: str, stem: str) -> str:
+    """One image of several: `<asset>_<stem>`, but a stem that already starts with the asset name is not doubled."""
+    a, st = asset.lower(), stem.lower()
+    return stem if st == a or st.startswith((f"{a}_", f"{a}-")) else f"{asset}_{stem}"
+
+
 def _source_ready(src: Source) -> bool:
     return (src.sheet is not None or src.spine_json is not None or bool(src.glb) or bool(src.textures)
             or bool(src.audio) or bool(src.ui) or bool(src.pbr) or bool(src.fbx)
@@ -478,7 +484,7 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
     src.collider = collider
     if engine in STILL_ENGINES and not _source_ready(src):
         imgs = still_images(step, blobs, stills)
-        src.ui = [(src.asset if len(imgs) == 1 else f"{src.asset}_{n}", p, b, st) for n, p, b, st in imgs]
+        src.ui = [(src.asset if len(imgs) == 1 else still_name(src.asset, n), p, b, st) for n, p, b, st in imgs]
     from studio_core.export.normal2d import apply as apply_normal2d, append_readme
 
     mobile_target = engine in MOBILE_ENGINES

@@ -664,14 +664,15 @@ def _run_unit(proj: Path, u: dict[str, Any], expected: dict[str, str | None]) ->
 
 
 def apply(report: dict[str, Any], actions: list[dict[str, Any]], backups: Path, dry_run: bool,
-          source: dict[str, Any] | None, progress: Any) -> dict[str, Any]:
+          source: dict[str, Any] | None, progress: Any, units: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     proj = Path(report["project"])
     progress = progress or (lambda *_: None)
     doc: dict[str, Any] = {"type": au.FIX_TYPE, "version": 1, "dry_run": dry_run, "project": str(proj),
                            "engine": "flutter", "at": time.time(), "source": source or {}, "files": [],
                            "written": 0, "skipped": 0, "gpu_before": 0, "gpu_after": 0}
     try:
-        units = plan_fixes(report, actions, progress)
+        if units is None:
+            units = plan_fixes(report, actions, progress)
     except ScanCancelled:
         doc.update(cancelled=True)
         return doc

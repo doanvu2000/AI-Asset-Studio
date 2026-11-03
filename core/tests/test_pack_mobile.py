@@ -194,8 +194,8 @@ async def test_pack_android_ios_still_image_only(app_ctx, tmp_path: Path) -> Non
     res = r.json()
     root = Path(res["dir"])
     assert res["android"]["skipped"] == [] and res["ios"]["skipped"] == []
-    assert len(list((root / "android/res").glob("drawable-*/icon_icon.webp"))) == 5
-    assert "R.drawable.icon_icon" in (root / "android/kotlin/AssetStudioAssets.kt").read_text(encoding="utf-8")
+    assert len(list((root / "android/res").glob("drawable-*/icon.webp"))) == 5
+    assert "R.drawable.icon" in (root / "android/kotlin/AssetStudioAssets.kt").read_text(encoding="utf-8")
     iset = root / "ios/AssetStudio.xcassets/Icon.imageset"
     doc = json.loads((iset / "Contents.json").read_text(encoding="utf-8"))
     assert [i["scale"] for i in doc["images"]] == ["1x", "2x", "3x"]

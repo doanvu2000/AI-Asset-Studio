@@ -946,17 +946,34 @@ def _planned_gpu(engine: str, row: dict[str, Any], acts: list[dict[str, Any]]) -
     return int(row.get("gpu_before") or 0)
 
 
+def make_plan(report: dict[str, Any], actions: list[dict[str, Any]], progress: Any = None) -> list[dict[str, Any]]:
+    if report.get("engine") == "flutter":
+        from studio_core.export import audit_flutter
+
+        return audit_flutter.plan_fixes(report, actions, progress)
+    return plan_fixes(report, actions)
+
+
+def plan_paths(report: dict[str, Any], plan: list[dict[str, Any]]) -> list[Path]:
+    """Every file a plan reads or writes: if none changed, the plan is still valid."""
+    proj = Path(report["project"])
+    rels = {r for u in plan if u.get("action") == "write" for r in (u.get("touch") or [u.get("importer")]) if r}
+    return [proj / r for r in sorted(rels)]
+
+
 def apply_fixes(report: dict[str, Any], actions: list[dict[str, Any]], backups: Path, dry_run: bool = True,
-                source: dict[str, Any] | None = None, progress: Any = None) -> dict[str, Any]:
+                source: dict[str, Any] | None = None, progress: Any = None,
+                plan: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """dry_run plans only; otherwise every importer file to change goes into one verified zip first, then each is
     replaced atomically and a manifest is kept for undo. `progress` may cancel between two files: the files already
     written stay (undoable), the rest are marked skipped and doc["cancelled"] is set."""
     if report.get("engine") == "flutter":
         from studio_core.export import audit_flutter
 
-        return audit_flutter.apply(report, actions, backups, dry_run, source, progress)
+        return audit_flutter.apply(report, actions, backups, dry_run, source, progress, plan)
     proj = Path(report["project"])
-    plan = plan_fixes(report, actions)
+    if plan is None:
+        plan = plan_fixes(report, actions)
     todo = [r for r in plan if r["action"] == "write"]
     files = [{k: v for k, v in r.items() if k != "data"} for r in plan]
     doc: dict[str, Any] = {"type": FIX_TYPE, "version": 1, "dry_run": dry_run, "project": str(proj),
