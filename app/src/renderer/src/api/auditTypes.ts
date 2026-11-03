@@ -85,6 +85,8 @@ export interface AuditFixResult {
   bytes_after?: number
   backup_id?: string
   cancelled?: boolean
+  /** Set with `cancelled`: at least one file was written, so the last report is stale. */
+  rescan_needed?: boolean
   files?: { rel: string; action: 'write' | 'skip'; why?: string; fixes?: string[] }[]
   atlases?: { folder?: string; files?: string[]; planned?: boolean }[]
   report?: AuditReport

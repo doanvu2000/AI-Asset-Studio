@@ -2,9 +2,13 @@
 import { computed, nextTick, ref, watch, type Component } from 'vue'
 import { useRouter } from 'vue-router'
 import { onKeyStroke } from '@vueuse/core'
-import { CornerDownLeft, FolderKanban, Images, Inbox, Keyboard, Layers, LayoutDashboard, ListChecks, Monitor, Moon, Plus, ScanSearch, Search, Settings, Sparkles, Sun, Workflow } from '@lucide/vue'
+import { CornerDownLeft, FolderKanban, Paintbrush, RotateCcw, ShieldCheck, Images, Inbox, Keyboard, Layers, LayoutDashboard, ListChecks, Monitor, Moon, Plus, ScanSearch, Search, Settings, Sparkles, Sun, Workflow } from '@lucide/vue'
 import { useRecipes } from '@/stores/recipes'
 import { useRuns } from '@/stores/runs'
+import { useGates } from '@/stores/gates'
+import { useProjects } from '@/stores/projects'
+import { useToasts } from '@/stores/toasts'
+import { rerunRun } from '@/composables/rerun'
 import { RUN_LABEL } from '@/composables/format'
 import { fold, openShortcuts, paletteOpen, shortcutsOpen } from '@/composables/palette'
 import { THEME_OPTIONS, useTheme } from '@/composables/theme'
@@ -15,6 +19,9 @@ import BlobImage from './BlobImage.vue'
 const router = useRouter()
 const recipes = useRecipes()
 const runs = useRuns()
+const gates = useGates()
+const projects = useProjects()
+const toasts = useToasts()
 
 interface Item {
   id: string
@@ -52,6 +59,36 @@ const NAV: Item[] = [
   { id: 'nav-whats-new', group: 'Đi tới', label: 'Có gì mới', hint: APP_VERSION, icon: Sparkles, run: () => (whatsNewOpen.value = true) }
 ]
 
+async function rerunLatest(): Promise<void> {
+  const last = runs.runList[0]
+  if (!last) return void toasts.push('Chưa có lượt chạy nào để chạy lại', 'info', 2400)
+  try {
+    const { run_id } = await rerunRun(last.id, 'new')
+    toasts.push('Đã chạy lại lượt gần nhất với seed mới', 'success', 2400)
+    await router.push(`/runs/${run_id}`)
+  } catch (e) {
+    toasts.error(e, 'Không chạy lại được')
+  }
+}
+
+const actionItems = computed<Item[]>(() => {
+  const list: Item[] = []
+  const last = runs.runList[0]
+  if (last) list.push({ id: 'act-rerun', group: 'Thao tác', label: 'Chạy lại lượt gần nhất', hint: last.title || undefined, icon: RotateCcw, run: () => void rerunLatest() })
+  const first = gates.list[0]
+  if (first) list.push({ id: 'act-gate', group: 'Thao tác', label: 'Duyệt cổng đang chờ', hint: `${gates.count} cổng`, icon: Inbox, run: go(`/gates?step=${encodeURIComponent(first.stepId)}`) })
+  const p = projects.active
+  if (p) {
+    const q = { project: p.id }
+    list.push(
+      { id: 'act-gallery', group: 'Thao tác', label: 'Mở Thư viện cho dự án hiện tại', hint: p.name, icon: Images, run: () => void router.push({ path: '/gallery', query: q }) },
+      { id: 'act-restyle', group: 'Thao tác', label: 'Mở Restyle cho dự án hiện tại', hint: p.name, icon: Paintbrush, run: () => void router.push({ path: '/restyle', query: q }) },
+      { id: 'act-audit', group: 'Thao tác', label: 'Mở Kiểm tra project cho dự án hiện tại', hint: p.auto_export_dir || p.name, icon: ShieldCheck, run: () => void router.push({ path: '/audit', query: p.auto_export_dir ? { folder: p.auto_export_dir, scan: '1' } : {} }) }
+    )
+  }
+  return list
+})
+
 const theme = useTheme()
 const THEME_ICON = { system: Monitor, light: Sun, dark: Moon }
 const LOOK: Item[] = theme.available
@@ -68,6 +105,7 @@ const items = computed<Item[]>(() => {
   const q = fold(query.value.trim())
   const match = (s: string) => !q || fold(s).includes(q)
   const nav = NAV.filter((i) => match(i.label))
+  const act = actionItems.value.filter((i) => match(i.label) || match(i.hint ?? ''))
   const look = LOOK.filter((i) => match(i.label) || match('theme sáng tối dark light'))
   const make = recipes.list
     .filter((r) => match(r.name) || match(`tạo ${r.name}`))
@@ -91,7 +129,7 @@ const items = computed<Item[]>(() => {
       previewHash: runs.previewHash(r.id),
       run: () => void router.push(`/runs/${r.id}`)
     }))
-  return q ? [...make, ...recent, ...nav, ...look] : [...recent, ...make, ...nav, ...look]
+  return q ? [...act, ...make, ...recent, ...nav, ...look] : [...act, ...recent, ...make, ...nav, ...look]
 })
 
 const groups = computed(() => {
@@ -172,7 +210,7 @@ const SHORTCUTS: Array<{ group: string; rows: Array<{ keys: string[]; label: str
     rows: [
       { keys: ['Ctrl', 'K'], label: 'Tìm nhanh: đi tới, tạo mới, mở lượt chạy' },
       { keys: ['Ctrl', 'N'], label: 'Tạo mới' },
-      { keys: ['Ctrl', '1 … 8'], label: 'Tổng quan · Tạo mới · Lượt chạy · Cần duyệt · Thư viện · Quy trình · Hàng loạt · Dự án' },
+      { keys: ['Ctrl', '1 … 8'], label: 'Tổng quan · Tạo mới · Cần duyệt · Thư viện · Dự án · Lượt chạy · Công thức · Kiểm tra lỗi' },
       { keys: ['?'], label: 'Bảng phím tắt này' }
     ]
   },

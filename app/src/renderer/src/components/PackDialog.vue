@@ -10,7 +10,7 @@ import { api } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { useFocusTrap } from '@/composables/focusTrap'
 
-const props = defineProps<{ open: boolean; projectId: string; engine?: PackEngine }>()
+const props = defineProps<{ open: boolean; projectId: string; engine?: PackEngine; preselect?: string[] }>()
 const emit = defineEmits<{ close: [] }>()
 
 const toasts = useToasts()
@@ -82,7 +82,9 @@ async function load(): Promise<void> {
   loadError.value = null
   try {
     listing.value = await api().projectPacks(props.projectId)
-    picked.value = new Set(listing.value.assets.map((a) => a.step_id))
+    const all = listing.value.assets.map((a) => a.step_id)
+    const want = all.filter((id) => props.preselect?.includes(id))
+    picked.value = new Set(want.length ? want : all)
   } catch (e) {
     loadError.value = (e as Error).message
   } finally {

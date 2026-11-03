@@ -8,6 +8,9 @@ import PageHeader from '@/components/PageHeader.vue'
 import ScanProgressBar from '@/components/ScanProgressBar.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import { useScanProgress } from '@/composables/scanProgress'
+import SendToMenu from '@/components/SendToMenu.vue'
+import { useQueryPrefill, type SendSource } from '@/composables/sendTo'
+import { useProjects } from '@/stores/projects'
 import { api, useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 import { bytes } from '@/composables/format'
@@ -24,6 +27,7 @@ const FINDING_LABEL: Record<string, string> = { asset_missing: 'Thiếu file', a
 const route = useRoute()
 const conn = useConnection()
 const toasts = useToasts()
+const projects = useProjects()
 const scanLive = useScanProgress('audit')
 const fixLive = useScanProgress('audit_fix')
 
@@ -181,12 +185,18 @@ async function apply(): Promise<void> {
   try {
     const r = await api().auditFix({ path: report.value.project, actions: actions(), dry_run: false })
     if (r.cancelled) {
+      applying.value = false
+      plan.value = null
       const left = r.skipped ?? 0
       toasts.push(`Đã dừng: ghi ${r.written ?? 0} file, ${left} file chưa sửa${r.backup_id ? ` · hoàn tác được ở backup ${r.backup_id}` : ''}`, 'info', 6000)
     } else toasts.push(`Đã ghi ${r.written ?? 0} ${isFlutter.value ? 'mục sửa' : 'file import'}${r.skipped ? `, bỏ qua ${r.skipped}` : ''} · backup ${r.backup_id ?? ''}`, r.written ? 'success' : 'info')
     if (r.report) setReport(r.report)
     else plan.value = null
     await loadBackups()
+    if (r.cancelled && r.rescan_needed && report.value) {
+      folder.value = report.value.root
+      await doScan()
+    }
   } catch (e) {
     toasts.error(e, 'Không sửa được')
   } finally {
@@ -223,6 +233,28 @@ async function makeAtlas(): Promise<void> {
     atlasBusy.value = false
   }
 }
+
+useQueryPrefill(['folder', 'scan'], (q) => {
+  if (q.folder) folder.value = q.folder
+  if (q.scan) void doScan()
+})
+
+const norm = (p: string): string => p.replaceAll('\\', '/').replace(/\/+$/, '').toLowerCase()
+// A library project is tied to this folder only through its engine export dir.
+const linkedProject = computed(() => {
+  const root = report.value ? norm(report.value.root) : ''
+  if (!root) return undefined
+  return projects.list.find((p) => {
+    const d = p.auto_export_dir ? norm(p.auto_export_dir) : ''
+    return !!d && (d === root || d.startsWith(`${root}/`) || root.startsWith(`${d}/`))
+  })
+})
+const sendSource = computed<SendSource>(() => ({
+  folder: report.value?.root,
+  files: isFlutter.value ? pickedFindings.value.map((f) => f.rel) : pickedRows.value.map((t) => t.rel),
+  projectId: linkedProject.value?.id,
+  omit: ['audit', 'recipe', 'pack']
+}))
 
 function mb(n: number): string {
   return `${(n / MB).toFixed(n >= 100 * MB ? 0 : 1)} MB`
@@ -400,6 +432,7 @@ function reveal(p: string): void {
                 <button v-if="!isFlutter" type="button" class="btn push" :disabled="atlasRels.length < 2 || atlasBusy" title="Gộp các sprite đã chọn vào atlas, ghi ra thư mục riêng ngoài project; không đổi tham chiếu" @click="makeAtlas">
                   <LoaderCircle v-if="atlasBusy" class="spin" /><LayoutGrid v-else /> Tạo atlas ({{ atlasRels.length }})
                 </button>
+                <SendToMenu :source="sendSource" />
               </div>
               <p v-if="atlasOut" class="callout caption">
                 Atlas ở <button type="button" class="link mono" @click="reveal(atlasOut)">{{ atlasOut }}</button> — chép vào project nếu muốn, rồi tự đổi tham chiếu sang sprite trong atlas.

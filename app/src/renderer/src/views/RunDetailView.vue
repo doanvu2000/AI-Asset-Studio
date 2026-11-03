@@ -13,6 +13,7 @@ import ElapsedTimer from '@/components/ElapsedTimer.vue'
 import BlobThumb from '@/components/BlobThumb.vue'
 import AssetViewer from '@/components/viewers/AssetViewer.vue'
 import AssetActions from '@/components/AssetActions.vue'
+import SendToMenu from '@/components/SendToMenu.vue'
 import OpenInEngine from '@/components/OpenInEngine.vue'
 import ExportToEngine from '@/components/ExportToEngine.vue'
 import NextStepChips from '@/components/NextStepChips.vue'
@@ -662,6 +663,9 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
               :run-id="id"
               :version-id="heroVersion?.id"
               :step-id="heroBundleId"
+            />
+            <SendToMenu
+              :source="{ projectId: run?.project_id, blobs: [hero.view.blob], runId: id, versionIds: heroVersion ? [heroVersion.id] : [], stepIds: heroBundleId ? [heroBundleId] : [], omit: ['recipe'] }"
             />
             <OpenInEngine v-if="heroBundleId" :step-id="heroBundleId" :outputs="steps.find((s) => s.id === heroBundleId)?.outputs" />
             <span class="spacer" />

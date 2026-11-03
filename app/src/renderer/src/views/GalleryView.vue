@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watch } from 'vue'
-import { useRoute } from 'vue-router'
 import { onClickOutside, useElementSize, useEventListener, useIntervalFn } from '@vueuse/core'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { Check, Columns2, FileInput, Gauge, LayoutGrid, LoaderCircle, Search, SlidersHorizontal, X } from '@lucide/vue'
@@ -14,6 +13,7 @@ import Lightbox from '@/components/Lightbox.vue'
 import CompareView, { type CompareItem } from '@/components/CompareView.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import AtlasDialog from '@/components/AtlasDialog.vue'
+import SendToMenu from '@/components/SendToMenu.vue'
 import RelTime from '@/components/RelTime.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
 import QaBadge from '@/components/QaBadge.vue'
@@ -23,6 +23,7 @@ import { QA_LOW, QA_VERSION, groupQa, qaScore } from '@/composables/qa'
 import { api } from '@/stores/connection'
 import { featuredAcross, isAtlas, isImage, isJson, type AssetView } from '@/components/viewers/detect'
 import { useAssetFile } from '@/composables/assetFile'
+import { useQueryPrefill, type SendSource } from '@/composables/sendTo'
 import { relativeTime } from '@/composables/format'
 import { settlePool } from '@/composables/pool'
 import { exportName, useVersions } from '@/stores/versions'
@@ -160,8 +161,8 @@ const query = ref('')
 const sortOrder = ref<SortOrder>('new')
 const lowOnly = ref(false)
 const showTechnical = ref(false)
-const route = useRoute()
-const projectFilter = ref(typeof route.query.project === 'string' ? route.query.project : 'all')
+const projectFilter = ref('all')
+const runFilter = ref('')
 
 const isLow = (g: AssetGroup): boolean => g.score !== null && g.score < QA_LOW
 const unfiltered = computed(() => {
@@ -171,6 +172,7 @@ const unfiltered = computed(() => {
       (showTechnical.value || !g.technical) &&
       (typeFilter.value === 'all' || g.type === typeFilter.value) &&
       (projectFilter.value === 'all' || g.project === projectFilter.value) &&
+      (!runFilter.value || g.runId === runFilter.value) &&
       (!q || g.haystack.includes(q))
   )
 })
@@ -239,13 +241,14 @@ const filterOpen = ref(false)
 const filterRoot = ref<HTMLElement | null>(null)
 onClickOutside(filterRoot, () => (filterOpen.value = false))
 const activeFilters = computed(() => [typeFilter.value !== 'all', statusFilter.value !== 'all', sortOrder.value !== 'new', lowOnly.value, showTechnical.value].filter(Boolean).length)
-const filtered = computed(() => !!query.value.trim() || typeFilter.value !== 'all' || statusFilter.value !== 'all' || projectFilter.value !== 'all' || lowOnly.value)
+const filtered = computed(() => !!query.value.trim() || typeFilter.value !== 'all' || statusFilter.value !== 'all' || projectFilter.value !== 'all' || !!runFilter.value || lowOnly.value)
 
 function clearFilters(): void {
   query.value = ''
   typeFilter.value = 'all'
   statusFilter.value = 'all'
   projectFilter.value = 'all'
+  runFilter.value = ''
   lowOnly.value = false
   sortOrder.value = 'new'
   showTechnical.value = false
@@ -393,6 +396,18 @@ const atlasItems = computed(() => {
     .filter((g) => g.type !== '3d' && g.type !== 'audio' && !seen.has(g.lead.step_id) && !!seen.add(g.lead.step_id))
     .map((g) => ({ step_id: g.lead.step_id, name: g.name }))
 })
+const sendSource = computed<SendSource>(() => {
+  const list = selectedGroups.value
+  const projects = new Set(list.map((g) => g.project))
+  const one = list.length === 1
+  return {
+    projectId: projects.size === 1 ? list[0]?.project : undefined,
+    blobs: [(list.find((g) => g.lead.blob.mime.startsWith('image/')) ?? list[0])?.lead.blob].filter((b): b is BlobRef => !!b),
+    versionIds: list.flatMap((g) => g.versions.map((v) => v.id)),
+    stepIds: [...new Set(list.flatMap((g) => g.versions.map((v) => v.step_id)))],
+    omit: one ? ['gallery'] : ['gallery', 'recipe']
+  }
+})
 const compareKeys = ref<string[] | null>(null)
 function itemOf(g: AssetGroup): CompareItem {
   return {
@@ -442,6 +457,33 @@ function move(d: -1 | 1): void {
     openKey.value = next.key
   }
 }
+
+const pendingFocus = ref<string | null>(null)
+useQueryPrefill(['project', 'run', 'focus'], (q) => {
+  projectFilter.value = q.project ?? 'all'
+  runFilter.value = q.run ?? ''
+  if (!q.focus) return
+  query.value = ''
+  typeFilter.value = 'all'
+  statusFilter.value = 'all'
+  lowOnly.value = false
+  showTechnical.value = true
+  pendingFocus.value = q.focus
+})
+watch([pendingFocus, items, () => versions.loaded], () => {
+  const id = pendingFocus.value
+  if (!id) return
+  const i = items.value.findIndex((g) => g.versions.some((v) => v.id === id))
+  if (i >= 0) {
+    pendingFocus.value = null
+    selected.value = new Set([items.value[i]!.key])
+    anchor = items.value[i]!.key
+    virtualizer.value.scrollToIndex(Math.floor(i / cols.value), { align: 'center' })
+  } else if (versions.loaded) {
+    pendingFocus.value = null
+    toasts.push('Không thấy bản đó trong thư viện (có thể đã bị lọc hoặc xoá)', 'info', 3600)
+  }
+})
 </script>
 
 <template>
@@ -626,6 +668,7 @@ function move(d: -1 | 1): void {
           >
             <LayoutGrid /> Gộp atlas
           </button>
+          <SendToMenu :source="sendSource" extra="sb" />
         </template>
         <button type="button" class="btn btn-plain sb" :disabled="!!bulk" title="Bỏ chọn (Esc)" @click="clearSelection">Bỏ chọn</button>
       </div>
@@ -913,7 +956,8 @@ function move(d: -1 | 1): void {
   margin: 0 4px;
   background: var(--separator-strong);
 }
-.sb {
+.sb,
+.selbar :deep(.sb) {
   height: 26px;
   padding: 0 12px;
   font-size: var(--fs-callout);

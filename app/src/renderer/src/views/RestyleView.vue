@@ -27,6 +27,8 @@ import BlobImage from '@/components/BlobImage.vue'
 import ScanProgressBar from '@/components/ScanProgressBar.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import { useScanProgress } from '@/composables/scanProgress'
+import SendToMenu from '@/components/SendToMenu.vue'
+import { useQueryPrefill } from '@/composables/sendTo'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
 import { api, useConnection } from '@/stores/connection'
 import { useRuns } from '@/stores/runs'
@@ -295,6 +297,21 @@ function fmtS(s: number): string {
 const skippedOpen = ref(false)
 const reportRows = computed(() => report.value?.items ?? [])
 const flagged = computed(() => new Set([...(report.value?.flags.silhouette ?? []), ...(report.value?.flags.low_qa ?? [])]))
+useQueryPrefill(['folder', 'include', 'project', 'ref', 'scan'], (q) => {
+  if (q.folder) folder.value = q.folder
+  if (q.include) {
+    include.value = q.include
+    showFilter.value = true
+  }
+  if (q.project) projectId.value = q.project
+  if (q.ref) {
+    api()
+      .blobInfo(q.ref)
+      .then((b) => (styleRef.value = [b]))
+      .catch((e) => toasts.error(e, 'Không đọc được ảnh style tham chiếu'))
+  }
+  if (q.scan) void doScan()
+})
 function openRun(): void {
   if (runId.value) void router.push(`/runs/${runId.value}`)
 }
@@ -418,6 +435,7 @@ function openRun(): void {
               <RunStatusBadge :status="run.status" />
               <span v-if="eta !== null" class="caption num">còn ~{{ fmtS(eta) }}</span>
               <button type="button" class="btn btn-plain push" @click="openRun"><ExternalLink /> Chi tiết lượt chạy</button>
+              <SendToMenu v-if="report" :source="{ projectId, runId: runId ?? undefined, folder: scan?.root, stepIds: steps.map((s) => s.id), omit: ['restyle', 'recipe'] }" />
             </div>
             <div class="bar" role="progressbar" :aria-valuenow="Math.round(overall * 100)" aria-valuemin="0" aria-valuemax="100">
               <span :style="{ transform: `scaleX(${overall})` }" :class="{ live: active }" />

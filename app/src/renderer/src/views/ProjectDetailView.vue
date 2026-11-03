@@ -14,6 +14,7 @@ import QaPanel from '@/components/QaPanel.vue'
 import StyleBiblePanel from '@/components/StyleBiblePanel.vue'
 import StyleLockPanel from '@/components/StyleLockPanel.vue'
 import PackDialog from '@/components/PackDialog.vue'
+import SendToMenu from '@/components/SendToMenu.vue'
 import AutoExportRow from '@/components/AutoExportRow.vue'
 import AiCreditsDialog from '@/components/AiCreditsDialog.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
@@ -238,6 +239,7 @@ function removeDefault(i: number): void {
 type Tab = 'style' | 'assets' | 'qa' | 'bible' | 'runs' | 'gallery'
 const tab = ref<Tab>('style')
 const projectRuns = computed(() => runs.runList.filter((r) => r.project_id === props.id))
+const projectStepIds = computed(() => [...new Set(versions.list.filter((v) => v.project_id === props.id && v.status === 'approved').map((v) => v.step_id))])
 const projectVersions = computed(() => versions.list.filter((v) => v.project_id === props.id && v.status !== 'rejected'))
 const summary = computed(() => projects.summaryOf(props.id))
 
@@ -347,6 +349,7 @@ function newAsset(): void {
               <Check v-if="isActive" /> <FolderKanban v-else />
               {{ isActive ? 'Đang chọn' : 'Chọn làm dự án hiện tại' }}
             </button>
+            <SendToMenu :source="{ projectId: id, stepIds: projectStepIds, omit: ['recipe'] }" />
             <button v-if="!project.archived" type="button" class="btn btn-ghost" :disabled="archiving" title="Lưu trữ dự án" @click="setArchived(true)"><Archive /> Lưu trữ</button>
             <button v-else type="button" class="btn btn-ghost" :disabled="archiving" title="Khôi phục dự án" @click="setArchived(false)"><ArchiveRestore /> Khôi phục</button>
           </div>

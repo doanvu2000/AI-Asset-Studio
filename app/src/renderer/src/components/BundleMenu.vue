@@ -480,7 +480,8 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
               </template>
             </div>
             <div v-if="shaderList.length" class="b-shaders">
-              <span class="b-opt-label" title="Shader viết tay, đã kiểm biên dịch trên Godot 4 và Unity URP 2D; mỗi preset kèm một material">Shader</span>
+              <span class="b-opt-label" title="Shader viết tay: Godot 4 và Unity URP 2D (kèm material), Android Compose (AGSL, Android 13+), iOS SwiftUI (Metal, iOS 17+). Flutter không dùng">Shader</span>
+              <span class="b-shader-note">Áp cho Unity, Godot, Android (Android 13+) và iOS (iOS 17+); Flutter bỏ qua.</span>
               <div class="b-chips" role="group" aria-label="Shader preset cho sprite">
                 <button
                   v-for="s in shaderList"
@@ -722,6 +723,10 @@ useEventListener(window, 'scroll', (e) => !menu.value?.contains(e.target as Node
 .b-chip.on {
   background: var(--accent);
   color: var(--text-on-accent);
+}
+.b-shader-note {
+  font-size: var(--fs-caption);
+  color: var(--text-3);
 }
 .b-shader {
   justify-content: flex-start;
