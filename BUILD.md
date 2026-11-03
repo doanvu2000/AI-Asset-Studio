@@ -83,3 +83,14 @@ npm run dist:portable
 Chép `app/release/<version>/win-unpacked/` ra thư mục bất kỳ và tạo file rỗng tên `portable` cạnh `AI Asset Studio.exe`.
 Khi có file này, app lưu data ở `<thư mục>\data` và trạng thái Electron ở `<thư mục>\userdata` thay cho `%APPDATA%`;
 lệnh kết nối MCP trong app tự thêm `--data-dir` trỏ vào đó. Bản đang dùng: `L:\AI\AI Asset Studio Portable`.
+
+## Chạy test core
+
+```powershell
+cd core
+uv run pytest -m "not slow" -n auto --dist loadfile   # vòng nhanh, ~1 phút
+uv run pytest -n auto --dist loadfile                 # đủ bộ, song song, ~1,5 phút
+uv run pytest                                         # đủ bộ, tuần tự, ~7 phút
+```
+
+Test chậm hơn ~5 s đánh `@pytest.mark.slow`; `--dist loadfile` giữ mỗi file test trên một worker.

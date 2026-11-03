@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from PIL import Image, ImageDraw
 
 from studio_core.ops.decal import DecalPack, make_decal
@@ -63,6 +64,7 @@ def test_crack_width_varies_more_and_branches() -> None:
     assert m_new["coverage"] > 0.003
 
 
+@pytest.mark.slow
 def test_crack_variation_is_deterministic_and_seeded() -> None:
     a1 = np.asarray(_run(True, 7)[0])
     assert np.array_equal(a1, np.asarray(_run(True, 7)[0]))

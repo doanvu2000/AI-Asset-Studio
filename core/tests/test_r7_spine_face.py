@@ -178,6 +178,7 @@ async def _pipeline(tmp: Path, hidden: tuple[str, ...] = (), hair: bool = False,
     return ctx, report, res, doc
 
 
+@pytest.mark.slow
 async def test_executors_build_face_slots_and_animations(tmp_path: Path) -> None:
     ctx, report, res, doc = await _pipeline(tmp_path)
     assert report["placement_error_px"] < 0.01 and report["neutral_match"]["mae"] < 1.5
@@ -209,6 +210,7 @@ async def test_executors_build_face_slots_and_animations(tmp_path: Path) -> None
 
 
 @pytest.mark.skipif(not HAS_NODE, reason="needs node + spine-core 4.2")
+@pytest.mark.slow
 async def test_spine_core_plays_face_animations(tmp_path: Path) -> None:
     ctx, _, res, _ = await _pipeline(tmp_path / "p")
     sk = tmp_path / "hero.json"
@@ -320,6 +322,7 @@ def test_eye_hole_does_not_reach_into_the_brow() -> None:
     assert not (fh.holes["eyes"] & brow).any()
 
 
+@pytest.mark.slow
 async def test_hair_over_brow_stays_original(tmp_path: Path) -> None:
     ctx, report, res, _ = await _pipeline(tmp_path, hair=True, emotions="angry")
     assert ctx.plan_result.meta["groups"] == ["brow", "eyes", "mouth"]

@@ -243,6 +243,7 @@ def ta_guid() -> str:
     return ANIMATED_TILE_GUID
 
 
+@pytest.mark.slow
 async def test_torch_recipe_runs_through_wan(tmp_path: Path) -> None:
     wan = FakeWan()
     env = _env(tmp_path, [wan])
@@ -352,6 +353,7 @@ async def _tile_report(env: Env, steps: dict[str, Any]) -> dict[str, Any]:
     return json.loads(env.blobs.path(steps["anim"].outputs["json"][0].hash).read_bytes())
 
 
+@pytest.mark.slow
 async def test_waterfall_retries_next_candidate_below_loop_threshold(tmp_path: Path) -> None:
     env = _env(tmp_path, [DriftWan(bad=1)])
     ref = await env.blobs.put_bytes(_png(texture(48, seed=9)), name="fall.png", mime="image/png")
@@ -362,6 +364,7 @@ async def test_waterfall_retries_next_candidate_below_loop_threshold(tmp_path: P
     assert attempts[0]["seam_similarity"] < ta.LOOP_SIMILARITY_MIN <= attempts[1]["seam_similarity"]
 
 
+@pytest.mark.slow
 async def test_waterfall_falls_back_to_cpu_flow_when_no_clip_loops(tmp_path: Path) -> None:
     env = _env(tmp_path, [DriftWan(bad=9)])
     ref = await env.blobs.put_bytes(_png(texture(48, seed=9)), name="fall.png", mime="image/png")

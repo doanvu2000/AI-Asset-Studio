@@ -153,6 +153,7 @@ async def test_executors_write_faces_and_skybox_doc(tmp_path: Path):
     assert load(ctx, cube.outputs["preview"][0]).size == (1024, 768)
 
 
+@pytest.mark.slow
 async def test_upscaled_strip_is_unwrapped_to_target(tmp_path: Path):
     ctx = FakeCtx(tmp_path)
     fix, cube = await _cube(ctx, upscale=4096)

@@ -191,6 +191,7 @@ def test_skill_reference_is_current(ref: Path) -> None:
         "recipe catalog drifted from the YAML recipes; run: cd core && uv run python ../scripts/gen_agent_docs.py"
 
 
+@pytest.mark.slow
 def test_agent_cli_run_wait_outputs(core: Path, tmp_path: Path) -> None:
     import subprocess
     import sys

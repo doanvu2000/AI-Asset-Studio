@@ -30,12 +30,17 @@ dev = [
     "pyinstaller>=6.22.3",
     "pytest>=8",
     "pytest-asyncio>=0.24",
+    "pytest-xdist>=3.8.0",
     "pytmx>=3.32",
 ]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "slow: takes more than ~5 s; skip for the quick loop with -m \"not slow\" -n auto",
+    "live: needs real GPU/ComfyUI/Blender/Codex; run with -m live",
+]
 
 [build-system]
 requires = ["hatchling"]

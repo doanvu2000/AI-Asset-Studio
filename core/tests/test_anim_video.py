@@ -270,6 +270,7 @@ class FakeMatte(FakeExec):
         return StepResult(outputs={"images": [ref]})
 
 
+@pytest.mark.slow
 async def test_recipe_runs_with_fakes_and_exports(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from studio_core.adapters import claude as cl
     from studio_core.export import aseprite, godot, unity

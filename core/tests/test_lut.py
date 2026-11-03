@@ -62,6 +62,7 @@ def test_fit_fills_unseen_cells_from_neighbours():
     assert (np.diff(grey) > -1e-3).all()
 
 
+@pytest.mark.slow
 def test_fit_ignores_added_content():
     rng = np.random.default_rng(3)
     src = rng.random((80000, 3)) * 0.8

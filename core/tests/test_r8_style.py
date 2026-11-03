@@ -103,6 +103,7 @@ async def planted(tmp_path: Path, n_warm=12, n_cool=5):
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 async def test_off_style_assets_rank_on_top_and_get_flagged(tmp_path):
     p = await planted(tmp_path)
     res, doc = await p.audit(warm_asset(999, 160))
@@ -128,6 +129,7 @@ async def test_outline_metric_separates_thick_from_thin(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 async def test_lut_recolour_cuts_palette_delta_e_by_40_percent(tmp_path):
     p = await planted(tmp_path)
     res, doc = await p.audit(warm_asset(999, 160), recolor=True)
@@ -144,6 +146,7 @@ async def test_lut_recolour_cuts_palette_delta_e_by_40_percent(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 async def test_restyle_is_queued_only_when_enabled_and_only_for_flagged(tmp_path):
     p = await planted(tmp_path)
     off, _ = await p.audit(warm_asset(999))
@@ -158,6 +161,7 @@ async def test_restyle_is_queued_only_when_enabled_and_only_for_flagged(tmp_path
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 async def test_finish_makes_new_images_and_keeps_alpha(tmp_path):
     p = await planted(tmp_path)
     res, doc = await p.audit(warm_asset(999), restyle=True)
@@ -240,6 +244,7 @@ class FakeClip:
 
 
 @pytest.mark.asyncio
+@pytest.mark.slow
 async def test_clip_metric_is_used_when_available_and_skipped_with_warning_otherwise(tmp_path):
     p = await planted(tmp_path, 6, 3)
     ref = await put_img(p.ctx, warm_asset(999), "anchor.png")
