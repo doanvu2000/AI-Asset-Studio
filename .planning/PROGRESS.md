@@ -92,3 +92,16 @@ Chủ nhân: "làm tiếp, hết thì nghĩ 3 chức năng mới, tối ưu UI-U
 - [x] WP-15FIX L1 pack chỉ PNG nhập android/ios → 201 + skipped (hết 500; PNG tĩnh chưa xuất được cho android/ios — exporter cần sheet), L2 Gallery focus, L3 palette rerun run đã kết thúc + 409 VN, L4 RO Gallery qua rAF, L5 đếm chưa sửa, xem trước audit có tiến độ + huỷ — 35 pass + typecheck (main chạy), ảnh mock docs/qa/r15/FIX — af524d7.
 - [x] Full pytest lượt 15: 1830 pass, 6 skip, 87 s. Typecheck sạch. Push.
 - [x] 13:40 Handoff mới: .planning/HANDOFF-2026-11-03-1340.md (1154 → archive).
+
+## Phiên 2026-11-03 13:4x — lượt 16
+Plan: PLAN-2026-11-03-r16.md. Commit từng phần + push cuối.
+- [x] Lượt 15 push (d74afef).
+- [~] WP-16A ảnh tĩnh android/ios, WP-16B xem trước shader, WP-16C flow nối — sonnet.
+- [x] WP-16A ảnh tĩnh PNG/JPG/WebP → android density + ios imageset (still_images, engine_ready engine=), pack không skip — 28 pass (main chạy) (main sửa: /steps/{id}/export trả engines android/ios cho ảnh tĩnh; giữ engine_ready listing pack như cũ vì test) — 53b0941. Nợ: tên Android icon_icon (prefix folder + stem).
+- [x] WP-16B xem trước shader: shader_preview.py port numpy 6 preset, webp 96px ≤24 khung, cache thumbs/shaders, 11–73 ms lạnh; ShaderPicker thumbnail động khi hover/focus, reduced-motion tĩnh — 18 pass + typecheck (main chạy) — 2798ba7.
+- [x] WP-16C Gửi tới → Chạy flow (prefill input.*), FlowRun output Gửi tới…, Ctrl+K chạy flow — typecheck sạch (main chạy), ảnh mock docs/qa/r16/WP-16C — 04d87a5.
+- [~] WP-16QA Electron thật (sonnet).
+- [x] WP-16QA Electron thật: af524d7 5/5, 16A, 16B, 16C ĐẠT; console sạch — docs/qa/r16/QA — 551bdb0. Lỗi: palette 'Chạy flow <tên>' không match (main sửa CommandPalette:129), toast hash rác tiếng Anh, Audit Ghi lập plan lại 40–57 s, tên Android lặp. [~] WP-16FIX sonnet.
+- [x] Palette match nhãn "Chạy flow <tên>" — 6c4f4f8. WP-16FIX: Audit Ghi dùng lại plan dry-run qua plan_id (PlanCache TTL 600 s, 8 entry, fingerprint mtime+size; app + MCP audit_fix), tên Android ảnh tĩnh không lặp tiền tố, toast VN tệp gửi sang hết hạn (main sửa: client/mock plan_id, MCP plan_id, timing test shader preview bỏ qua khi chạy xdist) — c4e50ea. CHƯA đo Ghi trước/sau trên Electron.
+- [x] Full pytest lượt 16: 1850 pass, 6 skip, 96 s; typecheck sạch. Push.
+- [x] 15:00 Handoff mới: .planning/HANDOFF-2026-11-03-1500.md (1340 → archive).
