@@ -1,0 +1,11 @@
+## WP-12G1 — DONE
+- Đã đổi: mới `export/android_fx.py` (7 kind), `export/android_fx_kotlin.py` (runtime Compose dùng chung), `tests/test_export_android_fx.py`; sửa `export/android.py` (hàm `_fx` + gate `has_res`), `store/pack_mobile.py` (AndroidPack chấp nhận folder chỉ có fx, README giữ dòng "fx ...").
+- Bố cục: ảnh+JSON -> `assets/{tiles,vfx,weather,minimap,cards,screens}/...` (đọc bằng AssetManager); `kotlin/AssetStudioFx.kt` (runtime chung, package theo opts) + `kotlin/<asset>_minimap|cards|screen.kt`; tile_anim/autotile thêm `*_map.json` thay .tmx (TileMapView).
+- Tiêu chí 4/4: pytest từng kind (tên file, schema JSON, asset tham chiếu tồn tại) / Compose mẫu compile / hồi quy không-fx / pytest liên quan.
+- Audit: diff android.py chỉ thêm `_fx` + `has_res`; AssetStudioAssets.kt chỉ sinh khi có res (gói fx-only không import R rỗng).
+- Review: gói không kind mới = byte-identical với android.py HEAD (so trực tiếp, 40 file ui+icon); kind thiếu file/emitter -> []; asset bắt đầu bằng số ("9 Deck") -> `_9_Deck_*`, class `A9DeckCards`; id thẻ trùng/ký tự `"` `$` được escape; pack merge không warning, runtime dedupe.
+- Test: `cd core && .venv/Scripts/python.exe -m pytest tests/test_export_android.py tests/test_export_android_fx.py tests/test_pack_mobile.py tests/test_export_flutter_fx.py tests/test_pack*.py -q` -> 53 passed. Compose: `FXA_OUT=... pytest tests/test_export_android_fx.py` dump 7 kind -> chép vào scratchpad r12g1/kt (AGP 8.13.2/Kotlin 2.4.21/BOM 2026.05.00), `gradle 8.14.3 compileDebugKotlin` -> BUILD SUCCESSFUL, 0 lỗi (kèm Usage.kt gọi mọi API trong README).
+- Nhìn: CHƯA CHẠY THIẾT BỊ (chỉ biên dịch, chưa kiểm hiển thị VFX/screen thật).
+- Hot file cần thêm: không (types.ts/server.py/manifest.json không đụng).
+- Ngoài phạm vi: weather/VFX world-space coi như local (origin cố định); vệt đạn (trail) chưa có như Flutter; chữ screen dùng font hệ thống, không autosize; iOS = WP-12G2.
+- Commit message đề xuất: feat(export): Jetpack Compose runtime and generators for tile_anim, autotile, vfx, weather, ui_screen, minimap and card_set on the android target

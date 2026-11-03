@@ -1,0 +1,26 @@
+## WP-12F: Theme UI từ style bible → Flutter / Compose / SwiftUI
+- Mục tiêu: dự án có style bible (engine/style_bible.py, api/style_bible.py) → sinh bộ theme code: Flutter `app_theme.dart` (ThemeData + ColorScheme light/dark, TextTheme dùng font bitmap/TTF của dự án nếu có), Compose `Theme.kt` (MaterialTheme light/dark), SwiftUI `AppTheme.swift` (Color/Font token + colorset). Palette trích CPU (k-means/ops/lut.py có sẵn) + chỉnh lightness để mọi cặp text/nền đạt WCAG AA ≥ 4.5. Có trong gói pack (đích flutter/android/ios) và có endpoint/hàm gọi lẻ.
+- Spec: R12 F (`.planning/wp/R12-RES-features.md` mục F).
+- Phạm vi file: core/studio_core/export/theme*.py (mới), export/flutter.py, export/android.py, export/ios.py (chỉ móc gọi theme), api/style_bible.py hoặc api/pack.py (endpoint/option `theme`), tests/test_theme_*.py (mới). | Cấm đụng (hot, ghi vào báo cáo): core/studio_core/mcp/server.py, core/studio_core/bootstrap/manifest.json, app/src/renderer/src/api/types.ts, docs sinh tự động, ops/normal2d.py, recipes/sprite-normal-map.yaml.
+- Phụ thuộc: không | Song song với: WP-12D | Worktree: không
+- Skill: flutter-tips-tricks (phần Material 3/ThemeData), android-compose-conventions (Theme). Comment ít theo CLAUDE.md.
+- Model: sonnet
+- Tiêu chí nghiệm thu:
+  - [ ] pytest test_theme_* pass: palette deterministic, mọi cặp onX/X ≥ 4.5 (light+dark), file sinh đúng tên/vị trí trong gói 3 đích.
+  - [ ] Style bible thiếu/không có palette → fallback palette trung tính, không crash.
+  - [ ] Flutter: chép app_theme.dart vào project thử (vd scratchpad cũ flv_app hoặc `flutter create` mới trong scratchpad) → `dart analyze` 0 issue + 1 widget test dựng MaterialApp(theme, darkTheme) pass.
+  - [ ] Android: Theme.kt biên dịch được (`compileDebugKotlin` trong project Compose mẫu ở scratchpad — tham khảo KT-1 lượt trước dùng AGP 8.13.2/Kotlin 2.4.21/BOM 2026.05.00) 0 lỗi.
+  - [ ] iOS: không có Xcode → test chuỗi cấu trúc + ghi "CHƯA BIÊN DỊCH".
+  - [ ] pytest export/pack liên quan không giảm.
+- Lệnh test: `cd core && .venv/Scripts/python.exe -m pytest tests/test_theme_*.py tests/test_pack*.py -q` (thư mục tests có thể ở core/tests — tự tìm).
+- Được build: flutter test, dart analyze, gradle compileDebugKotlin trong scratchpad. KHÔNG npm run dist.
+- Nhìn thấy được: không (code sinh ra) — nhưng xuất 1 ảnh swatch palette light/dark vào scratchpad để main xem.
+- Báo cáo: `.planning/wp/WP-12F-report.md`
+## Nhật ký
+- [1] export/theme.py + theme_dart/kotlin/swift.py viết xong (palette -> OKLCH roles, fit WCAG >= 4.5, light+dark); thử tay 5 palette min contrast 6.15.
+- [2] Hook: store/pack.py (EngineOptions.theme + _write_theme), api/pack.py (PackBody.theme), api/style_bible.py (GET /style/theme, theme_spec).
+- [3] tests/test_theme_export.py (16) + test_theme_pack.py (4) pass. Tiếp: flutter test, kotlin compile, swatch.
+- [4] Flutter: dart analyze 0 issue + widget test pass (flutter create flt trong scratchpad r12f).
+- [5] Kotlin: gradle compileDebugKotlin BUILD SUCCESSFUL (AGP 8.13.2/Kotlin 2.4.21/BOM 2026.05.00 + material3), cả bản có và không font.
+- [6] Test hồi quy 83 pass, swatch xong, báo cáo ghi WP-12F-report.md.
+- [7] Sửa error trùng primary đỏ (theme.py _error_seed) + test + swatch vẽ lại + cập nhật báo cáo.

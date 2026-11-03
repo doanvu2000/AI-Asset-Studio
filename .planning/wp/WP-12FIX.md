@@ -1,0 +1,22 @@
+## WP-12FIX: Sửa lỗi QA lượt 12 (docs/qa/r12/QA/RESULT.md)
+- Skill bắt buộc: bug-feedback-memory (project không phải Android/Flutter → ghi `.bug_feedback/`): SEARCH trước, fix, ghi vết sau.
+- Lỗi:
+  - L1 (cao): cold-start `#/new` khi core chưa sẵn sàng → "Core chưa sẵn sàng" + TypeError 'placeholder', splash kẹt kể cả khi chuyển route. Nghi stores/fit.ts:19 gọi api() đồng bộ ngoài promise; NewRunView.vue:69 `void fit.load()`. Sửa gốc: fit.load an toàn khi core chưa sẵn sàng (chờ ready hoặc trả sớm + nạp lại khi connected); NewRunView setup không vỡ; splash hết khi core lên. Rà nhanh các store khác có cùng mẫu gọi api() đồng bộ trong setup (sửa cùng mẫu nếu ≤ vài dòng/chỗ).
+  - L2 (thấp): recipes reload ~100–200 ms sau mount reset field vừa gõ (NewRunView, `#/new?recipe=…`). Giữ giá trị người dùng đã nhập khi recipe nạp lại cùng id.
+  - L3 (thấp): duyệt 1 card nhiều version → nhiều toast "Đã xuất" trùng; thư mục đích tên theo step "approve" thay vì tên asset. Gộp toast (theo project+thư mục trong ~1.5 s, như F3 gộp workflow-run) và đặt tên asset đúng (engine/auto_export.py dùng tên asset như ExportToEngine).
+  - L4 (thấp): toast lỗi auto-export lộ tiếng Anh thô ("nothing to export for this target…", store/bundle.py:472). Event mang `code`; app dịch sang tiếng Việt; trường hợp "không có gì để xuất cho engine này" → toast thông tin nhẹ, không phải lỗi.
+  - Q1: preset NewRun không lưu chế độ seeds (N, seed gốc) — NewRunView.vue:471 presetSnapshot: lưu + áp lại.
+  - Q2: duyệt gate ở RunDetail không làm version approved nên không tự xuất — kiểm thiết kế: nếu gate approve là "duyệt asset" theo ngữ nghĩa app thì auto-export cũng nghe sự kiện đó; nếu không, ghi lý do trong báo cáo, không đổi.
+- Phạm vi: app/src/renderer/src/stores/fit.ts (+ store khác cùng mẫu), views/NewRunView.vue, stores/events.ts, composables/autoExport.ts, core/studio_core/engine/auto_export.py, core/studio_core/store/bundle.py (chỉ thêm code lỗi), tests liên quan (test_auto_export.py), .bug_feedback/**. | Cấm: api/types.ts, api/client.ts (ghi patch), mcp/**.
+- Model: sonnet.
+- Tiêu chí:
+  - [ ] Test tái hiện (fail trước, pass sau) cho phần test được: L3 tên asset + 1 event/gộp, L4 code lỗi (pytest); L1/L2/Q1 kiểm bằng Electron thật + Playwright CDP như WP-12QA (cách chạy trong docs/qa/r12/QA/RESULT.md + .planning/wp/WP-12QA.md nhật ký) — ảnh SAU sửa vào docs/qa/r12/FIX/.
+  - [ ] typecheck sạch; pytest liên quan pass.
+- Nhìn thấy được: có.
+- Báo cáo: `.planning/wp/WP-12FIX-report.md`
+## Nhật ký
+- AUDIT+REVIEW xong: sửa fit.ts (guard transport + watch), NewRunView (L2 initialisedFor, Q1 seed params), bundle.py code, auto_export (name+code), autoExport.ts toast gộp/info, events.ts; test_auto_export +2 (fail trước/pass sau), 31 pytest pass, typecheck sạch
+- L1: fail-before tái hiện (HEAD fit.ts: pageerror 'Core chưa sẵn sàng' sau kill core + reload #/new); after: errs [] (docs/qa/r12/FIX/02_cold_after.png)
+- L2: fail-before/pass-after tất định (recipes.load(true) sau khi gõ: before '' / after giữ giá trị); 12/12 trial giữ; ảnh 03_new_typed_kept.png
+- Q1: preset lưu seed_count/seed_base + áp lại chuyển sang batch seeds (ảnh 04/05_preset_*.png; áp ở chế độ Một prompt → Nhiều prompt N=3 gốc 100)
+- L3/L4 Electron thật: 1 toast cho card 16 version, thư mục theo tên asset, toast info 'chưa có gì để xuất' (09_info_toast_nothing_to_export.png); dọn tiến trình/data dir; .bug_feedback 3 file

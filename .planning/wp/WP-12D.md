@@ -1,0 +1,24 @@
+## WP-12D: Normal map từ depth AI (MoGe-2-small) cho đèn 2D
+- Mục tiêu: recipe sprite-normal-map có option `method: ai | filter` (mặc định `auto` = ai nếu model đã cài, không thì filter hiện tại ops/normal2d.py). AI: ước lượng normal (MoGe-2 ViT-S normal, Ruicheng/moge-2-vits-normal) hoặc depth→normal (dự phòng Depth-Anything-V2-Small) trên CPU, mask theo alpha, làm mượt, ghi normal map cùng định dạng output cũ để export/flutter_shaders.py lit_sprite đọc như cũ.
+- Spec: R12 D (`.planning/wp/R12-RES-features.md` mục D).
+- Model chạy venv RIÊNG (vd `L:\AI\setup\normal-ai\` hoặc theo cách các adapter subprocess có sẵn trong core làm — tìm adapter subprocess venv riêng trước khi tạo mới), gọi subprocess từ core; KHÔNG cài torch vào core/.venv. Tải weights về ổ L:/F: (không C:, C: đầy).
+- LICENSE: đọc file LICENSE gốc (GitHub microsoft/MoGe + model card HF) trước khi dùng; chỉ MIT/Apache. Ghi license, commercial, nguồn vào báo cáo; KHÔNG dùng bản Base/Large/Giant Depth-Anything (CC-BY-NC).
+- Phạm vi file: core/studio_core/ops/normal2d.py, core/studio_core/adapters/normal_ai.py (mới, hoặc tên hợp với adapter hiện có), core/studio_core/recipes/sprite-normal-map.yaml, tools/script venv riêng (scripts/ hoặc setup/), tests/test_normal*.py. | Cấm đụng (hot): core/studio_core/bootstrap/manifest.json (ghi patch pack mới + hw vào báo cáo, main gộp), mcp/server.py, app/src/renderer/src/api/types.ts, export/flutter*.py, export/android.py, export/ios.py, docs sinh tự động.
+- GPU: KHÔNG dùng GPU (GPU dùng chung app khác). CPU only.
+- Phụ thuộc: không | Song song với: WP-12F | Worktree: không
+- Model agent: sonnet
+- Tiêu chí nghiệm thu:
+  - [ ] 10 sprite mẫu (lấy từ data/ hoặc output live cũ trong scratchpad lượt trước — tìm *.png sprite có alpha; gồm nhân vật 8dir, prop, icon): normal hợp lệ |n|=1±0.02 trong vùng alpha, alpha giữ nguyên, ≤ 5 s/ảnh CPU (ghi thời gian thật).
+  - [ ] Ảnh so sánh filter vs ai + render lit 1 đèn (dùng hàm CPU sẵn có cho golden lit_sprite) → scratchpad ảnh compare.png cho main xem.
+  - [ ] Thiếu model/venv → fallback filter + warning trong report run, không crash; test mock subprocess.
+  - [ ] Cache key gồm method + model.
+  - [ ] pytest test_normal* + test liên quan sprite-normal-map/flutter_shaders pass.
+- Lệnh test: `cd core && .venv/Scripts/python.exe -m pytest <tests normal liên quan> -q`.
+- Nhìn thấy được: có (ảnh normal/lit) → ghi đường dẫn compare.png.
+- Báo cáo: `.planning/wp/WP-12D-report.md`
+## Nhật ký
+- 08:29 Audit xong: ops/normal2d.py op.normal2d, cache_material=op_source_hash. Venv L:\AI\setup\normal-ai\.venv (torch 2.15 cpu, utils3d pin), moge v2 code (commit b942f00) vendored vào L:\AI\setup\normal-ai\src\moge. License MIT (repo+HF) xác nhận.
+- samples: 10 png copy vào scratchpad/r12d/samples (3 char a2/full, iso_ne, 4 prop wp7, 2 icon)
+- 08:36 Viết adapters/normal_ai.py + normal_ai_worker.py, sửa ops/normal2d.py (method auto|ai|filter, version 2, cache_material gồm method+model snapshot). Worker thật: ~3s/ảnh CPU (batch 10), raw normal đẹp.
+- 08:39 eval 10 sprite: tune res_level 3/long_side 384 để ≤5s; load ~3s + infer ~2.3s
+- 08:48 Test 20 pass + 188 liên quan, compare.png xong, báo cáo ghi WP-12D-report.md

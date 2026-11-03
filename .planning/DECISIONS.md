@@ -1,0 +1,1 @@
+- 2026-11-03 · Lượt 12: commit từng phần + push cuối đợt · chủ nhân chọn qua AskUserQuestion
