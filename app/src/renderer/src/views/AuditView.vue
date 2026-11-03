@@ -23,6 +23,7 @@ const route = useRoute()
 const conn = useConnection()
 const toasts = useToasts()
 const scanLive = useScanProgress('audit')
+const fixLive = useScanProgress('audit_fix')
 
 function readFolder(): string {
   try {
@@ -152,7 +153,10 @@ async function apply(): Promise<void> {
   applying.value = true
   try {
     const r = await api().auditFix({ path: report.value.project, actions: actions(), dry_run: false })
-    toasts.push(`Đã ghi ${r.written ?? 0} file import${r.skipped ? `, bỏ qua ${r.skipped}` : ''} · backup ${r.backup_id ?? ''}`, r.written ? 'success' : 'info')
+    if (r.cancelled) {
+      const left = r.skipped ?? 0
+      toasts.push(`Đã dừng: ghi ${r.written ?? 0} file, ${left} file chưa sửa${r.backup_id ? ` · hoàn tác được ở backup ${r.backup_id}` : ''}`, 'info', 6000)
+    } else toasts.push(`Đã ghi ${r.written ?? 0} file import${r.skipped ? `, bỏ qua ${r.skipped}` : ''} · backup ${r.backup_id ?? ''}`, r.written ? 'success' : 'info')
     if (r.report) setReport(r.report)
     else plan.value = null
     await loadBackups()
@@ -337,7 +341,8 @@ function reveal(p: string): void {
                   <button type="button" class="btn btn-primary" :disabled="applying || !plan.files?.some((f) => f.action === 'write')" @click="apply">
                     <LoaderCircle v-if="applying" class="spin" /><Check v-else /> Ghi
                   </button>
-                  <button type="button" class="btn" :disabled="applying" @click="plan = null">Huỷ</button>
+                  <button v-if="!applying" type="button" class="btn" @click="plan = null">Huỷ</button>
+                  <ScanProgressBar v-else class="fixprog" verb="sửa" :progress="fixLive.progress.value" :cancelling="fixLive.cancelling.value" @cancel="fixLive.cancel" />
                   <ul v-if="plan.files?.some((f) => f.action === 'skip')" class="caption mono skipped">
                     <li v-for="f in plan.files.filter((x) => x.action === 'skip')" :key="f.rel">{{ f.rel }} — {{ f.why }}</li>
                   </ul>
@@ -551,6 +556,9 @@ function reveal(p: string): void {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
+}
+.fixprog {
+  flex-basis: 100%;
 }
 .confirm {
   display: flex;

@@ -5,9 +5,11 @@ import { ExternalLink, LoaderCircle, ScanSearch, Sparkles, Wand2 } from '@lucide
 import type { ProjectQaAsset, ProjectQaGrade, ProjectQaReport } from '@/api/types'
 import EmptyState from '@/components/EmptyState.vue'
 import BlobImage from '@/components/BlobImage.vue'
+import ScanProgressBar from '@/components/ScanProgressBar.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import RelTime from '@/components/RelTime.vue'
 import DuplicatesPanel from '@/components/DuplicatesPanel.vue'
+import { useScanProgress } from '@/composables/scanProgress'
 import { api } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
 
@@ -18,6 +20,7 @@ const toasts = useToasts()
 const GRADE_LABEL: Record<ProjectQaGrade, string> = { ok: 'Đồng bộ', warn: 'Cần xem', bad: 'Lệch', skip: 'Bỏ qua' }
 const GRADE_ORDER: ProjectQaGrade[] = ['bad', 'warn', 'ok', 'skip']
 
+const live = useScanProgress('project_qa')
 const report = ref<ProjectQaReport | null>(null)
 const loading = ref(false)
 const loadError = ref<string | null>(null)
@@ -48,7 +51,8 @@ async function check(): Promise<void> {
     report.value = await api().runProjectQa(props.projectId, { only_approved: onlyApproved.value, vision: vision.value })
     if (report.value.vision?.error) toasts.push(`Claude chưa nhận xét được: ${report.value.vision.error.message}`, 'error', 6000)
   } catch (e) {
-    toasts.error(e, 'Không kiểm tra được dự án')
+    if ((e as { code?: string }).code === 'cancelled') toasts.push('Đã huỷ kiểm tra, giữ báo cáo cũ', 'info', 2400)
+    else toasts.error(e, 'Không kiểm tra được dự án')
   } finally {
     running.value = false
   }
@@ -91,6 +95,8 @@ const ref_ = computed(() => report.value?.reference)
         </button>
       </div>
     </div>
+
+    <ScanProgressBar v-if="running && live.progress.value" class="qaprog" unit="ảnh" verb="đo" :progress="live.progress.value" :cancelling="live.cancelling.value" @cancel="live.cancel" />
 
     <p v-if="loading && !report" class="caption state" role="status"><LoaderCircle class="spin" :size="14" /> Đang tải báo cáo…</p>
     <EmptyState v-else-if="loadError" :icon="ScanSearch" title="Không tải được báo cáo" :text="loadError">
@@ -165,6 +171,9 @@ const ref_ = computed(() => report.value?.reference)
 .pqa {
   display: grid;
   gap: 12px;
+}
+.qaprog {
+  width: min(420px, 100%);
 }
 .bar {
   display: flex;

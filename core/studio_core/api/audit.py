@@ -133,9 +133,14 @@ async def fix(request: Request, body: FixBody) -> Response:
     async with _lock:
         try:
             if importer:
-                out = await asyncio.to_thread(au.apply_fixes, report, importer, au.backup_dir(_data(request)),
-                                              body.dry_run, {"path": body.path})
-            if atlases:
+                if body.dry_run:
+                    out = await asyncio.to_thread(au.apply_fixes, report, importer, au.backup_dir(_data(request)),
+                                                  True, {"path": body.path})
+                else:
+                    with jobs_of(request).open("audit_fix", body.path) as job:
+                        out = await asyncio.to_thread(au.apply_fixes, report, importer, au.backup_dir(_data(request)),
+                                                      False, {"path": body.path}, job)
+            if atlases and not out.get("cancelled"):
                 root = Path(getattr(request.app.state.settings, "app_exports_dir", _data(request) / "exports" / "app"))
                 out["atlases"] = []
                 for a in atlases:
@@ -147,6 +152,8 @@ async def fix(request: Request, body: FixBody) -> Response:
                         root / "audit_atlas", a.get("max_size") or 2048))
         except au.AuditError as e:
             raise ApiError(409, "fix_failed", str(e)) from e
+        if out.get("cancelled") and not out.get("written"):
+            return OrjsonResponse(out)
         if not body.dry_run and out.get("written"):
             opts = report.get("options") or {}
             out["report"] = await _scan(request, ScanBody(path=report["root"], engine=opts.get("engine", "auto"),

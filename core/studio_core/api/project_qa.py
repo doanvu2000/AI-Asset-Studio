@@ -20,6 +20,7 @@ from studio_core.api.errors import ApiError, OrjsonResponse
 from studio_core.api.routes import META_KEY, _engine_call
 from studio_core.contracts import DEFAULT_PROJECT, ProjectRow, StepError
 from studio_core.engine import project_qa as pq
+from studio_core.scan_jobs import ScanCancelled, jobs_of
 from studio_core.store.repo import SqliteRepo
 
 log = logging.getLogger(__name__)
@@ -88,9 +89,11 @@ def _open(blobs: Any, h: str) -> Image.Image | None:
         return None
 
 
-def _analyse(blobs: Any, versions: list[Any], style: Any) -> dict[str, Any]:
+def _analyse(blobs: Any, versions: list[Any], style: Any, progress: Any = None) -> dict[str, Any]:
     measures: list[pq.Measure] = []
-    for v in versions:
+    for i, v in enumerate(versions):
+        if progress is not None:
+            progress(i, len(versions), "files")
         img = _open(blobs, v.blob.hash)
         if img is None:
             measures.append(pq.Measure(v.id, ok=False, note="Không đọc được ảnh"))
@@ -121,7 +124,11 @@ async def run_report(request: Request, project_id: str, body: QaBody) -> Respons
         all_versions = await _repo(request).list_versions(project_id=project_id, limit=5000)
         versions = pq.pick_versions(all_versions, body.only_approved, body.limit)
         blobs = request.app.state.blobs
-        report = await asyncio.to_thread(_analyse, blobs, versions, p.style if p else None)
+        try:
+            with jobs_of(request).open("project_qa", project_id) as job:
+                report = await asyncio.to_thread(_analyse, blobs, versions, p.style if p else None, job)
+        except ScanCancelled as e:
+            raise ApiError(409, "cancelled", "Đã huỷ kiểm tra") from e
         report.update({"project_id": project_id, "only_approved": body.only_approved})
         if body.vision and report["assets"]:
             shown = [a for a in report["assets"] if a["score"] is not None][:MAX_VISION_ASSETS]

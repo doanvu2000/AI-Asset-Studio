@@ -70,6 +70,7 @@ export interface AuditFixResult {
   gpu_before?: number
   gpu_after?: number
   backup_id?: string
+  cancelled?: boolean
   files?: { rel: string; action: 'write' | 'skip'; why?: string; fixes?: string[] }[]
   atlases?: { folder?: string; files?: string[]; planned?: boolean }[]
   report?: AuditReport

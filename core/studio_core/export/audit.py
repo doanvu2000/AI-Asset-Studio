@@ -20,6 +20,7 @@ from PIL import Image
 from studio_core.export import mobile
 from studio_core.export.audit_media import MeshError, audio_seconds, mesh_tris
 from studio_core.export.restyle import SKIP_DIRS, _is_link, file_hash, project_root
+from studio_core.scan_jobs import ScanCancelled
 
 REPORT_TYPE = "asset-studio/audit"
 FIX_TYPE = "asset-studio/audit-fix"
@@ -930,9 +931,10 @@ def _planned_gpu(engine: str, row: dict[str, Any], acts: list[dict[str, Any]]) -
 
 
 def apply_fixes(report: dict[str, Any], actions: list[dict[str, Any]], backups: Path, dry_run: bool = True,
-                source: dict[str, Any] | None = None) -> dict[str, Any]:
+                source: dict[str, Any] | None = None, progress: Any = None) -> dict[str, Any]:
     """dry_run plans only; otherwise every importer file to change goes into one verified zip first, then each is
-    replaced atomically and a manifest is kept for undo."""
+    replaced atomically and a manifest is kept for undo. `progress` may cancel between two files: the files already
+    written stay (undoable), the rest are marked skipped and doc["cancelled"] is set."""
     proj = Path(report["project"])
     plan = plan_fixes(report, actions)
     todo = [r for r in plan if r["action"] == "write"]
@@ -955,8 +957,17 @@ def apply_fixes(report: dict[str, Any], actions: list[dict[str, Any]], backups: 
             raise AuditError("backup zip failed verification; nothing written")
     doc.update(backup_id=bid, backup=str(zpath))
     written = 0
+    pending = [f for f in files if f["action"] == "write"]
     try:
-        for r, f in zip(todo, (f for f in files if f["action"] == "write")):
+        for i, (r, f) in enumerate(zip(todo, pending)):
+            if progress is not None:
+                try:
+                    progress(i, len(todo), "files")
+                except ScanCancelled:
+                    doc["cancelled"] = True
+                    for left in pending[i:]:
+                        left.update(action="skip", why="cancelled")
+                    break
             dst = safe_importer(proj, r["rel"], report["engine"])
             if file_hash(dst) != r["old"]:
                 f.update(action="skip", why="importer file changed during the fix")
@@ -967,7 +978,12 @@ def apply_fixes(report: dict[str, Any], actions: list[dict[str, Any]], backups: 
     finally:
         doc["written"] = written
         doc["skipped"] = len(files) - written
-        (backups / f"{bid}.json").write_text(json.dumps(doc, indent=1, ensure_ascii=False), encoding="utf-8")
+        if doc.get("cancelled") and not written:
+            zpath.unlink(missing_ok=True)
+            doc.pop("backup_id", None)
+            doc.pop("backup", None)
+        else:
+            (backups / f"{bid}.json").write_text(json.dumps(doc, indent=1, ensure_ascii=False), encoding="utf-8")
     return doc
 
 

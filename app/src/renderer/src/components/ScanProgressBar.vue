@@ -7,11 +7,13 @@ const props = defineProps<{
   progress: ScanProgress | null
   cancelling?: boolean
   unit?: string
+  verb?: string
   compact?: boolean
 }>()
 defineEmits<{ cancel: [] }>()
 
 const unit = computed(() => props.unit ?? 'tệp')
+const verb = computed(() => props.verb ?? 'quét')
 const known = computed(() => !!props.progress && props.progress.total > 0)
 const pct = computed(() => (known.value ? Math.min(100, (100 * props.progress!.done) / props.progress!.total) : 0))
 const label = computed(() => {
@@ -20,7 +22,7 @@ const label = computed(() => {
   if (!p || p.phase === 'start') return 'Đang chuẩn bị…'
   if (p.phase === 'walk') return `Đang đọc cấu trúc thư mục · ${p.done.toLocaleString('vi-VN')} ${unit.value}`
   if (p.phase === 'analyze') return 'Đang phân tích ảnh trùng và asset thừa…'
-  return `Đã quét ${p.done.toLocaleString('vi-VN')}/${p.total.toLocaleString('vi-VN')} ${unit.value}`
+  return `Đã ${verb.value} ${p.done.toLocaleString('vi-VN')}/${p.total.toLocaleString('vi-VN')} ${unit.value}`
 })
 </script>
 
@@ -30,7 +32,7 @@ const label = computed(() => {
       <span class="lbl num" aria-live="polite">{{ label }}</span>
       <button type="button" class="btn btn-plain cancel" :disabled="cancelling" @click="$emit('cancel')"><X :size="14" /> Huỷ</button>
     </div>
-    <div class="bar" role="progressbar" aria-label="Tiến độ quét" :aria-valuemin="0" :aria-valuemax="100" :aria-valuenow="known ? Math.round(pct) : undefined">
+    <div class="bar" role="progressbar" aria-label="Tiến độ" :aria-valuemin="0" :aria-valuemax="100" :aria-valuenow="known ? Math.round(pct) : undefined">
       <span v-if="known && progress?.phase === 'files'" class="fill" :style="{ transform: `scaleX(${pct / 100})` }" />
       <span v-else class="fill indet" />
     </div>

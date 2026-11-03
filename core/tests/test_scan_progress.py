@@ -151,3 +151,100 @@ def test_phase_handover_reports_full_count() -> None:
     files = [e for e in bus.events if e["phase"] == "files"]
     assert files[-1]["done"] == 50 and files[-1]["total"] == 50
     assert bus.events[-1]["phase"] == "analyze"
+
+
+def _fix_acts() -> list[dict]:
+    return [{"type": "max_size", "rel": f"Assets/Art/{n}.png", "max_size": 256} for n in ("bg", "hero", "icon")]
+
+
+def test_fix_progress_ordered_and_cancel_keeps_written_undoable(tmp_path: Path) -> None:
+    proj = _unity(tmp_path)
+    rep = au.scan(str(proj / "Assets"))
+    metas = {n: (proj / "Assets/Art" / f"{n}.png.meta") for n in ("bg", "hero", "icon")}
+    before = {n: p.read_bytes() for n, p in metas.items()}
+
+    ticks: list[tuple[int, int, str]] = []
+    full = au.apply_fixes(rep, _fix_acts(), tmp_path / "bk0", False, progress=lambda d, t, p: ticks.append((d, t, p)))
+    assert full["written"] == 3 and not full.get("cancelled")
+    assert ticks == [(0, 3, "files"), (1, 3, "files"), (2, 3, "files")]
+    au.undo(tmp_path / "bk0", full["backup_id"])
+    assert {n: p.read_bytes() for n, p in metas.items()} == before
+
+    bus = MemoryEventBus()
+    jobs = ScanJobs(bus)
+    with jobs.open("audit_fix", "k") as job:
+        def stop_at_two(d: int, t: int, p: str) -> None:
+            if d == 2:
+                jobs.cancel(kind="audit_fix")
+            job(d, t, p)
+
+        doc = au.apply_fixes(rep, _fix_acts(), tmp_path / "bk", False, progress=stop_at_two)
+    assert doc["cancelled"] and doc["written"] == 2 and doc["skipped"] == 1
+    assert [f["action"] for f in doc["files"]].count("skip") == 1 and doc["files"][-1]["why"] == "cancelled"
+    assert _scan_events(bus)[-1]["phase"] == "cancelled"
+    changed = {n for n, p in metas.items() if p.read_bytes() != before[n]}
+    assert len(changed) == 2
+    out = au.undo(tmp_path / "bk", doc["backup_id"])
+    assert len(out["restored"]) == 2 and out["conflicts"] == []
+    assert {n: p.read_bytes() for n, p in metas.items()} == before
+
+
+def test_fix_cancelled_before_any_write_leaves_no_backup(tmp_path: Path) -> None:
+    proj = _unity(tmp_path)
+    rep = au.scan(str(proj / "Assets"))
+
+    def stop(d: int, t: int, p: str) -> None:
+        raise ScanCancelled()
+
+    doc = au.apply_fixes(rep, _fix_acts(), tmp_path / "bk", False, progress=stop)
+    assert doc["cancelled"] and doc["written"] == 0 and "backup_id" not in doc
+    assert list((tmp_path / "bk").glob("*")) == []
+
+
+async def test_api_fix_emits_audit_fix_events(app_ctx, tmp_path: Path) -> None:  # noqa: F811
+    app, client, _ = app_ctx
+    proj = _unity(tmp_path)
+    await client.post("/api/audit", headers=AUTH, json={"path": str(proj / "Assets"), "duplicates": False})
+    n0 = len(_scan_events(app.state.bus))
+    r = await client.post("/api/audit/fix", headers=AUTH, json={"path": str(proj), "actions": _fix_acts(), "dry_run": False})
+    assert r.status_code == 200 and r.json()["written"] == 3
+    ev = [e for e in _scan_events(app.state.bus)[n0:] if e["kind"] == "audit_fix"]
+    assert ev[0]["phase"] == "start" and ev[-1]["phase"] == "done"
+    assert [e["done"] for e in ev if e["phase"] == "files"][0] == 0 and ev[0]["key"] == str(proj)
+
+
+def test_project_qa_analyse_reports_then_cancels(tmp_path: Path) -> None:
+    from studio_core.api.project_qa import _analyse
+    from studio_core.contracts import BlobRef, VersionRow
+
+    class Blobs:
+        def path(self, h: str) -> Path:
+            return tmp_path / f"{h}.png"
+
+    rows = []
+    for i in range(6):
+        h = f"{i:064x}"
+        Image.new("RGBA", (32, 32), (i * 30, 90, 40, 255)).save(tmp_path / f"{h}.png")
+        rows.append(VersionRow(id=f"v{i}", project_id="p", asset_name="a", run_id=f"r{i}", step_id="s",
+                               blob=BlobRef(hash=h, mime="image/png", size=1, width=32, height=32, name="x.png"),
+                               created_at=float(i)))
+    ticks: list[tuple[int, int, str]] = []
+    _analyse(Blobs(), rows, None, lambda d, t, p: ticks.append((d, t, p)))
+    assert ticks == [(i, 6, "files") for i in range(6)]
+
+    bus = MemoryEventBus()
+    jobs = ScanJobs(bus)
+    with pytest.raises(ScanCancelled):
+        with jobs.open("project_qa", "p") as job:
+            seen: list[int] = []
+
+            def tick(d: int, t: int, p: str) -> None:
+                seen.append(d)
+                if d == 3:
+                    jobs.cancel(kind="project_qa")
+                job(d, t, p)
+
+            _analyse(Blobs(), rows, None, tick)
+    ev = _scan_events(bus)
+    assert ev[-1]["phase"] == "cancelled" and ev[-1]["kind"] == "project_qa"
+    assert seen == [0, 1, 2, 3]
