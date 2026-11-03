@@ -197,3 +197,15 @@ async def test_rerun_route(tmp_path: Path, exc: Exception | None, status: int, c
                 assert (await c.post("/api/runs/abc/rerun", headers=h)).status_code == 201
                 assert stub.calls[-1] == ("abc", "new")
                 assert (await c.post("/api/runs/abc/rerun", json={"seed": "x"}, headers=h)).status_code == 422
+
+
+async def test_rerun_keeps_gate_policy_and_source(tmp_path: Path) -> None:
+    from studio_core.engine.runner import META_KEY
+
+    env = _env(tmp_path)
+    r1 = await env.engine.start_run("sd", {}, {META_KEY: {"source": "mcp", "gate_policy": "auto_first"}})
+    await env.engine.wait_idle(r1)
+    r2 = await env.engine.rerun_run(r1)
+    await env.engine.wait_idle(r2)
+    meta = env.repo.runs[r2].params[META_KEY]
+    assert meta["gate_policy"] == "auto_first" and meta["source"] == "mcp"

@@ -408,7 +408,7 @@ class StudioEngine:
             if unknown:
                 raise SeedUnknownError(f"run {run_id} did not record the seed of step(s) {', '.join(unknown)}; "
                                        "rerun with seed 'new' or set the seed by hand")
-        meta = {k: old_meta[k] for k in (CHAIN_KEY, sb.OPT_OUT_KEY) if k in old_meta}
+        meta = {k: old_meta[k] for k in (CHAIN_KEY, sb.OPT_OUT_KEY, "source", "gate_policy") if k in old_meta}
         if meta:
             params[META_KEY] = meta
         inputs = {**run.inputs, **(old_meta.get(BASE_KEY) or {})}
