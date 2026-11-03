@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from pathlib import Path
 
@@ -22,13 +23,15 @@ authed = [Depends(require_token)]
 RECIPE = "library-import"
 IMPORT_TIMEOUT_S = 120.0
 MAX_PATHS = 200
+HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".glb", ".gltf", ".fbx", ".obj", ".json", ".atlas",
                         ".mp4", ".webm", ".mov", ".wav", ".mp3", ".ogg"})
 FINISHED = (RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.INTERRUPTED)
 
 
 class ImportBody(BaseModel):
-    paths: list[str] = Field(max_length=MAX_PATHS)
+    paths: list[str] = Field(default_factory=list, max_length=MAX_PATHS)
+    hashes: list[str] = Field(default_factory=list, max_length=MAX_PATHS)
     project_id: str | None = None
     asset_name: str | None = Field(default=None, max_length=200)
     approve: bool = True
@@ -83,17 +86,35 @@ def _checked(paths: list[str]) -> list[Path]:
     return out
 
 
+async def _checked_hashes(state, hashes: list[str]) -> list[tuple[str, str]]:
+    """Blob hashes (regex + present in the store) with their stored names; never a path from the caller."""
+    out: list[tuple[str, str]] = []
+    for h in dict.fromkeys(hashes):
+        if not isinstance(h, str) or not HASH_RE.match(h):
+            raise ApiError(400, "invalid_hash", f"invalid blob hash: {h!r}")
+        ref = await state.blobs.get(h)
+        if ref is None or not await asyncio.to_thread(state.blobs.path(h).is_file):
+            raise ApiError(404, "not_found", f"unknown blob: {h}")
+        out.append((h, ref.name or h[:12]))
+    return out
+
+
 @router.post("/library/import", dependencies=authed)
 async def import_files(request: Request, body: ImportBody) -> Response:
     state = request.app.state
-    files = await asyncio.to_thread(_checked, body.paths)
+    if not body.paths and not body.hashes:
+        raise ApiError(400, "invalid", "paths or hashes must list at least one item")
+    files = await asyncio.to_thread(_checked, body.paths) if body.paths else []
+    blobs = await _checked_hashes(state, body.hashes)
     project_id = body.project_id or DEFAULT_PROJECT
     if project_id != DEFAULT_PROJECT and await state.repo.get_project(project_id) is None:
         raise ApiError(404, "not_found", f"unknown project: {project_id}")
     refs = [(await state.blobs.put_file(p, name=p.name)).hash for p in files]
+    refs += [h for h, _ in blobs if h not in refs]
+    first_stem = files[0].stem if files else Path(blobs[0][1]).stem
     try:
         run_id = await state.engine.start_run(
-            RECIPE, {"files": refs, "review": False}, None, project_id=project_id, title=body.asset_name or files[0].stem)
+            RECIPE, {"files": refs, "review": False}, None, project_id=project_id, title=body.asset_name or first_stem)
     except LookupError as e:
         raise ApiError(404, "not_found", str(e.args[0]) if e.args else "recipe not found") from e
     deadline = time.monotonic() + IMPORT_TIMEOUT_S

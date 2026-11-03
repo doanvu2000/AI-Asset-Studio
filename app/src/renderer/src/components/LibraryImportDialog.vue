@@ -2,14 +2,14 @@
 import { computed, ref, watch } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { Download, LoaderCircle, X } from '@lucide/vue'
-import { NO_PROJECT } from '@/api/types'
+import { NO_PROJECT, type BlobRef } from '@/api/types'
 import ProjectSelect from './ProjectSelect.vue'
 import { api } from '@/stores/connection'
 import { useProjects } from '@/stores/projects'
 import { useToasts } from '@/stores/toasts'
 import { useFocusTrap } from '@/composables/focusTrap'
 
-const props = defineProps<{ open: boolean; paths: string[]; projectId?: string }>()
+const props = defineProps<{ open: boolean; paths?: string[]; blobs?: BlobRef[]; projectId?: string }>()
 const emit = defineEmits<{ close: [] }>()
 
 const toasts = useToasts()
@@ -25,7 +25,9 @@ const error = ref<string | null>(null)
 
 const SHOWN = 5
 const nameOf = (p: string): string => p.split(/[\\/]/).pop() ?? p
-const shown = computed(() => props.paths.slice(0, SHOWN))
+const names = computed(() => [...(props.paths ?? []).map(nameOf), ...(props.blobs ?? []).map((b) => b.name || `${b.hash.slice(0, 12)}…`)])
+const total = computed(() => names.value.length)
+const shown = computed(() => names.value.slice(0, SHOWN))
 
 watch(
   () => props.open,
@@ -38,11 +40,11 @@ watch(
 )
 
 async function submit(): Promise<void> {
-  if (busy.value || !props.paths.length) return
+  if (busy.value || !total.value) return
   busy.value = true
   error.value = null
   try {
-    const res = await api().importToLibrary({ paths: props.paths, project_id: project.value, approve: approve.value })
+    const res = await api().importToLibrary({ paths: props.paths?.length ? props.paths : undefined, hashes: props.blobs?.length ? props.blobs.map((b) => b.hash) : undefined, project_id: project.value, approve: approve.value })
     toasts.push(`Đã nhập ${res.versions.length} file vào thư viện${approve.value ? ' (đã duyệt)' : ''}`, 'success', 8000, {
       label: 'Mở Thư viện',
       to: { path: '/gallery', query: { project: res.project_id, run: res.run_id, focus: res.versions[0]?.version_id } }
@@ -79,14 +81,14 @@ useEventListener(
             <Download class="ico" aria-hidden="true" />
             <div class="who">
               <h2 id="li-title" class="headline">Nhập vào thư viện</h2>
-              <span class="caption">{{ paths.length }} file trên đĩa thành phiên bản trong dự án.</span>
+              <span class="caption">{{ total }} file thành phiên bản trong dự án.</span>
             </div>
             <button ref="closeBtn" type="button" class="btn btn-plain btn-icon" aria-label="Đóng (Esc)" title="Đóng (Esc)" :disabled="busy" @click="emit('close')"><X /></button>
           </header>
           <div class="body">
             <ul class="files mono caption">
-              <li v-for="p in shown" :key="p" :title="p">{{ nameOf(p) }}</li>
-              <li v-if="paths.length > SHOWN">… và {{ paths.length - SHOWN }} file nữa</li>
+              <li v-for="(n, i) in shown" :key="i" :title="n">{{ n }}</li>
+              <li v-if="total > SHOWN">… và {{ total - SHOWN }} file nữa</li>
             </ul>
             <div class="row">
               <span class="section-label">Dự án</span>
@@ -97,8 +99,8 @@ useEventListener(
           </div>
           <footer class="foot">
             <button type="button" class="btn" :disabled="busy" @click="emit('close')">Huỷ</button>
-            <button type="button" class="btn btn-primary" :disabled="busy || !paths.length" @click="submit">
-              <LoaderCircle v-if="busy" class="spin" /><Download v-else /> Nhập {{ paths.length }} file
+            <button type="button" class="btn btn-primary" :disabled="busy || !total" @click="submit">
+              <LoaderCircle v-if="busy" class="spin" /><Download v-else /> Nhập {{ total }} file
             </button>
           </footer>
         </section>

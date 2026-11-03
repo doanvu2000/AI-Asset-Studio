@@ -1301,7 +1301,9 @@ export interface FlowBatchBody {
 
 
 export interface ImportToLibraryBody {
-  paths: string[]
+  paths?: string[]
+  /** Blobs already in the store (e.g. a gate candidate); core checks them, no disk path involved. */
+  hashes?: string[]
   project_id?: string
   asset_name?: string
   /** Default true: imported versions are marked approved. */

@@ -21,6 +21,8 @@ export interface SendSource {
   files?: string[]
   /** Absolute paths of files outside the Library that "Nhập vào thư viện" copies in. */
   importPaths?: string[]
+  /** Blobs already in the store that "Nhập vào thư viện" turns into versions (gate candidates). */
+  importBlobs?: BlobRef[]
   /** Hide destinations that would point back at the screen the menu sits on. */
   omit?: SendTarget[]
 }
@@ -87,8 +89,9 @@ export function sendItems(src: SendSource, recipes: RecipeInfo[], project?: Proj
   if (folder && !skip.has('audit'))
     out.push({ id: 'audit', target: 'audit', label: 'Kiểm tra project', hint: src.folder ? undefined : 'thư mục xuất của dự án', to: { path: '/audit', query: { folder, scan: '1' } } })
   if (src.stepIds?.length && pid && !skip.has('pack')) out.push({ id: 'pack', target: 'pack', label: 'Đóng gói asset pack', hint: `${src.stepIds.length} asset` })
-  if (src.importPaths?.length && !skip.has('import'))
-    out.push({ id: 'import', target: 'import', label: 'Nhập vào thư viện', hint: `${src.importPaths.length} file` })
+  const importCount = (src.importPaths?.length ?? 0) + (src.importBlobs?.length ?? 0)
+  if (importCount && !skip.has('import'))
+    out.push({ id: 'import', target: 'import', label: 'Nhập vào thư viện', hint: importCount === 1 && src.importBlobs?.[0]?.name ? src.importBlobs[0].name : `${importCount} file` })
   if ((pid || src.runId || src.versionIds?.length) && !skip.has('gallery')) {
     const query: LocationQueryRaw = { project: pid, run: src.runId, focus: src.versionIds?.[0] }
     out.push({ id: 'gallery', target: 'gallery', label: 'Thư viện', hint: src.versionIds?.length ? 'làm nổi bản này' : src.runId ? 'bản của lượt chạy' : 'lọc theo dự án', to: { path: '/gallery', query } })

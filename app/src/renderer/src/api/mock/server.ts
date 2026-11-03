@@ -1326,8 +1326,13 @@ export class MockCore implements StudioApi, EventStream {
   async importToLibrary(body: ImportToLibraryBody): Promise<ImportToLibraryResult> {
     await this.ready
     await sleep(400)
-    const paths = [...new Set(body.paths)]
-    if (!paths.length) throw new ApiError('invalid', 'paths must list at least one absolute file path', 400)
+    const paths = [...new Set(body.paths ?? [])]
+    const hashes = [...new Set(body.hashes ?? [])]
+    if (!paths.length && !hashes.length) throw new ApiError('invalid', 'paths or hashes must list at least one item', 400)
+    for (const h of hashes) {
+      if (!/^[0-9a-f]{64}$/.test(h)) throw new ApiError('invalid_hash', `invalid blob hash: ${h}`, 400)
+      if (!this.blobs.has(h)) throw new ApiError('not_found', `unknown blob: ${h}`, 404)
+    }
     const project_id = body.project_id || 'default'
     if (project_id !== 'default') this.project(project_id)
     const run_id = uid('run')
@@ -1341,6 +1346,15 @@ export class MockCore implements StudioApi, EventStream {
       this.versionMap.set(v.id, v)
       this.emit('version.updated', v, run_id)
       versions.push({ version_id: v.id, status, asset_name: v.asset_name, name, hash: blob.hash, mime: blob.mime ?? null })
+    }
+    for (const h of hashes) {
+      const blob = this.blobs.get(h)!.ref
+      const name = blob.name || h.slice(0, 12)
+      const v: VersionRow = { id: uid('ver'), project_id, asset_name: body.asset_name || name.replace(/\.[^.]+$/, ''), run_id,
+        step_id: uid('step'), blob, status, created_at: now() }
+      this.versionMap.set(v.id, v)
+      this.emit('version.updated', v, run_id)
+      versions.push({ version_id: v.id, status, asset_name: v.asset_name, name, hash: h, mime: blob.mime ?? null })
     }
     return { run_id, project_id, versions }
   }

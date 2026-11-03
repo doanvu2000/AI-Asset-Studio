@@ -125,7 +125,7 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
       </div>
     </Transition>
   </Teleport>
-  <LibraryImportDialog v-if="source.importPaths?.length" :open="importOpen" :paths="source.importPaths" :project-id="source.projectId" @close="importOpen = false" />
+  <LibraryImportDialog v-if="source.importPaths?.length || source.importBlobs?.length" :open="importOpen" :paths="source.importPaths" :blobs="source.importBlobs" :project-id="source.projectId" @close="importOpen = false" />
   <PackDialog v-if="source.projectId && source.stepIds?.length" :open="packOpen" :project-id="source.projectId" :preselect="source.stepIds" @close="packOpen = false" />
 </template>
 

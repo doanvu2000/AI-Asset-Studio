@@ -1,0 +1,21 @@
+id: ui-icon-variants
+name: Biến thể màu icon (chọn 1)
+description: >-
+  Một ảnh icon / nút (nền trong suốt) → N bản đổi màu bằng xoay hue (giữ alpha và độ sáng tối) → chọn ảnh ưa thích ở
+  cổng chọn ảnh (phím V xem lớn) → xuất bản đã chọn. Chạy CPU, tất định, không tải model.
+inputs:
+  image: {type: image, label: Ảnh icon / nút (nền trong suốt)}
+  count: {type: int, default: 6, min: 2, max: 12, label: Số biến thể màu}
+  review: {type: bool, default: true, label: Chờ chọn (tắt = lấy bản đầu)}
+steps:
+  - id: variants
+    kind: op.hue_variants
+    in: {images: inputs.image}
+    params: {count: "${inputs.count}"}
+  - id: pick
+    kind: gate.pick
+    in: {images: variants.images}
+    params: {k: 1, enabled: "${inputs.review}"}
+outputs:
+  final: pick.images
+  variants: variants.images

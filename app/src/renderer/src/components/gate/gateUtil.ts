@@ -24,7 +24,7 @@ export function sourcePrompt(run: RunRow | undefined): string {
 
 /** Rejected or unpicked candidates stay in the blob store, so any of them can be sent on. */
 export function candidateSource(run: RunRow | undefined, blob: BlobRef | undefined): SendSource {
-  return { blobs: blob ? [blob] : undefined, projectId: run?.project_id, runId: run?.id, omit: ['gallery'] }
+  return { blobs: blob ? [blob] : undefined, importBlobs: blob ? [blob] : undefined, projectId: run?.project_id, runId: run?.id, omit: ['gallery'] }
 }
 
 export const isSendKey = (e: KeyboardEvent): boolean => (e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && !e.altKey

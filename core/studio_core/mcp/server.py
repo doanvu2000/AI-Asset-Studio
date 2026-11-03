@@ -624,10 +624,10 @@ class StudioTools:
         return res
 
     async def import_files(self, paths: list[str], project_id: str | None, asset_name: str | None,
-                           approve: bool) -> dict[str, Any]:
-        if not paths:
-            raise ToolError("paths must list at least one absolute file path")
-        body: dict[str, Any] = {"paths": list(paths), "approve": approve}
+                           approve: bool, hashes: list[str] | None = None) -> dict[str, Any]:
+        if not paths and not hashes:
+            raise ToolError("pass paths (absolute file paths) and/or hashes (blobs already in the store)")
+        body: dict[str, Any] = {"paths": list(paths), "hashes": list(hashes or []), "approve": approve}
         if project_id:
             body["project_id"] = _safe_id(project_id, "project_id")
         if asset_name:
@@ -1144,11 +1144,13 @@ def build_server(link: CoreLink) -> MCPServer:
                                         auto_export, auto_export_dir)
 
     @mcp.tool(annotations=acts)
-    async def import_to_library(paths: list[str], project_id: str | None = None, asset_name: str | None = None,
-                                approve: bool = True) -> dict[str, Any]:
-        """Put existing files (absolute paths: PNG, GLB/FBX, JSON, atlas...) into the Library as versions of a
-        project, like generated assets (approve=true marks them approved so packs/QA/similar search see them)."""
-        return await tools.import_files(paths, project_id, asset_name, approve)
+    async def import_to_library(paths: list[str] | None = None, project_id: str | None = None,
+                                asset_name: str | None = None, approve: bool = True,
+                                hashes: list[str] | None = None) -> dict[str, Any]:
+        """Put existing files (absolute paths: PNG, GLB/FBX, JSON, atlas...) and/or blobs already in the store
+        (hashes: 64-hex, e.g. a rejected gate candidate) into the Library as versions of a project, like generated
+        assets (approve=true marks them approved so packs/QA/similar search see them)."""
+        return await tools.import_files(paths or [], project_id, asset_name, approve, hashes)
 
     @mcp.tool(annotations=read_only)
     async def follow_up_options(run_id: str, output: str | None = None, blob: str | None = None) -> dict[str, Any]:

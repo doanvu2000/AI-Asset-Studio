@@ -98,6 +98,12 @@ async def test_new_tools_and_activity(core: Path, tmp_path: Path) -> None:
         imp = payload(await c.call_tool("import_to_library", {"paths": [str(png)], "project_id": pid}))
         assert [v["status"] for v in imp["versions"]] == ["approved"]
         assert imp["versions"][0]["asset_name"] == "hero"
+        again = payload(await c.call_tool("import_to_library", {"hashes": [imp["versions"][0]["hash"]],
+                                                                  "project_id": pid, "asset_name": "Hero B"}))
+        assert again["versions"][0]["hash"] == imp["versions"][0]["hash"]
+        bad = await c.call_tool("import_to_library", {"hashes": ["../x"]})
+        assert bad.is_error
+        assert (await c.call_tool("import_to_library", {})).is_error
 
         res = await c.call_tool("generate", {"recipe": "mcp-cpu", "inputs": {"image": str(png), "size": 40},
                                              "project_id": pid, "include_images": False})
