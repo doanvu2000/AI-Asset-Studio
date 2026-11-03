@@ -3,6 +3,7 @@ import { computed, nextTick, ref, useId, watch } from 'vue'
 import { onClickOutside, useEventListener } from '@vueuse/core'
 import { Bookmark, BookmarkPlus, Check, ChevronDown, LoaderCircle, Pencil, RefreshCw, Trash2, X } from '@lucide/vue'
 import { runPresetsApi, type RunPreset } from '@/api/runPresets'
+import { ApiError } from '@/api/client'
 import RelTime from './RelTime.vue'
 import { useConnection } from '@/stores/connection'
 import { useToasts } from '@/stores/toasts'
@@ -92,6 +93,16 @@ const renameClash = computed(() => {
   const t = renameText.value.trim().toLowerCase()
   return !!t && list.value.some((p) => p.id !== renameId.value && p.name.toLowerCase() === t)
 })
+// The client-side clash check only sees the list it last loaded; a 409 means another window/agent added the name.
+function presetFailed(e: unknown, prefix: string): void {
+  if (e instanceof ApiError && e.status === 409) {
+    toasts.push('Đã có thiết lập trùng tên.', 'error', 6000)
+    void load()
+    return
+  }
+  toasts.error(e, prefix)
+}
+
 async function commitRename(p: RunPreset): Promise<void> {
   const next = renameText.value.trim()
   if (!next || next === p.name) {
@@ -106,7 +117,7 @@ async function commitRename(p: RunPreset): Promise<void> {
     renameId.value = null
     toasts.push(`Đã đổi tên thành “${out.name}”`, 'success', 2200)
   } catch (e) {
-    toasts.error(e, 'Không đổi được tên')
+    presetFailed(e, 'Không đổi được tên')
   } finally {
     rowBusy.value = null
   }
@@ -179,7 +190,7 @@ async function save(): Promise<void> {
     toasts.push(`Đã lưu thiết lập “${p.name}”`, 'success', 2200)
     closeSave()
   } catch (e) {
-    toasts.error(e, 'Không lưu được thiết lập')
+    presetFailed(e, 'Không lưu được thiết lập')
   } finally {
     busy.value = false
   }
