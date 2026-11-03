@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Check, CircleAlert, FolderOpen, LayoutGrid, LoaderCircle, ScanSearch, ShieldCheck, Undo2, Wrench } from '@lucide/vue'
 import type { AuditBackup, AuditFix, AuditFixResult, AuditReport, AuditTexture } from '@/api/auditTypes'
+import EmptyState from '@/components/EmptyState.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import { api, useConnection } from '@/stores/connection'
@@ -102,6 +103,10 @@ const fixable = computed(() => fixRows.value.filter((t) => t.issues.some((i) => 
 const pickedRows = computed(() => fixable.value.filter((t) => picked.value.has(t.rel)))
 const savedPicked = computed(() => pickedRows.value.reduce((a, t) => a + (t.gpu_before - t.gpu_after), 0))
 const audioIssues = computed(() => (report.value?.audio ?? []).filter((a) => a.issues.length))
+const scannedFiles = computed(() => (s.value ? s.value.textures + s.value.meshes + s.value.audio : 0))
+const clean = computed(
+  () => !!report.value && !fixRows.value.length && !report.value.duplicates.length && !report.value.unreferenced.length && !s.value?.meshes_over && !audioIssues.value.length
+)
 const tabs = computed<{ id: Tab; label: string; n: number }[]>(() => [
   { id: 'textures', label: 'Texture', n: fixRows.value.length },
   { id: 'duplicates', label: 'Ảnh trùng', n: report.value?.duplicates.length ?? 0 },
@@ -227,8 +232,17 @@ function reveal(p: string): void {
             <input v-model.number="triBudget" type="number" min="100" step="1000" class="field num tri" aria-label="Số tam giác tối đa mỗi mesh" />
             tam giác
           </label>
-          <p v-if="scanError" class="err callout" role="alert"><CircleAlert :size="14" /> {{ scanError }}</p>
           <span class="caption safe"><ShieldCheck :size="14" /> Quét chỉ đọc. Sửa chỉ ghi .meta / .import (có backup zip + hoàn tác); không xoá hay ghi đè ảnh.</span>
+        </section>
+
+        <section v-if="!report" class="card pane" aria-live="polite">
+          <EmptyState v-if="scanning" :icon="ScanSearch" title="Đang quét project…" text="Đọc texture, mesh, âm thanh và tham chiếu trong project. Project lớn có thể mất vài chục giây." />
+          <EmptyState v-else-if="scanError" :icon="CircleAlert" title="Không quét được project" :text="scanError">
+            <button type="button" class="btn" :disabled="!canScan" @click="doScan"><ScanSearch /> Quét lại</button>
+          </EmptyState>
+          <EmptyState v-else :icon="FolderOpen" title="Chưa chọn project" text="Dán đường dẫn project Unity hoặc Godot vào ô trên, hoặc chọn thư mục, rồi bấm Quét.">
+            <button type="button" class="btn btn-primary" @click="pickFolder"><FolderOpen /> Chọn thư mục…</button>
+          </EmptyState>
         </section>
 
         <Transition name="fade-up">
@@ -258,6 +272,8 @@ function reveal(p: string): void {
             </div>
             <p v-for="n in report.notes" :key="n" class="caption note">{{ n }}</p>
 
+            <EmptyState v-if="clean" :icon="Check" title="Không có vấn đề nào" :text="`Đã quét ${scannedFiles.toLocaleString('vi-VN')} tệp (ảnh, mesh, âm thanh): không có texture cần sửa, ảnh trùng, asset thừa hay mesh quá nặng.`" />
+            <template v-else>
             <div class="seg" role="tablist" aria-label="Nhóm vấn đề">
               <button v-for="t in tabs" :key="t.id" type="button" role="tab" :aria-selected="tab === t.id" @click="tab = t.id">
                 {{ t.label }} <span class="num cnt">{{ t.n }}</span>
@@ -353,6 +369,7 @@ function reveal(p: string): void {
               <li v-if="!audioIssues.length" class="caption">Thiết lập import âm thanh ổn ({{ report.audio.length }} clip).</li>
               <li v-else class="caption note">Chỉ báo; đổi trong Inspector (Unity) / Import dock (Godot).</li>
             </ul>
+            </template>
           </section>
         </Transition>
 
@@ -424,12 +441,6 @@ function reveal(p: string): void {
 }
 .tri {
   width: 96px;
-}
-.err {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--danger);
 }
 .safe {
   display: inline-flex;

@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { onClickOutside, onKeyStroke } from '@vueuse/core'
-import { AnimatePresence, motion } from 'motion-v'
 import { ArrowLeft, CircleAlert, CircleCheck, CircleStop, Copy, Ellipsis, FolderKanban, Hourglass, Inbox, List, LoaderCircle, Library, Lock, RotateCcw, TriangleAlert, Waypoints, Workflow } from '@lucide/vue'
 import type { BlobRef, StepRow } from '@/api/types'
 import { NO_PROJECT, RUN_ACTIVE, STEP_DONE_OK } from '@/api/types'
@@ -46,7 +45,12 @@ import { flyFromOrigin, takeOrigin, useReducedMotion, type SharedOrigin } from '
 const props = defineProps<{ id: string }>()
 const reducedMotion = useReducedMotion()
 const heroOrigin = ref<SharedOrigin | null>(takeOrigin(props.id))
-watch(() => props.id, (id) => (heroOrigin.value = takeOrigin(id)))
+// onHeroStage clears heroOrigin, so the fade-in decision is latched here per run.
+const heroFlies = ref(!!heroOrigin.value)
+watch(() => props.id, (id) => {
+  heroOrigin.value = takeOrigin(id)
+  heroFlies.value = !!heroOrigin.value
+})
 function onHeroStage(el: unknown): void {
   const o = heroOrigin.value
   if (!o || !(el instanceof HTMLElement)) return
@@ -472,16 +476,8 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
         >
           <Ellipsis />
         </button>
-        <AnimatePresence>
-          <motion.div
-            v-if="menuOpen"
-            class="menu"
-            role="menu"
-            :initial="{ opacity: 0, scale: 0.96, y: -4 }"
-            :animate="{ opacity: 1, scale: 1, y: 0 }"
-            :exit="{ opacity: 0, scale: 0.98, transition: { duration: 0.1 } }"
-            :transition="{ type: 'spring', stiffness: 520, damping: 38 }"
-          >
+        <Transition name="menu-pop">
+          <div v-if="menuOpen" class="menu" role="menu">
             <div v-if="!confirmCancel" class="menu-list">
               <button type="button" role="menuitem" class="mi" @click="copyId"><Copy :size="15" /> Copy mã lượt chạy</button>
               <template v-if="active">
@@ -500,8 +496,8 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
                 </button>
               </div>
             </div>
-          </motion.div>
-        </AnimatePresence>
+          </div>
+        </Transition>
       </div>
     </PageHeader>
 
@@ -565,15 +561,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
       <ResizeHandle v-if="sel && viewMode === 'graph'" v-model="graphW" label="Sơ đồ các bước" :default-size="620" :min="360" :max="1200" />
       <ResizeHandle v-else-if="sel" v-model="listW" label="Danh sách bước" :default-size="420" :min="300" :max="680" />
       <section v-if="sel" class="inspector scroll">
-        <motion.section
-          v-if="hero"
-          :key="hero.step.run_id"
-          class="hero"
-          aria-label="Kết quả"
-          :initial="heroOrigin ? false : { opacity: 0, y: 10 }"
-          :animate="{ opacity: 1, y: 0 }"
-          :transition="{ type: 'spring', stiffness: 380, damping: 34 }"
-        >
+        <section v-if="hero" :key="hero.step.run_id" class="hero" :class="{ 'hero-in': !heroFlies }" aria-label="Kết quả">
           <div class="hero-head">
             <h2 class="section-label">Kết quả</h2>
             <span class="caption">{{ stepName(hero.step) }}</span>
@@ -614,7 +602,7 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
               </button>
             </Transition>
           </div>
-        </motion.section>
+        </section>
 
         <Transition name="swap" mode="out-in">
           <div :key="sel.id" class="insp" :class="{ 'after-hero': hero }" aria-live="polite">
@@ -960,6 +948,33 @@ const selSkipWarning = computed(() => (sel.value ? allowedFailure(sel.value) : n
   .insp .preview {
     max-width: 240px;
   }
+}
+.hero-in {
+  animation: hero-in 320ms var(--ease-spring) both;
+}
+@keyframes hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.menu-pop-enter-active {
+  transition:
+    opacity 140ms var(--ease-out),
+    transform 200ms var(--ease-spring);
+}
+.menu-pop-leave-active {
+  transition:
+    opacity 100ms var(--ease-out),
+    transform 100ms var(--ease-out);
+}
+.menu-pop-enter-from {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.96);
+}
+.menu-pop-leave-to {
+  opacity: 0;
+  transform: scale(0.98);
 }
 .hero {
   display: grid;

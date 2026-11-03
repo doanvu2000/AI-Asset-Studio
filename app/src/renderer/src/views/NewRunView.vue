@@ -344,6 +344,13 @@ const batchItems = computed(() => {
   return batchFiles.value.map((b) => ({ inputs: { [v]: b.hash }, title: (b.name ?? 'file').replace(/\.\w+$/, '') }))
 })
 
+const OPTION_LABEL: Record<string, Record<string, string>> = {
+  method: { auto: 'Tự chọn', ai: 'AI (MoGe-2)', filter: 'Bộ lọc' }
+}
+function optionLabel(name: string, o: unknown): string {
+  return OPTION_LABEL[name]?.[String(o)] ?? String(o)
+}
+
 function label(name: string, spec: RecipeInputSpec): string {
   return spec.label ?? name
 }
@@ -556,7 +563,12 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
     <div class="scroll">
       <!-- Picker -->
       <div v-if="!selected" class="picker stack stack-wide">
-        <p v-if="!recipes.loaded && !recipes.error" class="caption">Đang tải quy trình…</p>
+        <div v-if="!recipes.loaded && !recipes.error" class="grid" role="status" aria-label="Đang tải quy trình">
+          <div v-for="i in 6" :key="i" class="rcard card sk" aria-hidden="true">
+            <span class="sk-art" />
+            <span class="sk-text"><span class="sk-line" /><span class="sk-line short" /></span>
+          </div>
+        </div>
         <EmptyState
           v-else-if="!recipes.list.length"
           :icon="BookOpen"
@@ -793,7 +805,7 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
                   :class="{ on: values[name] === o }"
                   @click="values[name] = o"
                 >
-                  {{ o }}
+                  {{ optionLabel(name, o) }}
                 </button>
               </div>
               <BlobDropZone
@@ -892,6 +904,43 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
   transition:
     transform var(--t-fast) var(--ease-spring),
     background-color var(--t-fast) var(--ease-out);
+}
+.sk {
+  cursor: default;
+  min-height: 100px;
+}
+.sk-art,
+.sk-line {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-sunken);
+}
+.sk-art::after,
+.sk-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, var(--bg-hover) 50%, transparent 80%);
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+.sk-art {
+  flex: none;
+  width: 76px;
+  height: 76px;
+  border-radius: 14px;
+}
+.sk-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+.sk-line {
+  height: 14px;
+  border-radius: 6px;
+}
+.sk-line.short {
+  width: 60%;
 }
 .rcard:hover {
   background: var(--surface-2);

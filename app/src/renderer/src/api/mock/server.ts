@@ -333,6 +333,25 @@ const RECIPES: MockRecipe[] = [
   },
   {
     info: {
+      id: 'sprite-normal-map',
+      name: 'Normal map 2D cho sprite',
+      description: 'Sprite hoặc sprite sheet → normal map (kênh G hướng lên) + ảnh xem trước gốc | normal | chiếu sáng thử. Chạy CPU.',
+      hash: 'b3c0n0rm01',
+      inputs: {
+        image: { type: 'image', label: 'Sprite hoặc sprite sheet (nền trong suốt)' },
+        method: { type: 'enum', default: 'auto', options: ['auto', 'ai', 'filter'], label: 'Cách tính (auto = AI nếu đã cài model, không thì filter)' },
+        strength: { type: 'float', default: 1, min: 0.1, max: 10, label: 'Độ nổi' },
+        review: { type: 'bool', default: true, label: 'Duyệt trước khi xong' }
+      },
+      steps: []
+    },
+    defs: [
+      { id: 'normal', kind: 'op.tile_normal', lane: 'cpu', deps: [], in: { images: 'inputs.image' } },
+      { id: 'approve', kind: 'gate.approve', lane: 'none', deps: ['normal'], in: { images: 'normal.images' } }
+    ]
+  },
+  {
+    info: {
       id: 'spine-character',
       name: 'Nhân vật Spine',
       description: 'Prompt → concept T-pose → chọn → tách nền → tách part → layers → Spine 4.2 (JSON + atlas + png) → duyệt',
@@ -766,7 +785,7 @@ export class MockCore implements StudioApi, EventStream {
 
   private seedProjects(t0: number): void {
     const mk = (name: string, description: string, style: Partial<ProjectRow['style']>, created: number, archived = false, engineTarget: ProjectRow['engine_target'] = 'none'): ProjectRow => {
-      const p: ProjectRow = { id: uid('prj'), name, description, style: normalizeStyle(style), created_at: created, updated_at: created, archived, engine_target: engineTarget }
+      const p: ProjectRow = { id: uid('prj'), name, description, style: normalizeStyle(style), created_at: created, updated_at: created, archived, engine_target: engineTarget, auto_export: false, auto_export_dir: '' }
       this.projectMap.set(p.id, p)
       return p
     }
@@ -1479,6 +1498,13 @@ export class MockCore implements StudioApi, EventStream {
     if (!v) throw new ApiError('not_found', 'Không tìm thấy phiên bản', 404)
     v.status = action === 'approve' ? 'approved' : 'rejected'
     this.emit('version.updated', v, v.run_id)
+    const pj = this.projectMap.get(v.project_id) as (ProjectRow & { auto_export?: boolean; auto_export_dir?: string }) | undefined
+    if (action === 'approve' && pj?.auto_export) {
+      const dir = pj.auto_export_dir ?? ''
+      const ok = !!dir && pj.engine_target !== 'none'
+      const data = { project_id: pj.id, version_id: v.id, asset_name: v.asset_name, engine: pj.engine_target, dest_dir: dir, ...(ok ? { ok, path: `${dir}\\${v.asset_name}`, files: 9 } : { ok, error: dir ? 'Chưa chọn engine đích cho project' : 'Chưa chọn thư mục project game' }) }
+      window.setTimeout(() => this.emit('project.auto_export' as never, data as never, v.run_id), 400)
+    }
     return clone(v)
   }
 
@@ -1546,7 +1572,7 @@ export class MockCore implements StudioApi, EventStream {
     const name = body.name.trim()
     if (!name) throw new ApiError('invalid', 'name must not be empty', 400)
     const t = now()
-    const p: ProjectRow = { id: uid('prj'), name, description: body.description ?? '', style: normalizeStyle(body.style), created_at: t, updated_at: t, archived: false, engine_target: body.engine_target ?? 'none' }
+    const p: ProjectRow = { id: uid('prj'), name, description: body.description ?? '', style: normalizeStyle(body.style), created_at: t, updated_at: t, archived: false, engine_target: body.engine_target ?? 'none', auto_export: false, auto_export_dir: '' }
     this.projectMap.set(p.id, p)
     this.emit('project.updated', p)
     return clone(p)
@@ -1565,6 +1591,9 @@ export class MockCore implements StudioApi, EventStream {
     if (body.style) p.style = normalizeStyle(body.style)
     if (body.archived !== undefined) p.archived = body.archived
     if (body.engine_target !== undefined) p.engine_target = body.engine_target
+    const auto = body as ProjectPatchBody & { auto_export?: boolean; auto_export_dir?: string }
+    if (auto.auto_export !== undefined) Object.assign(p, { auto_export: auto.auto_export })
+    if (auto.auto_export_dir !== undefined) Object.assign(p, { auto_export_dir: auto.auto_export_dir })
     p.updated_at = now()
     this.emit('project.updated', p)
     return clone(p)
@@ -1919,6 +1948,9 @@ export class MockCore implements StudioApi, EventStream {
       issues: [{ code, severity: 'warn', msg: `Chưa có thiết lập nén mobile; RAM GPU ${(before / mb).toFixed(2)} MB → ${(after / mb).toFixed(2)} MB.`,
         fix: { type: 'mobile_preset', rel, kind, max_size: 2048 } }]
     })
+    if (/clean/i.test(body.path)) return { root: body.path, project: body.path, engine: 'unity', at: now(), seconds: 0.4, tri_budget: 15000,
+      summary: { textures: 42, texture_bytes: 31 * mb, gpu_before: 6 * mb, gpu_after: 6 * mb, fixable: 0, duplicate_groups: 0, duplicate_bytes: 0, unreferenced: 0, unreferenced_bytes: 0, meshes: 3, meshes_over: 0, audio: 4, issues: {} },
+      textures: [], duplicates: [], unreferenced: [], meshes: [], audio: [], notes: [] }
     const textures = [
       tex('Assets/Art/hero.png', 4096, 4096, 'sprite', 64 * mb, 4.7 * mb),
       tex('Assets/Art/bg_forest.png', 2048, 1024, 'sprite', 8 * mb, 0.6 * mb),

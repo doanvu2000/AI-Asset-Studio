@@ -45,6 +45,7 @@ const loadError = ref<string | null>(null)
 const picks = ref<Set<PackEngine>>(new Set(['flutter']))
 const webp = ref(false)
 const flutterDemo = ref(false)
+const theme = ref(false)
 const androidPackage = ref('com.example.assets')
 const license = ref<PackLicense>('cc0')
 const version = ref('')
@@ -64,6 +65,7 @@ const budgets = computed<MobileBudget[]>(() => Object.values(result.value?.mobil
 const assets = computed(() => listing.value?.assets ?? [])
 const allPicked = computed(() => assets.value.length > 0 && assets.value.every((a) => picked.value.has(a.step_id)))
 const engines = computed<PackEngine[]>(() => ENGINES.map((e) => e.id).filter((id) => picks.value.has(id)))
+const hasAppEngine = computed(() => picks.value.has('flutter') || picks.value.has('android') || picks.value.has('ios'))
 const hasGameEngine = computed(() => picks.value.has('unity') || picks.value.has('godot'))
 const packageOk = computed(() => !picks.value.has('android') || PACKAGE_RE.test(androidPackage.value.trim()))
 const versionOk = computed(() => !version.value.trim() || /^\d+\.\d+\.\d+$/.test(version.value.trim()))
@@ -150,6 +152,7 @@ async function build(): Promise<void> {
       package: picks.value.has('android') ? androidPackage.value.trim() : undefined,
       webp: picks.value.has('flutter') && webp.value ? true : undefined,
       flutter_demo: picks.value.has('flutter') && flutterDemo.value ? true : undefined,
+      theme: hasAppEngine.value && theme.value ? true : undefined,
       atlas: atlas.value || undefined,
       atlas_max_size: atlas.value ? atlasSize.value : undefined,
       material_style: hasGameEngine.value && toon.value ? 'toon' : undefined
@@ -206,7 +209,7 @@ useEventListener(
                 </div>
               </div>
               <p v-if="!engines.length" class="caption hint err">Chọn ít nhất một đích.</p>
-              <div v-if="picks.has('flutter') || picks.has('android')" class="row">
+              <div v-if="hasAppEngine" class="row">
                 <span class="section-label">Tuỳ chọn</span>
                 <div class="mob-opts">
                   <label v-if="picks.has('flutter')" class="chk" title="Ảnh 1x/2.0x/3.0x lưu WebP không mất dữ liệu thay vì PNG">
@@ -215,12 +218,16 @@ useEventListener(
                   <label v-if="picks.has('flutter')" class="chk" title="Ghi thêm flutter/demo/: project Flame chạy được bằng flutter run">
                     <input v-model="flutterDemo" type="checkbox" /> Kèm demo Flame chạy được (flutter run)
                   </label>
+                  <label class="chk" title="Sinh ThemeData / MaterialTheme / SwiftUI từ style bible, có bảng màu sáng và tối đạt WCAG AA">
+                    <input v-model="theme" type="checkbox" /> Theme UI (Flutter/Compose/SwiftUI)
+                  </label>
                   <label v-if="picks.has('android')" class="chk" title="Package của AssetStudioAssets.kt, trùng namespace của app">
                     Android package
                     <input v-model="androidPackage" class="field num" :class="{ bad: !packageOk }" spellcheck="false" placeholder="com.example.app" />
                   </label>
                 </div>
               </div>
+              <p v-if="hasAppEngine && theme" class="caption hint">Theme lấy màu và chữ từ style bible của dự án, kèm bảng màu sáng và tối.</p>
               <div class="row">
                 <span class="section-label">Giấy phép</span>
                 <div class="seg" role="radiogroup" aria-label="Giấy phép">

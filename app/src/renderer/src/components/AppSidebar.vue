@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ART } from '@/assets/art'
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { motion } from 'motion-v'
 import { FolderKanban, Images, Inbox, LayoutDashboard, ListChecks, Plus, ScanSearch, Settings, SlidersHorizontal, Workflow } from '@lucide/vue'
 import { WORKFLOW_ACTIVE } from '@/api/types'
 import { useRuns } from '@/stores/runs'
@@ -10,6 +9,7 @@ import { useFlows } from '@/stores/flows'
 import { useGates } from '@/stores/gates'
 import { useConnection } from '@/stores/connection'
 import { useUiMode } from '@/composables/uiMode'
+import { useReducedMotion } from '@/composables/motion'
 import TweenNumber from './TweenNumber.vue'
 import AgentActivity from './AgentActivity.vue'
 
@@ -21,6 +21,26 @@ const flows = useFlows()
 const gates = useGates()
 const conn = useConnection()
 const { advanced, toggle: toggleMode } = useUiMode()
+const reducedMotion = useReducedMotion()
+const sidebar = ref<HTMLElement>()
+
+// The pill is re-created under the newly active item; FLIP it from the old item's rect so it slides like a shared element.
+watch(
+  () => route.name,
+  async () => {
+    const from = sidebar.value?.querySelector('.pill')?.getBoundingClientRect()
+    await nextTick()
+    const el = sidebar.value?.querySelector<HTMLElement>('.pill')
+    if (!from || !el || reducedMotion.value) return
+    const to = el.getBoundingClientRect()
+    if (!to.width || !to.height) return
+    el.animate(
+      [{ transformOrigin: '0 0', transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${from.width / to.width}, ${from.height / to.height})` }, { transformOrigin: '0 0', transform: 'none' }],
+      { duration: 240, easing: 'cubic-bezier(0.2, 0.9, 0.25, 1)' }
+    )
+  },
+  { flush: 'pre' }
+)
 
 // Only "Cần duyệt" carries a number: it is the one place that needs the user. Lượt chạy gets a quiet
 // activity dot while something is really executing (not parked at a gate).
@@ -80,7 +100,7 @@ const status = computed(() => {
 </script>
 
 <template>
-  <aside class="sidebar" :class="{ compact }">
+  <aside ref="sidebar" class="sidebar" :class="{ compact }">
     <div class="brand">
       <img class="logo" :src="ART.appIcon" alt="" width="22" height="22" draggable="false" />
       <span class="brand-name">Asset Studio</span>
@@ -98,12 +118,7 @@ const status = computed(() => {
         :aria-current="isActive(it.name) ? 'page' : undefined"
         :title="tip(it)"
       >
-        <motion.span
-          v-if="isActive(it.name)"
-          layout-id="nav-pill"
-          class="pill"
-          :transition="{ type: 'spring', stiffness: 520, damping: 40 }"
-        />
+        <span v-if="isActive(it.name)" class="pill" />
         <component :is="it.icon" class="ic" :size="16" :stroke-width="1.75" />
         <span class="label" :title="it.label">{{ it.label }}</span>
         <Transition name="badge">
@@ -125,7 +140,7 @@ const status = computed(() => {
         :aria-current="isActive('settings') ? 'page' : undefined"
         title="Cài đặt"
       >
-        <motion.span v-if="isActive('settings')" layout-id="nav-pill" class="pill" :transition="{ type: 'spring', stiffness: 520, damping: 40 }" />
+        <span v-if="isActive('settings')" class="pill" />
         <Settings class="ic" :size="16" :stroke-width="1.75" />
         <span class="label">Cài đặt</span>
       </RouterLink>

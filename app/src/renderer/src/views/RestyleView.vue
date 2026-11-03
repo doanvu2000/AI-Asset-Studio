@@ -6,6 +6,7 @@ import {
   CircleAlert,
   ExternalLink,
   FolderOpen,
+  ImageOff,
   LoaderCircle,
   Paintbrush,
   Play,
@@ -18,6 +19,7 @@ import {
 import type { BlobRef, StepRow } from '@/api/types'
 import { NO_PROJECT, RUN_ACTIVE, STEP_DONE_OK } from '@/api/types'
 import type { RestyleApplyResult, RestyleBackup, RestyleKind, RestyleReport, RestyleScan } from '@/api/restyleTypes'
+import EmptyState from '@/components/EmptyState.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
 import BlobDropZone from '@/components/BlobDropZone.vue'
@@ -326,10 +328,20 @@ function openRun(): void {
             <label class="lbl"><span class="section-label">Chỉ lấy (glob, phẩy)</span><input v-model="include" class="field mono" placeholder="Sprites/**, UI/*.png" /></label>
             <label class="lbl"><span class="section-label">Bỏ qua (glob, phẩy)</span><input v-model="exclude" class="field mono" placeholder="Fonts/**" /></label>
           </div>
-          <p v-if="scanError" class="err callout" role="alert"><CircleAlert :size="14" /> {{ scanError }}</p>
+          <div v-if="!scan" aria-live="polite">
+            <EmptyState v-if="scanning" :icon="ScanSearch" title="Đang quét thư mục…" text="Đếm ảnh, phân loại sprite / UI / texture và ước tính thời gian. Chưa ghi gì vào project." />
+            <EmptyState v-else-if="scanError" :icon="CircleAlert" title="Không quét được thư mục" :text="scanError">
+              <button type="button" class="btn" :disabled="!canScan" @click="doScan"><ScanSearch /> Quét lại</button>
+            </EmptyState>
+            <EmptyState v-else :icon="FolderOpen" title="Chưa chọn thư mục" text="Dán đường dẫn thư mục ảnh của project Unity hoặc Godot vào ô trên, hoặc chọn thư mục, rồi bấm Quét.">
+              <button type="button" class="btn btn-primary" @click="pickFolder"><FolderOpen /> Chọn thư mục…</button>
+            </EmptyState>
+          </div>
 
           <Transition name="fade-up">
             <div v-if="scan" class="scan">
+              <EmptyState v-if="!total" :icon="ImageOff" title="Không có ảnh để vẽ lại" text="Thư mục này không có PNG nào hợp lệ. Thử bỏ bớt bộ lọc đường dẫn, hoặc chọn thư mục chứa sprite / UI / texture." />
+              <template v-else>
               <div class="kinds">
                 <div class="kind total">
                   <span class="big num"><TweenNumber :value="total" /></span>
@@ -348,6 +360,7 @@ function openRun(): void {
                 <span>Ước tính: chạy thử {{ TRIAL }} ảnh <strong class="num">~{{ fmtS(scan.estimate.trial_s) }}</strong> · cả thư mục <strong class="num">~{{ fmtS(scan.estimate.full_s) }}</strong></span>
                 <span class="caption">({{ scan.estimate.measured ? `đo từ ${scan.estimate.measured} lượt Klein gần đây` : 'chưa có số đo, ước 30 s/lượt' }}, ~{{ scan.estimate.edit_s }} s/lượt)</span>
               </div>
+              </template>
               <button v-if="scan.skipped_total" type="button" class="link caption" :aria-expanded="skippedOpen" @click="skippedOpen = !skippedOpen">
                 Bỏ qua {{ scan.skipped_total }} ảnh (normal map, mask, quá lớn…)
               </button>

@@ -6,6 +6,7 @@ defineProps<{ title: string; subtitle?: string }>()
 const root = ref<HTMLElement>()
 const actions = ref<HTMLElement>()
 let observer: ResizeObserver | null = null
+let mutations: MutationObserver | null = null
 
 // Buttons wrap their label in `.lbl` (plus aria-label + title); when the actions
 // plus a readable title no longer fit, the labels drop and only icons remain.
@@ -25,9 +26,17 @@ onMounted(() => {
   observer = new ResizeObserver(fit)
   if (root.value) observer.observe(root.value)
   if (actions.value) observer.observe(actions.value)
+  // Buttons added later (gate count, dirty flag) can fit in the same frame; wait for layout before measuring.
+  if (actions.value) {
+    mutations = new MutationObserver(() => requestAnimationFrame(fit))
+    mutations.observe(actions.value, { childList: true, subtree: true, characterData: true })
+  }
   fit()
 })
-onBeforeUnmount(() => observer?.disconnect())
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  mutations?.disconnect()
+})
 </script>
 
 <template>

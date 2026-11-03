@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { MotionConfig } from 'motion-v'
 import { onKeyStroke } from '@vueuse/core'
 import AppSidebar from './components/AppSidebar.vue'
 import CoreBanner from './components/CoreBanner.vue'
@@ -48,35 +47,33 @@ onKeyStroke(
 </script>
 
 <template>
-  <MotionConfig reduced-motion="user">
-    <div class="shell" :class="{ veiled: splashVisible }" :inert="splashVisible">
-      <AppSidebar :style="{ '--pane-w': `${sidebarW}px` }" :compact="sidebarW <= SIDEBAR.rail" />
-      <ResizeHandle
-        v-model="sidebarW"
-        label="Thanh bên"
-        :default-size="SIDEBAR.default"
-        :min="SIDEBAR.min"
-        :max="SIDEBAR.max"
-        :collapsed-size="SIDEBAR.rail"
-        :collapse-below="140"
-      />
-      <main class="content">
-        <CoreBanner v-if="!offline" />
-        <CoreOffline v-if="offline" />
-        <RouterView v-else v-slot="{ Component, route }">
-          <Transition name="page" mode="out-in">
-            <component :is="Component" :key="['run', 'recipe', 'batch-detail', 'project'].includes(String(route.name)) ? route.fullPath : String(route.name)" />
-          </Transition>
-        </RouterView>
-      </main>
-    </div>
-    <ToastHost />
-    <CommandPalette />
-    <WhatsNewDialog />
-    <Transition name="splash">
-      <SplashScreen v-if="splashVisible" />
-    </Transition>
-  </MotionConfig>
+  <div class="shell" :class="{ veiled: splashVisible }" :inert="splashVisible">
+    <AppSidebar :style="{ '--pane-w': `${sidebarW}px` }" :compact="sidebarW <= SIDEBAR.rail" />
+    <ResizeHandle
+      v-model="sidebarW"
+      label="Thanh bên"
+      :default-size="SIDEBAR.default"
+      :min="SIDEBAR.min"
+      :max="SIDEBAR.max"
+      :collapsed-size="SIDEBAR.rail"
+      :collapse-below="140"
+    />
+    <main class="content">
+      <CoreBanner v-if="!offline" />
+      <CoreOffline v-if="offline" />
+      <RouterView v-else v-slot="{ Component, route }">
+        <Transition name="page" mode="out-in">
+          <component :is="Component" :key="['run', 'recipe', 'batch-detail', 'project'].includes(String(route.name)) ? route.fullPath : String(route.name)" />
+        </Transition>
+      </RouterView>
+    </main>
+  </div>
+  <ToastHost />
+  <CommandPalette />
+  <WhatsNewDialog />
+  <Transition name="splash">
+    <SplashScreen v-if="splashVisible" />
+  </Transition>
 </template>
 
 <style scoped>
