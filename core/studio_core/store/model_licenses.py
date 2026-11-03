@@ -51,6 +51,8 @@ MODELS: dict[str, tuple[str, str, str]] = {
     "wan2.2_vae.safetensors": ("Apache-2.0", "yes", "Wan-AI/Wan2.2-TI2V-5B"),
     "vits-piper-vi_VN-vais1000-medium": ("unverified (VAIS-1000 dataset terms)", "unknown", "rhasspy/piper-voices"),
     "kokoro-int8-multi-lang-v1_0": ("Apache-2.0", "yes", "hexgrad/Kokoro-82M"),
+    # MoGe-2 code and weights are MIT; its DINOv2-small backbone is Apache-2.0.
+    "Ruicheng/moge-2-vits-normal": ("MIT", "yes", "microsoft/MoGe"),
     # Community int8 ConvRot repack (Winnougan/Qwen-Image-INT8) of the Apache-2.0 base; the LoRA card lists MIT.
     "qwen_image_2512_int8_convrot.safetensors": ("Apache-2.0", "yes", "Qwen/Qwen-Image-2512"),
     "qwen-360-diffusion-2512-int8-bf16-v2.safetensors": ("MIT", "yes", "ProGamerGov/qwen-360-diffusion"),
