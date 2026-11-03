@@ -16,6 +16,21 @@ export const whatsNewOpen = ref(false)
 // Summaries of `git log <prev tag>..<tag>` and the matching .planning plans; newest first.
 export const CHANGELOG: Release[] = [
   {
+    version: '1.5.0-dev',
+    date: 'Chưa phát hành',
+    items: [
+      'Theme UI từ style bible cho Flutter, Compose và SwiftUI: bảng màu sáng / tối đạt WCAG AA, bật bằng công tắc ở hộp đóng gói (cũng có trên MCP)',
+      'Normal map AI (MoGe-2, chạy trên CPU) cài được trong Cài đặt; có chế độ Tự chọn / AI / Bộ lọc, không có model thì tự quay về bộ lọc',
+      'Xuất Android Compose và iOS SwiftUI cho tile động, autotile, VFX, thời tiết, màn UI, minimap, thẻ bài',
+      'Tự xuất khi duyệt: mỗi dự án có công tắc và thư mục đích, bản được duyệt tự chép vào thư mục game, có toast báo kết quả',
+      'Chạy lại một lượt với seed mới hoặc giữ seed cũ; chi tiết bước hiện seed đã dùng',
+      'Thiết lập chạy lưu được; 1 prompt × N seed trong một lượt; tự chọn ảnh QA cao nhất ở bước chọn ảnh',
+      'Gallery: bộ lọc gọn một hàng; Flow editor có xoá, hoàn tác / làm lại (50 bước); Ctrl+Enter để chạy / quét',
+      'Gallery tải theo trang, dự án nhiều bản vẫn mượt; khớp màu LUT nhanh hơn khoảng 3,5 lần',
+      'Chạy test core song song cho nhanh (~60 giây thay vì ~7 phút), xem BUILD.md',
+    ]
+  },
+  {
     version: '1.4.0',
     date: '2026-11-03',
     items: [

@@ -18,7 +18,8 @@ Bản mới nhất: **[v1.4.0](https://github.com/doanvu2000/AI-Asset-Studio/rel
 
 **Quy trình 2D / sprite**
 - Concept 2D nền trong, biến thể, vẽ theo style tham chiếu
-- Texture và tileset liền mạch (Wang, autotile), normal map, pixel art tự chọn số màu
+- Texture và tileset liền mạch (Wang, autotile), pixel art tự chọn số màu
+- Normal map: bộ lọc hoặc AI (MoGe-2, chạy CPU), cài trong **Cài đặt**
 - Sprite 8 hướng và hoạt ảnh (đứng / đi / chạy / đánh), ổn định chân, bóng đổ
 - Nhân vật Spine có xương, hoạt ảnh và skin đổi màu
 - VFX flipbook, thời tiết lặp, UI kit, thẻ bài, bộ icon, parallax
@@ -29,14 +30,18 @@ Bản mới nhất: **[v1.4.0](https://github.com/doanvu2000/AI-Asset-Studio/rel
 
 **Xuất cho engine**
 - **Flutter / Flame (đích mặc định)**: sprite, tile + `.tmx`, VFX, UI, Shader Pack, demo chạy được bằng `flutter run`
-- **Android Compose** và **iOS SwiftUI**
+- **Android Compose** và **iOS SwiftUI**: sprite, UI, tile động, autotile, VFX, thời tiết, màn UI, minimap, thẻ bài
+- **Theme UI** từ style bible (sáng / tối, WCAG AA) cho Flutter, Compose, SwiftUI
+- **Tự xuất khi duyệt**: bản được duyệt tự chép vào thư mục game của dự án
 - **Unity**, **Godot 4**, Spine, GLB
 
 **Khác**
 - Đèn hợp máy đỏ / vàng / xanh: app dò GPU, RAM, ổ đĩa và báo quy trình / model nào chạy được
 - Flow và GDD: Claude lập kế hoạch asset từ GDD, lưu lịch sử kế hoạch
 - MCP: Claude Code / Codex điều khiển app qua MCP, skill và plugin
-- Thư viện theo dự án, lọc nháp / đã duyệt, thử lại từng bước
+- Thư viện theo dự án, bộ lọc Gallery một hàng, thử lại từng bước
+- Chạy lại giữ hoặc đổi seed; lưu thiết lập chạy; 1 prompt × N seed; tự chọn ảnh QA cao nhất
+- Flow editor: xoá, hoàn tác / làm lại (50 bước)
 
 ## Yêu cầu máy
 
@@ -67,11 +72,13 @@ Bản mới nhất: **[v1.4.0](https://github.com/doanvu2000/AI-Asset-Studio/rel
 - **Tạo mới** (`Ctrl+N`) → chọn quy trình → gõ prompt tiếng Anh → **Bắt đầu chạy**
 - Bước **Thủ công** dừng chờ bạn chọn ảnh (mục **Cần duyệt**)
 - Xong → **Đưa vào thư viện** hoặc **Xuất cho engine**
+- Làm game Flutter: tạo **dự án**, chọn engine đích **Flutter**, bật **Tự xuất khi duyệt** và chọn thư mục game; duyệt xong file tự vào đó
+- Phím tắt: `Ctrl+Enter` chạy / quét, `Ctrl+K` tìm nhanh
 - Lỗi: **Cài đặt → Nhật ký chẩn đoán → Copy** để gửi log
 
 ## Chạy từ mã nguồn
 
-- Xem [BUILD.md](BUILD.md)
+- Xem [BUILD.md](BUILD.md), có cách chạy test nhanh song song (~60 giây)
 
 ## Cảm ơn
 
