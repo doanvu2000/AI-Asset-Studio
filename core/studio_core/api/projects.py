@@ -42,6 +42,8 @@ class ProjectPatch(BaseModel):
     style: ProjectStyle | None = None
     archived: bool | None = None
     engine_target: Literal["flutter", "android", "ios", "unity", "godot", "none"] | None = None
+    auto_export: bool | None = None
+    auto_export_dir: str | None = Field(None, max_length=1024)
 
     @field_validator("name")
     @classmethod
@@ -117,6 +119,8 @@ async def update_project(request: Request, project_id: str, body: ProjectPatch) 
     if body.style is not None:
         await _check_style(request, body.style)
         fields["style"] = body.style
+    if "auto_export_dir" in fields:
+        fields["auto_export_dir"] = fields["auto_export_dir"].strip()
     p = await _repo(request).update_project(project_id, **fields)
     assert p is not None
     _publish(request, p)

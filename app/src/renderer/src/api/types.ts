@@ -136,6 +136,7 @@ export interface QaRecomputeResult {
 }
 
 export type EventType =
+  | 'project.auto_export'
   | 'run.created'
   | 'run.updated'
   | 'step.updated'
@@ -480,6 +481,9 @@ export interface ProjectRow {
   id: string
   name: string
   description: string
+  /** Approved versions are exported to auto_export_dir for engine_target. */
+  auto_export: boolean
+  auto_export_dir: string
   style: ProjectStyle
   created_at: number
   updated_at: number
@@ -511,6 +515,8 @@ export interface ProjectCreateBody {
 export interface ProjectPatchBody {
   name?: string
   description?: string
+  auto_export?: boolean
+  auto_export_dir?: string
   style?: ProjectStyle
   archived?: boolean
   engine_target?: EngineTarget

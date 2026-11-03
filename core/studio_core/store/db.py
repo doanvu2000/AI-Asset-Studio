@@ -82,7 +82,9 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL,
     archived INTEGER NOT NULL DEFAULT 0,
-    engine_target TEXT NOT NULL DEFAULT 'none'
+    engine_target TEXT NOT NULL DEFAULT 'none',
+    auto_export INTEGER NOT NULL DEFAULT 0,
+    auto_export_dir TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS cache (
@@ -184,6 +186,12 @@ class Database:
         async with self.conn.execute("PRAGMA table_info(projects)") as cur:
             if "engine_target" not in {r["name"] for r in await cur.fetchall()}:
                 await self.conn.execute("ALTER TABLE projects ADD COLUMN engine_target TEXT NOT NULL DEFAULT 'none'")
+        async with self.conn.execute("PRAGMA table_info(projects)") as cur:
+            have = {r["name"] for r in await cur.fetchall()}
+        if "auto_export" not in have:
+            await self.conn.execute("ALTER TABLE projects ADD COLUMN auto_export INTEGER NOT NULL DEFAULT 0")
+        if "auto_export_dir" not in have:
+            await self.conn.execute("ALTER TABLE projects ADD COLUMN auto_export_dir TEXT NOT NULL DEFAULT ''")
         # Generated (virtual) so no write path or backfill is needed and old rows are covered at once.
         # table_xinfo, not table_info: the latter hides generated columns.
         async with self.conn.execute("PRAGMA table_xinfo(versions)") as cur:

@@ -159,6 +159,8 @@ class ProjectRow(BaseModel):
     updated_at: float
     archived: bool = False
     engine_target: Literal["flutter", "android", "ios", "unity", "godot", "none"] = "none"
+    auto_export: bool = False
+    auto_export_dir: str = ""
 
 
 class WorkflowStatus(str, enum.Enum):

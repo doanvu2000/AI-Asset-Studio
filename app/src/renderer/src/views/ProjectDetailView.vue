@@ -14,6 +14,7 @@ import QaPanel from '@/components/QaPanel.vue'
 import StyleBiblePanel from '@/components/StyleBiblePanel.vue'
 import StyleLockPanel from '@/components/StyleLockPanel.vue'
 import PackDialog from '@/components/PackDialog.vue'
+import AutoExportRow from '@/components/AutoExportRow.vue'
 import AiCreditsDialog from '@/components/AiCreditsDialog.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import RelTime from '@/components/RelTime.vue'
@@ -339,6 +340,7 @@ function newAsset(): void {
             <button v-for="[id, label] in ENGINE_TARGETS" :key="id" type="button" role="radio" :aria-checked="project.engine_target === id" :class="{ on: project.engine_target === id }" @click="setEngine(id)">{{ label }}</button>
           </div>
         </div>
+        <AutoExportRow :project="project" />
         <div class="engine-row acts">
           <div class="row-acts">
             <button type="button" class="btn btn-ghost" :aria-pressed="isActive" :title="isActive ? 'Bỏ chọn: lượt chạy mới không thuộc dự án' : 'Lượt chạy mới mặc định thuộc dự án này'" @click="toggleActive">

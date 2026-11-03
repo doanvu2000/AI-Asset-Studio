@@ -119,10 +119,14 @@ def build_app(settings: Settings, token: str, *, engine: Engine | None = None,
         app.state.engine = eng
         from studio_core.api.similar import start_index
         image_index = await start_index(app)
+        from studio_core.engine.auto_export import AutoExporter
+        auto_export = AutoExporter(app.state)
+        auto_export.start(bus)
         try:
             await eng.recover()
             yield
         finally:
+            await auto_export.stop()
             await image_index.stop()
             await _shutdown(eng, resources, db)
 
