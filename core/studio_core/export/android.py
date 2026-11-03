@@ -354,6 +354,25 @@ README_ICON = """- mipmap-*/ic_launcher(.webp|_round.webp|_foreground.webp|_mono
   foreground nằm trong safe zone 66dp/108dp; monochrome (alpha -> trắng) cho themed icon Android 13+."""
 
 
+def _fx(src: Source, package: str, names: list[str]) -> tuple[Files, list[str]]:
+    from studio_core.export import android_fx as fx
+
+    files: Files = []
+    notes: list[str] = []
+    seen: set[str] = set()
+    for label, present, build in fx.kinds(src):
+        if not present:
+            continue
+        got, note = build(src, package)
+        if not got:
+            continue
+        files += [f for f in got if f[0] not in seen]
+        seen |= {f[0] for f in got}
+        notes += note
+        names.append(f"fx {label}")
+    return files, ([fx.README_FX, *notes] if notes else [])
+
+
 def export(src: Source, package: str = PACKAGE) -> Files:
     a = src.asset
     used: set[str] = set()
@@ -382,9 +401,14 @@ def export(src: Source, package: str = PACKAGE) -> Files:
             icon = True
     if src.ui:
         notes = [README_UI, *([README_SLICED] if patches else []), *notes, *([README_ICON] if icon else [])]
+    has_res = bool(files)
+    fx_files, fx_notes = _fx(src, package, names)
+    files += fx_files
+    notes += fx_notes
     if not files:
         return []
-    files.append((KOTLIN_FILE, kotlin_source(package, images, patches, clips).encode()))
+    if has_res:
+        files.append((KOTLIN_FILE, kotlin_source(package, images, patches, clips).encode()))
     listing = "\n".join(f"  * {n}" for n in names)
     head = README_HEAD.format(asset=a, pkg=package, pkgpath=package.replace(".", "/"))
     files.append(("README_ANDROID.md", (head + "\n".join(notes) + f"\n\nTài nguyên:\n{listing}\n").encode()))

@@ -177,7 +177,8 @@ class AndroidPack:
         return out
 
     def add(self, folder: str, d: Path) -> list[str]:
-        images, patches, clips = parse_kotlin((d / an.KOTLIN_FILE).read_text(encoding="utf-8"))
+        kt = d / an.KOTLIN_FILE
+        images, patches, clips = parse_kotlin(kt.read_text(encoding="utf-8")) if kt.is_file() else ([], [], [])
         prefix = re.sub(r"[^a-z0-9_]+", "_", ident(folder, "asset").lower()).strip("_") + "_"
         if prefix[0].isdigit():  # aapt2 rejects resource names that start with a digit
             prefix = "asset_" + prefix
@@ -205,18 +206,21 @@ class AndroidPack:
         listing = [f"image {mapping[n]}" for n in images] + [f"9-slice {mapping[n]}" for n in patches]
         listing += [f"anim {mapping[c.name]} ({len(c.frames)} khung, {c.fps:g} fps, {'lặp' if c.loop else 'một lần'})"
                     for c in clips]
+        listing += re.findall(r"^  \* (fx .+)$", text.split(_NOTE_CUT, 1)[-1], re.M)
         self.notes[folder] = body + "\n\nTài nguyên:\n" + "\n".join(f"  * {x}" for x in listing)
         return got
 
     def finish(self) -> list[str]:
         if not self.tree.rels:
             return []
-        self.tree.put(an.KOTLIN_FILE, an.kotlin_source(self.package, self.images, self.patches, self.clips).encode())
+        has_res = bool(self.images or self.patches or self.clips)
+        if has_res:
+            self.tree.put(an.KOTLIN_FILE, an.kotlin_source(self.package, self.images, self.patches, self.clips).encode())
         head = an.README_HEAD.format(asset=self.title, pkg=self.package, pkgpath=self.package.replace(".", "/"))
         head += ("Trong gói, mọi tên tài nguyên có tiền tố theo thư mục asset (<asset>_<tên>) để các asset không "
                  "đè nhau; AssetStudioAssets.kt đã gộp cho cả gói.\n\n")
         self.tree.put("README_ANDROID.md", (head + _sections(self.notes) + "\n").encode())
-        return [an.KOTLIN_FILE]
+        return [an.KOTLIN_FILE] if has_res else []
 
 
 _IOS_SET = (".imageset", ".spriteatlas")
