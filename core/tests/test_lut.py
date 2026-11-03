@@ -257,8 +257,10 @@ def _reference_solve(idx, wts, weight, rhs, m, n, smooth, iters):
     return x
 
 
+@pytest.mark.parametrize("tries", [lut_mod.JACOBI_TRIES, 0])
 @pytest.mark.parametrize("kind", ["noisy", "mono", "few", "partial_weight"])
-def test_solve_matches_reference(kind):
+def test_solve_matches_reference(kind, tries, monkeypatch):
+    monkeypatch.setattr(lut_mod, "JACOBI_TRIES", tries)
     rng = np.random.default_rng(7)
     src = rng.random((6000, 3))
     if kind == "mono":
@@ -286,3 +288,26 @@ def test_fit_lut_matches_reference_on_graded_texture():
     off = _reference_solve(idx, wts, np.sqrt(cnt), d - s, 17 ** 3, 17, 0.3, 400)
     ref = np.clip(identity_lut(17).reshape(-1, 3) + off, 0, 1).reshape(17, 17, 17, 3)
     assert np.abs(lut - ref).max() < 1 / 255 / 4
+
+
+def test_multigrid_cuts_cg_iterations(monkeypatch):
+    src = np.random.default_rng(5).random((5, 3)) * 0.3 + 0.35
+    idx, wts = lut_mod._corners(src, 33)
+    weight, rhs = np.ones(5), night(src) - src
+    plain, mg = {}, {}
+    with monkeypatch.context() as mp:
+        mp.setattr(lut_mod, "JACOBI_TRIES", 400)
+        a = lut_mod._solve(idx, wts, weight, rhs, 33 ** 3, 33, 0.3, 400, stats=plain)
+    b = lut_mod._solve(idx, wts, weight, rhs, 33 ** 3, 33, 0.3, 400, stats=mg)
+    assert mg["iters"] * 5 < plain["iters"]
+    assert np.abs(a - b).max() < 1 / 255 / 4
+
+
+@pytest.mark.parametrize("n", [5, 8, 9, 16, 17])
+def test_multigrid_any_grid_size(n, monkeypatch):
+    monkeypatch.setattr(lut_mod, "JACOBI_TRIES", 0)
+    src = np.random.default_rng(2).random((300, 3))
+    idx, wts = lut_mod._corners(src, n)
+    weight, rhs = np.ones(300), night(src) - src
+    ref = _reference_solve(idx, wts, weight, rhs, n ** 3, n, 0.3, 400)
+    assert np.abs(ref - lut_mod._solve(idx, wts, weight, rhs, n ** 3, n, 0.3, 400)).max() < 1 / 255 / 4

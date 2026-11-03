@@ -20,8 +20,8 @@ LUT_TYPE = "asset-studio/color-lut"
 GRID = 33
 STRIP = 32
 FIT_SIDE = 256
-COARSE_SMOOTH = 2.0
 CG_TOL = 1e-5
+JACOBI_TRIES = 6
 DE_SIDE = 512
 SEAM_MAX = 1.0
 REF_BG = (128, 128, 128)
@@ -106,8 +106,144 @@ def _normal_stencil(idx: list[np.ndarray], wts: list[np.ndarray], weight: np.nda
     return st
 
 
+def _restrict(r: np.ndarray, n: int) -> np.ndarray:
+    """Adjoint of `_prolong`: (n³, 3) fine field to the ((n+1)/2)³ grid."""
+    g = r.reshape(n, n, n, 3)
+    for ax in range(3):
+        ev = np.take(g, range(0, n, 2), ax).copy()
+        od = np.take(g, range(1, n, 2), ax) * 0.5
+        lo, hi = [slice(None)] * 4, [slice(None)] * 4
+        lo[ax], hi[ax] = slice(None, -1), slice(1, None)
+        ev[tuple(hi)] += od
+        ev[tuple(lo)] += od
+        g = ev
+    return g.reshape(-1, 3)
+
+
+def _stencil_op(st: np.ndarray, n: int):
+    """Matvec of a 27-per-cell stencil on the n³ grid (zero outside), same flat-shift scheme as `_solve`."""
+    q = n + 2
+    shifts = [ob * q * q + og * q + orr for ob in (-1, 0, 1) for og in (-1, 0, 1) for orr in (-1, 0, 1)]
+    lo, hi = q * q + q + 1, q ** 3 - q * q - q - 1
+    st_pad = np.zeros((27, q, q, q))
+    st_pad[:, 1:-1, 1:-1, 1:-1] = st.reshape(27, n, n, n)
+    st_pad = st_pad.reshape(27, -1)[:, lo:hi]
+    xpad = np.zeros((3, q, q, q))
+    xflat = xpad.reshape(3, -1)
+    ypad = np.zeros((3, q ** 3))
+    tmp = np.empty((3, hi - lo))
+
+    def op(x: np.ndarray) -> np.ndarray:
+        xpad[:, 1:-1, 1:-1, 1:-1] = x.reshape(n, n, n, 3).transpose(3, 0, 1, 2)
+        ypad[:] = 0
+        for c, sh in zip(st_pad, shifts):
+            np.multiply(c, xflat[:, lo + sh:hi + sh], out=tmp)
+            ypad[:, lo:hi] += tmp
+        return ypad.reshape(3, q, q, q)[:, 1:-1, 1:-1, 1:-1].transpose(1, 2, 3, 0).reshape(-1, 3)
+    return op
+
+
+def _galerkin(op, n: int) -> np.ndarray:
+    """Coarse operator R A P as a 27-stencil. A cell only couples to coarse neighbours within one step, so probing
+    with the 27 residue classes (coordinates mod 3) of coarse cells, three per call, reads every coefficient."""
+    nc = (n - 1) // 2 + 1
+    mc = nc ** 3
+    cb, cg, cr = np.meshgrid(*(np.arange(nc),) * 3, indexing="ij")
+    cls = ((cb % 3) * 9 + (cg % 3) * 3 + cr % 3).reshape(-1)
+    probe = np.empty((27, mc))
+    for k in range(0, 27, 3):
+        e = np.stack([(cls == k + j).astype(np.float64) for j in range(3)], 1)
+        probe[k:k + 3] = _restrict(op(_prolong(e, nc)), n).T
+    st = np.zeros((27, mc))
+    coords = (cb.reshape(-1), cg.reshape(-1), cr.reshape(-1))
+    for kk, (db, dg, dr) in enumerate((b, g, r) for b in (-1, 0, 1) for g in (-1, 0, 1) for r in (-1, 0, 1)):
+        jb, jg, jr = coords[0] + db, coords[1] + dg, coords[2] + dr
+        ok = (jb >= 0) & (jb < nc) & (jg >= 0) & (jg < nc) & (jr >= 0) & (jr < nc)
+        jcls = (jb % 3) * 9 + (jg % 3) * 3 + jr % 3
+        st[kk, ok] = probe[jcls[ok], np.flatnonzero(ok)]
+    return st
+
+
+def _dense_from_stencil(st: np.ndarray, n: int) -> np.ndarray:
+    m = n ** 3
+    cb, cg, cr = np.meshgrid(*(np.arange(n),) * 3, indexing="ij")
+    cb, cg, cr = cb.reshape(-1), cg.reshape(-1), cr.reshape(-1)
+    mat = np.zeros((m, m))
+    for kk, (db, dg, dr) in enumerate((b, g, r) for b in (-1, 0, 1) for g in (-1, 0, 1) for r in (-1, 0, 1)):
+        jb, jg, jr = cb + db, cg + dg, cr + dr
+        ok = (jb >= 0) & (jb < n) & (jg >= 0) & (jg < n) & (jr >= 0) & (jr < n)
+        i = np.flatnonzero(ok)
+        mat[i, (jb[ok] * n + jg[ok]) * n + jr[ok]] += st[kk, i]
+    return mat
+
+
+def _lambda_max(op, dinv: np.ndarray, m: int, steps: int = 6) -> float:
+    v = np.random.default_rng(0).random((m, 3)) + 0.5
+    lam = 1.0
+    for _ in range(steps):
+        w = dinv[:, None] * op(v)
+        lam = float(np.sqrt((w * w).sum() / (v * v).sum()))
+        v = w / (np.sqrt((w * w).sum()) + 1e-300)
+    return lam * 1.1
+
+
+def _smooth(op, dinv: np.ndarray, lam: float, b: np.ndarray, x: np.ndarray | None, degree: int = 2) -> np.ndarray:
+    """Chebyshev smoother damping the upper part [lam/4, lam] of D^-1 A's spectrum; symmetric when used before and
+    after the coarse correction."""
+    lo, hi = lam / 4, lam
+    theta, delta = (hi + lo) / 2, (hi - lo) / 2
+    sigma = theta / delta
+    rho = 1 / sigma
+    if x is None:
+        x, r = np.zeros_like(b), b.copy()
+    else:
+        r = b - op(x)
+    d = dinv[:, None] * r / theta
+    for k in range(degree):
+        x = x + d
+        if k == degree - 1:
+            break
+        r = r - op(d)
+        rho_new = 1 / (2 * sigma - rho)
+        d = rho_new * rho * d + 2 * rho_new / delta * dinv[:, None] * r
+        rho = rho_new
+    return x
+
+
+def _mg_precond(op, diag: np.ndarray, n: int):
+    """Symmetric V-cycle (Chebyshev smoothing, Galerkin coarse operators, dense solve at the bottom) as the CG
+    preconditioner: Jacobi alone leaves the smooth error modes for hundreds of CG steps."""
+    levels = [(n, op, 1.0 / diag)]
+    lam = [_lambda_max(op, levels[0][2], n ** 3)]
+    cur_n, cur_op = n, op
+    while cur_n > 5 and cur_n % 2 == 1:
+        st_c = _galerkin(cur_op, cur_n)
+        cur_n = (cur_n - 1) // 2 + 1
+        cur_op = _stencil_op(st_c, cur_n)
+        dinv = 1.0 / np.maximum(st_c[13], 1e-30)
+        levels.append((cur_n, cur_op, dinv))
+        coarse_st = st_c
+        if cur_n > 5 and cur_n % 2 == 1:
+            lam.append(_lambda_max(cur_op, dinv, cur_n ** 3))
+    if len(levels) == 1 or cur_n ** 3 > 2000:
+        return None
+    mat = _dense_from_stencil(coarse_st, cur_n)
+    inv = np.linalg.pinv(mat, hermitian=True)
+
+    def cycle(lv: int, b: np.ndarray) -> np.ndarray:
+        nl, lop, dinv = levels[lv]
+        if lv == len(levels) - 1:
+            return inv @ b
+        x = _smooth(lop, dinv, lam[lv], b, None)
+        rc = _restrict(b - lop(x), nl)
+        x = x + _prolong(cycle(lv + 1, rc), levels[lv + 1][0])
+        return _smooth(lop, dinv, lam[lv], b, x)
+    return lambda r: cycle(0, r)
+
+
 def _solve(idx: list[np.ndarray], wts: list[np.ndarray], weight: np.ndarray, rhs_samples: np.ndarray, m: int,
-           n: int, smooth: float, iters: int, x0: np.ndarray | None = None) -> np.ndarray:
+           n: int, smooth: float, iters: int, x0: np.ndarray | None = None,
+           stats: dict | None = None) -> np.ndarray:
     def splat(v: np.ndarray) -> np.ndarray:
         return np.stack([sum(np.bincount(i, w * v[:, k], m) for i, w in zip(idx, wts)) for k in range(3)], 1)
 
@@ -167,23 +303,35 @@ def _solve(idx: list[np.ndarray], wts: list[np.ndarray], weight: np.ndarray, rhs
         return ypad.reshape(3, q, q, q)[:, 1:-1, 1:-1, 1:-1].transpose(1, 2, 3, 0).reshape(m, 3)
 
     b = alpha * splat(rhs_samples * weight[:, None])
-    x = np.zeros((m, 3)) if x0 is None else x0.copy()
-    r = b - op(x)
-    z = r * precond[:, None]
-    p = z.copy()
-    rz = (r * z).sum(0)
     b_norm = np.sqrt((b * b).sum(0)) + 1e-12
-    for _ in range(iters):
-        ap = op(p)
-        a = rz / np.maximum((p * ap).sum(0), 1e-30)
-        x += a * p
-        r -= a * ap
-        if np.all(np.sqrt((r * r).sum(0)) / b_norm < CG_TOL):
-            break
-        z = r * precond[:, None]
-        rz_new = (r * z).sum(0)
-        p = z + (rz_new / np.maximum(rz, 1e-30)) * p
-        rz = rz_new
+    x = np.zeros((m, 3)) if x0 is None else x0.copy()
+
+    def cg(pre, x: np.ndarray, budget: int) -> tuple[np.ndarray, bool]:
+        r = b - op(x)
+        z = pre(r)
+        p = z.copy()
+        rz = (r * z).sum(0)
+        for _ in range(budget):
+            if stats is not None:
+                stats["iters"] = stats.get("iters", 0) + 1
+            ap = op(p)
+            a = rz / np.maximum((p * ap).sum(0), 1e-30)
+            x += a * p
+            r -= a * ap
+            if np.all(np.sqrt((r * r).sum(0)) / b_norm < CG_TOL):
+                return x, True
+            z = pre(r)
+            rz_new = (r * z).sum(0)
+            p = z + (rz_new / np.maximum(rz, 1e-30)) * p
+            rz = rz_new
+        return x, False
+
+    # Data-dominated systems converge in a few Jacobi steps; the multigrid setup only pays off for the rest.
+    x, done = cg(lambda v: v * precond[:, None], x, min(iters, JACOBI_TRIES))
+    if done or iters <= JACOBI_TRIES:
+        return x
+    mg = _mg_precond(op, 1.0 / precond, n)
+    x, _ = cg(mg if mg is not None else (lambda v: v * precond[:, None]), x, iters - JACOBI_TRIES)
     return x
 
 
@@ -202,18 +350,6 @@ def _prolong(x: np.ndarray, nc: int) -> np.ndarray:
     return g.reshape(-1, 3)
 
 
-def _solve_pyramid(s: np.ndarray, d: np.ndarray, weight: np.ndarray, n: int, smooth: float, iters: int):
-    """Fine-grid solve warm-started from a half-resolution one: with few samples the Laplacian fill is what CG spends
-    hundreds of steps on, and the coarse grid (8x fewer cells) gets most of the way there. The fine solve still runs
-    to the same tolerance, so only the iteration count changes."""
-    x0 = None
-    if n >= 17 and n % 2 == 1:
-        nc = (n - 1) // 2 + 1
-        x0 = _prolong(_solve_pyramid(s, d, weight, nc, smooth * COARSE_SMOOTH, iters)[0], nc)
-    idx, wts = _corners(s, n)
-    return _solve(idx, wts, weight, d - s, n ** 3, n, smooth, iters, x0=x0), idx, wts
-
-
 def fit_lut(src: np.ndarray, dst: np.ndarray, n: int = GRID, smooth: float = 0.3, iters: int = 400,
             robust: bool = True) -> np.ndarray:
     """LUT L minimising sum w_i |L(src_i) - dst_i|^2 (trilinear) + smooth * sum |L_a - L_b|^2 over grid neighbours.
@@ -225,7 +361,8 @@ def fit_lut(src: np.ndarray, dst: np.ndarray, n: int = GRID, smooth: float = 0.3
     ident = identity_lut(n).reshape(-1, 3)
     m = n ** 3
     weight = np.sqrt(cnt)
-    off, idx, wts = _solve_pyramid(s, d, weight, n, smooth, iters)
+    idx, wts = _corners(s, n)
+    off = _solve(idx, wts, weight, d - s, m, n, smooth, iters)
     if robust and len(s) > 64:
         pred = s + sum(w[:, None] * off[i] for i, w in zip(idx, wts))
         res = np.sqrt(((pred - d) ** 2).sum(1))
