@@ -184,7 +184,7 @@ async def test_pack_flutter_demo_flag_is_forwarded(app_ctx, tmp_path: Path) -> N
     assert "demo" in json.dumps(r.json())
 
 
-async def test_pack_android_ios_only_unexportable_assets(app_ctx, tmp_path: Path) -> None:  # noqa: F811
+async def test_pack_android_ios_still_image_only(app_ctx, tmp_path: Path) -> None:  # noqa: F811
     app, client, _ = app_ctx
     await _project(app)
     await _image_run(app, "r5", "Icon")
@@ -192,6 +192,77 @@ async def test_pack_android_ios_only_unexportable_assets(app_ctx, tmp_path: Path
                           json={"engines": ["android", "ios"], "out_dir": str(tmp_path)})
     assert r.status_code == 201, r.text
     res = r.json()
-    assert res["android"]["skipped"] == ["Icon"] and res["ios"]["skipped"] == ["Icon"]
-    assert any("Icon" in w and "android" in w for w in res["warnings"])
-    assert (Path(res["dir"]) / "provenance.json").is_file()
+    root = Path(res["dir"])
+    assert res["android"]["skipped"] == [] and res["ios"]["skipped"] == []
+    assert len(list((root / "android/res").glob("drawable-*/icon_icon.webp"))) == 5
+    assert "R.drawable.icon_icon" in (root / "android/kotlin/AssetStudioAssets.kt").read_text(encoding="utf-8")
+    iset = root / "ios/AssetStudio.xcassets/Icon.imageset"
+    doc = json.loads((iset / "Contents.json").read_text(encoding="utf-8"))
+    assert [i["scale"] for i in doc["images"]] == ["1x", "2x", "3x"]
+    assert all((iset / i["filename"]).is_file() for i in doc["images"])
+    assert "Icon" in (root / "ios/Sources/AssetStudioAssets.swift").read_text(encoding="utf-8")
+
+
+async def test_pack_android_ios_skips_glb_only(app_ctx, tmp_path: Path) -> None:  # noqa: F811
+    app, client, _ = app_ctx
+    await _project(app)
+    repo, blobs = app.state.repo, app.state.blobs
+    await repo.create_run(RunRow(id="r6", project_id="p1", recipe_id="prop-3d", recipe_hash="h", created_at=time.time()))
+    ref = await blobs.put_bytes(b"glTF" + bytes(20), name="rock.glb", mime="model/gltf-binary")
+    step = StepRow(id="r6-gen", run_id="r6", key="gen", kind="blender.game_ready", lane=Lane.CPU,
+                   status=StepStatus.SUCCEEDED, outputs={"mesh": [ref]})
+    await repo.create_steps([step])
+    await repo.add_version(VersionRow(id="v-r6", project_id="p1", asset_name="Rock", run_id="r6", step_id=step.id,
+                                      blob=ref, status=VersionStatus.APPROVED, created_at=time.time()))
+    r = await client.post("/api/projects/p1/pack", headers=AUTH,
+                          json={"engines": ["android", "ios"], "out_dir": str(tmp_path)})
+    assert r.status_code == 201, r.text
+    res = r.json()
+    assert res["android"]["skipped"] == ["Rock"] and res["ios"]["skipped"] == ["Rock"]
+    assert any("Rock" in w and "android" in w for w in res["warnings"])
+
+
+def _still_step(tmp_path: Path, size: int, ext: str, name: str):
+    from PIL import Image
+
+    from studio_core.contracts import BlobRef, StepRow
+
+    class Blobs:
+        def path(self, h: str) -> Path:
+            return tmp_path / h
+
+    fmt = {"png": "PNG", "jpg": "JPEG", "webp": "WEBP"}[ext]
+    Image.new("RGB", (size, size), (30, 120, 200)).save(tmp_path / f"h{size}{ext}", fmt)
+    ref = BlobRef(hash=f"h{size}{ext}", mime="image/png", size=1, name=f"{name}.{ext}")
+    step = StepRow(id="s", run_id="r", key="gen", kind="x", lane=Lane.CPU, status=StepStatus.SUCCEEDED,
+                   outputs={"images": [ref]})
+    return step, Blobs()
+
+
+import pytest
+
+
+@pytest.mark.parametrize("size,ext", [(256, "png"), (1024, "jpg"), (256, "webp")])
+def test_still_image_density_and_names(tmp_path: Path, size: int, ext: str) -> None:
+    from PIL import Image
+
+    from studio_core.store.bundle import export_engine
+
+    step, blobs = _still_step(tmp_path, size, ext, "9 Hero Icon")
+    res = export_engine(step, [], blobs, tmp_path / "o", None, "android", package="com.acme.game")
+    drawables = {Path(f).parent.name: Path(f) for f in res["files"] if "/drawable-" in f.replace("\\", "/")}
+    assert sorted(drawables) == ["drawable-hdpi", "drawable-mdpi", "drawable-xhdpi", "drawable-xxhdpi", "drawable-xxxhdpi"]
+    for d, k in (("mdpi", 1), ("hdpi", 1.5), ("xhdpi", 2), ("xxhdpi", 3), ("xxxhdpi", 4)):
+        with Image.open(drawables[f"drawable-{d}"]) as im:
+            assert im.width == round(size * k / 4)
+    assert all(re.fullmatch(r"[a-z][a-z0-9_]*", p.stem) for p in drawables.values())
+
+    res = export_engine(step, [], blobs, tmp_path / "o", None, "ios")
+    contents = [Path(f) for f in res["files"] if f.replace("\\", "/").endswith(".imageset/Contents.json")]
+    assert len(contents) == 1
+    doc = json.loads(contents[0].read_text(encoding="utf-8"))
+    sizes = {}
+    for i in doc["images"]:
+        with Image.open(contents[0].parent / i["filename"]) as im:
+            sizes[i["scale"]] = im.width
+    assert sizes == {"1x": round(size / 3), "2x": round(size * 2 / 3), "3x": size}

@@ -30,6 +30,7 @@ ENGINES = {"flutter": flutter.export, "android": android.export, "ios": ios.expo
 # Mobile targets take plain image/sheet/UI exports: the Unity/Godot-only steps (shaders, toon, hit FX, texture budget,
 # normal map companion) do not apply to them.
 MOBILE_ENGINES = ("flutter", "android", "ios")
+STILL_ENGINES = ("android", "ios")
 _PACKAGE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 
 
@@ -429,8 +430,23 @@ def _audio(step: StepRow, blobs: BlobStore) -> list[tuple[str, Path]]:
     return [(safe_filename(None, r), blobs.path(r.hash)) for r in best.values()]
 
 
-def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
-    src = engine_source(step, [], blobs, "x")
+STILL_EXT = (".png", ".jpg", ".jpeg", ".webp")
+
+
+def still_images(step: StepRow, blobs: BlobStore, only: list[BlobRef] | None = None
+                 ) -> list[tuple[str, Path, tuple[int, int, int, int], str]]:
+    """Plain raster outputs as borderless UI entries: the Android/iOS exporters turn those into density images."""
+    refs = only if only is not None else [r for rs in step.outputs.values() for r in rs]
+    picked: dict[str, BlobRef] = {}
+    for r in refs:
+        if r.hash not in picked and Path(safe_filename(None, r)).suffix.lower() in STILL_EXT:
+            picked[r.hash] = r
+    names: set[str] = set()
+    return [(_unique(Path(safe_filename(None, r)).stem, names), blobs.path(r.hash), (0, 0, 0, 0), "")
+            for r in picked.values()]
+
+
+def _source_ready(src: Source) -> bool:
     return (src.sheet is not None or src.spine_json is not None or bool(src.glb) or bool(src.textures)
             or bool(src.audio) or bool(src.ui) or bool(src.pbr) or bool(src.fbx)
             or bool(src.rarity) or bool(src.luts) or bool(src.damage_states)
@@ -440,11 +456,19 @@ def engine_ready(step: StepRow, blobs: BlobStore) -> bool:
             or bool(src.iso) or bool(src.playable) or bool(src.room_kit))
 
 
+def engine_ready(step: StepRow, blobs: BlobStore, engine: str | None = None,
+                 stills: list[BlobRef] | None = None) -> bool:
+    """`engine` android/ios also accepts a step whose only output is a plain image."""
+    if _source_ready(engine_source(step, [], blobs, "x")):
+        return True
+    return engine in STILL_ENGINES and bool(still_images(step, blobs, stills))
+
+
 def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root: Path, name: str | None,
                   engine: str, ppu: float = 100.0, pixel: bool | None = None, collider: Any = None,
                   shaders: list[Any] | None = None, normal2d: Any = None, mobile: bool = False,
                   hits: Any = None, aseprite: bool = False, toon: Any = None, package: str | None = None,
-                  webp: bool = False) -> dict[str, Any]:
+                  webp: bool = False, stills: list[BlobRef] | None = None) -> dict[str, Any]:
     exporter = ENGINES.get(engine)
     if exporter is None:
         raise BundleError(f"unknown engine '{engine}' (use {', '.join(ENGINES)})")
@@ -452,6 +476,9 @@ def export_engine(step: StepRow, siblings: list[StepRow], blobs: BlobStore, root
     folder = safe_component(base, step.key)
     src = engine_source(step, siblings, blobs, ident(folder, "asset"), ppu, pixel)
     src.collider = collider
+    if engine in STILL_ENGINES and not _source_ready(src):
+        imgs = still_images(step, blobs, stills)
+        src.ui = [(src.asset if len(imgs) == 1 else f"{src.asset}_{n}", p, b, st) for n, p, b, st in imgs]
     from studio_core.export.normal2d import apply as apply_normal2d, append_readme
 
     mobile_target = engine in MOBILE_ENGINES

@@ -673,7 +673,8 @@ def _raw_copy(a: PackAsset, blobs: BlobStore, dst: Path) -> list[str]:
 
 def _export_one(a: PackAsset, blobs: BlobStore, staging: Path, folder: str, engine: str, opts: EngineOptions,
                 warnings: list[str], budgets: list[dict[str, Any]] | None = None) -> Path | None:
-    if not engine_ready(a.step, blobs):
+    stills = [v.blob for v in a.versions]
+    if not engine_ready(a.step, blobs, engine, stills):
         if engine in MOBILE_ENGINES:
             warnings.append(f"{folder} ({engine}): no engine-ready output; skipped")
         return None
@@ -681,7 +682,7 @@ def _export_one(a: PackAsset, blobs: BlobStore, staging: Path, folder: str, engi
     if engine in MOBILE_ENGINES:
         try:
             out = export_engine(*args, opts.shaders if engine in ("android", "ios") else None, None, False,
-                                package=opts.package, webp=opts.webp)
+                                package=opts.package, webp=opts.webp, stills=stills)
         except BundleError as e:
             warnings.append(f"{folder} ({engine}): {e}; skipped")
             return None

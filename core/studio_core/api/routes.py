@@ -582,7 +582,10 @@ async def step_export_options(request: Request, step_id: str) -> Response:
     step = await _exportable_step(request, step_id)
     meta = await asyncio.to_thread(sheet_meta, step, _blobs(request))
     files = len({r.hash for refs in step.outputs.values() for r in refs})
-    engines = list(ENGINES) if await asyncio.to_thread(engine_ready, step, _blobs(request)) else []
+    if await asyncio.to_thread(engine_ready, step, _blobs(request)):
+        engines = list(ENGINES)
+    else:
+        engines = ["android", "ios"] if await asyncio.to_thread(engine_ready, step, _blobs(request), "android") else []
     src = await asyncio.to_thread(engine_source, step, [], _blobs(request), "x") if engines else None
     collider = src is not None and src.sheet is not None
     return _json({"step_id": step.id, "kind": step.kind, "files": files, "sprite_sheet": meta is not None,
