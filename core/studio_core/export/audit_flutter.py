@@ -21,12 +21,13 @@ from studio_core.export import mobile
 from studio_core.export.restyle import _is_link, file_hash
 from studio_core.scan_jobs import ScanCancelled
 
-FIX_TYPES = ("flutter_declare", "flutter_variant", "flutter_webp")
+FIX_TYPES = ("flutter_declare", "flutter_variant", "flutter_webp", "flutter_font")
 IMAGE_EXTS = (".png", ".jpg", ".jpeg")
 RASTER_EXTS = (*IMAGE_EXTS, ".webp")
 VARIANT_DIR = re.compile(r"^\d+(?:\.\d+)?x$")
 SCALES = (2.0, 3.0)
 BIG_BYTES = 1 << 20
+BIG_WAV_BYTES = 1 << 20
 BIG_SIDE = mobile.BUDGETS["sprite"].max_size
 WEBP_QUALITY = 90
 IGNORED = {".ds_store", "thumbs.db", "desktop.ini"}
@@ -103,14 +104,26 @@ def _entries(doc: dict[str, Any]) -> tuple[list[str], set[str]]:
         if isinstance(path, str) and path.strip() and not path.startswith("packages/"):
             entries.append(path.strip())
     extra: set[str] = set()
-    for fam in fl.get("fonts") or []:
-        for f in (fam.get("fonts") or []) if isinstance(fam, dict) else []:
-            if isinstance(f, dict) and isinstance(f.get("asset"), str):
-                extra.add(f["asset"])
+    extra.update(_font_assets(doc))
     for s in fl.get("shaders") or []:
         if isinstance(s, str):
             extra.add(s)
     return entries, extra
+
+
+def _font_assets(doc: dict[str, Any]) -> list[str]:
+    """`asset:` paths of `flutter: fonts:`; empty / malformed (`fonts:` null, `fonts: []`, family without fonts) -> none.
+    `packages/...` fonts live in another package, so they cannot be checked here."""
+    fl = doc.get("flutter") if isinstance(doc.get("flutter"), dict) else {}
+    out: list[str] = []
+    fams = fl.get("fonts")
+    for fam in fams if isinstance(fams, list) else []:
+        items = fam.get("fonts") if isinstance(fam, dict) else None
+        for f in items if isinstance(items, list) else []:
+            a = f.get("asset") if isinstance(f, dict) else None
+            if isinstance(a, str) and a.strip() and not a.startswith("packages/"):
+                out.append(a.strip())
+    return out
 
 
 def _load_pubspec(proj: Path) -> tuple[str, dict[str, Any]]:
@@ -122,14 +135,14 @@ def _load_pubspec(proj: Path) -> tuple[str, dict[str, Any]]:
     return text, doc if isinstance(doc, dict) else {}
 
 
-def _walk_assets(proj: Path) -> list[str]:
+def _walk_assets(proj: Path, top: str = "assets", only: tuple[str, ...] | None = None) -> list[str]:
     out: list[str] = []
-    root = proj / "assets"
+    root = proj / top
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         d = Path(dirpath)
         dirnames[:] = sorted(n for n in dirnames if not n.startswith(".") and not _is_link(d / n))
         for n in sorted(filenames):
-            if n.startswith(".") or n.lower() in IGNORED or _is_link(d / n):
+            if n.startswith(".") or n.lower() in IGNORED or _is_link(d / n) or (only and not n.lower().endswith(only)):
                 continue
             out.append((d / n).relative_to(proj).as_posix())
     return out
@@ -207,8 +220,27 @@ def scan(folder: Path, proj: Path, progress: Any = None) -> dict[str, Any]:
             findings.append(_finding("asset_missing", "error", e,
                                      f"{what} khai báo trong pubspec nhưng không có trên đĩa{hint}; flutter build sẽ lỗi."))
 
+    font_declared: set[str] = set()
+    for e in dict.fromkeys(_font_assets(doc)):
+        if disk.kind(e) == "file":
+            font_declared.add(e)
+        elif inside(e):
+            findings.append(_finding("font_missing", "error", e,
+                                     "Font khai báo trong pubspec nhưng không có trên đĩa; flutter build sẽ lỗi."))
+
     walked = _walk_assets(proj)
-    bases = sorted({r for r in (*declared, *walked) if not is_variant(r) and PurePosixPath(r).name.lower() not in IGNORED})
+    font_files = sorted({*(r for r in walked if r.lower().endswith(FONT_EXTS)),
+                         *_walk_assets(proj, "fonts", FONT_EXTS)})
+    for rel in font_files:
+        if rel not in font_declared and inside(rel) and disk.kind(rel) == "file":
+            fam, weight, style = font_face(rel)
+            tag = ", ".join(x for x in (f"weight {weight}" if weight else "", style if style != "normal" else "") if x)
+            findings.append(_finding("font_undeclared", "warn", rel,
+                                     f"Font chưa khai báo ở flutter: fonts: nên TextStyle không dùng được; "
+                                     f"thêm family {fam}{f' ({tag})' if tag else ''}.",
+                                     {"type": "flutter_font", "rel": rel}))
+    bases = sorted({r for r in (*declared, *walked) if not is_variant(r) and PurePosixPath(r).name.lower() not in IGNORED
+                    and not r.lower().endswith(FONT_EXTS)})
     name_count: dict[str, int] = {}
     for r in bases:
         name_count[PurePosixPath(r).name] = name_count.get(PurePosixPath(r).name, 0) + 1
@@ -219,6 +251,12 @@ def scan(folder: Path, proj: Path, progress: Any = None) -> dict[str, Any]:
     total = len(bases)
     for n, base in enumerate(bases):
         tick(n, total, "files")
+        if base.lower().endswith(".wav") and inside(base) and disk.kind(base) == "file":
+            size = (proj / base).stat().st_size
+            if size > BIG_WAV_BYTES:
+                findings.append(_finding("audio_big", "warn", base,
+                                         f"WAV {_mb(size)} (không nén); nên dùng .ogg hoặc .m4a. Chỉ báo, không tự đổi "
+                                         "vì code phải trỏ lại file.", bytes=size))
         if base not in declared and inside(base):
             findings.append(_finding("asset_undeclared", "warn", base,
                                      "Có trong assets/ nhưng pubspec chưa khai báo nên không vào bản build; "
@@ -371,14 +409,14 @@ def _flutter_block(lines: list[str]) -> tuple[int, int, int] | None:
     return start, end, child
 
 
-def _assets_block(lines: list[str]) -> tuple[int, int, int] | None:
-    """(`assets:` line, line after its last item, key indent) inside the top-level flutter: block."""
+def _assets_block(lines: list[str], key: str = "assets") -> tuple[int, int, int] | None:
+    """(`assets:` / `fonts:` line, line after its last item, key indent) inside the top-level flutter: block."""
     fb = _flutter_block(lines)
     if fb is None:
         return None
     start, end, child = fb
     for i in range(start + 1, end):
-        m = re.match(r"^(\s*)assets:\s*(#.*)?$", lines[i])
+        m = re.match(rf"^(\s*){key}:\s*(#.*)?$", lines[i])
         if m and len(m.group(1)) == child:
             last = i
             for j in range(i + 1, end):
@@ -414,6 +452,89 @@ def declare_entry(text: str, entry: str) -> str:
         start, end, child = block
         item = next((_indent(ln) for ln in lines[start + 1:end] if ln.lstrip().startswith("- ")), child + 2)
         lines.insert(end, f"{' ' * item}- {_quote(entry)}")
+    out = "\n".join(lines)
+    return out.replace("\n", "\r\n") if crlf else out
+
+
+_WEIGHTS = {"thin": 100, "extralight": 200, "ultralight": 200, "light": 300, "regular": 0, "normal": 0, "book": 0,
+            "medium": 500, "semibold": 600, "demibold": 600, "bold": 700, "extrabold": 800, "ultrabold": 800,
+            "black": 900, "heavy": 900}
+_TAGS = "|".join(sorted([*_WEIGHTS, "italic", "oblique"], key=len, reverse=True))
+_FACE = re.compile(r"^(?P<fam>.+?)[-_ ]?(?P<tags>(?:(?:" + _TAGS + r")[-_ ]?)+)$", re.I)
+
+
+def font_face(rel: str) -> tuple[str, int, str]:
+    """(family, weight or 0, style) guessed from a name like Roboto-BoldItalic.ttf; no clear suffix -> whole stem."""
+    raw = PurePosixPath(rel).stem
+    stem = re.sub(r"\[.*?\]", "", raw).strip(" -_") or raw
+    m = _FACE.match(stem)
+    if not m:
+        return stem, 0, "normal"
+    weight, style = 0, "normal"
+    for tag in re.findall(_TAGS, m.group("tags"), re.I):
+        t = tag.lower()
+        if t in ("italic", "oblique"):
+            style = "italic"
+        else:
+            weight = _WEIGHTS[t] or weight
+    return m.group("fam").strip(" -_"), weight, style
+
+
+def _font_lines(rel: str, item_pad: int) -> list[str]:
+    _, weight, style = font_face(rel)
+    pad = " " * item_pad
+    out = [f"{pad}- asset: {_quote(rel)}"]
+    if weight:
+        out.append(f"{pad}  weight: {weight}")
+    if style != "normal":
+        out.append(f"{pad}  style: {style}")
+    return out
+
+
+def declare_font(text: str, rel: str) -> str:
+    body, crlf = au._lf(text)
+    lines = body.split("\n")
+    fb = _flutter_block(lines)
+    if fb is None:
+        raise au.AuditError("pubspec.yaml chưa có mục flutter:")
+    family = font_face(rel)[0]
+    fam_line = f"- family: {_quote(family)}"
+    block = _assets_block(lines, "fonts")
+    if block is None:
+        doc = yaml.safe_load(body) or {}
+        fonts = (doc.get("flutter") or {}).get("fonts") if isinstance(doc.get("flutter"), dict) else None
+        if fonts is not None and fonts != []:
+            raise au.AuditError("fonts: viết một dòng ([...]); sửa tay trong pubspec.yaml")
+        pad = " " * fb[2]
+        new = [f"{pad}fonts:", f"{pad}  {fam_line}", f"{pad}    fonts:", *_font_lines(rel, fb[2] + 6)]
+        if fonts == []:
+            idx = next((i for i in range(fb[0] + 1, fb[1]) if re.match(rf"^{pad}fonts:\s*\[\s*\]\s*(#.*)?$", lines[i])),
+                       None)
+            if idx is None:
+                raise au.AuditError("fonts: viết một dòng ([...]); sửa tay trong pubspec.yaml")
+            lines[idx:idx + 1] = new
+        else:
+            lines[fb[0] + 1:fb[0] + 1] = new
+    else:
+        start, end, child = block
+        dash = next((_indent(ln) for ln in lines[start + 1:end] if ln.lstrip().startswith("- ")), child + 2)
+        pat = re.compile(r"^\s*-\s+family:\s*([\"']?)" + re.escape(family) + r"\1\s*(#.*)?$")
+        fam_at = next((i for i in range(start + 1, end) if _indent(lines[i]) == dash and pat.match(lines[i])), None)
+        if fam_at is None:
+            lines[end:end] = [f"{' ' * dash}{fam_line}", f"{' ' * dash}  fonts:", *_font_lines(rel, dash + 4)]
+        else:
+            fam_end = next((i for i in range(fam_at + 1, end)
+                            if not _skippable(lines[i]) and _indent(lines[i]) <= dash), end)
+            sub = next((i for i in range(fam_at + 1, fam_end) if re.match(r"^\s*fonts:\s*(#.*)?$", lines[i])), None)
+            if sub is None:
+                raise au.AuditError("family chưa có fonts:; sửa tay trong pubspec.yaml")
+            last = sub
+            for j in range(sub + 1, fam_end):
+                if not _skippable(lines[j]):
+                    last = j
+            item = next((_indent(ln) for ln in lines[sub + 1:fam_end] if ln.lstrip().startswith("- ")),
+                        _indent(lines[sub]) + 2)
+            lines[last + 1:last + 1] = _font_lines(rel, item)
     out = "\n".join(lines)
     return out.replace("\n", "\r\n") if crlf else out
 
@@ -584,12 +705,13 @@ def plan_fixes(report: dict[str, Any], actions: list[dict[str, Any]], progress: 
             f = _find(report, u["_a"]) if u["type"] in FIX_TYPES else None
             if f is None:
                 raise au.AuditError("không có trong lần quét gần nhất")
-            if u["type"] == "flutter_declare":
+            if u["type"] in ("flutter_declare", "flutter_font"):
                 if not pub_ok:
                     raise au.AuditError("pubspec.yaml đã đổi sau lần quét; quét lại")
                 if _hash_of(proj, u["rel"]) is None:
                     raise au.AuditError("file không còn trên đĩa")
-                if declare_entry(pub_text, u["rel"]) == pub_text:
+                declare = declare_font if u["type"] == "flutter_font" else declare_entry
+                if declare(pub_text, u["rel"]) == pub_text:
                     raise au.AuditError("đã khai báo")
                 u["touch"] = ["pubspec.yaml"]
             elif u["type"] == "flutter_variant":
@@ -642,8 +764,9 @@ def _run_unit(proj: Path, u: dict[str, Any], expected: dict[str, str | None]) ->
             raise au.AuditError(f"{rel} đã đổi trong lúc sửa")
     tx = _Tx(proj)
     try:
-        if u["type"] == "flutter_declare":
-            tx.write("pubspec.yaml", declare_entry(_read_text(proj, "pubspec.yaml"), u["rel"]).encode("utf-8"))
+        if u["type"] in ("flutter_declare", "flutter_font"):
+            declare = declare_font if u["type"] == "flutter_font" else declare_entry
+            tx.write("pubspec.yaml", declare(_read_text(proj, "pubspec.yaml"), u["rel"]).encode("utf-8"))
         elif u["type"] == "flutter_variant":
             ext = PurePosixPath(u["rel"]).suffix.lower()
             tx.write(u["target"], make_variant(_safe(proj, u["src"]), u["src_scale"], _scale(u["kind"]) or 1.0, ext))

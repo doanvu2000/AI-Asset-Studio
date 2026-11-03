@@ -19,10 +19,10 @@ type Tab = 'textures' | 'flutter' | 'duplicates' | 'unreferenced' | 'meshes' | '
 const FOLDER_KEY = 'audit.folder'
 const MB = 1048576
 const KIND_LABEL: Record<string, string> = { sprite: 'Sprite', ui: 'UI', texture: 'Texture 3D', tileset: 'Tileset', normal: 'Normal', pixel: 'Pixel art' }
-const FIX_LABEL: Record<string, string> = { mobile_preset: 'Nén mobile', max_size: 'Giảm max size', drop_alpha: 'Bỏ alpha', flutter_declare: 'Khai báo vào pubspec', flutter_variant: 'Sinh biến thể', flutter_webp: 'Chuyển WebP' }
+const FIX_LABEL: Record<string, string> = { mobile_preset: 'Nén mobile', max_size: 'Giảm max size', drop_alpha: 'Bỏ alpha', flutter_declare: 'Khai báo vào pubspec', flutter_variant: 'Sinh biến thể', flutter_webp: 'Chuyển WebP', flutter_font: 'Khai báo font' }
 const REF_LABEL: Record<string, string> = { texture: 'Ảnh', audio: 'Âm thanh', model: 'Mesh', material: 'Material', prefab: 'Prefab / scene', other: 'Tệp khác' }
 const ENGINE_LABEL: Record<string, string> = { unity: 'Unity', godot: 'Godot', flutter: 'Flutter' }
-const FINDING_LABEL: Record<string, string> = { asset_missing: 'Thiếu file', asset_undeclared: 'Chưa khai báo', variant_missing: 'Thiếu biến thể', image_big: 'Ảnh nặng' }
+const FINDING_LABEL: Record<string, string> = { asset_missing: 'Thiếu file', asset_undeclared: 'Chưa khai báo', variant_missing: 'Thiếu biến thể', image_big: 'Ảnh nặng', font_missing: 'Thiếu font', font_undeclared: 'Font chưa khai báo', audio_big: 'WAV nặng' }
 
 const route = useRoute()
 const conn = useConnection()

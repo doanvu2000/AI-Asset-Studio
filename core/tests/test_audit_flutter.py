@@ -321,3 +321,106 @@ def test_dry_run_reports_plan_progress_and_can_cancel(tmp_path: Path):
 
     assert au.apply_fixes(rep, acts, tmp_path / "bk", dry_run=True, progress=never)["cancelled"]
     assert not (tmp_path / "bk").exists() or not list((tmp_path / "bk").glob("*"))
+
+
+FONT_PUBSPEC = """name: f
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: Roboto
+      fonts:
+        - asset: fonts/Roboto-Regular.ttf
+        - asset: fonts/Roboto-Missing.ttf
+          weight: 300
+        - asset: packages/other/fonts/X.ttf
+  assets:
+    - assets/sfx/
+"""
+
+
+def _font_proj(tmp: Path, pubspec: str = FONT_PUBSPEC) -> Path:
+    proj = tmp / "f"
+    (proj / "lib").mkdir(parents=True)
+    (proj / "fonts").mkdir()
+    (proj / "assets" / "sfx").mkdir(parents=True)
+    (proj / "pubspec.yaml").write_text(pubspec, encoding="utf-8", newline="")
+    (proj / "lib" / "m.dart").write_text("var a = 'assets/sfx/hit.ogg';", encoding="utf-8")
+    (proj / "fonts" / "Roboto-Regular.ttf").write_bytes(b"\0\1\0\0r")
+    (proj / "fonts" / "Roboto-BoldItalic.ttf").write_bytes(b"\0\1\0\0bi")
+    (proj / "fonts" / "Poppins-SemiBold.otf").write_bytes(b"OTTOp")
+    (proj / "assets" / "sfx" / "hit.ogg").write_bytes(b"ogg")
+    (proj / "assets" / "sfx" / "boom.wav").write_bytes(b"\0" * ((1 << 20) + 10))
+    (proj / "assets" / "sfx" / "tick.wav").write_bytes(b"\0" * 100)
+    return proj
+
+
+def test_font_and_audio_findings(tmp_path: Path):
+    proj = _font_proj(tmp_path)
+    rep = au.scan(str(proj))
+    assert [f["rel"] for f in _by(rep, "font_missing")] == ["fonts/Roboto-Missing.ttf"]
+    assert {f["rel"] for f in _by(rep, "font_undeclared")} == {"fonts/Roboto-BoldItalic.ttf", "fonts/Poppins-SemiBold.otf"}
+    assert [f["rel"] for f in _by(rep, "audio_big")] == ["assets/sfx/boom.wav"]
+    assert "fix" not in _by(rep, "audio_big")[0] and not _by(rep, "asset_undeclared")
+    assert {u["rel"] for u in rep["unreferenced"]} == {"assets/sfx/boom.wav", "assets/sfx/tick.wav"}
+    assert all(u["kind"] == "audio" for u in rep["unreferenced"]) and rep["summary"]["flutter"]["errors"] == 1
+
+
+def test_font_face_names():
+    assert af.font_face("fonts/Roboto-BoldItalic.ttf") == ("Roboto", 700, "italic")
+    assert af.font_face("a/Poppins_SemiBold.otf") == ("Poppins", 600, "normal")
+    assert af.font_face("RobotoLight.ttf") == ("Roboto", 300, "normal")
+    assert af.font_face("Lobster.ttf") == ("Lobster", 0, "normal")
+    assert af.font_face("Inter[opsz,wght].ttf") == ("Inter", 0, "normal")
+
+
+def test_declare_font_into_family_new_family_and_empty_fonts():
+    out = af.declare_font(FONT_PUBSPEC, "fonts/Roboto-BoldItalic.ttf")
+    assert "        - asset: fonts/Roboto-Missing.ttf\n          weight: 300\n        - asset: packages/other/fonts/X.ttf\n" \
+           "        - asset: fonts/Roboto-BoldItalic.ttf\n          weight: 700\n          style: italic\n  assets:" in out
+    out = af.declare_font(out, "fonts/Poppins-SemiBold.otf")
+    assert "    - family: Poppins\n      fonts:\n        - asset: fonts/Poppins-SemiBold.otf\n          weight: 600\n  assets:" in out
+    for empty in ("flutter:\n  fonts:\n  assets:\n    - a.png\n", "flutter:\n  fonts: []  # none\n  assets:\n    - a.png\n"):
+        got = af.declare_font("name: x\n" + empty, "fonts/Lobster.ttf")
+        assert "  fonts:\n    - family: Lobster\n      fonts:\n        - asset: fonts/Lobster.ttf\n  assets:" in got
+    bare = af.declare_font("name: x\r\nflutter:\r\n  uses-material-design: true\r\n", "fonts/Lobster.ttf")
+    assert bare == ("name: x\r\nflutter:\r\n  fonts:\r\n    - family: Lobster\r\n      fonts:\r\n"
+                    "        - asset: fonts/Lobster.ttf\r\n  uses-material-design: true\r\n")
+    with pytest.raises(au.AuditError):
+        af.declare_font("name: x\nflutter:\n  fonts: [{family: A}]\n", "fonts/Lobster.ttf")
+
+
+def test_font_fix_through_plan_cache_api_and_undo(tmp_path: Path):
+    proj = _font_proj(tmp_path)
+    before = _snapshot(proj)
+    rep = au.scan(str(proj))
+    acts = [f["fix"] for f in rep["findings"] if f.get("fix")]
+    assert {a["type"] for a in acts} == {"flutter_font"} and len(acts) == 2
+    doc = au.apply_fixes(rep, acts, tmp_path / "bk", dry_run=False)
+    assert doc["written"] == 2
+    pub = (proj / "pubspec.yaml").read_text(encoding="utf-8")
+    assert "          style: italic" in pub and "    - family: Poppins" in pub
+    after = au.scan(str(proj))
+    assert not _by(after, "font_undeclared") and [f["rel"] for f in _by(after, "font_missing")] == ["fonts/Roboto-Missing.ttf"]
+    res = au.undo(tmp_path / "bk", doc["backup_id"])
+    assert res["conflicts"] == [] and _snapshot(proj) == before
+    (proj / "pubspec.yaml").write_text(pub + "# x\n", encoding="utf-8")
+    stale = au.apply_fixes(rep, acts[:1], tmp_path / "bk", dry_run=False)
+    assert stale["written"] == 0 and "quét lại" in stale["files"][0]["why"]
+
+
+async def test_api_font_fix_uses_plan_id(tmp_path: Path):
+    from studio_core.app import build_app
+
+    proj = _font_proj(tmp_path)
+    app = build_app(_settings(tmp_path / "data"), TOKEN, engine=StubEngine(), load_plugins=False)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+            rep = (await c.post("/api/audit", json={"path": str(proj)}, headers=AUTH)).json()
+            acts = [f["fix"] for f in rep["findings"] if f.get("fix")]
+            dry = (await c.post("/api/audit/fix", json={"path": str(proj), "actions": acts}, headers=AUTH)).json()
+            assert dry["written"] == 0 and len(dry["files"]) == 2 and dry.get("plan_id")
+            done = (await c.post("/api/audit/fix", json={"path": str(proj), "actions": acts, "plan_id": dry["plan_id"], "dry_run": False},
+                                 headers=AUTH)).json()
+            assert done["written"] == 2
+            u = (await c.post("/api/audit/undo", json={"backup_id": done["backup_id"]}, headers=AUTH)).json()
+            assert u["restored"] == ["pubspec.yaml"]

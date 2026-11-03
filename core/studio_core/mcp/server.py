@@ -1240,7 +1240,7 @@ def build_server(link: CoreLink) -> MCPServer:
         """Apply fixes from the last audit_project of that project: {type: mobile_preset | max_size | drop_alpha,
         rel, ...} rewrite only .meta / .import (zip backup, undo via backup_id with audit_undo); {type: atlas, rels,
         name} packs sprites into a folder outside the project; Flutter: flutter_declare | flutter_variant {kind: "2.0x"}
-        | flutter_webp (edits pubspec.yaml / .dart references, same backup + undo). dry_run=true (default) only plans. Duplicates and
+        | flutter_webp | flutter_font (edits pubspec.yaml / .dart references, same backup + undo). dry_run=true (default) only plans. Duplicates and
         unreferenced assets are never deleted. Pass the dry run's plan_id when applying the same actions to skip
         re-planning (ignored if files changed since)."""
         body = {"path": path, "actions": actions, "dry_run": dry_run, **({"plan_id": plan_id} if plan_id else {})}

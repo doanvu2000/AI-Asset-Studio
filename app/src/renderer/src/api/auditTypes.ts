@@ -1,5 +1,5 @@
 export type AuditEngine = 'unity' | 'godot' | 'flutter'
-export type AuditFixType = 'mobile_preset' | 'max_size' | 'drop_alpha' | 'atlas' | 'flutter_declare' | 'flutter_variant' | 'flutter_webp'
+export type AuditFixType = 'mobile_preset' | 'max_size' | 'drop_alpha' | 'atlas' | 'flutter_declare' | 'flutter_variant' | 'flutter_webp' | 'flutter_font'
 
 export interface AuditFix {
   type: AuditFixType

@@ -32,7 +32,7 @@ class ScanBody(BaseModel):
 
 class FixAction(BaseModel):
     type: Literal["mobile_preset", "max_size", "drop_alpha", "atlas", "flutter_declare", "flutter_variant",
-                  "flutter_webp"]
+                  "flutter_webp", "flutter_font"]
     rel: str | None = Field(None, max_length=1024)
     rels: list[str] | None = Field(None, max_length=2000)
     kind: str | None = Field(None, max_length=32)
