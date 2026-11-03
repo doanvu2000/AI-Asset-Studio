@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, FolderKanban, Languages, Layers, LoaderCircle, Play, RotateCcw, RotateCw, Timer } from '@lucide/vue'
-import type { BlobRef, RecipeInfo, RecipeInputSpec, StyleBible } from '@/api/types'
+import { ArrowLeft, ArrowRight, BookOpen, ChevronDown, FolderKanban, Languages, Layers, LoaderCircle, Play, RotateCcw, RotateCw, Timer, TriangleAlert } from '@lucide/vue'
+import type { BatchItem, BlobRef, RecipeInfo, RecipeInputSpec, StyleBible } from '@/api/types'
 import { NO_PROJECT } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import GoalCards from '@/components/GoalCards.vue'
@@ -12,12 +12,14 @@ import EmptyState from '@/components/EmptyState.vue'
 import RecipeThumb from '@/components/RecipeThumb.vue'
 import BlobDropZone from '@/components/BlobDropZone.vue'
 import PresetSelect from '@/components/PresetSelect.vue'
+import RunPresetMenu from '@/components/RunPresetMenu.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
 import { useRecipes } from '@/stores/recipes'
 import { useFit } from '@/stores/fit'
 import { useProjects } from '@/stores/projects'
-import { usePresets } from '@/stores/catalog'
+import { useKinds, usePresets } from '@/stores/catalog'
+import type { RunPreset } from '@/api/runPresets'
 import { fillSummary, normalizeStyle, styleFills, type StyleFill } from '@/composables/projectStyle'
 import { useRuns } from '@/stores/runs'
 import { api, useConnection } from '@/stores/connection'
@@ -32,6 +34,7 @@ import { PREFILL_PREFIX } from '@/composables/followUp'
 const recipes = useRecipes()
 const projects = useProjects()
 const presets = usePresets()
+const kinds = useKinds()
 const runs = useRuns()
 const conn = useConnection()
 const toasts = useToasts()
@@ -48,6 +51,11 @@ function readLast(): string | null {
 }
 const lastId = ref(readLast())
 
+watch(
+  () => conn.transport,
+  (t) => t && void kinds.load(),
+  { immediate: true }
+)
 watch(
   () => conn.transport,
   (t) => t && void recipes.load(),
@@ -162,9 +170,38 @@ const textInputs = computed(() => Object.entries(selected.value?.inputs ?? {}).f
 const fileInputs = computed(() =>
   Object.entries(selected.value?.inputs ?? {}).filter(([, s]) => s.type === 'image' || s.type === 'mesh').map(([n]) => n)
 )
-type VaryBy = 'prompts' | 'files'
+type VaryBy = 'prompts' | 'files' | 'seeds'
 const varyBy = ref<VaryBy>('prompts')
-const varying = computed(() => (mode.value !== 'batch' ? null : ((varyBy.value === 'prompts' ? textInputs : fileInputs).value[0] ?? null)))
+const varying = computed(() =>
+  mode.value !== 'batch' || varyBy.value === 'seeds' ? null : ((varyBy.value === 'prompts' ? textInputs : fileInputs).value[0] ?? null)
+)
+// ComfyUI workflows keep their seed nodes in the workflow, not in the kind catalog, so any comfy step counts.
+const hasSeeds = computed(
+  () =>
+    !!selected.value &&
+    ('seed' in selected.value.inputs || selected.value.steps.some((st) => st.kind.startsWith('comfy.') || !!kinds.byKind.get(st.kind)?.params.seed))
+)
+const SEED_MAX = 1_000_000
+const SEED_COUNT_MIN = 2
+const SEED_COUNT_MAX = 16
+const seedCount = ref(4)
+const seedBase = ref(-1)
+const randomBase = ref(Math.floor(Math.random() * (SEED_MAX - SEED_COUNT_MAX)))
+const seedCountOk = computed(() => Number.isInteger(seedCount.value) && seedCount.value >= SEED_COUNT_MIN && seedCount.value <= SEED_COUNT_MAX)
+const seedBaseOk = computed(() => Number.isInteger(seedBase.value) && seedBase.value >= -1 && seedBase.value <= SEED_MAX - SEED_COUNT_MAX)
+const seedList = computed<number[]>(() => {
+  if (!seedCountOk.value || !seedBaseOk.value) return []
+  const base = seedBase.value < 0 ? randomBase.value : seedBase.value
+  return Array.from({ length: seedCount.value }, (_, i) => base + i)
+})
+const varyOptions = computed(() => {
+  const out: { id: VaryBy; label: string }[] = []
+  if (textInputs.value.length) out.push({ id: 'prompts', label: 'Mỗi dòng 1 lượt' })
+  if (fileInputs.value.length) out.push({ id: 'files', label: 'Mỗi file 1 lượt' })
+  if (hasSeeds.value) out.push({ id: 'seeds', label: '1 prompt × nhiều seed' })
+  return out
+})
+const autoPickQa = ref(false)
 const batchLines = ref('')
 const batchFiles = ref<BlobRef[]>([])
 const batchStyle = ref<string | null>(null)
@@ -192,6 +229,7 @@ watch(
     }
     varyBy.value = textInputs.value.length ? 'prompts' : 'files'
     batchFiles.value = []
+    autoPickQa.value = false
     void nextTick(() => formEl.value?.querySelector('textarea')?.focus())
   },
   { immediate: true }
@@ -276,6 +314,7 @@ const bibleParams = (): Record<string, Record<string, unknown>> | undefined => {
   const meta: Record<string, unknown> = {}
   if (bibleTargets.value.length && !useBible.value) meta.use_style_bible = false
   if (noCache.value) meta.no_cache = true
+  if (autoPickQa.value && selected.value && asksPick(selected.value)) meta.auto_pick_qa = true
   return Object.keys(meta).length ? { $meta: meta } : undefined
 }
 
@@ -336,7 +375,9 @@ const shownFields = computed(() =>
 )
 
 const lines = computed(() => batchLines.value.split('\n').map((l) => l.trim()).filter(Boolean))
-const batchItems = computed(() => {
+const batchItems = computed<BatchItem[]>(() => {
+  if (mode.value === 'batch' && varyBy.value === 'seeds')
+    return seedList.value.map((s) => ({ inputs: {}, title: `seed ${s}`, meta: { seed_override: s } }))
   const v = varying.value
   if (!v) return []
   if (varyBy.value === 'prompts')
@@ -399,7 +440,11 @@ const blockReason = computed<string | null>(() => {
   if (projectId.value !== NO_PROJECT && !projects.loaded && !projects.error) return 'Đang tải dự án'
   const r = selected.value
   if (!r) return null
-  if (mode.value === 'batch') {
+  if (mode.value === 'batch' && varyBy.value === 'seeds') {
+    if (!hasSeeds.value) return 'Quy trình này không có bước nào dùng seed'
+    if (!seedCountOk.value) return `Số lượt từ ${SEED_COUNT_MIN} đến ${SEED_COUNT_MAX}`
+    if (!seedBaseOk.value) return `Seed gốc từ -1 đến ${SEED_MAX - SEED_COUNT_MAX}`
+  } else if (mode.value === 'batch') {
     if (!varying.value) return 'Quy trình này không có đầu vào để chạy nhiều lượt'
     if (!batchItems.value.length) return varyBy.value === 'prompts' ? 'Nhập ít nhất 1 prompt' : 'Thêm ít nhất 1 file'
   }
@@ -421,6 +466,40 @@ function collectInputs(): Record<string, unknown> {
     else inputs[name] = values[name]
   }
   return inputs
+}
+
+function presetSnapshot(): { inputs: Record<string, unknown>; params: Record<string, unknown> } {
+  const inputs: Record<string, unknown> = {}
+  for (const [name, spec] of fields.value) {
+    if (isBlob(spec.type)) {
+      const refs = blobs[name] ?? []
+      if (refs.length) inputs[name] = refs.map((b) => b.hash)
+    } else inputs[name] = isNum(spec.type) ? Number(values[name]) : values[name]
+  }
+  return { inputs, params: { no_cache: noCache.value, auto_pick_qa: autoPickQa.value } }
+}
+
+async function applyPreset(p: RunPreset): Promise<void> {
+  const r = selected.value
+  if (!r) return
+  let missingFiles = 0
+  for (const [name, v] of Object.entries(p.inputs)) {
+    const spec = r.inputs[name]
+    if (!spec) continue
+    if (isBlob(spec.type)) {
+      const hashes = (Array.isArray(v) ? v : [v]).filter((h): h is string => typeof h === 'string' && !!h)
+      const got = await Promise.all(hashes.map((h) => api().blobInfo(h).catch(() => null)))
+      blobs[name] = got.filter((b): b is BlobRef => !!b)
+      missingFiles += got.length - blobs[name]!.length
+      errors[name] = null
+    } else if (isNum(spec.type)) values[name] = Number(v)
+    else if (spec.type === 'bool') values[name] = Boolean(v)
+    else values[name] = String(v ?? '')
+    touched.add(name)
+  }
+  noCache.value = p.params.no_cache === true
+  autoPickQa.value = p.params.auto_pick_qa === true
+  toasts.push(missingFiles ? `Đã áp “${p.name}”, ${missingFiles} tệp không còn trong thư viện` : `Đã áp thiết lập “${p.name}”`, missingFiles ? 'info' : 'success', 2600)
 }
 
 async function submit(): Promise<void> {
@@ -464,6 +543,7 @@ async function submit(): Promise<void> {
       toasts.push(`Đã tạo ${res.run_ids.length} lượt chạy`, 'success', 2600)
       batchLines.value = ''
       batchFiles.value = []
+      randomBase.value = Math.floor(Math.random() * (SEED_MAX - SEED_COUNT_MAX))
       await router.push(`/batch/${res.batch_id}`)
     } else {
       const { run_id } = await api().startRun({ recipe_id: r.id, inputs, title: title.value.trim() || title0, project_id: runProjectId.value, params: bibleParams() })
@@ -651,14 +731,27 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
             </button>
           </div>
           <ProjectSelect class="mb-project" :model-value="projectId" label="Dự án cho lượt chạy" @update:model-value="setProject" />
-          <div v-if="mode === 'batch' && textInputs.length && fileInputs.length" class="seg" role="radiogroup" aria-label="Thay đổi theo">
-            <button type="button" role="radio" :aria-checked="varyBy === 'prompts'" :class="{ on: varyBy === 'prompts' }" @click="varyBy = 'prompts'">
-              Mỗi dòng 1 lượt
-            </button>
-            <button type="button" role="radio" :aria-checked="varyBy === 'files'" :class="{ on: varyBy === 'files' }" @click="varyBy = 'files'">
-              Mỗi file 1 lượt
+          <div v-if="mode === 'batch' && varyOptions.length > 1" class="seg" role="radiogroup" aria-label="Thay đổi theo">
+            <button
+              v-for="o in varyOptions"
+              :key="o.id"
+              type="button"
+              role="radio"
+              :aria-checked="varyBy === o.id"
+              :class="{ on: varyBy === o.id }"
+              @click="varyBy = o.id"
+            >
+              {{ o.label }}
             </button>
           </div>
+          <RunPresetMenu
+            class="mb-presets"
+            :recipe-id="selected.id"
+            :project-id="runProjectId"
+            :project-name="project?.name"
+            :snapshot="presetSnapshot"
+            @apply="applyPreset"
+          />
         </div>
 
         <Transition name="chip">
@@ -682,6 +775,29 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
         </Transition>
 
         <div class="fields card">
+          <div v-if="mode === 'batch' && varyBy === 'seeds'" class="f">
+            <span id="seed-label" class="f-label">Biến thể theo seed</span>
+            <div class="f-control" role="group" aria-labelledby="seed-label">
+              <div class="seed-row">
+                <label class="seed-f">
+                  <span class="caption">Số lượt (2–16)</span>
+                  <input v-model.number="seedCount" class="field num narrow" type="number" :min="SEED_COUNT_MIN" :max="SEED_COUNT_MAX" step="1" :aria-invalid="!seedCountOk" />
+                </label>
+                <label class="seed-f">
+                  <span class="caption">Seed gốc (-1 = ngẫu nhiên)</span>
+                  <input v-model.number="seedBase" class="field num narrow" type="number" min="-1" :max="SEED_MAX - SEED_COUNT_MAX" step="1" :aria-invalid="!seedBaseOk" />
+                </label>
+              </div>
+              <p class="caption count">
+                <Layers :size="13" />
+                <span class="num"><TweenNumber :value="seedList.length" :duration="200" /> lượt chạy</span>
+                <span v-if="seedList.length" class="num">
+                  · seed {{ seedBase < 0 ? 'ngẫu nhiên, ' : '' }}{{ seedList[0] }}{{ seedList.length > 1 ? ` … ${seedList[seedList.length - 1]}` : '' }}
+                </span>
+              </p>
+              <p class="caption help">Giữ nguyên prompt và các giá trị bên dưới, mỗi lượt chỉ đổi seed của mọi bước có seed (tăng dần từ seed gốc).</p>
+            </div>
+          </div>
           <div v-if="mode === 'batch' && varying" class="f">
             <label :for="varyBy === 'prompts' ? 'in-batch' : undefined" class="f-label">
               {{ varyBy === 'prompts' ? `${label(varying, selected.inputs[varying]!)}, mỗi dòng một lượt` : 'File, mỗi file một lượt' }}
@@ -848,6 +964,20 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
                 :placeholder="mode === 'batch' ? `Để trống: ${selected.name} × ${batchItems.length}` : 'Để trống: tự đặt theo mô tả'"
               />
             </div>
+          </div>
+        </div>
+
+        <div v-if="asksPick(selected)" class="autopick card" :class="{ on: autoPickQa }">
+          <label class="switch">
+            <input id="in-autopick" v-model="autoPickQa" type="checkbox" role="switch" aria-describedby="autopick-hint" />
+            <span class="track"><span class="knob" /></span>
+          </label>
+          <div class="ap-text">
+            <label for="in-autopick" class="ap-title">Tự chọn ảnh điểm QA cao nhất</label>
+            <p id="autopick-hint" class="caption" :class="{ warn: autoPickQa }">
+              <TriangleAlert v-if="autoPickQa" :size="13" aria-hidden="true" />
+              Bỏ qua bước bạn chọn ảnh. Điểm QA chỉ đo kỹ thuật (viền, cỡ, màu), không đo ảnh có hợp ý hay không; hoà điểm lấy ảnh đầu.
+            </p>
           </div>
         </div>
 
@@ -1340,5 +1470,48 @@ const EXAMPLES = ['thanh kiếm pha lê xanh, low-poly', 'khiên gỗ bọc đ�
 }
 .opt-toggle svg.up {
   transform: rotate(180deg);
+}
+.mb-presets {
+  margin-left: auto;
+}
+.seed-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.seed-f {
+  display: grid;
+  gap: 4px;
+}
+.autopick {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+}
+.autopick .switch {
+  padding-top: 2px;
+}
+.ap-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.ap-title {
+  font-weight: 500;
+  cursor: pointer;
+}
+.ap-text .caption {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  color: var(--text-3);
+}
+.ap-text .caption.warn {
+  color: var(--text-2);
+}
+.ap-text .caption svg {
+  flex: none;
+  margin-top: 2px;
 }
 </style>

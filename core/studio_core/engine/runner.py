@@ -36,7 +36,8 @@ from ..contracts import (
 from .cache import cacheable_meta, executor_cache_key
 from .chain import CHAIN_ERROR, CHAIN_KEY, CHAIN_PARENT, CHAIN_RUNS, map_inputs, parse_chain, published_outputs
 from .flows import FlowEngine, strip_flow_meta
-from .gates import GATES, gate_enabled
+from .autopick import AUTO_PICK_KEY, pick_by_qa
+from .gates import GATES, PickGate, gate_enabled
 from .gpu import GpuControl
 from .library import BLOB_HASH, RecipeLibrary
 from .projects import BASE_KEY, PROMPT_INPUTS, apply_style
@@ -44,7 +45,7 @@ from . import style_bible as sb
 from .qa import version_qa
 from .recipe import BLOB_TYPES, Recipe, RecipeError, find_step_refs, ref_value, substitute_refs
 from .scheduler import LaneScheduler
-from .seeds import SEED_USED, pin_overrides, seed_used
+from .seeds import SEED_OVERRIDE_KEY, SEED_USED, override_seed_keys, pin_overrides, seed_used
 from ..store.stats import LIVE_COST, meta_cost
 
 log = logging.getLogger(__name__)
@@ -364,6 +365,11 @@ class StudioEngine:
             ov = overrides.get(spec.id)
             if isinstance(ov, dict):
                 resolved.update(ov)
+            pin = (overrides.get(META_KEY) or {}).get(SEED_OVERRIDE_KEY)
+            if isinstance(pin, int) and not isinstance(pin, bool):
+                for key in override_seed_keys(spec.kind, ex, resolved):
+                    if not (isinstance(ov, dict) and key in ov):
+                        resolved[key] = pin
             if spec.map_param is not None:
                 items = resolved.get(spec.map_param)
                 resolved[spec.map_param] = items = items if isinstance(items, list) else [items]
@@ -859,10 +865,43 @@ class StudioEngine:
                                  started_at=now, ended_at=now,
                                  meta={**step.meta, "resolution": {**res.model_dump(), "auto": True}})
             return
+        if (step.kind == "gate.pick" and (st.run.params.get(META_KEY) or {}).get(AUTO_PICK_KEY)
+                and await self._auto_pick_by_qa(st, step, inputs)):
+            return
         data = gate.awaiting_data(step.params, inputs)
         await self._set_step(step, status=StepStatus.AWAITING_HUMAN, inputs=inputs, started_at=_now(),
                              meta={**step.meta, "gate": {"kind": data["kind"], "k": data["k"]}})
         self.bus.publish("gate.awaiting", data, run_id=step.run_id, step_id=step.id)
+
+    async def _auto_pick_by_qa(self, st: _RunState, step: StepRow, inputs: Outputs) -> bool:
+        """False leaves the gate to a person (too few candidates, or scoring blew up)."""
+        cands = PickGate.candidates(inputs)
+        steps = list(st.steps.values())
+
+        async def score(ref: BlobRef) -> float | None:
+            producer = next((s for s in steps if s.key != step.key and any(
+                b.hash == ref.hash for outs in s.outputs.values() for b in outs)), step)
+            qa = await version_qa(self.blobs, steps, producer, ref)
+            v = (qa or {}).get("score")
+            return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+        try:
+            k = int(step.params.get("k", 1)) or 1
+            if len(cands) < k:
+                return False
+            picked, scores, warning = await pick_by_qa(cands, k, score)
+            res = GateResolution(picked=picked)
+            outputs = GATES[step.kind].resolve(step.params, inputs, res)
+        except Exception as e:
+            log.warning("auto-pick by QA failed for step %s: %s", step.id, e)
+            return False
+        now = _now()
+        resolution = {**res.model_dump(), "auto": True, "by": "qa", "scores": scores}
+        if warning:
+            resolution["warning"] = warning
+        await self._set_step(step, status=StepStatus.SUCCEEDED, inputs=inputs, outputs=outputs, progress=1.0,
+                             started_at=now, ended_at=now, meta={**step.meta, "resolution": resolution})
+        return True
 
     # external control
 

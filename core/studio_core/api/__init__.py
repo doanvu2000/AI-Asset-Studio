@@ -21,6 +21,7 @@ from studio_core.api import agent
 from studio_core.api import flows
 from studio_core.api import gdd
 from studio_core.api import gpu
+from studio_core.api import run_presets
 from studio_core.api import hardware as hardware_api
 from studio_core.api.auth import OriginCheckMiddleware
 from studio_core.api.errors import ApiError, OrjsonResponse, install_error_handlers
@@ -29,6 +30,7 @@ from studio_core.api.errors import ApiError, OrjsonResponse, install_error_handl
 def mount_api(app: FastAPI, allowed_origins: list[str]) -> None:
     install_error_handlers(app)
     app.include_router(routes.public)
+    app.include_router(run_presets.router)
     app.include_router(routes.api)
     app.include_router(routes.blob_api)
     app.include_router(tools.router)

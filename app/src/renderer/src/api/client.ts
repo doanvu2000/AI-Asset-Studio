@@ -62,6 +62,7 @@ import type {
 import type { FlowValidateResult, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from './types'
 import type { CoreDiagnostics } from '../../../preload/types'
 import type { AgentActivitySnapshot, GpuState } from './types'
+import type { RunPreset, RunPresetBody } from './runPresets'
 import type { FlowBatchBody, FlowBatchDetail, FlowBatchSummary, GddPlan, GddPlanBody, GddStartBody, GddStartResult } from './types'
 import type { EnginePreviewBody, EnginePreviewJob, OpenInEngineResult, PreviewEngine, PreviewEngines } from './enginePreview'
 import type { HitVfx, StepHits } from './hitFx'
@@ -109,6 +110,9 @@ export interface StudioApi {
   getRun(id: string): Promise<RunDetail>
   cancelRun(id: string): Promise<void>
   rerunRun(id: string, seed?: 'new' | 'same'): Promise<{ run_id: string }>
+  listRunPresets(recipeId: string, projectId?: string): Promise<RunPreset[]>
+  saveRunPreset(body: RunPresetBody): Promise<RunPreset>
+  deleteRunPreset(id: string): Promise<void>
   /** `keep`: on a regenerate, candidate hashes the step reuses instead of redrawing (storyboard frames). */
   retryStep(stepId: string, keep?: string[]): Promise<void>
   gates(): Promise<StepRow[]>
@@ -328,6 +332,10 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     getRun: (id) => call('GET', `/api/runs/${enc(id)}`),
     cancelRun: (id) => call('POST', `/api/runs/${enc(id)}/cancel`),
     rerunRun: (id, seed = 'new') => call('POST', `/api/runs/${enc(id)}/rerun`, { seed }, SLOW_TIMEOUT_MS),
+    listRunPresets: (recipeId, projectId) =>
+      call('GET', `/api/presets/runs${query({ recipe_id: recipeId, project_id: projectId })}`),
+    saveRunPreset: (body) => call('POST', '/api/presets/runs', body),
+    deleteRunPreset: async (id) => void (await call('DELETE', `/api/presets/runs/${enc(id)}`)),
     retryStep: (id, keep) => call('POST', `/api/steps/${enc(id)}/retry`, keep?.length ? { keep } : undefined),
     gates: () => call('GET', '/api/gates'),
     resolveGate: (id, res) => call('POST', `/api/gates/${enc(id)}`, res),

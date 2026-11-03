@@ -138,6 +138,17 @@ CREATE TABLE IF NOT EXISTS gdd_plans (
 );
 CREATE INDEX IF NOT EXISTS idx_gdd_plans_project ON gdd_plans(project_id, created_at);
 
+CREATE TABLE IF NOT EXISTS run_presets (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    recipe_id TEXT NOT NULL,
+    project_id TEXT,
+    inputs TEXT NOT NULL DEFAULT '{}',
+    params TEXT NOT NULL DEFAULT '{}',
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_run_presets_recipe ON run_presets(recipe_id, created_at);
+
 CREATE TABLE IF NOT EXISTS style_bibles (
     project_id TEXT PRIMARY KEY,
     data TEXT NOT NULL DEFAULT '{}',

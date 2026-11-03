@@ -41,6 +41,7 @@ import {
 import { MockFlowBatches, MockFlows } from './flows'
 import type { FlowBatchBody, FlowBatchDetail, FlowBatchSummary } from '../types'
 import { renderArt, renderPreviewB64 } from './art'
+import type { RunPreset, RunPresetBody } from '../runPresets'
 import { renderWalkSheet } from './walkSheet'
 import { mockStatsOverview } from './stats'
 import type { StatsOverview, StatsQuery } from '../types'
@@ -474,6 +475,7 @@ export class MockCore implements StudioApi, EventStream {
   private builtins = new Map(RECIPES.map((r) => [r.info.id, r]))
   private userRecipes = new Map<string, MockRecipe>()
   private userPresets = new Map<string, ExportPreset>()
+  private runPresets: RunPreset[] = []
   private tools: ToolPath[] = MOCK_TOOLS.map((t) => ({ ...t }))
   private ready: Promise<void>
   private samples: Samples | null = null
@@ -1230,10 +1232,36 @@ export class MockCore implements StudioApi, EventStream {
     const run_ids: string[] = []
     for (const [i, it] of body.items.entries()) {
       const meta = { source: 'app', ...body.params?.$meta, batch_id, batch_index: i, batch_total: body.items.length, batch_title: body.title ?? '' }
-      const { run_id } = await this.startRun({ recipe_id: body.recipe_id, inputs: { ...body.inputs, ...it.inputs }, title: it.title, params: { $meta: meta }, project_id: body.project_id })
+      const { run_id } = await this.startRun({ recipe_id: body.recipe_id, inputs: { ...body.inputs, ...it.inputs }, title: it.title, params: { $meta: { ...meta, ...it.meta } }, project_id: body.project_id })
       run_ids.push(run_id)
     }
     return { batch_id, run_ids }
+  }
+
+  async listRunPresets(recipeId: string, projectId?: string): Promise<RunPreset[]> {
+    await sleep(60)
+    return clone(this.runPresets.filter((p) => p.recipe_id === recipeId && (p.project_id === null || p.project_id === projectId)))
+  }
+
+  async saveRunPreset(body: RunPresetBody): Promise<RunPreset> {
+    await sleep(120)
+    const p: RunPreset = {
+      id: uid('rp'),
+      name: body.name.trim(),
+      recipe_id: body.recipe_id,
+      project_id: body.project_id ?? null,
+      inputs: clone(body.inputs),
+      params: clone(body.params),
+      created_at: now()
+    }
+    this.runPresets = [p, ...this.runPresets]
+    return clone(p)
+  }
+
+  async deleteRunPreset(id: string): Promise<void> {
+    await sleep(80)
+    if (!this.runPresets.some((p) => p.id === id)) throw new ApiError('not_found', `unknown preset: ${id}`, 404)
+    this.runPresets = this.runPresets.filter((p) => p.id !== id)
   }
 
   async presets(): Promise<ExportPreset[]> {

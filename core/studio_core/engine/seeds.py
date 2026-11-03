@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 SEED_USED = "seed_used"
+# `$meta` key set per batch item: every step with a `seed` param runs with this value unless the run overrides it.
+SEED_OVERRIDE_KEY = "seed_override"
 
 
 def _num(v: Any) -> int | None:
@@ -38,3 +40,17 @@ def pin_overrides(params: dict[str, Any], meta: dict[str, Any]) -> tuple[dict[st
             return {"seed": used}, False
         return {}, _num(params["seed"]) is not None and params["seed"] < 0
     return dict(raw_seeds(meta)), False
+
+
+def override_seed_keys(kind: str, executor: Any, resolved: dict[str, Any]) -> list[str]:
+    """Params through which a step takes its seed: ones the recipe already sets, the ComfyUI workflow's seed nodes,
+    or a plain `seed` the kind catalog declares."""
+    from .kinds import CATALOG
+
+    keys = {k for k in resolved if k == "seed" or k.endswith(".seed")}
+    entry = getattr(executor, "entry", None)
+    if isinstance(entry, dict):
+        keys.update(str(k) for k in entry.get("seeds") or [])
+    if "seed" in ((CATALOG.get(kind) or {}).get("params") or {}):
+        keys.add("seed")
+    return sorted(keys)

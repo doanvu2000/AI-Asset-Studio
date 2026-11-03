@@ -306,6 +306,40 @@ class SqliteRepo:
         sql = "SELECT * FROM projects" + ("" if archived else " WHERE archived = 0") + " ORDER BY updated_at DESC"
         return [_PROJECTS.decode(r) for r in await self.db.fetchall(sql)]
 
+    @staticmethod
+    def _run_preset(r: Any) -> dict[str, Any]:
+        return {"id": r["id"], "name": r["name"], "recipe_id": r["recipe_id"], "project_id": r["project_id"],
+                "inputs": orjson.loads(r["inputs"]), "params": orjson.loads(r["params"]), "created_at": r["created_at"]}
+
+    async def add_run_preset(self, preset: dict[str, Any]) -> None:
+        await self.db.write(
+            "INSERT INTO run_presets (id, name, recipe_id, project_id, inputs, params, created_at) VALUES (?,?,?,?,?,?,?)",
+            (preset["id"], preset["name"], preset["recipe_id"], preset["project_id"],
+             orjson.dumps(preset["inputs"], default=to_jsonable_python).decode(),
+             orjson.dumps(preset["params"], default=to_jsonable_python).decode(), preset["created_at"]))
+
+    async def list_run_presets(self, recipe_id: str | None = None, project_id: str | None = None) -> list[dict[str, Any]]:
+        """Presets of the recipe that apply to everything (no project) plus those of `project_id`, newest first."""
+        where, args = [], []
+        if recipe_id:
+            where.append("recipe_id = ?")
+            args.append(recipe_id)
+        if project_id:
+            where.append("(project_id IS NULL OR project_id = ?)")
+            args.append(project_id)
+        else:
+            where.append("project_id IS NULL")
+        rows = await self.db.fetchall(
+            f"SELECT * FROM run_presets WHERE {' AND '.join(where)} ORDER BY created_at DESC, rowid DESC", args)
+        return [self._run_preset(r) for r in rows]
+
+    async def get_run_preset(self, preset_id: str) -> dict[str, Any] | None:
+        row = await self.db.fetchone("SELECT * FROM run_presets WHERE id = ?", (preset_id,))
+        return self._run_preset(row) if row else None
+
+    async def delete_run_preset(self, preset_id: str) -> bool:
+        return await self.db.write("DELETE FROM run_presets WHERE id = ?", (preset_id,)) > 0
+
     async def get_manifest(self, project_id: str) -> tuple[list[dict[str, Any]], float | None]:
         row = await self.db.fetchone("SELECT rows, updated_at FROM manifests WHERE project_id = ?", (project_id,))
         return (orjson.loads(row["rows"]), row["updated_at"]) if row else ([], None)
