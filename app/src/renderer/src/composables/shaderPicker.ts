@@ -2,7 +2,7 @@ import { computed, ref, watch, type Ref } from 'vue'
 import type { ShaderPresetInfo } from '../../../preload/types'
 
 const SHADERS_KEY = 'export:shaders'
-type Tweak = { color?: string; speed?: number }
+export type Tweak = { color?: string; speed?: number }
 export type ShaderParams = Record<string, Record<string, number | string>>
 
 function readSaved(): string[] {
@@ -12,6 +12,29 @@ function readSaved(): string[] {
   } catch {
     return []
   }
+}
+
+type Conn = { baseUrl: string; token: string }
+const conn = ref<Conn | null>(null)
+let connAsked = false
+
+// Previews are <img> sources, so the token rides in the query like blob URLs; mock mode has no bridge and shows no thumbnails.
+function loadConn(): void {
+  if (connAsked) return
+  connAsked = true
+  void window.studio?.getConnection().then((c) => (conn.value = c)).catch(() => (connAsked = false))
+}
+
+export function shaderPreviewUrl(id: string, t: Tweak | undefined, still: boolean): string {
+  loadConn()
+  const c = conn.value
+  if (!c) return ''
+  const q = new URLSearchParams()
+  if (t?.color) q.set('color', t.color)
+  if (t?.speed !== undefined && speedOk(t.speed)) q.set('speed', String(t.speed))
+  if (still) q.set('still', '1')
+  q.set('t', c.token)
+  return `${c.baseUrl}/api/shaders/${encodeURIComponent(id)}/preview?${q}`
 }
 
 export const speedOk = (v: number | undefined): boolean => v === undefined || (Number.isFinite(v) && v >= 0 && v <= 20)

@@ -1,8 +1,19 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import { useMediaQuery } from '@vueuse/core'
 import type { ShaderPresetInfo } from '../../../preload/types'
-import { speedOk, type ShaderPicker } from '@/composables/shaderPicker'
+import { shaderPreviewUrl, speedOk, type ShaderPicker } from '@/composables/shaderPicker'
 
 defineProps<{ list: ShaderPresetInfo[]; picker: ShaderPicker; note: string; assignHint?: boolean }>()
+
+const reduceMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
+const live = ref('')
+const broken = ref<string[]>([])
+
+// A still frame until hover/focus, so a dozen looping thumbnails never compete with the form.
+function src(picker: ShaderPicker, id: string): string {
+  return shaderPreviewUrl(id, picker.tweaks.value[id], reduceMotion.value || live.value !== id)
+}
 </script>
 
 <template>
@@ -19,8 +30,20 @@ defineProps<{ list: ShaderPresetInfo[]; picker: ShaderPicker; note: string; assi
         :aria-pressed="picker.picked.value.includes(s.id)"
         :title="s.hint"
         @click="picker.toggle(s.id)"
+        @pointerenter="live = s.id"
+        @pointerleave="live === s.id && (live = '')"
+        @focus="live = s.id"
+        @blur="live === s.id && (live = '')"
       >
-        {{ s.label }}
+        <img
+          v-if="src(picker, s.id) && !broken.includes(s.id)"
+          class="sp-thumb"
+          :src="src(picker, s.id)"
+          alt=""
+          draggable="false"
+          @error="broken.push(s.id)"
+        />
+        <span class="sp-chip-label">{{ s.label }}</span>
       </button>
     </div>
     <div v-for="s in picker.pickedInfo.value" :key="s.id" class="sp-row">
@@ -72,6 +95,9 @@ defineProps<{ list: ShaderPresetInfo[]; picker: ShaderPicker; note: string; assi
   gap: 4px;
 }
 .sp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 22px;
   padding: 0 8px;
   border: 0;
@@ -81,6 +107,27 @@ defineProps<{ list: ShaderPresetInfo[]; picker: ShaderPicker; note: string; assi
   font: inherit;
   font-size: var(--fs-caption);
   transition: background-color var(--t-fast), color var(--t-fast);
+}
+.sp-chip:has(.sp-thumb) {
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  width: 84px;
+  height: auto;
+  padding: 4px 4px 5px;
+  border-radius: var(--radius-md, 8px);
+}
+.sp-thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  pointer-events: none;
+}
+.sp-chip-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sp-chip.on {
   background: var(--accent);

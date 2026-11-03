@@ -5,16 +5,19 @@ import asyncio
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
-from studio_core.api.auth import require_token
+from studio_core.api.auth import require_token, require_token_or_query
 from studio_core.api.errors import ApiError, OrjsonResponse
 from studio_core.contracts import DEFAULT_PROJECT, RunStatus, VersionStatus
+from studio_core.export.shader_preview import preview
+from studio_core.export.shaders import PRESETS, ShaderError
 from studio_core.export.shaders import catalog as shader_catalog
 
-router = APIRouter(prefix="/api", dependencies=[Depends(require_token)])
+router = APIRouter(prefix="/api")
+authed = [Depends(require_token)]
 
 RECIPE = "library-import"
 IMPORT_TIMEOUT_S = 120.0
@@ -31,9 +34,24 @@ class ImportBody(BaseModel):
     approve: bool = True
 
 
-@router.get("/shaders")
+@router.get("/shaders", dependencies=authed)
 async def shaders() -> Response:
     return OrjsonResponse(shader_catalog())
+
+
+@router.get("/shaders/{shader_id}/preview", dependencies=[Depends(require_token_or_query)])
+async def shader_preview_image(request: Request, shader_id: str, color: str | None = None,
+                               speed: float | None = Query(default=None, ge=0, le=20),
+                               still: bool = False) -> Response:
+    if shader_id not in PRESETS:
+        raise ApiError(404, "not_found", f"unknown shader preset '{shader_id}'")
+    try:
+        data, animated = await asyncio.to_thread(
+            preview, request.app.state.settings.thumbs_dir / "shaders", shader_id, color, speed, still)
+    except ShaderError as e:
+        raise ApiError(400, "invalid", str(e)) from e
+    return Response(data, media_type="image/webp",
+                    headers={"Cache-Control": "private, max-age=3600", "X-Shader-Preview": "animated" if animated and not still else "static"})
 
 
 def _checked(paths: list[str]) -> list[Path]:
@@ -52,7 +70,7 @@ def _checked(paths: list[str]) -> list[Path]:
     return out
 
 
-@router.post("/library/import")
+@router.post("/library/import", dependencies=authed)
 async def import_files(request: Request, body: ImportBody) -> Response:
     state = request.app.state
     files = await asyncio.to_thread(_checked, body.paths)
