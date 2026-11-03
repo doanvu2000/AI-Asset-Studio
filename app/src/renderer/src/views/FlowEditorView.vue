@@ -34,6 +34,7 @@ const loadError = ref<string | null>(null)
 const baseline = ref('')
 const idTouched = ref(false)
 const selected = ref<string | null>(null)
+const selectedEdge = ref<string | null>(null)
 const issues = ref<FlowIssue[]>([])
 const positions = reactive<Record<string, { x: number; y: number }>>({})
 const saving = ref(false)
@@ -59,6 +60,11 @@ function restore(raw: string): void {
   for (const k of Object.keys(positions)) delete positions[k]
   Object.assign(positions, s.positions)
   if (selected.value && !doc.nodes.some((n) => n.id === selected.value)) selected.value = null
+  if (selectedEdge.value && !edgeExists(selectedEdge.value)) selectedEdge.value = null
+}
+function edgeExists(id: string): boolean {
+  const [, nodeId, input] = id.split('|')
+  return !!doc.nodes.find((n) => n.id === nodeId)?.map[input!]
 }
 function undo(): void {
   const prev = history.undo(graphState())
@@ -74,6 +80,7 @@ function setDoc(d: WorkflowDef): void {
   Object.assign(doc, { ...blankDef(), ...copy, nodes: copy.nodes.map((n) => ({ ...n, inputs: n.inputs ?? {}, map: n.map ?? {}, params: n.params ?? {} })) })
   for (const k of Object.keys(positions)) delete positions[k]
   selected.value = null
+  selectedEdge.value = null
   issues.value = []
   baseline.value = snapshot()
   history.clear()
@@ -123,15 +130,17 @@ watch(
   }
 )
 
-const graph = computed(() =>
-  buildFlowEditGraph(doc, {
+const graph = computed(() => {
+  const g = buildFlowEditGraph(doc, {
     recipes: recipes.byId,
     outputsOf: (rid) => recipes.byId(rid)?.outputs ?? [],
     issues: issues.value,
     selected: selected.value,
     positions
   })
-)
+  for (const e of g.edges) if (e.id === selectedEdge.value) e.class = `${String(e.class ?? '')} picked`
+  return g
+})
 const fitKey = computed(() => `${doc.nodes.length}:${Object.keys(doc.inputs).length}:${flowRows(doc.nodes).map((r) => r.length).join(',')}`)
 
 const node = computed(() => doc.nodes.find((n) => n.id === selected.value) ?? null)
@@ -206,6 +215,11 @@ onKeyStroke(['z', 'Z', 'y', 'Y'], (e) => {
   else undo()
 })
 onKeyStroke(['Delete', 'Backspace'], (e) => {
+  if (typing(e.target) || !loaded.value || !selectedEdge.value) return
+  e.preventDefault()
+  removeEdge(selectedEdge.value)
+})
+onKeyStroke(['Delete', 'Backspace'], (e) => {
   const id = selected.value
   if (typing(e.target) || !loaded.value || !node.value || id === null) return
   e.preventDefault()
@@ -220,7 +234,10 @@ const pickerRoot = ref<HTMLElement | null>(null)
 const pickerInput = ref<HTMLInputElement | null>(null)
 const query = ref('')
 onClickOutside(pickerRoot, () => (picker.value = false))
-onKeyStroke('Escape', () => (picker.value = false))
+onKeyStroke('Escape', (e) => {
+  picker.value = false
+  if (selectedEdge.value && !typing(e.target)) selectedEdge.value = null
+})
 async function openPicker(): Promise<void> {
   picker.value = !picker.value
   query.value = ''
@@ -248,6 +265,7 @@ function addNode(r: RecipeInfo): void {
   const n: WorkflowNodeDef = { id: uniqueNodeId(r.id), recipe_id: r.id, title: r.name, inputs: {}, map: {}, params: {} }
   doc.nodes.push(n)
   selected.value = n.id
+  selectedEdge.value = null
   picker.value = false
 }
 
@@ -313,10 +331,16 @@ function onConnect(c: Connection): void {
 }
 
 function onEdgeClick(id: string): void {
-  const [kind, nodeId, input] = id.split('|')
-  if (kind !== 'm') return
+  if (!id.startsWith('m|')) return
+  selectedEdge.value = id
+  selected.value = null
+}
+function removeEdge(id: string): void {
+  const [, nodeId, input] = id.split('|')
+  if (!edgeExists(id)) return
   remember()
   delete doc.nodes.find((n) => n.id === nodeId)?.map[input!]
+  selectedEdge.value = null
 }
 
 function onDragStop(list: Array<{ id: string; x: number; y: number }>): void {
@@ -508,13 +532,19 @@ const showWorkflowPanel = computed(() => !node.value)
           :fit-key="fitKey"
           :minimap="false"
           @connect="onConnect"
-          @node-click="(id) => (selected = id)"
+          @node-click="(id) => ((selected = id), (selectedEdge = null))"
           @edge-click="onEdgeClick"
-          @pane-click="selected = null"
+          @pane-click="(selected = null), (selectedEdge = null)"
           @drag-stop="onDragStop"
         />
+        <Transition name="edge-bar">
+          <div v-if="selectedEdge && edgeExists(selectedEdge)" class="edge-bar card">
+            <span class="mono">{{ selectedEdge.split('|').slice(1, 3).join(' · ') }}</span>
+            <button type="button" class="btn btn-danger" @click="removeEdge(selectedEdge)"><Trash2 /> Gỡ dây</button>
+          </div>
+        </Transition>
         <p v-if="!doc.nodes.length" class="hint-empty">Bấm "Thêm node" để chọn quy trình đầu tiên.</p>
-        <p v-else class="hint caption">Kéo từ chấm bên phải sang chấm bên trái để nối. Bấm vào dây để gỡ. Delete xoá node, Ctrl+Z hoàn tác.</p>
+        <p v-else class="hint caption">Kéo từ chấm bên phải sang chấm bên trái để nối. Bấm vào dây để chọn, Delete để gỡ. Delete cũng xoá node đang chọn, Ctrl+Z hoàn tác.</p>
       </section>
 
       <aside class="inspector scroll" aria-label="Thuộc tính">
@@ -668,6 +698,26 @@ const showWorkflowPanel = computed(() => !node.value)
   flex: 1;
   min-width: 0;
   border-right: 1px solid var(--hair-soft);
+}
+.edge-bar {
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 6px 6px 14px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-2), var(--hairline);
+}
+.edge-bar-enter-active,
+.edge-bar-leave-active {
+  transition: opacity var(--t-fast) var(--ease-out);
+}
+.edge-bar-enter-from,
+.edge-bar-leave-to {
+  opacity: 0;
 }
 .hint-empty,
 .hint {

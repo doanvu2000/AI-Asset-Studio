@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import { computed, useTemplateRef } from 'vue'
-import { ChevronRight } from '@lucide/vue'
+import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from 'vue'
+import { useRouter } from 'vue-router'
+import { onClickOutside, onKeyStroke } from '@vueuse/core'
+import { ChevronRight, Ellipsis, RotateCcw } from '@lucide/vue'
+import { api } from '@/stores/connection'
+import { useToasts } from '@/stores/toasts'
+import { rerunRun, type RerunSeed } from '@/composables/rerun'
 import type { RunRow, StepRow } from '@/api/types'
 import { RUN_ACTIVE } from '@/api/types'
 import { humanDuration, STEP_LABEL, stepName } from '@/composables/format'
@@ -16,7 +21,7 @@ import BlobImage from './BlobImage.vue'
 import ScoreBadge from './ScoreBadge.vue'
 import { latestReview } from '@/composables/review'
 
-const props = defineProps<{ run: RunRow; steps?: StepRow[] }>()
+const props = defineProps<{ run: RunRow; steps?: StepRow[]; menu?: boolean }>()
 const recipes = useRecipes()
 const runs = useRuns()
 
@@ -30,9 +35,74 @@ const hash = computed(() => runs.previewHash(props.run.id))
 const art = computed(() => recipeArt(props.run.recipe_id))
 const thumb = useTemplateRef<HTMLElement>('thumb')
 const review = computed(() => (props.steps ? latestReview(props.steps) : null))
+
+const router = useRouter()
+const toasts = useToasts()
+const canRerun = computed(() => !!props.menu && !active.value)
+const open = ref(false)
+const busy = ref(false)
+// Steps are not in the list payload, so the seed question is answered when the menu opens.
+const seeds = ref<'loading' | 'yes' | 'no'>('loading')
+const trigger = useTemplateRef<HTMLButtonElement>('trigger')
+const popup = useTemplateRef<HTMLElement>('popup')
+const pos = ref({ top: 0, right: 0 })
+const close = (): void => void (open.value = false)
+onClickOutside(popup, close, { ignore: [trigger] })
+onKeyStroke('Escape', () => {
+  if (!open.value) return
+  close()
+  trigger.value?.focus()
+})
+window.addEventListener('resize', close)
+window.addEventListener('wheel', close, { passive: true })
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', close)
+  window.removeEventListener('wheel', close)
+})
+
+async function toggle(): Promise<void> {
+  if (open.value) return close()
+  const r = trigger.value?.getBoundingClientRect()
+  if (r) pos.value = { top: Math.min(r.bottom + 4, window.innerHeight - 96), right: window.innerWidth - r.right }
+  open.value = true
+  seeds.value = 'loading'
+  await nextTick()
+  popup.value?.querySelector<HTMLElement>('[role=menuitem]')?.focus()
+  try {
+    const d = await api().getRun(props.run.id)
+    seeds.value = d.steps.some((s) => typeof s.meta.seed_used === 'number') ? 'yes' : 'no'
+  } catch {
+    seeds.value = 'no'
+  }
+}
+
+function onMenuKey(e: KeyboardEvent): void {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+  const items = [...(popup.value?.querySelectorAll<HTMLButtonElement>('[role=menuitem]:not(:disabled)') ?? [])]
+  if (!items.length) return
+  e.preventDefault()
+  const i = items.indexOf(document.activeElement as HTMLButtonElement)
+  items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]!.focus()
+}
+
+async function rerun(seed: RerunSeed): Promise<void> {
+  if (busy.value) return
+  busy.value = true
+  close()
+  try {
+    const { run_id } = await rerunRun(props.run.id, seed)
+    toasts.push(seed === 'same' ? 'Đã chạy lại với seed cũ' : 'Đã chạy lại với seed mới', 'success', 2500)
+    void router.push({ name: 'run', params: { id: run_id } })
+  } catch (e) {
+    toasts.error(e, 'Không chạy lại được')
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
+  <div class="rw" :class="{ 'has-menu': canRerun }">
   <RouterLink :to="`/runs/${run.id}`" class="row" @click="!live && hash && rememberOrigin(run.id, thumb)">
     <span ref="thumb" class="thumb checker" aria-hidden="true">
       <img v-if="live" class="live" :src="live" alt="" draggable="false" />
@@ -73,9 +143,81 @@ const review = computed(() => (props.steps ? latestReview(props.steps) : null))
     </span>
     <ChevronRight class="chev" :size="16" />
   </RouterLink>
+  <button
+    v-if="canRerun"
+    ref="trigger"
+    type="button"
+    class="more"
+    aria-haspopup="menu"
+    :aria-expanded="open"
+    :disabled="busy"
+    aria-label="Tuỳ chọn lượt chạy"
+    title="Chạy lại"
+    @click="toggle"
+  >
+    <Ellipsis :size="16" />
+  </button>
+  <Teleport to="body">
+    <Transition name="menu-pop">
+      <div
+        v-if="open"
+        ref="popup"
+        class="run-menu"
+        role="menu"
+        aria-label="Chạy lại"
+        :style="{ top: `${pos.top}px`, right: `${pos.right}px` }"
+        @keydown="onMenuKey"
+      >
+        <button type="button" role="menuitem" class="mi" @click="rerun('new')"><RotateCcw :size="15" /> Chạy lại, seed mới</button>
+        <button
+          type="button"
+          role="menuitem"
+          class="mi"
+          :disabled="seeds !== 'yes'"
+          :title="seeds === 'no' ? 'Lượt chạy này không có bước nào dùng seed' : 'Cùng thiết lập và cùng seed: kết quả trước được dùng lại nếu có thể'"
+          @click="rerun('same')"
+        >
+          <RotateCcw :size="15" /> Chạy lại, giữ seed
+        </button>
+      </div>
+    </Transition>
+  </Teleport>
+  </div>
 </template>
 
 <style scoped>
+.rw {
+  position: relative;
+  height: 100%;
+}
+.rw.has-menu .row {
+  padding-right: 52px;
+}
+.more {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background-color var(--t-fast), color var(--t-fast);
+}
+.more:hover,
+.more[aria-expanded='true'] {
+  background: var(--bg-active);
+  color: var(--text);
+}
+.more:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 .row {
   display: flex;
   align-items: center;
@@ -194,5 +336,55 @@ const review = computed(() => (props.steps ? latestReview(props.steps) : null))
 .chev {
   color: var(--text-3);
   flex: none;
+}
+.rw.has-menu .chev {
+  display: none;
+}
+.run-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 200px;
+  display: grid;
+  padding: 5px;
+  border-radius: var(--r-md);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-2), var(--hairline);
+  transform-origin: top right;
+}
+.mi {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mi:hover:not(:disabled),
+.mi:focus-visible {
+  background: var(--bg-hover);
+}
+.mi:disabled {
+  color: var(--text-3);
+  cursor: default;
+}
+.menu-pop-enter-active {
+  transition: opacity 140ms var(--ease-out), transform 200ms var(--ease-spring);
+}
+.menu-pop-leave-active {
+  transition: opacity 100ms var(--ease-out), transform 100ms var(--ease-out);
+}
+.menu-pop-enter-from {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.96);
+}
+.menu-pop-leave-to {
+  opacity: 0;
+  transform: scale(0.98);
 }
 </style>

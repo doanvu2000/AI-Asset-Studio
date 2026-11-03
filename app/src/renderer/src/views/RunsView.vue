@@ -128,7 +128,7 @@ watch([filter, projectFilter], () => rows.value.length < NEAR_END && void runs.l
           :class="{ first: it.index === 0 }"
           :style="{ transform: `translateY(${it.start}px)`, height: `${ROW_H}px` }"
         >
-          <RunRowItem :run="rows[it.index]!" />
+          <RunRowItem :run="rows[it.index]!" menu />
         </div>
       </div>
       <div v-if="runs.listHasMore && rows.length" class="more">

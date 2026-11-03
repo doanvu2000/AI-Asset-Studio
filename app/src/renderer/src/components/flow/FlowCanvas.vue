@@ -4,7 +4,7 @@ import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useMediaQuery, useResizeObserver } from '@vueuse/core'
-import { VueFlow, useVueFlow, type Connection, type Edge, type EdgeMouseEvent, type Node, type NodeDragEvent, type NodeMouseEvent } from '@vue-flow/core'
+import { VueFlow, useVueFlow, type Connection, type Edge, type EdgeMouseEvent, type GraphNode, type Node, type NodeDragEvent, type NodeMouseEvent } from '@vue-flow/core'
 import { Background } from '@vue-flow/background'
 import { ControlButton, Controls } from '@vue-flow/controls'
 import { Maximize } from '@lucide/vue'
@@ -114,22 +114,65 @@ watch(
   }
 )
 
-watch(
-  () => props.focusId,
-  async (id) => {
-    if (!id || !ready.value) return
-    await nextTick()
-    const n = getNodes.value.find((x) => x.id === id)
-    if (!n) return
-    const v = getViewport()
-    const w = n.dimensions.width || 232
-    const h = n.dimensions.height || 80
-    const sx = n.position.x * v.zoom + v.x
-    const sy = n.position.y * v.zoom + v.y
-    const inside = sx >= 0 && sy >= 0 && sx + w * v.zoom <= dimensions.value.width && sy + h * v.zoom <= dimensions.value.height
-    if (!inside) await setCenter(n.position.x + w / 2, n.position.y + h / 2, { zoom: v.zoom, duration: 300 })
+async function reveal(id: string | null): Promise<void> {
+  if (!id || !ready.value) return
+  await nextTick()
+  const n = getNodes.value.find((x) => x.id === id)
+  if (!n) return
+  const v = getViewport()
+  const w = n.dimensions.width || 232
+  const h = n.dimensions.height || 80
+  const sx = n.position.x * v.zoom + v.x
+  const sy = n.position.y * v.zoom + v.y
+  const inside = sx >= 0 && sy >= 0 && sx + w * v.zoom <= dimensions.value.width && sy + h * v.zoom <= dimensions.value.height
+  if (!inside) await setCenter(n.position.x + w / 2, n.position.y + h / 2, { zoom: v.zoom, duration: reducedMotion.value ? 0 : 300 })
+}
+watch(() => props.focusId, reveal)
+
+const ARROW: Record<string, [number, number]> = { ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowDown: [0, 1], ArrowUp: [0, -1] }
+// Cross-axis penalty keeps the move in the same row/column; nodes outside the 2:1 cone only win when nothing else lies that way.
+function neighbour(from: GraphNode, [dx, dy]: [number, number]): Node | undefined {
+  const c = (n: GraphNode): [number, number] => [n.position.x + (n.dimensions.width || 0) / 2, n.position.y + (n.dimensions.height || 0) / 2]
+  const [fx, fy] = c(from)
+  let best: GraphNode | undefined
+  let bestScore = Infinity
+  for (const n of getNodes.value) {
+    if (n.id === from.id) continue
+    const [x, y] = c(n)
+    const along = (x - fx) * dx + (y - fy) * dy
+    if (along <= 0) continue
+    const across = Math.abs((x - fx) * dy) + Math.abs((y - fy) * dx)
+    const score = along + across * 2 + (across > along * 2 ? 1e6 : 0)
+    if (score < bestScore) {
+      best = n
+      bestScore = score
+    }
   }
-)
+  return best
+}
+
+function onKeydown(e: KeyboardEvent): void {
+  const el = e.target
+  if (!(el instanceof HTMLElement) || e.ctrlKey || e.metaKey || e.altKey) return
+  const node = el.closest<HTMLElement>('.vue-flow__node')
+  const edge = node ? null : el.closest<HTMLElement>('.vue-flow__edge')
+  const id = (node ?? edge)?.dataset.id
+  if (!id || (node ?? edge) !== el) return
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    if (node) emit('nodeClick', id)
+    else emit('edgeClick', id)
+    return
+  }
+  const dir = ARROW[e.key]
+  const from = node && getNodes.value.find((n) => n.id === id)
+  if (!dir || !from) return
+  e.preventDefault()
+  const next = neighbour(from, dir)
+  if (!next) return
+  root.value?.querySelector<HTMLElement>(`.vue-flow__node[data-id="${CSS.escape(next.id)}"]`)?.focus({ preventScroll: true })
+  void reveal(next.id)
+}
 
 defineExpose({ fit: (animate = true): void => frameNextPaint(animate ? 200 : 0) })
 
@@ -191,7 +234,7 @@ function onDragStop(e: NodeDragEvent): void {
 </script>
 
 <template>
-  <div ref="root" class="canvas" :class="{ editable }">
+  <div ref="root" class="canvas" :class="{ editable }" @keydown="onKeydown">
     <VueFlow
       :id="id"
       :nodes="nodes"
@@ -199,6 +242,7 @@ function onDragStop(e: NodeDragEvent): void {
       :nodes-draggable="editable"
       :nodes-connectable="editable"
       :elements-selectable="false"
+      disable-keyboard-a11y
       :delete-key-code="null"
       :pan-on-scroll="scrollPan"
       :zoom-on-scroll="!scrollPan"
@@ -318,6 +362,18 @@ function onDragStop(e: NodeDragEvent): void {
 }
 .canvas :deep(.vue-flow__node) {
   cursor: pointer;
+}
+.canvas :deep(.vue-flow__node:focus-visible),
+.canvas :deep(.vue-flow__edge:focus-visible) {
+  outline: none;
+}
+.canvas :deep(.vue-flow__node:focus-visible > *) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.canvas :deep(.vue-flow__edge:focus-visible .vue-flow__edge-path) {
+  stroke: var(--accent);
+  stroke-width: 2.6;
 }
 .canvas.editable :deep(.vue-flow__node.dragging) {
   cursor: grabbing;
