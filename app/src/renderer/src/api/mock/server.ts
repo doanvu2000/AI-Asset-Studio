@@ -1314,9 +1314,12 @@ export class MockCore implements StudioApi, EventStream {
   async shaderCatalog(): Promise<ShaderPresetInfo[]> {
     await sleep(80)
     return [
-      { id: 'hit_flash', label: 'Nháy khi trúng đòn', hint: 'Sprite loé trắng ngắn khi nhận sát thương.', color: '#ffffff', speed: null },
-      { id: 'dissolve', label: 'Tan biến', hint: 'Sprite tan dần thành điểm ảnh.', color: '#ff7a1a', speed: 1 },
-      { id: 'outline_glow', label: 'Viền sáng', hint: 'Viền phát sáng quanh sprite.', color: '#4fd8ff', speed: 2 }
+      { id: 'hit_flash', label: 'Nháy khi trúng đòn', hint: 'Sprite loé trắng ngắn khi nhận sát thương.', color: '#ffffff', speed: 0 },
+      { id: 'dissolve', label: 'Tan biến', hint: 'Sprite tan dần thành điểm ảnh.', color: '#ff8c1a', speed: 0 },
+      { id: 'outline_pulse', label: 'Viền nhấp nháy', hint: 'Viền nhấp nháy theo alpha quanh sprite.', color: '#ffd94d', speed: 1.5 },
+      { id: 'wind_sway', label: 'Lắc theo gió', hint: 'Lắc nhẹ, neo ở chân sprite.', color: null, speed: 0.6 },
+      { id: 'water_ripple', label: 'Gợn nước', hint: 'Gợn nước ngang kèm màu tint.', color: '#ffffff', speed: 1 },
+      { id: 'palette_swap', label: 'Đổi bảng màu', hint: 'Tra màu theo độ sáng ở một hàng của ramp.', color: '#d4af37', speed: null }
     ]
   }
 
@@ -1926,7 +1929,7 @@ export class MockCore implements StudioApi, EventStream {
       const v0 = vs[0]!
       return {
         name: v0.asset_name, step_id, run_id: v0.run_id, recipe_id: this.runs.get(v0.run_id)?.recipe_id ?? null,
-        version_ids: vs.map((v) => v.id), engine_ready: v0.blob.mime.startsWith('image/'), preview_hash: v0.blob.hash
+        version_ids: vs.map((v) => v.id), engine_ready: false, engines: v0.blob.mime.startsWith('image/') ? ['android', 'ios'] : [], preview_hash: v0.blob.hash
       }
     })
   }

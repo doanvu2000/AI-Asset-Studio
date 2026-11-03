@@ -28,7 +28,7 @@ import ScanProgressBar from '@/components/ScanProgressBar.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import { useScanProgress } from '@/composables/scanProgress'
 import SendToMenu from '@/components/SendToMenu.vue'
-import { absolutePaths, useQueryPrefill } from '@/composables/sendTo'
+import { absolutePaths, sentFileError, useQueryPrefill } from '@/composables/sendTo'
 import RunStatusBadge from '@/components/RunStatusBadge.vue'
 import { api, useConnection } from '@/stores/connection'
 import { useRuns } from '@/stores/runs'
@@ -309,7 +309,7 @@ useQueryPrefill(['folder', 'include', 'project', 'ref', 'scan'], (q) => {
     api()
       .blobInfo(q.ref)
       .then((b) => (styleRef.value = [b]))
-      .catch((e) => toasts.error(e, 'Không đọc được ảnh style tham chiếu'))
+      .catch((e) => toasts.push(sentFileError(e), 'error', 6000))
   }
   if (q.scan) void doScan()
 })

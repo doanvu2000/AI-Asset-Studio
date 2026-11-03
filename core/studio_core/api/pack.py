@@ -21,7 +21,7 @@ from studio_core.export import toon3d
 from studio_core.export.shaders import ShaderError, resolve as resolve_shaders
 from studio_core.store import pack as pk
 from studio_core.store.ai_credits import build_ai_credits, disclosure
-from studio_core.store.bundle import engine_ready
+from studio_core.store.bundle import ENGINES, STILL_ENGINES, engine_ready
 from studio_core.store.repo import SqliteRepo
 
 router = APIRouter(prefix="/api/projects/{project_id}", dependencies=[Depends(require_token)])
@@ -138,10 +138,12 @@ async def list_packs(request: Request, project_id: str) -> Response:
     items = []
     for a in assets:
         ready = await asyncio.to_thread(engine_ready, a.step, blobs)
+        engines = list(ENGINES) if ready else (
+            list(STILL_ENGINES) if await asyncio.to_thread(engine_ready, a.step, blobs, STILL_ENGINES[0]) else [])
         img = next((v.blob.hash for v in a.versions if v.blob.mime.startswith("image/")), None)
         items.append({"name": a.name, "step_id": a.step.id, "run_id": a.step.run_id,
                       "recipe_id": a.run.recipe_id if a.run else None, "version_ids": [v.id for v in a.versions],
-                      "engine_ready": ready, "preview_hash": img})
+                      "engine_ready": ready, "engines": engines, "preview_hash": img})
     name = p.name if p else project_id
     return OrjsonResponse({"project_id": project_id, "slug": pk.slugify(name, project_id[:12] or "pack"),
                            "next_version": pk.next_version(history),

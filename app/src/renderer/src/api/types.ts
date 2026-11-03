@@ -1035,6 +1035,7 @@ export interface PackCandidate {
   recipe_id: string | null
   version_ids: string[]
   engine_ready: boolean
+  engines: string[]
   preview_hash: string | null
 }
 

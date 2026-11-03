@@ -73,6 +73,15 @@ const BUILTINS: WorkflowDef[] = [
     ],
     tags: ['2d', '3d'],
     source: 'builtin'
+  },
+  {
+    id: 'sprite-lighting',
+    title: 'Sprite có ánh sáng (từ ảnh)',
+    description: 'Nhận một ảnh sprite có sẵn, tạo normal map để chiếu sáng thử.',
+    inputs: { image: { type: 'image', label: 'Ảnh sprite', required: true } },
+    nodes: [node('normal', 'sprite-normal-map', 'Normal map', { image: 'workflow.inputs.image' })],
+    tags: ['2d'],
+    source: 'builtin'
   }
 ]
 

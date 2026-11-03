@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useEventListener } from '@vueuse/core'
 import { FileArchive, FolderOpen, LoaderCircle, Package, RotateCcw, TriangleAlert, X } from '@lucide/vue'
 import type { ShaderPresetInfo } from '../../../preload/types'
-import type { AtlasPageSize, MobileBudget, PackCommercial, PackEngine, PackLicense, PackListing, PackResult } from '@/api/types'
+import type { AtlasPageSize, MobileBudget, PackCandidate, PackCommercial, PackEngine, PackLicense, PackListing, PackResult } from '@/api/types'
 import BlobImage from './BlobImage.vue'
 import MobileStats from './MobileStats.vue'
 import RelTime from './RelTime.vue'
@@ -69,6 +69,11 @@ const budgets = computed<MobileBudget[]>(() => Object.values(result.value?.mobil
 
 const assets = computed(() => listing.value?.assets ?? [])
 const allPicked = computed(() => assets.value.length > 0 && assets.value.every((a) => picked.value.has(a.step_id)))
+function assetNote(a: PackCandidate): string {
+  if (a.engine_ready) return a.recipe_id ?? 'mọi đích'
+  const e = a.engines ?? []
+  return e.length ? `chỉ ${e.map((x) => ENGINES.find((g) => g.id === x)?.label.split(' ')[0] ?? x).join('/')}` : 'chưa xuất được'
+}
 const engines = computed<PackEngine[]>(() => ENGINES.map((e) => e.id).filter((id) => picks.value.has(id)))
 const hasAppEngine = computed(() => picks.value.has('flutter') || picks.value.has('android') || picks.value.has('ios'))
 const hasGameEngine = computed(() => picks.value.has('unity') || picks.value.has('godot'))
@@ -80,6 +85,7 @@ const skippedTargets = computed(() =>
     .map((id) => ({ id, label: ENGINES.find((e) => e.id === id)?.label ?? id, names: result.value?.[id]?.skipped ?? [] }))
     .filter((s) => s.names.length)
 )
+const shaderSample = computed(() => assets.value.find((a) => picked.value.has(a.step_id) && a.preview_hash)?.preview_hash ?? null)
 const hasShaderEngine = computed(() => hasAppEngine.value || hasGameEngine.value)
 const shaderNote = computed(() =>
   hasAppEngine.value && !picks.value.has('android') && !picks.value.has('ios')
@@ -282,7 +288,7 @@ useEventListener(
                 </div>
               </div>
 
-              <ShaderPicker v-if="hasShaderEngine && shaderList.length" class="shaders" :list="shaderList" :picker="shaderPicker" :note="shaderNote" />
+              <ShaderPicker v-if="hasShaderEngine && shaderList.length" class="shaders" :list="shaderList" :picker="shaderPicker" :note="shaderNote" :sample-hash="shaderSample" />
 
               <div class="row mob">
                 <span class="section-label">Mobile</span>
@@ -316,7 +322,7 @@ useEventListener(
                     <BlobImage v-if="a.preview_hash" :hash="a.preview_hash" :size="64" class="thumb" :alt="a.name" />
                     <span v-else class="thumb" />
                     <span class="nm ell">{{ a.name }}</span>
-                    <span class="caption">{{ a.engine_ready ? a.recipe_id : 'file gốc' }}</span>
+                    <span class="caption">{{ assetNote(a) }}</span>
                   </label>
                 </li>
               </ul>

@@ -85,6 +85,8 @@ async def test_pack_unity_and_godot(app_ctx, tmp_path: Path) -> None:  # noqa: F
     assert listing["next_version"] == "1.0.0" and listing["slug"] == "rung-dem" and listing["packs"] == []
     assert {a["name"]: a["engine_ready"] for a in listing["assets"]} == {"Hiệp sĩ": True, "Cung thủ": True,
                                                                           "Icon": False}
+    by = {a["name"]: a["engines"] for a in listing["assets"]}
+    assert by["Icon"] == ["android", "ios"] and "unity" in by["Hiệp sĩ"] and set(by["Hiệp sĩ"]) >= {"android", "ios"}
 
     out_dir = tmp_path / "out"
     r = await client.post("/api/projects/p1/pack", headers=AUTH, json={

@@ -15,6 +15,7 @@ import PresetSelect from '@/components/PresetSelect.vue'
 import RunPresetMenu from '@/components/RunPresetMenu.vue'
 import TweenNumber from '@/components/TweenNumber.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
+import { sentFileError } from '@/composables/sendTo'
 import { useRecipes } from '@/stores/recipes'
 import { useFit } from '@/stores/fit'
 import { useProjects } from '@/stores/projects'
@@ -266,7 +267,7 @@ watch(
         touched.add(name)
         errors[name] = null
       } catch (e) {
-        toasts.error(e, 'Không nạp được tệp từ kết quả trước')
+        toasts.push(sentFileError(e), 'error', 6000)
       }
     }
   },
