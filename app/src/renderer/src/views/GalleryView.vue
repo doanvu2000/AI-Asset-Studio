@@ -443,7 +443,8 @@ function itemOf(g: AssetGroup): CompareItem {
     meta: [g.recipe, relativeTime(g.created_at)].filter(Boolean).join(' · '),
     status: g.status,
     lead: g.lead.blob,
-    siblings: g.versions.map((v) => v.blob)
+    siblings: g.versions.map((v) => v.blob),
+    qa: g.qa
   }
 }
 const compareItems = computed<CompareItem[] | null>(() => {

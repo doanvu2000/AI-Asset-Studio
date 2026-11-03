@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Check, ChevronLeft, ChevronRight, X } from '@lucide/vue'
+import { Check, ChevronLeft, ChevronRight, Columns2, X } from '@lucide/vue'
 import { useEventListener } from '@vueuse/core'
 import type { BlobRef, VersionRow, VersionStatus } from '@/api/types'
 import { bytes } from '@/composables/format'
@@ -10,12 +10,13 @@ import BlobImage from './BlobImage.vue'
 import AssetActions from './AssetActions.vue'
 import AssetViewer from './viewers/AssetViewer.vue'
 import QaBreakdown from './QaBreakdown.vue'
+import CompareView, { type CompareItem } from './CompareView.vue'
 import SendToMenu from './SendToMenu.vue'
 import type { SendSource } from '@/composables/sendTo'
 import { api } from '@/stores/connection'
 import { useVersions } from '@/stores/versions'
 import { useToasts } from '@/stores/toasts'
-import { VIEW_LABEL, viewsFor } from './viewers/detect'
+import { VIEW_LABEL, isImage, viewsFor } from './viewers/detect'
 
 const props = withDefaults(
   defineProps<{
@@ -90,6 +91,27 @@ const fileLine = computed(() => {
   return parts.filter(Boolean).join(' · ')
 })
 
+// C compares the picture on screen with the previous one in the ring.
+const compareOpen = ref(false)
+const prevBlob = computed<BlobRef | null>(() => {
+  const { i, n } = pos.value
+  const b = ring.value[(i - 1 + n) % n]
+  return n > 1 && b && shown.value && b.hash !== shown.value.hash ? b : null
+})
+const canCompare = computed(() => !!shown.value && isImage(shown.value) && !!prevBlob.value && isImage(prevBlob.value))
+function compareItem(b: BlobRef, name: string): CompareItem {
+  return { key: b.hash, name, meta: '', lead: b, siblings: [b], qa: props.versionFor?.(b.hash)?.qa }
+}
+const compareItems = computed<CompareItem[] | null>(() => {
+  if (!compareOpen.value || !canCompare.value) return null
+  const a = prevBlob.value!
+  const b = shown.value!
+  return [compareItem(a, a.name || a.hash.slice(0, 12)), compareItem(b, b.name || b.hash.slice(0, 12))]
+})
+watch(compareItems, (v) => {
+  if (!v) compareOpen.value = false
+})
+
 const shownVersion = computed(() => (shown.value && props.versionFor ? props.versionFor(shown.value.hash) : undefined))
 const showQa = computed(() => view.value?.kind !== 'tile' && shownVersion.value?.qa?.skipped !== 'opaque' && !!shownVersion.value && shownVersion.value.blob.mime.startsWith('image/'))
 const qaBusy = ref(false)
@@ -113,7 +135,7 @@ useEventListener(
   document,
   'keydown',
   (e: KeyboardEvent) => {
-    if (!props.blob) return
+    if (!props.blob || compareOpen.value) return
     const t = e.target as HTMLElement | null
     // Teleported popups (export BundleMenu) handle their own keys, Escape included.
     if (t?.closest('[role="menu"], [data-popup]')) return
@@ -125,6 +147,7 @@ useEventListener(
     if (e.key === 'Escape') emit('close')
     else if (e.key === 'ArrowLeft' && canNav.value) step(-1)
     else if (e.key === 'ArrowRight' && canNav.value) step(1)
+    else if (plainKey && canCompare.value && (e.key === 'c' || e.key === 'C')) compareOpen.value = true
     else if (plainKey && props.sendFor && (e.key === 's' || e.key === 'S')) void sender.value?.show()
     else if (plainKey && props.status && (e.key === 'a' || e.key === 'A')) emit('review', 'approve', true)
     else if (plainKey && props.status && (e.key === 'r' || e.key === 'R')) emit('review', 'reject', true)
@@ -212,6 +235,7 @@ function growFromOrigin(el: Element): void {
                   {{ status === 'rejected' ? 'Đã từ chối' : 'Từ chối' }}
                 </button>
               </div>
+              <button v-if="canCompare" type="button" class="btn btn-plain" title="So sánh với ảnh trước (C)" @click="compareOpen = true"><Columns2 /> So sánh</button>
               <SendToMenu v-if="sendFor" ref="sender" :source="sendFor(shown)" />
               <button ref="closeBtn" class="btn btn-plain btn-icon" aria-label="Đóng (Esc)" title="Đóng (Esc)" @click="emit('close')"><X /></button>
             </div>
@@ -225,6 +249,7 @@ function growFromOrigin(el: Element): void {
       </div>
     </Transition>
   </Teleport>
+  <CompareView :items="compareItems" @close="compareOpen = false" />
 </template>
 
 <style scoped>
