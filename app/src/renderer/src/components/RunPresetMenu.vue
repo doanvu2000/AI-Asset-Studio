@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue'
+import { computed, nextTick, ref, useId, watch } from 'vue'
 import { onClickOutside, useEventListener } from '@vueuse/core'
-import { Bookmark, BookmarkPlus, ChevronDown, LoaderCircle, Trash2, X } from '@lucide/vue'
+import { Bookmark, BookmarkPlus, Check, ChevronDown, LoaderCircle, Pencil, RefreshCw, Trash2, X } from '@lucide/vue'
 import { runPresetsApi, type RunPreset } from '@/api/runPresets'
 import RelTime from './RelTime.vue'
 import { useConnection } from '@/stores/connection'
@@ -26,6 +26,11 @@ const list = ref<RunPreset[]>([])
 const loading = ref(false)
 const failed = ref(false)
 const confirmId = ref<string | null>(null)
+const overwriteId = ref<string | null>(null)
+const renameId = ref<string | null>(null)
+const renameText = ref('')
+const renameEl = ref<HTMLInputElement[] | HTMLInputElement | null>(null)
+const rowBusy = ref<string | null>(null)
 
 let seq = 0
 async function load(): Promise<void> {
@@ -71,6 +76,57 @@ async function remove(p: RunPreset): Promise<void> {
     toasts.push(`Đã xoá thiết lập “${p.name}”`, 'success', 2200)
   } catch (e) {
     toasts.error(e, 'Không xoá được thiết lập')
+  }
+}
+
+function startRename(p: RunPreset): void {
+  renameId.value = p.id
+  renameText.value = p.name
+  void nextTick(() => {
+    const el = Array.isArray(renameEl.value) ? renameEl.value[0] : renameEl.value
+    el?.focus()
+    el?.select()
+  })
+}
+const renameClash = computed(() => {
+  const t = renameText.value.trim().toLowerCase()
+  return !!t && list.value.some((p) => p.id !== renameId.value && p.name.toLowerCase() === t)
+})
+async function commitRename(p: RunPreset): Promise<void> {
+  const next = renameText.value.trim()
+  if (!next || next === p.name) {
+    renameId.value = null
+    return
+  }
+  if (renameClash.value || rowBusy.value) return
+  rowBusy.value = p.id
+  try {
+    const out = await runPresetsApi().updateRunPreset(p.id, { name: next })
+    list.value = list.value.map((x) => (x.id === p.id ? out : x))
+    renameId.value = null
+    toasts.push(`Đã đổi tên thành “${out.name}”`, 'success', 2200)
+  } catch (e) {
+    toasts.error(e, 'Không đổi được tên')
+  } finally {
+    rowBusy.value = null
+  }
+}
+async function overwrite(p: RunPreset): Promise<void> {
+  if (overwriteId.value !== p.id) {
+    overwriteId.value = p.id
+    return
+  }
+  overwriteId.value = null
+  rowBusy.value = p.id
+  try {
+    const { inputs, params } = props.snapshot()
+    const out = await runPresetsApi().updateRunPreset(p.id, { inputs, params })
+    list.value = list.value.map((x) => (x.id === p.id ? out : x))
+    toasts.push(`Đã ghi đè “${p.name}” bằng thiết lập hiện tại`, 'success', 2200)
+  } catch (e) {
+    toasts.error(e, 'Không ghi đè được thiết lập')
+  } finally {
+    rowBusy.value = null
   }
 }
 
@@ -156,23 +212,61 @@ async function save(): Promise<void> {
         <p v-else-if="!list.length" class="rp-note caption">Chưa có thiết lập nào cho quy trình này. Điền form rồi bấm “Lưu thiết lập hiện tại”.</p>
         <ul v-else class="rp-list">
           <li v-for="p in list" :key="p.id" class="rp-item">
-            <button type="button" class="rp-pick" @click="pick(p)">
-              <span class="rp-name">{{ p.name }}</span>
-              <span class="rp-meta caption">
-                {{ p.project_id ? `Chỉ dự án ${projectName ?? 'này'}` : 'Mọi dự án' }} · <RelTime :ts="p.created_at" />
-              </span>
-            </button>
-            <button
-              type="button"
-              class="rp-del"
-              :class="{ ask: confirmId === p.id }"
-              :aria-label="confirmId === p.id ? `Bấm lần nữa để xoá ${p.name}` : `Xoá ${p.name}`"
-              @click="remove(p)"
-              @blur="confirmId === p.id && (confirmId = null)"
-            >
+            <form v-if="renameId === p.id" class="rp-rename" @submit.prevent="commitRename(p)">
+              <input
+                ref="renameEl"
+                v-model="renameText"
+                class="field rp-rn-in"
+                type="text"
+                maxlength="80"
+                autocomplete="off"
+                :aria-label="`Tên mới cho ${p.name}`"
+                :aria-invalid="renameClash || !renameText.trim()"
+                @keydown.esc.stop.prevent="renameId = null"
+              />
+              <button type="submit" class="rp-ic" aria-label="Lưu tên" title="Lưu tên" :disabled="!renameText.trim() || renameClash || rowBusy === p.id">
+                <LoaderCircle v-if="rowBusy === p.id" :size="14" class="spin" aria-hidden="true" />
+                <Check v-else :size="14" aria-hidden="true" />
+              </button>
+              <button type="button" class="rp-ic" aria-label="Huỷ đổi tên" title="Huỷ" @click="renameId = null"><X :size="14" aria-hidden="true" /></button>
+              <p v-if="renameClash" class="caption warn rp-rn-msg" role="alert">Đã có thiết lập trùng tên.</p>
+            </form>
+            <template v-else>
+              <button type="button" class="rp-pick" @click="pick(p)">
+                <span class="rp-name">{{ p.name }}</span>
+                <span class="rp-meta caption">
+                  {{ p.project_id ? `Chỉ dự án ${projectName ?? 'này'}` : 'Mọi dự án' }} · <RelTime :ts="p.created_at" />
+                </span>
+              </button>
+              <button type="button" class="rp-ic" :aria-label="`Đổi tên ${p.name}`" title="Đổi tên" @click="startRename(p)">
+                <Pencil :size="14" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                class="rp-ic rp-ow"
+                :class="{ ask: overwriteId === p.id }"
+                :disabled="rowBusy === p.id"
+                :aria-label="overwriteId === p.id ? `Bấm lần nữa để ghi đè ${p.name}` : `Ghi đè ${p.name} bằng thiết lập hiện tại`"
+                :title="overwriteId === p.id ? 'Bấm lần nữa để ghi đè' : 'Ghi đè bằng thiết lập hiện tại'"
+                @click="overwrite(p)"
+                @blur="overwriteId === p.id && (overwriteId = null)"
+              >
+                <LoaderCircle v-if="rowBusy === p.id" :size="14" class="spin" aria-hidden="true" />
+                <RefreshCw v-else :size="14" aria-hidden="true" />
+                <span v-if="overwriteId === p.id">Ghi đè?</span>
+              </button>
+              <button
+                type="button"
+                class="rp-del"
+                :class="{ ask: confirmId === p.id }"
+                :aria-label="confirmId === p.id ? `Bấm lần nữa để xoá ${p.name}` : `Xoá ${p.name}`"
+                @click="remove(p)"
+                @blur="confirmId === p.id && (confirmId = null)"
+              >
               <Trash2 :size="14" aria-hidden="true" />
               <span v-if="confirmId === p.id">Xoá?</span>
-            </button>
+              </button>
+            </template>
           </li>
         </ul>
         <button type="button" class="rp-save" @click="openSave"><BookmarkPlus :size="15" aria-hidden="true" /> Lưu thiết lập hiện tại…</button>
@@ -325,6 +419,50 @@ async function save(): Promise<void> {
 .rp-del.ask {
   color: var(--st-fail);
   font-weight: 600;
+}
+.rp-ic {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: var(--fs-caption);
+  cursor: pointer;
+}
+.rp-ic:hover:not(:disabled),
+.rp-ic:focus-visible {
+  color: var(--accent);
+  background: var(--bg-hover);
+}
+.rp-ic:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.rp-ow.ask {
+  color: var(--accent);
+  font-weight: 600;
+}
+.rp-rename {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 2px;
+}
+.rp-rn-in {
+  flex: 1;
+  min-width: 0;
+}
+.rp-rn-msg {
+  flex-basis: 100%;
+  margin: 2px 8px 0;
 }
 .rp-save {
   display: flex;

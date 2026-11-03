@@ -337,6 +337,15 @@ class SqliteRepo:
         row = await self.db.fetchone("SELECT * FROM run_presets WHERE id = ?", (preset_id,))
         return self._run_preset(row) if row else None
 
+    async def update_run_preset(self, preset_id: str, fields: dict[str, Any]) -> dict[str, Any] | None:
+        cols = {"name": lambda v: v, "inputs": lambda v: orjson.dumps(v, default=to_jsonable_python).decode(),
+                "params": lambda v: orjson.dumps(v, default=to_jsonable_python).decode()}
+        sets = [k for k in fields if k in cols]
+        if sets:
+            await self.db.write(f"UPDATE run_presets SET {', '.join(f'{k} = ?' for k in sets)} WHERE id = ?",
+                                (*(cols[k](fields[k]) for k in sets), preset_id))
+        return await self.get_run_preset(preset_id)
+
     async def delete_run_preset(self, preset_id: str) -> bool:
         return await self.db.write("DELETE FROM run_presets WHERE id = ?", (preset_id,)) > 0
 

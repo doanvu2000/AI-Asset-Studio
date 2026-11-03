@@ -19,7 +19,9 @@ export interface RunPresetBody {
   params: Record<string, unknown>
 }
 
-export type RunPresetsApi = Pick<StudioApi, 'listRunPresets' | 'saveRunPreset' | 'deleteRunPreset'>
+export type RunPresetPatch = Partial<Pick<RunPresetBody, 'name' | 'inputs' | 'params'>>
+
+export type RunPresetsApi = Pick<StudioApi, 'listRunPresets' | 'saveRunPreset' | 'updateRunPreset' | 'deleteRunPreset'>
 
 export function runPresetsApi(): RunPresetsApi {
   return api()

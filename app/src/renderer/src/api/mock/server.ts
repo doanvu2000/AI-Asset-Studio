@@ -41,7 +41,7 @@ import {
 import { MockFlowBatches, MockFlows } from './flows'
 import type { FlowBatchBody, FlowBatchDetail, FlowBatchSummary } from '../types'
 import { renderArt, renderPreviewB64 } from './art'
-import type { RunPreset, RunPresetBody } from '../runPresets'
+import type { RunPreset, RunPresetBody, RunPresetPatch } from '../runPresets'
 import { renderWalkSheet } from './walkSheet'
 import { mockStatsOverview } from './stats'
 import type { StatsOverview, StatsQuery } from '../types'
@@ -1258,6 +1258,21 @@ export class MockCore implements StudioApi, EventStream {
     return clone(p)
   }
 
+  async updateRunPreset(id: string, patch: RunPresetPatch): Promise<RunPreset> {
+    await sleep(100)
+    const cur = this.runPresets.find((p) => p.id === id)
+    if (!cur) throw new ApiError('not_found', `unknown preset: ${id}`, 404)
+    const name = patch.name?.trim()
+    if (patch.name !== undefined && !name) throw new ApiError('invalid', 'name must not be empty', 400)
+    if (name && name.toLowerCase() !== cur.name.toLowerCase() && this.runPresets.some((p) => p.id !== id && p.recipe_id === cur.recipe_id && p.name.toLowerCase() === name.toLowerCase())) {
+      throw new ApiError('conflict', `a preset named '${name}' already exists`, 409)
+    }
+    if (name) cur.name = name
+    if (patch.inputs) cur.inputs = clone(patch.inputs)
+    if (patch.params) cur.params = clone(patch.params)
+    return clone(cur)
+  }
+
   async deleteRunPreset(id: string): Promise<void> {
     await sleep(80)
     if (!this.runPresets.some((p) => p.id === id)) throw new ApiError('not_found', `unknown preset: ${id}`, 404)
@@ -1718,10 +1733,13 @@ export class MockCore implements StudioApi, EventStream {
   }
 
   async runProjectQa(projectId: string, body: { only_approved?: boolean; vision?: boolean } = {}): Promise<ProjectQaReport> {
-    await sleep(body.vision ? 1500 : 500)
     const list = [...this.versionMap.values()].filter(
       (v) => v.project_id === projectId && v.blob.mime.startsWith('image/') && v.status !== 'rejected' && (!body.only_approved || v.status === 'approved')
     )
+    const slow = /slow/i.test(`${projectId} ${this.projectMap.get(projectId)?.name ?? ''}`) || this.slowQa
+    const total = slow ? 60 : list.length
+    if (total && (await this.mockScanUnits('project_qa', projectId, total, slow ? 120 : 25)) < total) throw new ApiError('cancelled', 'Đã huỷ kiểm tra', 409)
+    await sleep(body.vision ? 1500 : 200)
     // Deterministic pseudo-scores from the hash so the panel shows a mix of grades.
     const assets: ProjectQaAsset[] = list.slice(0, 120).map((v): ProjectQaAsset => {
       const score = 45 + (parseInt(v.blob.hash.slice(0, 4), 16) % 56)
@@ -1963,7 +1981,7 @@ export class MockCore implements StudioApi, EventStream {
   }
 
   // Paths containing "slow" stretch the scan so progress can be captured; returns true when cancelled.
-  private async mockScan(kind: 'audit' | 'restyle' | 'qa', key: string, total: number, stepMs: number): Promise<boolean> {
+  private async mockScan(kind: 'audit' | 'restyle' | 'qa' | 'audit_fix' | 'project_qa', key: string, total: number, stepMs: number): Promise<boolean> {
     const id = `scan${++this.seq}`
     const job = { kind, cancelled: false }
     this.scanJobs.set(id, job)
@@ -2059,15 +2077,42 @@ export class MockCore implements StudioApi, EventStream {
   }
 
   async auditFix(body: { path: string; actions: AuditFix[]; dry_run: boolean }): Promise<AuditFixResult> {
-    await sleep(600)
-    const files = body.actions.filter((a) => a.rel).map((a) => ({ rel: a.rel!, action: 'write' as const, fixes: [a.type] }))
-    const res: AuditFixResult = { dry_run: body.dry_run, written: body.dry_run ? 0 : files.length, skipped: 0, gpu_before: 76 * 1048576, gpu_after: 6.3 * 1048576, files }
-    if (!body.dry_run) {
+    let files = body.actions.filter((a) => a.rel).map((a) => ({ rel: a.rel!, action: 'write' as 'write' | 'skip', why: undefined as string | undefined, fixes: [a.type] }))
+    let cancelled = false
+    if (body.dry_run) await sleep(600)
+    else {
+      const slow = /slow/i.test(body.path)
+      if (slow) files = Array.from({ length: 40 }, (_, i) => ({ rel: `Assets/Art/tex_${String(i + 1).padStart(2, '0')}.png`, action: 'write' as const, why: undefined, fixes: ['max_size'] }))
+      const total = files.length
+      const done = total ? await this.mockScanUnits('audit_fix', body.path, total, slow ? 150 : 200) : 0
+      cancelled = done < total
+      if (cancelled) files = files.map((f, i) => (i < done ? f : { ...f, action: 'skip' as const, why: 'cancelled' }))
+    }
+    const written = body.dry_run ? 0 : files.filter((f) => f.action === 'write').length
+    const res: AuditFixResult = { dry_run: body.dry_run, written, skipped: files.length - (body.dry_run ? files.length : written), gpu_before: 76 * 1048576, gpu_after: 6.3 * 1048576, files }
+    if (cancelled) res.cancelled = true
+    if (!body.dry_run && written) {
       res.backup_id = `mock-${Date.now()}`
-      this.auditBackupList.unshift({ backup_id: res.backup_id, project: body.path, engine: 'unity', at: now(), written: files.length, undone_at: null,
+      this.auditBackupList.unshift({ backup_id: res.backup_id, project: body.path, engine: 'unity', at: now(), written, undone_at: null,
         gpu_before: res.gpu_before ?? null, gpu_after: res.gpu_after ?? null })
     }
     return res
+  }
+
+  private async mockScanUnits(kind: 'audit_fix' | 'project_qa', key: string, total: number, stepMs: number): Promise<number> {
+    const id = `scan${++this.seq}`
+    const job = { kind, cancelled: false }
+    this.scanJobs.set(id, job)
+    const emit = (done: number, tot: number, phase: string): void => this.emit('scan.progress' as EventType, { job: id, kind, key, done, total: tot, phase })
+    emit(0, 0, 'start')
+    let i = 0
+    for (; i < total && !job.cancelled; i++) {
+      emit(i, total, 'files')
+      await sleep(stepMs)
+    }
+    this.scanJobs.delete(id)
+    emit(0, 0, job.cancelled ? 'cancelled' : 'done')
+    return job.cancelled ? i : total
   }
 
   async auditUndo(backupId: string): Promise<{ backup_id: string; restored: string[]; conflicts: { rel: string; why: string }[] }> {

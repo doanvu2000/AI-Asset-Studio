@@ -33,6 +33,22 @@ class RunPresetCreate(BaseModel):
         return v
 
 
+class RunPresetPatch(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    inputs: dict[str, Any] | None = None
+    params: dict[str, Any] | None = None
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("name must not be empty")
+        return v
+
+
 def _repo(request: Request) -> SqliteRepo:
     return request.app.state.repo
 
@@ -59,3 +75,18 @@ async def delete_run_preset(request: Request, preset_id: str) -> Response:
     if not await _repo(request).delete_run_preset(preset_id):
         raise ApiError(404, "not_found", f"unknown preset: {preset_id}")
     return OrjsonResponse({"ok": True})
+
+
+@router.patch("/{preset_id}")
+async def update_run_preset(request: Request, preset_id: str, body: RunPresetPatch) -> Response:
+    repo = _repo(request)
+    cur = await repo.get_run_preset(preset_id)
+    if cur is None:
+        raise ApiError(404, "not_found", f"unknown preset: {preset_id}")
+    fields = body.model_dump(exclude_none=True)
+    name = fields.get("name")
+    if name is not None and name.lower() != cur["name"].lower():
+        scope = await repo.list_run_presets(cur["recipe_id"], cur["project_id"])
+        if any(p["id"] != preset_id and p["name"].lower() == name.lower() for p in scope):
+            raise ApiError(409, "conflict", f"a preset named '{name}' already exists")
+    return OrjsonResponse(await repo.update_run_preset(preset_id, fields))

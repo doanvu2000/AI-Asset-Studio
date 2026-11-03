@@ -130,7 +130,7 @@ async function reveal(id: string | null): Promise<void> {
 watch(() => props.focusId, reveal)
 
 const ARROW: Record<string, [number, number]> = { ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowDown: [0, 1], ArrowUp: [0, -1] }
-// Cross-axis penalty keeps the move in the same row/column; nodes outside the 2:1 cone only win when nothing else lies that way.
+// Only nodes inside the ±45° cone qualify, so a press never jumps to a diagonal neighbour; the cross-axis penalty keeps it in the same row/column.
 function neighbour(from: GraphNode, [dx, dy]: [number, number]): Node | undefined {
   const c = (n: GraphNode): [number, number] => [n.position.x + (n.dimensions.width || 0) / 2, n.position.y + (n.dimensions.height || 0) / 2]
   const [fx, fy] = c(from)
@@ -142,7 +142,8 @@ function neighbour(from: GraphNode, [dx, dy]: [number, number]): Node | undefine
     const along = (x - fx) * dx + (y - fy) * dy
     if (along <= 0) continue
     const across = Math.abs((x - fx) * dy) + Math.abs((y - fy) * dx)
-    const score = along + across * 2 + (across > along * 2 ? 1e6 : 0)
+    if (across > along) continue
+    const score = along + across * 2
     if (score < bestScore) {
       best = n
       bestScore = score

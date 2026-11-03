@@ -7,6 +7,7 @@ const root = ref<HTMLElement>()
 const actions = ref<HTMLElement>()
 let observer: ResizeObserver | null = null
 let mutations: MutationObserver | null = null
+let raf = 0
 
 // Buttons wrap their label in `.lbl` (plus aria-label + title); when the actions
 // plus a readable title no longer fit, the labels drop and only icons remain.
@@ -22,18 +23,25 @@ function fit(): void {
   if (a.offsetWidth + TITLE_MIN > room) h.classList.add('compact')
 }
 
+// Toggling `.compact` inside the observer callback changes the observed size in the same frame ("ResizeObserver loop" error); defer to the next frame.
+function scheduleFit(): void {
+  cancelAnimationFrame(raf)
+  raf = requestAnimationFrame(fit)
+}
+
 onMounted(() => {
-  observer = new ResizeObserver(fit)
+  observer = new ResizeObserver(scheduleFit)
   if (root.value) observer.observe(root.value)
   if (actions.value) observer.observe(actions.value)
   // Buttons added later (gate count, dirty flag) can fit in the same frame; wait for layout before measuring.
   if (actions.value) {
-    mutations = new MutationObserver(() => requestAnimationFrame(fit))
+    mutations = new MutationObserver(scheduleFit)
     mutations.observe(actions.value, { childList: true, subtree: true, characterData: true })
   }
   fit()
 })
 onBeforeUnmount(() => {
+  cancelAnimationFrame(raf)
   observer?.disconnect()
   mutations?.disconnect()
 })

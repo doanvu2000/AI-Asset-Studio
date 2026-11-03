@@ -62,7 +62,7 @@ import type {
 import type { FlowValidateResult, SavedWorkflow, WorkflowDef, WorkflowRunDetail, WorkflowRunRow } from './types'
 import type { CoreDiagnostics } from '../../../preload/types'
 import type { AgentActivitySnapshot, GpuState } from './types'
-import type { RunPreset, RunPresetBody } from './runPresets'
+import type { RunPreset, RunPresetBody, RunPresetPatch } from './runPresets'
 import type { FlowBatchBody, FlowBatchDetail, FlowBatchSummary, GddPlan, GddPlanBody, GddStartBody, GddStartResult } from './types'
 import type { EnginePreviewBody, EnginePreviewJob, OpenInEngineResult, PreviewEngine, PreviewEngines } from './enginePreview'
 import type { HitVfx, StepHits } from './hitFx'
@@ -110,9 +110,10 @@ export interface StudioApi {
   getRun(id: string): Promise<RunDetail>
   cancelRun(id: string): Promise<void>
   rerunRun(id: string, seed?: 'new' | 'same'): Promise<{ run_id: string }>
-  cancelScan(body: { job?: string; kind?: 'audit' | 'restyle' | 'qa' }): Promise<unknown>
+  cancelScan(body: { job?: string; kind?: 'audit' | 'restyle' | 'qa' | 'audit_fix' | 'project_qa' }): Promise<unknown>
   listRunPresets(recipeId: string, projectId?: string): Promise<RunPreset[]>
   saveRunPreset(body: RunPresetBody): Promise<RunPreset>
+  updateRunPreset(id: string, patch: RunPresetPatch): Promise<RunPreset>
   deleteRunPreset(id: string): Promise<void>
   /** `keep`: on a regenerate, candidate hashes the step reuses instead of redrawing (storyboard frames). */
   retryStep(stepId: string, keep?: string[]): Promise<void>
@@ -337,6 +338,7 @@ export function createHttpApi(baseUrl: string, token: string): StudioApi {
     listRunPresets: (recipeId, projectId) =>
       call('GET', `/api/presets/runs${query({ recipe_id: recipeId, project_id: projectId })}`),
     saveRunPreset: (body) => call('POST', '/api/presets/runs', body),
+    updateRunPreset: (id, patch) => call('PATCH', `/api/presets/runs/${enc(id)}`, patch),
     deleteRunPreset: async (id) => void (await call('DELETE', `/api/presets/runs/${enc(id)}`)),
     retryStep: (id, keep) => call('POST', `/api/steps/${enc(id)}/retry`, keep?.length ? { keep } : undefined),
     gates: () => call('GET', '/api/gates'),

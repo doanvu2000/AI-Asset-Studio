@@ -88,3 +88,19 @@ async def test_migration_from_db_without_table(tmp_path: Path) -> None:
     await db.open()
     assert await db.fetchall("SELECT * FROM run_presets") == []
     await db.close()
+
+
+async def test_patch(app_ctx) -> None:  # noqa: F811
+    _, client, _ = app_ctx
+    a = (await _save(client, name="A")).json()["id"]
+    await _save(client, name="B")
+    url = f"/api/presets/runs/{a}"
+    r = await client.patch(url, json={"name": "  C  "}, headers=AUTH)
+    assert r.status_code == 200 and r.json()["name"] == "C" and r.json()["inputs"] == {"prompt": "wooden chest"}
+    r = await client.patch(url, json={"inputs": {"prompt": "x"}, "params": {"seed": 9}}, headers=AUTH)
+    assert r.json()["name"] == "C" and r.json()["inputs"] == {"prompt": "x"} and r.json()["params"] == {"seed": 9}
+    assert (await client.patch(url, json={"name": "b"}, headers=AUTH)).status_code == 409
+    assert (await client.patch(url, json={"name": "c"}, headers=AUTH)).status_code == 200
+    assert (await client.patch(url, json={"name": "   "}, headers=AUTH)).status_code in (400, 422)
+    assert (await client.patch("/api/presets/runs/nope", json={"name": "Z"}, headers=AUTH)).status_code == 404
+    assert (await client.patch(url, json={"name": "Z"})).status_code == 401
