@@ -61,3 +61,11 @@ Chủ nhân: "cứ làm liên tục". Plan: PLAN-2026-11-03-r13.md. Commit từn
 - [x] Full pytest sau 13A–C: 1768 pass, 6 skip, 78 s. [~] WP-13QA Electron thật (sonnet).
 - [x] WP-13QA Electron thật: 1,2,4,5 ĐẠT; 3 ĐẠT (Audit 4000 tệp huỷ ở 601, Restyle huỷ, Gallery huỷ giữ điểm đã chấm); normal AI 4.0/1.7/1.6 s, worker tự tắt 120 s, đóng app không sót PID — docs/qa/r13/QA. Lỗi: nhãn "ảnh cũ" không giảm (QA_VERSION renderer 1 ≠ core 2) → main sửa + test đồng bộ — 2f04cd0; thanh Audit dừng ~318/409 khi sang analyze → main sửa scan_jobs + test — commit sau.
 - [x] Full pytest 1770 pass. Handoff cập nhật lượt 13. Push.
+
+## Phiên 2026-11-03 — lượt 14
+Plan: PLAN-2026-11-03-r14.md. Commit từng phần + push cuối.
+- [~] WP-14A/14B/14C giao sonnet.
+- [x] WP-14C multigrid V-cycle preconditioner (Galerkin, Chebyshev, hybrid 6 vòng Jacobi trước): CG 253→11 vòng ít mẫu, test_r8_style 39.8→18.0 s, khớp ≤0.08/255 — 57 pass (main chạy).
+- [x] WP-14B tiến độ + huỷ an toàn cho audit fix (undo phần đã sửa) và project QA — 46 pass cùng 14A (main chạy), typecheck sạch — 8ff3158. CHƯA KIỂM Electron thật; bước vision không huỷ được.
+- [x] WP-14A PATCH preset (đổi tên/ghi đè, trùng 409), mũi tên nón ±45°, PageHeader fit qua rAF (ResizeObserver loop) — 33f6efa (kèm client/mock phần scan kind của 14B). CHƯA so lỗi RO trước/sau; nón chưa thử nhiều cột.
+- [x] Full pytest 1785 pass, 6 skip, 78 s. Push.
