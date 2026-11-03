@@ -185,8 +185,10 @@ def pack_states(settings: Settings, models_dir: Path) -> dict[str, PackState]:
         ms = base if p["required"] else [m for m in plan.pack_models([p["id"]]) if m not in base]
         missing = [m for m in ms if not plan.model_present(models_dir, m)]
         nodes = [n for n in p.get("custom_nodes") or [] if not plan.custom_node_present(settings.comfy_dir, n)]
-        out[p["id"]] = PackState(not missing and not nodes, sum(m["size"] for m in ms) // MB,
-                                 sum(m["size"] for m in missing) // MB)
+        c_size, c_missing = plan.component_sizes(p, models_dir)
+        out[p["id"]] = PackState(not missing and not nodes and not c_missing,
+                                 (sum(m["size"] for m in ms) + c_size) // MB,
+                                 (sum(m["size"] for m in missing) + c_missing) // MB)
     return out
 
 

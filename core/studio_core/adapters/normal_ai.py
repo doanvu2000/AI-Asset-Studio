@@ -76,9 +76,23 @@ class NormalAi:
         return f"{MODEL_ID}@{self.snapshot()}|adapter={ADAPTER_VERSION}|side={LONG_SIDE}|lvl={RESOLUTION_LEVEL}"
 
 
-def locate(settings: Any = None) -> NormalAi:
-    root = os.environ.get("STUDIO_NORMAL_AI_DIR") or getattr(settings, "normal_ai_dir", None) or DEFAULT_ROOT
-    return NormalAi(Path(root))
+def locate(settings: Any = None, models_dir: Path | None = None) -> NormalAi:
+    """Env / Settings.normal_ai_dir win; else the pack's folder under the models dir, then the legacy
+    setup/normal-ai.ps1 folder, whichever is complete (a partial install resumes in the models dir)."""
+    root = os.environ.get("STUDIO_NORMAL_AI_DIR") or getattr(settings, "normal_ai_dir", None)
+    if root:
+        return NormalAi(Path(root))
+    if settings is None and models_dir is None:
+        return NormalAi(DEFAULT_ROOT)
+    if models_dir is None:
+        from ..bootstrap.plan import default_dirs
+
+        models_dir = default_dirs(settings)[1]
+    from ..bootstrap.plan import manifest
+
+    own = NormalAi(models_dir / manifest()["normal_ai"]["dir"])
+    legacy = NormalAi(DEFAULT_ROOT)
+    return next((c for c in (own, legacy) if c.missing() is None), own)
 
 
 async def _run(args: list[str], env: dict[str, str], cancelled: asyncio.Event | None, timeout: float) -> str:

@@ -17,8 +17,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from studio_core.bootstrap.plan import (comfy_ready, custom_node_present, detect_gpu, download_path, free_bytes,
-                                        manifest, model_path, model_present, pack_models, workflows_dir)
+from studio_core.bootstrap.plan import (comfy_ready, component_present, custom_node_present, detect_gpu,
+                                        download_path, free_bytes, manifest, model_path, model_present, pack_component,
+                                        pack_models, workflows_dir)
 from studio_core.config import Settings, save_overrides
 
 CHUNK = 1 << 20
@@ -75,6 +76,7 @@ class SetupJob:
         self.models = [m for m in pack_models(self.req.packs) if not model_present(self.req.models_dir, m)]
         self.pack_files: dict[str, list[dict[str, Any]]] = {}
         self.pack_nodes: dict[str, list[dict[str, Any]]] = {}
+        self.pack_components: dict[str, dict[str, Any]] = {}
         taken: set[str] = set()
         self.items = [Item("comfyui", "ComfyUI + Python + PyTorch")]
         for p in manifest()["packs"]:
@@ -84,7 +86,11 @@ class SetupJob:
             files = [m for m in self.models if m["name"] in names]
             taken |= names
             nodes = [n for n in p.get("custom_nodes") or [] if not custom_node_present(self.settings.comfy_dir, n)]
-            if files or nodes:
+            if pack_component(p) and not component_present(p, self.req.models_dir):
+                self.pack_components[p["id"]] = pack_component(p)
+                total = pack_component(p)["download_mb"] << 20
+                self.items.append(Item(f"pack:{p['id']}", f"Gói {p['label']}", total=total))
+            elif files or nodes:
                 self.pack_files[p["id"]] = files
                 if nodes:
                     self.pack_nodes[p["id"]] = nodes
@@ -143,6 +149,7 @@ class SetupJob:
         self.req.models_dir.mkdir(parents=True, exist_ok=True)
         steps: list[tuple[str, Callable[[Item], None]]] = [
             ("comfyui", self._comfyui), *((f"pack:{p}", self._models) for p in self.pack_files),
+            *((f"pack:{p}", self._normal_ai) for p in self.pack_components),
             ("blender", self._blender), ("claude", self._claude), ("finish", self._finish)]
         failed = []
         try:
@@ -174,6 +181,7 @@ class SetupJob:
 
     def _check_space(self) -> None:
         need_models = sum(m["size"] for m in self.models)
+        need_models += sum(c["disk_mb"] << 20 for c in self.pack_components.values())
         need_tools = manifest()["comfyui"]["disk_gb"] * 1024 ** 3 if not comfy_ready(self.settings) else 0
         if self.req.blender:
             need_tools += manifest()["blender"]["size"] * 3
@@ -261,6 +269,60 @@ class SetupJob:
             for f in [pool.submit(one, m) for m in files]:
                 f.result()
         self._set(item, detail="Đủ model")
+
+    def _normal_ai(self, item: Item) -> None:
+        """Own venv under <models>/normal-ai (torch CPU + pinned MoGe code + weights); every stage is idempotent,
+        so a dropped network or a cancel only needs the install run again."""
+        from studio_core.adapters.normal_ai import MODEL_ID, NormalAi
+
+        cfg = manifest()["normal_ai"]
+        ai = NormalAi(self.req.models_dir / cfg["dir"])
+        root = ai.root
+        for d in (root, root / "tmp", root / "src"):
+            d.mkdir(parents=True, exist_ok=True)
+        uv = self._uv(item)
+        tmp = str(root / "tmp")
+        env = {**os.environ, "UV_CACHE_DIR": str(root / "uv-cache"), "TMP": tmp, "TEMP": tmp,
+               "HF_HOME": str(ai.hf_home), "UV_PYTHON_INSTALL_DIR": str(self.req.tools_dir / "uv" / "python"),
+               "UV_LINK_MODE": "copy", "PYTHONIOENCODING": "utf-8", "HF_HUB_DISABLE_SYMLINKS_WARNING": "1"}
+        step = item.total // 4
+        if not ai.python.is_file():
+            venv = ["--clear"] if (root / ".venv").exists() else []
+            self._exec(item, [uv, "venv", "--python", cfg["python"], "--python-preference", "only-managed", *venv,
+                              str(root / ".venv")], env, "Tạo môi trường Python")
+        self._exec(item, [uv, "pip", "install", "--python", str(ai.python), *cfg["torch"], "--index-url",
+                          cfg["torch_index"]], env, "Cài PyTorch CPU")
+        self._progress(item, step)
+        # uv rejects a direct URL without a file extension (codeload zips), so those are fetched to a .zip first.
+        reqs = []
+        for r in cfg["pip"]:
+            if r.startswith("https://"):
+                local = root / "tmp" / f"{r.rsplit('/', 1)[1]}.zip"
+                self._fetch(r, local, None)
+                r = str(local)
+            reqs.append(r)
+        self._exec(item, [uv, "pip", "install", "--python", str(ai.python), *reqs], env, "Cài thư viện")
+        self._progress(item, step)
+        if not (ai.code_dir / "moge").is_dir():
+            self._set(item, detail="Tải mã MoGe")
+            archive = root / "tmp" / f"moge-{cfg['moge']['commit']}.zip"
+            self._fetch(cfg["moge"]["url"], archive, None)
+            _extract_single_root(archive, ai.code_dir)
+            archive.unlink(missing_ok=True)
+        self._progress(item, step)
+        if ai.snapshot() is None:
+            self._exec(item, [str(ai.python), "-I", "-c",
+                              "import sys; from huggingface_hub import snapshot_download as d; d(sys.argv[1])",
+                              MODEL_ID], env, "Tải trọng số MoGe-2 (≈135 MB)")
+        check = ["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import torch; "
+                 "from moge.model.v2 import MoGeModel", str(ai.code_dir)]
+        self._exec(item, [str(ai.python), *check], {**env, "HF_HUB_OFFLINE": "1"}, "Kiểm tra")
+        if why := ai.missing():
+            raise SetupError(why)
+        self._progress(item, max(0, item.total - item.done))
+        shutil.rmtree(root / "uv-cache", ignore_errors=True)
+        shutil.rmtree(root / "tmp", ignore_errors=True)
+        self._set(item, detail=f"Đã cài ở {root}")
 
     def _custom_node(self, item: Item, node: dict[str, Any]) -> None:
         comfy = self.comfy_dir or (self.settings.comfy_dir if comfy_ready(self.settings) else None)

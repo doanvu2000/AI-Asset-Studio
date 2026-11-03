@@ -1,4 +1,6 @@
 # Cài venv riêng (CPU) cho normal map AI: MoGe-2 ViT-S normal (MIT). Chạy lại được; không động core\.venv.
+# App cài gói này qua Thiết lập (vào <thư mục model>
+ormal-ai); script dùng khi cài tay, trỏ app tới đây bằng STUDIO_NORMAL_AI_DIR.
 # Dùng: powershell -ExecutionPolicy Bypass -File setup\normal-ai.ps1 [-Root L:\AI\setup\normal-ai]
 param([string]$Root = 'L:\AI\setup\normal-ai')
 $ErrorActionPreference = 'Stop'

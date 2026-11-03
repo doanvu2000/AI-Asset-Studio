@@ -28,6 +28,29 @@
  "claude": {
   "installer": "https://claude.ai/install.ps1"
  },
+ "normal_ai": {
+  "dir": "normal-ai",
+  "python": "3.11",
+  "torch": ["torch", "torchvision"],
+  "torch_index": "https://download.pytorch.org/whl/cpu",
+  "pip": [
+   "numpy",
+   "pillow",
+   "scipy",
+   "opencv-python-headless",
+   "huggingface_hub",
+   "click",
+   "https://codeload.github.com/EasternJournalist/utils3d/zip/3fab839f0be9931dac7c8488eb0e1600c236e183"
+  ],
+  "moge": {
+   "url": "https://codeload.github.com/microsoft/MoGe/zip/b942f00",
+   "commit": "b942f00"
+  },
+  "model": "Ruicheng/moge-2-vits-normal",
+  "download_mb": 400,
+  "disk_mb": 1100,
+  "source": "github.com/microsoft/MoGe, huggingface.co/Ruicheng/moge-2-vits-normal"
+ },
  "packs": [
   {
    "id": "base",
@@ -193,6 +216,18 @@
    "kinds": [
     "tts."
    ]
+  },
+  {
+   "id": "normal-ai",
+   "label": "Normal map AI",
+   "detail": "Normal map từ ảnh sprite bằng AI (MoGe-2 ViT-S, MIT + DINOv2 Apache-2.0), chạy CPU trong môi trường Python riêng (PyTorch CPU), ≈1 GB trên ổ đĩa. Thiếu gói này thì dùng bộ lọc.",
+   "required": false,
+   "hw": {"min_vram_gb": 0, "rec_vram_gb": 0, "min_ram_gb": 4},
+   "workflows": [],
+   "component": "normal_ai",
+   "license": "MIT; DINOv2 backbone Apache-2.0",
+   "commercial": "yes",
+   "source": "https://github.com/microsoft/MoGe"
   }
  ],
  "models": [

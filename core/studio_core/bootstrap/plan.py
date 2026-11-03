@@ -72,6 +72,28 @@ def custom_node_present(comfy_dir: Path, node: dict[str, Any]) -> bool:
     return (d / "__init__.py").is_file()
 
 
+def pack_component(pack: dict[str, Any]) -> dict[str, Any] | None:
+    """Config of a pack that installs a venv/code bundle instead of model files (manifest `component`)."""
+    return manifest()[pack["component"]] if pack.get("component") else None
+
+
+def component_present(pack: dict[str, Any], models_dir: Path) -> bool:
+    if pack.get("component") == "normal_ai":
+        from studio_core.adapters.normal_ai import locate
+
+        return locate(None, models_dir).missing() is None
+    return True
+
+
+def component_sizes(pack: dict[str, Any], models_dir: Path) -> tuple[int, int]:
+    """(download bytes, still missing bytes) of a component pack."""
+    cfg = pack_component(pack)
+    if not cfg:
+        return 0, 0
+    size = cfg["download_mb"] * 1024 ** 2
+    return size, 0 if component_present(pack, models_dir) else size
+
+
 def recipe_packs(recipe_text: str) -> set[str]:
     """Packs a recipe's workflows come from (`views.qwen*` steps run the multi-angle workflow), plus packs whose
     `kinds` prefixes (CPU steps such as `tts.`) appear in it."""
@@ -144,9 +166,11 @@ def describe(settings: Settings, tools_dir: Path | None = None, models_dir: Path
         ms = base if p["required"] else [m for m in pack_models([p["id"]]) if m not in base]
         missing = [m for m in ms if not model_present(models_dir, m)]
         nodes_missing = [n for n in p.get("custom_nodes") or [] if not custom_node_present(settings.comfy_dir, n)]
+        c_size, c_missing = component_sizes(p, models_dir)
         packs.append({"id": p["id"], "label": p["label"], "detail": p["detail"], "required": p["required"],
-                      "files": len(ms), "size": sum(m["size"] for m in ms),
-                      "missing_size": sum(m["size"] for m in missing), "installed": not missing and not nodes_missing})
+                      "files": len(ms) + bool(c_size), "size": sum(m["size"] for m in ms) + c_size,
+                      "missing_size": sum(m["size"] for m in missing) + c_missing,
+                      "installed": not missing and not nodes_missing and not c_missing})
     gpu = detect_gpu()
     blender = manifest()["blender"]
     return {
