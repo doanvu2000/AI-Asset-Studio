@@ -2,7 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ArrowLeft, ArrowRight, FolderOpen, ImagePlus, Layers, LoaderCircle, Play } from '@lucide/vue'
-import type { BlobRef, WorkflowDef, WorkflowInputSpec } from '@/api/types'
+import type { BlobRef, RecipeInputSpec, WorkflowDef, WorkflowInputSpec } from '@/api/types'
 import { NO_PROJECT } from '@/api/types'
 import PageHeader from '@/components/PageHeader.vue'
 import FitBadge from '@/components/FitBadge.vue'
@@ -11,6 +11,8 @@ import BlobDropZone from '@/components/BlobDropZone.vue'
 import PresetSelect from '@/components/PresetSelect.vue'
 import ProjectSelect from '@/components/ProjectSelect.vue'
 import { chainNames, isBlobType } from '@/composables/flows'
+import { fits, PREFILL_PREFIX } from '@/composables/followUp'
+import { useQueryPrefill } from '@/composables/sendTo'
 import { settlePool } from '@/composables/pool'
 import { useFlows } from '@/stores/flows'
 import { useFit } from '@/stores/fit'
@@ -117,6 +119,33 @@ watch(
   () => {
     if (source.value === 'images' && !imageInput.value && promptInput.value) source.value = 'prompts'
     else if (source.value === 'prompts' && !promptInput.value && imageInput.value) source.value = 'images'
+  },
+  { immediate: true }
+)
+
+// "Gửi tới > Chạy flow" links here with `input.<name>=<hash>` and `project`; applied once the form for this flow exists.
+const pending = ref<Record<string, string> | null>(null)
+useQueryPrefill(['project', `${PREFILL_PREFIX}*`], (q) => (pending.value = q))
+watch(
+  [def, pending],
+  async ([d, q]) => {
+    if (!d || !q || d.id !== props.id) return
+    pending.value = null
+    if (q.project && (!projects.loaded || projects.byId(q.project))) projectId.value = q.project
+    for (const [k, hash] of Object.entries(q)) {
+      if (!k.startsWith(PREFILL_PREFIX)) continue
+      const name = k.slice(PREFILL_PREFIX.length)
+      const spec = d.inputs[name]
+      if (!spec || !isBlobType(spec.type)) continue
+      try {
+        const info = await api().blobInfo(hash)
+        if (!fits(spec as RecipeInputSpec, info)) throw new Error('Tệp không hợp lệ cho đầu vào này')
+        blobs[name] = [info]
+        errors[name] = null
+      } catch (e) {
+        toasts.error(e, 'Không nạp được tệp gửi sang')
+      }
+    }
   },
   { immediate: true }
 )

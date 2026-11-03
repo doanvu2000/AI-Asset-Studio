@@ -6,6 +6,7 @@ import { CornerDownLeft, FolderKanban, Paintbrush, RotateCcw, ShieldCheck, Image
 import { useRecipes } from '@/stores/recipes'
 import { useRuns } from '@/stores/runs'
 import { useGates } from '@/stores/gates'
+import { useFlows } from '@/stores/flows'
 import { useProjects } from '@/stores/projects'
 import { useToasts } from '@/stores/toasts'
 import { ApiError } from '@/api/client'
@@ -23,6 +24,7 @@ const recipes = useRecipes()
 const runs = useRuns()
 const gates = useGates()
 const projects = useProjects()
+const flows = useFlows()
 const toasts = useToasts()
 
 interface Item {
@@ -123,6 +125,10 @@ const items = computed<Item[]>(() => {
       recipeId: r.id,
       run: () => void router.push({ path: '/new', query: { recipe: r.id } })
     }))
+  const flowRuns = flows.defs
+    .filter((d) => match(d.title) || match(`chạy flow workflow ${d.title}`))
+    .slice(0, q ? 8 : 5)
+    .map<Item>((d) => ({ id: `flow-${d.id}`, group: 'Chạy chuỗi tự động', label: `Chạy flow ${d.title}`, icon: Workflow, run: go(`/flows/${encodeURIComponent(d.id)}/run`) }))
   const recent = runs.runList
     .filter((r) => match(r.title || '') || match(recipes.byId(r.recipe_id)?.name ?? ''))
     .slice(0, q ? 8 : 5)
@@ -135,7 +141,7 @@ const items = computed<Item[]>(() => {
       previewHash: runs.previewHash(r.id),
       run: () => void router.push(`/runs/${r.id}`)
     }))
-  return q ? [...act, ...make, ...recent, ...nav, ...look] : [...act, ...recent, ...make, ...nav, ...look]
+  return q ? [...act, ...flowRuns, ...make, ...recent, ...nav, ...look] : [...act, ...recent, ...make, ...flowRuns, ...nav, ...look]
 })
 
 const groups = computed(() => {
@@ -155,6 +161,7 @@ watch(paletteOpen, async (open) => {
     query.value = ''
     active.value = 0
     void recipes.load()
+    if (!flows.defsLoaded) void flows.loadDefs()
     await nextTick()
     inputEl.value?.focus()
   } else restoreFocus?.focus?.()

@@ -10,6 +10,9 @@ import ElapsedTimer from '@/components/ElapsedTimer.vue'
 import EtaChip from '@/components/EtaChip.vue'
 import StatusGlyph from '@/components/StatusGlyph.vue'
 import BlobImage from '@/components/BlobImage.vue'
+import SendToMenu from '@/components/SendToMenu.vue'
+import { isImage, isNormalBlob, outputBlobs } from '@/components/viewers/detect'
+import type { SendSource } from '@/composables/sendTo'
 import TweenNumber from '@/components/TweenNumber.vue'
 import FlowCanvas from '@/components/flow/FlowCanvas.vue'
 import { buildFlowRunGraph } from '@/composables/flowGraph'
@@ -133,6 +136,20 @@ watch(
 )
 const childSteps = computed(() => (sel.value?.run_id ? runs.stepsOf(sel.value.run_id) : []))
 const cachedCount = computed(() => childSteps.value.filter((s) => s.status === 'cached' || s.meta.cached_from).length)
+// Blobs of the node's last finished step, the same "final output" RunDetail sends onward.
+const outStep = computed(() => [...childSteps.value].reverse().find((s) => (s.status === 'succeeded' || s.status === 'cached') && outputBlobs(s.outputs).length))
+const outBlobs = computed(() => {
+  const all = outStep.value ? outputBlobs(outStep.value.outputs) : []
+  const list = all.filter((b, i) => all.findIndex((x) => x.hash === b.hash) === i)
+  const lead = list.find((b) => isImage(b) && !isNormalBlob(b)) ?? list[0]
+  return lead ? [lead, ...list.filter((b) => b !== lead)] : []
+})
+const sendSource = computed<SendSource>(() => ({
+  projectId: detail.value?.project_id,
+  blobs: outBlobs.value,
+  runId: sel.value?.run_id ?? undefined,
+  stepIds: outStep.value ? [outStep.value.id] : []
+}))
 const gateStep = computed(() => childSteps.value.find((s) => s.status === 'awaiting_human'))
 
 const recipeLabel = (c: WorkflowChild): string => recipes.byId(c.recipe_id)?.name ?? (recipes.loaded ? `${c.recipe_id} (đã xoá)` : c.recipe_id)
@@ -286,6 +303,7 @@ async function cancel(): Promise<void> {
         <div class="p-actions">
           <RouterLink v-if="gateStep" :to="{ path: '/gates', query: { step: gateStep.id } }" class="btn btn-primary"><Hand /> Duyệt ngay</RouterLink>
           <RouterLink v-if="sel.run_id" :to="`/runs/${sel.run_id}`" class="btn"><ExternalLink /> Mở lượt chạy</RouterLink>
+          <SendToMenu v-if="sel.status === 'succeeded' && outBlobs.length" :source="sendSource" />
           <button v-if="sel.status === 'failed' || sel.status === 'cancelled'" type="button" class="btn" :disabled="retrying" @click="retry(sel)">
             <LoaderCircle v-if="retrying" class="spin" />
             <RotateCcw v-else />

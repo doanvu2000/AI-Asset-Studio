@@ -3,6 +3,7 @@ import { computed, nextTick, ref, useId } from 'vue'
 import { useRouter } from 'vue-router'
 import { onClickOutside, useEventListener } from '@vueuse/core'
 import { ChevronDown, Send } from '@lucide/vue'
+import { useFlows } from '@/stores/flows'
 import { useProjects } from '@/stores/projects'
 import { useRecipes } from '@/stores/recipes'
 import { sendItems, type SendItem, type SendSource } from '@/composables/sendTo'
@@ -14,6 +15,7 @@ const props = defineProps<{ source: SendSource; compact?: boolean; extra?: strin
 const router = useRouter()
 const recipes = useRecipes()
 const projects = useProjects()
+const flows = useFlows()
 const uid = useId()
 const open = ref(false)
 const packOpen = ref(false)
@@ -23,7 +25,7 @@ const button = ref<HTMLButtonElement | null>(null)
 const menu = ref<HTMLElement | null>(null)
 const pos = ref<{ left: number; top?: number; bottom?: number; maxHeight: number }>({ left: 0, top: 0, maxHeight: 420 })
 
-const items = computed<SendItem[]>(() => sendItems(props.source, recipes.list, projects.byId(props.source.projectId)))
+const items = computed<SendItem[]>(() => sendItems(props.source, recipes.list, projects.byId(props.source.projectId), flows.defs))
 const itemId = (i: number): string => `${uid}-st-${i}`
 
 async function show(): Promise<void> {
@@ -36,6 +38,7 @@ async function show(): Promise<void> {
   active.value = 0
   open.value = true
   void recipes.load()
+  if (!flows.defsLoaded) void flows.loadDefs()
   await nextTick()
   menu.value?.focus()
 }
@@ -111,7 +114,7 @@ useEventListener(window, 'scroll', () => close(false), { capture: true, passive:
       >
         <p class="s-head caption">Gửi tới</p>
         <template v-for="(it, i) in items" :key="it.id">
-          <hr v-if="i > 0 && it.target !== 'recipe' && items[i - 1]?.target === 'recipe'" class="s-sep" />
+          <hr v-if="i > 0 && it.target !== 'recipe' && it.target !== 'flow' && ['recipe', 'flow'].includes(items[i - 1]?.target ?? '')" class="s-sep" />
           <div :id="itemId(i)" role="menuitem" class="s-item" :class="{ active: i === active }" @mousemove="active = i" @click="choose(i)">
             <span class="s-label">{{ it.label }}</span>
             <span v-if="it.hint" class="s-hint">{{ it.hint }}</span>

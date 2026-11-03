@@ -1,10 +1,11 @@
 import { onScopeDispose, watch } from 'vue'
 import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
-import type { BlobRef, ProjectRow, RecipeInfo } from '@/api/types'
+import type { BlobRef, ProjectRow, RecipeInfo, RecipeInputSpec, WorkflowDef } from '@/api/types'
 import { NO_PROJECT } from '@/api/types'
-import { followUps, prefillQuery } from './followUp'
+import { fits, followUps, prefillQuery, PREFILL_PREFIX } from './followUp'
+import { isBlobType } from './flows'
 
-export type SendTarget = 'recipe' | 'restyle' | 'audit' | 'pack' | 'gallery' | 'import'
+export type SendTarget = 'recipe' | 'restyle' | 'audit' | 'pack' | 'gallery' | 'import' | 'flow'
 
 /** What the caller has in hand; each destination only shows when the fields it needs are present. */
 export interface SendSource {
@@ -33,6 +34,7 @@ export interface SendItem {
 }
 
 const MAX_RECIPES = 4
+const MAX_FLOWS = 4
 const IMAGE_EXT = /\.(png|jpe?g|webp)$/i
 /** Joins scan-relative paths onto the folder using the folder's own separator. */
 export function absolutePaths(root: string, rels: string[]): string[] {
@@ -42,7 +44,18 @@ export function absolutePaths(root: string, rels: string[]): string[] {
 }
 const globOf = (rel: string): string => rel.replace(/[,*?[\]]/g, '?')
 
-export function sendItems(src: SendSource, recipes: RecipeInfo[], project?: ProjectRow): SendItem[] {
+/** Flows with a blob input that accepts `b`, paired with that input's name (required inputs first). */
+export function flowTargets(flows: WorkflowDef[], b: BlobRef): Array<[WorkflowDef, string]> {
+  const out: Array<[WorkflowDef, string]> = []
+  for (const def of flows) {
+    const blobs = Object.entries(def.inputs ?? {}).filter(([, sp]) => isBlobType(sp.type))
+    const pick = blobs.find(([, sp]) => sp.required !== false && fits(sp as RecipeInputSpec, b)) ?? blobs.find(([, sp]) => fits(sp as RecipeInputSpec, b))
+    if (pick) out.push([def, pick[0]])
+  }
+  return out.sort((a, c) => a[0].title.localeCompare(c[0].title, 'vi'))
+}
+
+export function sendItems(src: SendSource, recipes: RecipeInfo[], project?: ProjectRow, flows: WorkflowDef[] = []): SendItem[] {
   const out: SendItem[] = []
   const pid = src.projectId && src.projectId !== NO_PROJECT ? src.projectId : undefined
   const skip = new Set(src.omit)
@@ -50,6 +63,12 @@ export function sendItems(src: SendSource, recipes: RecipeInfo[], project?: Proj
   if (first && !skip.has('recipe'))
     for (const f of followUps(recipes, first, {}).filter((x) => !x.missing.length).slice(0, MAX_RECIPES))
       out.push({ id: `recipe-${f.recipe.id}`, target: 'recipe', label: f.recipe.name, hint: 'Tạo mới', to: { path: '/new', query: prefillQuery(f.recipe.id, f.prefill, pid) } })
+
+  if (first && !skip.has('flow')) {
+    const query = (name: string): LocationQueryRaw => ({ [`${PREFILL_PREFIX}${name}`]: first.hash, project: pid })
+    for (const [def, name] of flowTargets(flows, first).slice(0, MAX_FLOWS))
+      out.push({ id: `flow-${def.id}`, target: 'flow', label: `Chạy flow: ${def.title}`, hint: 'Chuỗi tự động', to: { path: `/flows/${encodeURIComponent(def.id)}/run`, query: query(name) } })
+  }
 
   const folder = src.folder ?? (project?.auto_export_dir || undefined)
   const rels = (src.files ?? []).filter((r) => IMAGE_EXT.test(r))
@@ -84,12 +103,14 @@ export function sendItems(src: SendSource, recipes: RecipeInfo[], project?: Proj
 export function useQueryPrefill(keys: string[], apply: (q: Record<string, string>) => void): void {
   const route = useRoute()
   const router = useRouter()
+  // A trailing `*` takes every query key with that prefix (`input.*`), since input names depend on the target.
+  const matched = (): string[] => keys.flatMap((k) => (k.endsWith('*') ? Object.keys(route.query).filter((q) => q.startsWith(k.slice(0, -1))) : [k]))
   const stop = watch(
-    () => keys.map((k) => route.query[k]).join('\u0000'),
+    () => matched().map((k) => route.query[k]).join('\u0000'),
     () => {
       const got: Record<string, string> = {}
       const rest = { ...route.query }
-      for (const k of keys) {
+      for (const k of matched()) {
         const v = route.query[k]
         const s = Array.isArray(v) ? v[0] : v
         if (typeof s === 'string' && s) got[k] = s
