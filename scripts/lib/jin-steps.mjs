@@ -10,12 +10,12 @@ export const opt = (k, d) => {
   if (eq) return eq.slice(k.length + 1);
   return argv.includes(k) ? argv[argv.indexOf(k) + 1] : d;
 };
-export const threads = Number(process.env.JIN_MAX_THREADS) || Math.max(1, Math.floor(os.cpus().length * 0.8));
+export const threads = Number(process.env.JIN_MAX_THREADS) || Math.max(1, Math.floor(os.cpus().length * 0.9));
 const VERBOSE = flag('--verbose');
 const ONLY = opt('--only', '')?.split(',').filter(Boolean) || [];
 const SKIP = opt('--skip', '')?.split(',').filter(Boolean) || [];
 const MAX_LINES = Number(process.env.JIN_SCRIPT_MAX_LINES) || 20;
-const DEFAULT_ERR = /\b(error|fail(ed|ure)?|exception|fatal)\b|\[E\]$|^\s*(✗|×|E\/)/i;
+const DEFAULT_ERR = /\b(error|fail(ed|ure)?|exception|fatal)\b|\[E\]$|^\s*(✗|×|E\/)|^\s*(error|warning)\s*[•-]\s/i;
 const KEEP_LOGS = 10;
 
 function runCapped(cmd, args) {
@@ -75,6 +75,19 @@ function pruneLogs(dir, prefix) {
   for (const f of files.slice(0, Math.max(0, files.length - KEEP_LOGS))) fs.rmSync(path.join(dir, f), { force: true });
 }
 
+export function recordFlaky(root, script, step, tests) {
+  try {
+    const dir = process.env.JIN_STATE_DIR || path.join(os.homedir(), '.jin');
+    fs.mkdirSync(dir, { recursive: true });
+    const day = new Date().toISOString().slice(0, 10);
+    const clean = (s) => String(s).replace(/[\t\r\n]+/g, ' ');
+    const rows = tests.map((t) => [day, path.basename(root), script, step, t].map(clean).join('\t'));
+    fs.appendFileSync(path.join(dir, 'flaky.tsv'), `${rows.join('\n')}\n`);
+  } catch {
+    return;
+  }
+}
+
 export async function runSteps(name, steps, { root = process.cwd() } = {}) {
   const logDir = path.join(root, '.jin', 'logs');
   fs.mkdirSync(logDir, { recursive: true });
@@ -95,6 +108,7 @@ export async function runSteps(name, steps, { root = process.cwd() } = {}) {
     const r = step.run ? await step.run({ exec: (s) => exec(s, root, log), log }) : await exec(step, root, log);
     const ok = step.ok ? step.ok(r) : r.code === 0;
     status.set(step.name, ok);
+    if (Array.isArray(r.flaky) && r.flaky.length) recordFlaky(root, name, step.name, r.flaky);
     const secs = ((Date.now() - t0) / 1000).toFixed(1);
     const picked = step.summary ? step.summary(r, ok) : ok ? [] : pickErrors(r.out, step.errors);
     lines.push(`${ok ? 'OK  ' : 'FAIL'} ${step.name} (${secs}s)${picked.length && !ok ? ` · ${picked.length} dòng lỗi` : ''}`);
