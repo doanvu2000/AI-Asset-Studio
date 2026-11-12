@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "scripts": [
+    {
+      "name": "check",
+      "file": "scripts/check.mjs",
+      "run": "node scripts/check.mjs",
+      "desc": "Kiểm dòng > 120 ký tự trong file core/*.py đang đổi → pytest core (-m 'not slow and not live', -n threads, --tb=line), in tóm tắt OK/FAIL",
+      "when": "Sau khi sửa code Python trong core/, trước khi báo xong; thay cho chạy rời python -m pytest / awk length",
+      "flags": "--verbose · --only pytest · --skip lines · --tests tests/test_a.py,tests/test_b.py · --slow · --max-len 120",
+      "covers": ["python -m pytest"],
+      "created": "2026-11-13",
+      "estSaveTokens": 47000
+    }
+  ]
+}
